@@ -14,4 +14,4 @@ See [PLAN.md](PLAN.md) for the architecture and roadmap.
 - `tools/` — Python asset pipeline (`.sit`/resource fork/PICT/pack formats)
 - `macos/` — WKWebView wrapper (later)
 
-PRs are auto-reviewed by GLM-5.3 via `.github/workflows/pr-review.yml`.
+PRs are auto-reviewed by GLM-5.3 via `.github/workflows/zai-code-review.yml`.

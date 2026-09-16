@@ -61,7 +61,7 @@ can grow later without format changes.
 ## Process
 
 - Work lands via small PRs. Every PR is auto-reviewed by **GLM-5.3**
-  (`z.ai` coding-plan endpoint) through `.github/workflows/pr-review.yml`,
+  (`z.ai` coding-plan endpoint) through `.github/workflows/zai-code-review.yml`,
   iterated to a clean review, then squash-merged.
 - No copyrighted assets in the repo — tests synthesize fixtures; the extractor
   reads user-supplied originals.
