@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.azpack
+az-data/
+az-src/
+__pycache__/
+.DS_Store
