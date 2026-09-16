@@ -8,13 +8,17 @@ ctx.imageSmoothingEnabled = false;
 
 const sim = new Sim(TANK, 0x9003);
 for (let i = 0; i < 4; i++) {
-  sim.addFish({
-    x: 40 + i * 60,
-    y: 50 + i * 30,
-    facing: i % 2 ? -1 : 1,
-    speed: 0.6 + i * 0.2,
-  });
+  sim.addFish({ x: 40 + i * 60, y: 50 + i * 30, facing: i % 2 ? -1 : 1 });
 }
+
+// Click near the surface drops food; deeper clicks knock on the glass.
+canvas.addEventListener("pointerdown", (e) => {
+  const r = canvas.getBoundingClientRect();
+  const x = ((e.clientX - r.left) / r.width) * TANK.width;
+  const y = ((e.clientY - r.top) / r.height) * TANK.height;
+  if (y < TANK.height * 0.15) sim.dropFood(x);
+  else sim.tap(x, y);
+});
 
 // Placeholder sprite until real Aquazone assets are imported.
 function drawFish(x: number, y: number, facing: number): void {
@@ -40,7 +44,27 @@ const tankGradient = (() => {
 function render(): void {
   ctx.fillStyle = tankGradient;
   ctx.fillRect(0, 0, TANK.width, TANK.height);
+
+  ctx.fillStyle = "#8a6d3b"; // gravel
+  ctx.fillRect(0, TANK.height - 10, TANK.width, 10);
+
+  for (const fd of sim.food) {
+    ctx.fillStyle = "#c9a227";
+    ctx.fillRect(Math.round(fd.x) - 1, Math.round(fd.y) - 1, 3, 3);
+  }
   for (const f of sim.fish) drawFish(f.x, f.y, f.facing);
+
+  ctx.fillStyle = "#cfe8ff";
+  for (const b of sim.bubbles) {
+    ctx.fillRect(Math.round(b.x), Math.round(b.y), 2, 2);
+  }
+
+  // day/night dimming
+  const dark = 1 - sim.light;
+  if (dark > 0.01) {
+    ctx.fillStyle = `rgba(4,8,24,${(dark * 0.75).toFixed(3)})`;
+    ctx.fillRect(0, 0, TANK.width, TANK.height);
+  }
 }
 
 // Fixed-step sim; render on rAF.
