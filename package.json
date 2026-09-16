@@ -1,0 +1,19 @@
+{
+  "name": "finsical",
+  "version": "0.0.1",
+  "description": "A lightweight retro virtual aquarium for modern macOS.",
+  "license": "Unlicense",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "esbuild web/main.ts --bundle --format=iife --outfile=dist/bundle.js",
+    "dev": "esbuild web/main.ts --bundle --format=iife --outfile=web/bundle.js --servedir=web --serve=8080"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2",
+    "typescript": "5.6.3",
+    "vitest": "2.1.9"
+  }
+}
