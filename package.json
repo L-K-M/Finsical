@@ -8,7 +8,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "mkdir -p dist && esbuild web/main.ts --bundle --format=iife --outfile=dist/bundle.js && cp web/index.html dist/index.html",
+    "build": "esbuild web/main.ts --bundle --format=iife --outfile=dist/bundle.js && node -e \"require('fs').copyFileSync('web/index.html','dist/index.html')\"",
     "dev": "esbuild web/main.ts --bundle --format=iife --outfile=web/bundle.js --servedir=web --serve=8080"
   },
   "devDependencies": {
