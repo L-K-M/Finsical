@@ -20,7 +20,7 @@ for (let i = 0; i < 4; i++) {
 function drawFish(x: number, y: number, facing: number): void {
   ctx.save();
   ctx.translate(Math.round(x), Math.round(y));
-  ctx.scale(facing, 1);
+  ctx.scale(-facing, 1);
   ctx.fillStyle = "#e8a33d";
   ctx.fillRect(-8, -4, 14, 8);   // body
   ctx.fillRect(6, -6, 6, 12);    // tail
@@ -30,11 +30,15 @@ function drawFish(x: number, y: number, facing: number): void {
   ctx.restore();
 }
 
-function render(): void {
+const tankGradient = (() => {
   const g = ctx.createLinearGradient(0, 0, 0, TANK.height);
   g.addColorStop(0, "#1a4d7a");
   g.addColorStop(1, "#0b2a45");
-  ctx.fillStyle = g;
+  return g;
+})();
+
+function render(): void {
+  ctx.fillStyle = tankGradient;
   ctx.fillRect(0, 0, TANK.width, TANK.height);
   for (const f of sim.fish) drawFish(f.x, f.y, f.facing);
 }

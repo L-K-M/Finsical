@@ -19,14 +19,14 @@ describe("Sim", () => {
     sim.addFish({ x: 160, y: 100, facing: 1, speed: 2 });
     for (let i = 0; i < 5000; i++) sim.tick();
     const f = sim.fish[0]!;
-    expect(f.x).toBeGreaterThanOrEqual(0);
-    expect(f.x).toBeLessThanOrEqual(320);
+    expect(f.x).toBeGreaterThanOrEqual(16);
+    expect(f.x).toBeLessThanOrEqual(304);
   });
 
   it("turns around at the walls", () => {
     const sim = new Sim({ width: 100, height: 100 }, 3);
-    sim.addFish({ x: 90, y: 50, facing: 1, speed: 1 });
-    for (let i = 0; i < 60; i++) sim.tick();
+    sim.addFish({ x: 76, y: 50, facing: 1, speed: 2 });
+    for (let i = 0; i < 25; i++) sim.tick();
     expect(sim.fish[0]!.facing).toBe(-1);
   });
 });
