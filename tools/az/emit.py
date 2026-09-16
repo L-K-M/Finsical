@@ -26,7 +26,7 @@ def emit(pack: Pack, outdir: str) -> dict:
     records = []
     for c in pack.chunks:
         fname = _chunk_name(c)
-        raw_path = os.path.join("chunks", fname + ".bin")
+        raw_path = f"chunks/{fname}.bin"
         with open(os.path.join(outdir, raw_path), "wb") as f:
             f.write(c.payload)
 
@@ -39,26 +39,33 @@ def emit(pack: Pack, outdir: str) -> dict:
         if c.name:
             rec["name"] = c.name
         if c.is_bmp:
-            w, h, rgba, _ = read_bmp(c.payload)
-            img = os.path.join("images", fname + ".png")
-            write_png(os.path.join(outdir, img), w, h, rgba)
-            rec["image"] = img
-            rec["w"], rec["h"] = w, h
+            try:
+                w, h, rgba, _ = read_bmp(c.payload)
+            except Exception:
+                rec["bad_image"] = True
+            else:
+                img = f"images/{fname}.png"
+                write_png(os.path.join(outdir, img), w, h, rgba)
+                rec["image"] = img
+                rec["w"], rec["h"] = w, h
         records.append(rec)
 
     manifest = {
         "format": "azpack/1",
         "tag": pack.tag,
         "version": pack.version,
-        "names": {str(r): n for r, n in pack.names()},
+        "names": [{"resId": r, "name": n} for r, n in pack.names()],
         "chunks": records,
     }
-    with open(os.path.join(outdir, "manifest.json"), "w") as f:
+    with open(os.path.join(outdir, "manifest.json"), "w",
+              encoding="utf-8") as f:
         json.dump(manifest, f, indent=1)
     return manifest
 
 
 def main(argv):
+    if len(argv) != 3:
+        raise SystemExit(f"usage: {argv[0]} <pack-file> <outdir>")
     src, outdir = argv[1], argv[2]
     with open(src, "rb") as f:
         pack = Pack(f.read())

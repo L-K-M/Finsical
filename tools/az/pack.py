@@ -62,7 +62,7 @@ class Pack:
         p = DATA_BASE
         while p + 4 <= len(d) and p < self.dir_off:
             n = struct.unpack_from("<I", d, p)[0]
-            if n < 1 or p + 4 + n > len(d):
+            if n < 1 or p + 4 + n > min(len(d), self.dir_off):
                 break
             c = Chunk(p + 4, d[p + 4:p + 4 + n])
             self.chunks.append(c)
@@ -82,7 +82,8 @@ class Pack:
             if pad == 0 and off + DATA_BASE in self._by_pos:
                 out.append((rid, sub, off))
                 c = self._by_pos[off + DATA_BASE]
-                c.res_id, c.sub = rid, sub
+                if c.res_id is None:
+                    c.res_id, c.sub = rid, sub
                 i += 12
             else:
                 i += 1
