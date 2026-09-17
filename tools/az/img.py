@@ -83,7 +83,10 @@ def bmp_palette(d, off=0):
         ncol = struct.unpack_from('<I', d, off + 46)[0] or (1 << bpp)
         pal = []
         for i in range(min(ncol, 256)):
-            b, g, r, _ = d[off + 14 + hdr + i * 4: off + 18 + hdr + i * 4]
+            ent = d[off + 14 + hdr + i * 4: off + 18 + hdr + i * 4]
+            if len(ent) < 4:
+                break
+            b, g, r, _ = ent
             pal.append((r, g, b))
         return pal
     except Exception:
