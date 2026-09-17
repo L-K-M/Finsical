@@ -115,9 +115,13 @@ class TestEmit(unittest.TestCase):
             self.assertEqual((w, h), (8, 4))  # 2 frames of 4x4, 1 group
             self.assertEqual(data[25], 3)  # color type 3 = indexed
             self.assertIn(b"tRNS", data)
-            i = data.index(b"IDAT")
-            ln = struct.unpack(">I", data[i - 4:i])[0]
-            raw = zlib.decompress(data[i + 4:i + 4 + ln])
+            pos, idat = 8, b""
+            while pos + 8 <= len(data):
+                ln, tag = struct.unpack(">I4s", data[pos:pos + 8])
+                if tag == b"IDAT":
+                    idat += data[pos + 8:pos + 8 + ln]
+                pos += 12 + ln
+            raw = zlib.decompress(idat)
             self.assertEqual(len(raw), 4 * 9)  # 4 rows x (filter + 8 idx)
             self.assertTrue(all(raw[y * 9] == 0 for y in range(4)))
 
