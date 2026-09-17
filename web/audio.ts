@@ -7,9 +7,16 @@ export class TankAudio {
   private ctx: AudioContext | null = null;
   private buffers = new Map<string, AudioBuffer>();
   private ambientSrc: AudioBufferSourceNode | null = null;
+  private ambientWanted = false;
 
   async load(read: (path: string) => Promise<Uint8Array>,
              manifest: AzpackManifest): Promise<void> {
+    if (this.ambientSrc) {
+      try { this.ambientSrc.stop(); } catch { /* already ended */ }
+      this.ambientSrc = null;
+    }
+    this.ambientWanted = false;
+    this.buffers.clear();
     for (const s of manifest.sounds ?? []) {
       try {
         const ac = this.ctx ?? new AudioContext();
@@ -36,9 +43,15 @@ export class TankAudio {
     return null;
   }
 
-  private play(buf: AudioBuffer | null, gain = 0.8, loop = false):
-      AudioBufferSourceNode | null {
-    if (!buf || !this.ctx || this.ctx.state !== "running") return null;
+  private play(buf: AudioBuffer | null, gain = 0.8, loop = false,
+               retry = true): AudioBufferSourceNode | null {
+    if (!buf || !this.ctx) return null;
+    if (this.ctx.state === "suspended" && retry) {
+      const ac = this.ctx;
+      void ac.resume().then(() => this.play(buf, gain, loop, false));
+      return null;
+    }
+    if (this.ctx.state !== "running") return null;
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     src.loop = loop;
@@ -67,7 +80,8 @@ export class TankAudio {
   }
 
   startAmbient(): void {
-    if (this.ambientSrc || this.ctx?.state !== "running") return;
+    if (this.ambientWanted) return;
+    this.ambientWanted = true;
     this.ambientSrc = this.play(this.find("aqua"), 0.12, true);
   }
 }
