@@ -21,3 +21,17 @@ See [PLAN.md](PLAN.md) for the architecture and roadmap. Downloads live on the
 copies it to /Applications, `--run` opens it); on other systems it verifies the
 core only. PRs are auto-reviewed by GLM-5.3 via
 `.github/workflows/zai-code-review.yml`.
+
+## Getting assets
+
+Finsical ships no game data. Point the tools at the originals you own:
+
+```sh
+python3 tools/fetch.py                    # pull the public archive.org disc
+python3 tools/azpack.py NeonTetra.fsh -o NeonTetra.azpack
+python3 tools/azpack.py "AQUAZONE.rsrc" -o sounds.azpack
+```
+
+Then drag the `.azpack` folder onto the aquarium window (or drop it in
+`web/pack/` for the dev shell). Fish packs supply sprites, tank packs supply
+the backdrop, and a resource fork supplies the sounds.
