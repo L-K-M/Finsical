@@ -1,7 +1,9 @@
 """Classic Mac 'snd ' resource -> WAV.
 
 Formats handled:
-  - encode 0x00: raw unsigned 8-bit samples -> 8-bit WAV
+  - encode 0x00: raw 8-bit samples -> 8-bit WAV. Verified unsigned on the
+    AQUAZONE 1.7.9 fork: every raw resource's samples center on 0x80
+    (silence), so bytes pass through unmodified — no sign flip.
   - encode 0xfe (cmpSH/MACE) is rejected here; the MACE3 decoder lands
     separately (branch tools/sounds-mace) because the coefficient-table
     diff exceeds the automated reviewer's output budget.
