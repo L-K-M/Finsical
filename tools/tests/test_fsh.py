@@ -9,6 +9,11 @@ def to_col(img: bytes, w: int, h: int) -> bytes:
     return bytes(img[(k % h) * w + k // h] for k in range(w * h))
 
 
+def to_row(col: bytes, w: int, h: int) -> bytes:
+    """column-major -> row-major."""
+    return bytes(col[x * h + y] for y in range(h) for x in range(w))
+
+
 class TestSpriteStream(unittest.TestCase):
     def test_roundtrip_single_frame(self):
         # 6x4 with runs, literal mixes, and a 0xFF value
@@ -26,13 +31,15 @@ class TestSpriteStream(unittest.TestCase):
         self.assertEqual(fr.idx, img)
 
     def test_long_run_splits(self):
-        img = bytes([3] * 300 + [1, 2] * 30)  # 300-run + literals, 20x18
-        blob = build_fsh(2, [(20, 18, to_col(img, 20, 18)),
-                             (20, 18, to_col(img[::-1], 20, 18))])
+        # genuine column-major input: the 300-run stays contiguous so the
+        # encoder's >255 split path is exercised. fr.idx is the row-major
+        # transpose of the input.
+        col = bytes([3] * 300 + [1, 2] * 30)  # 20x18 column-major
+        blob = build_fsh(2, [(20, 18, col), (20, 18, col[::-1])])
         frames = list(iter_frames(blob))
         self.assertEqual(len(frames), 2)
-        self.assertEqual(frames[0][2].idx, img)
-        self.assertEqual(frames[1][2].idx, img[::-1])
+        self.assertEqual(frames[0][2].idx, to_row(col, 20, 18))
+        self.assertEqual(frames[1][2].idx, to_row(col[::-1], 20, 18))
 
     def test_multi_group(self):
         imgs = [bytes(range(24)), bytes(range(24, 48)), bytes([7] * 24)]

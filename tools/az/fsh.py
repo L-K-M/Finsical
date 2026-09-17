@@ -59,6 +59,8 @@ def decode_pixels(s: bytes, w: int, h: int) -> bytes:
 
 def iter_frames(b: bytes) -> Iterator[tuple[int, int, Frame]]:
     """Yield (group, frame_index, Frame) for each record in a payload."""
+    if len(b) < 8:
+        return
     ng, nf = struct.unpack_from("<HH", b, 0)
     if not (0 < ng < 64 and 0 < nf < 64):
         return
