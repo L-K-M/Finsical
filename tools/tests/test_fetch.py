@@ -136,6 +136,32 @@ class TestHarvest(unittest.TestCase):
                         depth=0, budget=[len(one)])
         self.assertEqual(len(made), 1)
 
+    def test_disc_budget_exhaustion_breaks_iso_loop(self):
+        one = fake_pack(bmp_8bit())
+
+        class FakeIso:
+            def __init__(self):
+                self.reads = []
+
+            def walk(self):
+                for p in ["/a/fish.fsh", "/b/fish.fsh", "/c/fish.fsh"]:
+                    yield p, {"dir": False, "size": 100,
+                              "name": p.rsplit("/", 1)[-1]}
+
+            def read_file(self, rec):
+                self.reads.append(rec["name"])
+                return one
+
+        iso = FakeIso()
+        real = tools.fetch._MAX_TOTAL_BYTES
+        tools.fetch._MAX_TOTAL_BYTES = len(one)  # one entry drains it
+        try:
+            made = tools.fetch._harvest_disc(iso, self.out)
+        finally:
+            tools.fetch._MAX_TOTAL_BYTES = real
+        self.assertEqual(len(iso.reads), 1)  # broke before entry 2
+        self.assertEqual(len(made), 1)
+
     def test_read_capped_overrun(self):
         from tools.fetch import _read_capped
         buf = io.BytesIO()

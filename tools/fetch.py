@@ -173,6 +173,31 @@ def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,
     return []
 
 
+def _harvest_disc(iso, outdir: str) -> list[str]:
+    """Walk an ISO image, harvesting importable entries under one budget."""
+    made: list[str] = []
+    budget = [_MAX_TOTAL_BYTES]  # one budget per disc
+    for entry, rec in iso.walk():
+        base = os.path.basename(entry)
+        if rec["dir"] or not base.lower().endswith(IMPORTABLE + (".zip",)):
+            continue
+        if rec["size"] > _MAX_ARCHIVE_BYTES:
+            print(f"  {entry}: skipped, {rec['size']} bytes over cap",
+                  file=sys.stderr)
+            continue
+        if budget[0] <= 0:
+            print(f"  {entry}: skipped, disc byte budget exhausted",
+                  file=sys.stderr)
+            break
+        try:
+            blob = iso.read_file(rec)
+            budget[0] -= len(blob)
+            made += _harvest(base, blob, outdir, depth=0, budget=budget)
+        except Exception as e:
+            print(f"  {entry}: {type(e).__name__}: {e}", file=sys.stderr)
+    return made
+
+
 def fetch(ident: str, outdir: str, include: re.Pattern,
           downloads: str) -> tuple[list[str], int]:
     files = [f for f in _list_item(ident)
@@ -211,29 +236,7 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
                 failed += 1
                 continue
             if is_iso:
-                iso = Iso(path)
-                budget = [_MAX_TOTAL_BYTES]  # one budget per disc
-                for entry, rec in iso.walk():
-                    base = os.path.basename(entry)
-                    if rec["dir"] or not base.lower().endswith(
-                            IMPORTABLE + (".zip",)):
-                        continue
-                    if rec["size"] > _MAX_ARCHIVE_BYTES:
-                        print(f"  {entry}: skipped, {rec['size']} bytes "
-                              "over cap", file=sys.stderr)
-                        continue
-                    if budget[0] <= 0:
-                        print(f"  {entry}: skipped, disc byte budget "
-                              "exhausted", file=sys.stderr)
-                        break
-                    try:
-                        blob = iso.read_file(rec)
-                        budget[0] -= len(blob)
-                        made += _harvest(base, blob, outdir,
-                                         depth=0, budget=budget)
-                    except Exception as e:
-                        print(f"  {entry}: {type(e).__name__}: {e}",
-                              file=sys.stderr)
+                made += _harvest_disc(Iso(path), outdir)
             else:
                 with open(path, "rb") as fh:
                     blob = fh.read(_MAX_ARCHIVE_BYTES + 1)
