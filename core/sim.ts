@@ -70,7 +70,8 @@ export class Sim {
 
   /** Drop a food pellet at x; it sinks to the gravel. */
   dropFood(x: number): void {
-    this.food.push({ x, y: SURFACE + 2, eaten: false });
+    const cx = Math.min(Math.max(x, MARGIN), this.tank.width - MARGIN);
+    this.food.push({ x: cx, y: SURFACE + 2, eaten: false });
   }
 
   /** Knock on the glass: startle fish near (x, y). */
@@ -165,6 +166,7 @@ export class Sim {
     let best: Food | null = null;
     let bd = Infinity;
     for (const fd of this.food) {
+      if (fd.eaten) continue;
       const d = (fd.x - f.x) ** 2 + (fd.y - f.y) ** 2;
       if (d < bd) { bd = d; best = fd; }
     }
