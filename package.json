@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "esbuild web/main.ts --bundle --format=iife --outfile=dist/bundle.js && node -e \"require('fs').mkdirSync('dist',{recursive:true});require('fs').copyFileSync('web/index.html','dist/index.html')\"",
-    "dev": "esbuild web/main.ts --bundle --format=iife --outfile=web/bundle.js --servedir=web --serve=8080"
+    "dev": "esbuild web/main.ts --bundle --format=iife --outfile=web/bundle.js --servedir=web --serve=8080 --watch"
   },
   "devDependencies": {
     "esbuild": "0.24.2",

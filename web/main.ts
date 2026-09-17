@@ -49,8 +49,8 @@ function render(): void {
   ctx.fillStyle = tankGradient;
   ctx.fillRect(0, 0, TANK.width, TANK.height);
 
-  ctx.fillStyle = "#8a6d3b"; // gravel
-  ctx.fillRect(0, TANK.height - 10, TANK.width, 10);
+  ctx.fillStyle = "#8a6d3b"; // gravel — matches sim BOTTOM_PAD (12)
+  ctx.fillRect(0, TANK.height - 12, TANK.width, 12);
 
   for (const fd of sim.food) {
     ctx.fillStyle = "#c9a227";
