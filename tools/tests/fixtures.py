@@ -124,6 +124,26 @@ def build_rsrc(types: dict) -> bytes:
             + map_body)
 
 
+def build_pack(chunks, directory=(), tag=b"XXXX", version=0x5DC) -> bytes:
+    """9003inc pack. chunks: [payload]; directory: [(res_id, sub, chunk_idx)].
+    Trailer holds a 16-byte header copy then 12-byte directory records."""
+    body = bytearray(b"\0" * 0x100)
+    starts = []
+    for pl in chunks:
+        starts.append(len(body))
+        body += struct.pack("<I", len(pl)) + pl
+    dir_off = len(body)
+    hdr = struct.pack("<IIII", 0x00000100, dir_off, dir_off - 0x100,
+                      starts[0] + 4 if starts else 0)
+    body[:len(hdr)] = hdr
+    body[16:20] = tag[:4].ljust(4, b"\0")
+    body[20:24] = struct.pack("<I", version)
+    trailer = bytearray(hdr)  # header copy
+    for rid, sub, idx in directory:
+        trailer += struct.pack("<HHII", rid, sub, starts[idx] - 0x100, 0)
+    return bytes(body + trailer)
+
+
 def wrap_appledouble(rsrc: bytes) -> bytes:
     """Wrap resource-fork bytes in an AppleDouble file (entry id 2)."""
     entry_off = 26 + 12
