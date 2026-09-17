@@ -45,7 +45,21 @@ function encodeIndexedPng(w: number, h: number, idx: Uint8Array,
   ihdr.set([8, 3, 0, 0, 0], 8); // 8-bit, indexed, no interlace
   const plte = new Uint8Array(pal.flat());
   const raw = new Uint8Array(h * (w + 1));
-  for (let y = 0; y < h; y++) raw.set(idx.subarray(y * w, (y + 1) * w), y * (w + 1) + 1);
+  for (let y = 0; y < h; y++) {
+    const f = y % 5; // cycle row filters 0–4 to cover all unfilter branches
+    raw[y * (w + 1)] = f;
+    for (let x = 0; x < w; x++) {
+      const v = idx[y * w + x] ?? 0;
+      const a = x ? idx[y * w + x - 1] ?? 0 : 0;
+      const b = y ? idx[(y - 1) * w + x] ?? 0 : 0;
+      const c = x && y ? idx[(y - 1) * w + x - 1] ?? 0 : 0;
+      const p = a + b - c;
+      const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+      const pred = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      raw[y * (w + 1) + 1 + x] =
+        (f === 1 ? v - a : f === 2 ? v - b : f === 3 ? v - ((a + b) >> 1) : f === 4 ? v - pred : v) & 0xff;
+    }
+  }
   const idat = deflateStore(raw);
   const sig = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const parts = [sig, chunk("IHDR", ihdr), chunk("PLTE", plte),
@@ -60,11 +74,11 @@ const PAL: [number, number, number][] = [[0, 0, 0], [255, 0, 0], [0, 0, 255]];
 
 describe("decodeIndexedPng", () => {
   it("round-trips pixels and palette", async () => {
-    const idx = new Uint8Array([0, 1, 2, 1, 2, 0, 2, 0, 1, 1, 2, 2]); // 4x3
-    const png = encodeIndexedPng(4, 3, idx, PAL);
+    const idx = new Uint8Array(20).map((_, i) => i % 3); // 4x5
+    const png = encodeIndexedPng(4, 5, idx, PAL);
     const img = await decodeIndexedPng(png);
     expect(img.w).toBe(4);
-    expect(img.h).toBe(3);
+    expect(img.h).toBe(5);
     expect(img.palette).toEqual(PAL);
     expect([...img.idx]).toEqual([...idx]);
   });

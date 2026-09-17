@@ -108,6 +108,7 @@ export async function decodeIndexedPng(d: Uint8Array): Promise<IndexedImage> {
     p += 12 + len;
   }
   if (!w || !h || !idat.length) throw new Error("png: missing IHDR/IDAT");
+  if (!palette.length) throw new Error("png: missing PLTE");
   const zlen = idat.reduce((n, c) => n + c.length, 0);
   const z = new Uint8Array(zlen);
   let o = 0;
@@ -130,7 +131,10 @@ export class SpriteSheet {
     if (group < 0 || group >= ng || frameIdx < 0 || frameIdx >= nf)
       throw new RangeError(`frame ${group},${frameIdx} out of ${ng}x${nf}`);
     const dim = this.meta.dims[group * nf + frameIdx];
-    const fw = dim?.[2] ?? 0, fh = dim?.[3] ?? 0;
+    if (!dim) throw new RangeError(`dims[${group * nf + frameIdx}] missing for frame ${group},${frameIdx}`);
+    const fw = dim[2], fh = dim[3];
+    if (group * ch + fh > this.img.h || frameIdx * cw + fw > this.img.w)
+      throw new RangeError(`frame ${group},${frameIdx} exceeds sheet bounds ${this.img.w}x${this.img.h}`);
     const idx = new Uint8Array(fw * fh);
     for (let y = 0; y < fh; y++) {
       const src = (group * ch + y) * this.img.w + frameIdx * cw;
@@ -150,9 +154,15 @@ export async function loadAzpack(
   if (manifest.format !== "azpack/1")
     throw new Error(`bad pack format ${manifest.format}`);
   const sheets = new Map<string, SpriteSheet>();
+  const images = new Map<string, IndexedImage>();
   for (const c of manifest.chunks) {
     if (!c.sprites) continue;
-    sheets.set(c.file, new SpriteSheet(c.sprites, await decodeIndexedPng(await read(c.sprites.image))));
+    let img = images.get(c.sprites.image);
+    if (!img) {
+      img = await decodeIndexedPng(await read(c.sprites.image));
+      images.set(c.sprites.image, img);
+    }
+    sheets.set(c.file, new SpriteSheet(c.sprites, img));
   }
   return { manifest, sheets };
 }
