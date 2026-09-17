@@ -42,6 +42,14 @@ final class WebHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
 }
 
+/// Thin strip at the top edge that drags the window. The traffic-light
+/// buttons render above it (titlebar layer), so they stay clickable.
+final class DragStrip: NSView {
+    override func mouseDown(with event: NSEvent) {
+        window?.performDrag(with: event)
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow!
 
@@ -53,13 +61,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         window = NSWindow(
             contentRect: webView.frame,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable,
+                        .fullSizeContentView],
             backing: .buffered, defer: false)
         window.title = "Finsical"
+        window.titleVisibility = .hidden          // no title text
+        window.titlebarAppearsTransparent = true  // no grey bar — tank fills it
         window.level = .floating                    // always on top
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.contentAspectRatio = NSSize(width: 320, height: 200)
         window.contentView = webView
+
+        let strip = DragStrip()
+        strip.translatesAutoresizingMaskIntoConstraints = false
+        webView.addSubview(strip)
+        NSLayoutConstraint.activate([
+            strip.topAnchor.constraint(equalTo: webView.topAnchor),
+            strip.leadingAnchor.constraint(equalTo: webView.leadingAnchor),
+            strip.trailingAnchor.constraint(equalTo: webView.trailingAnchor),
+            strip.heightAnchor.constraint(equalToConstant: 22),
+        ])
+
         window.center()
         window.makeKeyAndOrderFront(nil)
 
