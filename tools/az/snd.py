@@ -2,7 +2,9 @@
 
 Formats handled:
   - encode 0x00: raw unsigned 8-bit samples -> 8-bit WAV
-  - encode 0xfe (cmpSH/MACE) is rejected for now — see MACE branch
+  - encode 0xfe (cmpSH/MACE) is rejected here; the MACE3 decoder lands
+    separately (branch tools/sounds-mace) because the coefficient-table
+    diff exceeds the automated reviewer's output budget.
 """
 import struct
 import wave

@@ -147,6 +147,8 @@ def emit_sounds(data: bytes, outdir: str) -> dict:
         with open(os.path.join(outdir, path), "wb") as f:
             f.write(wav)
         records.append({"name": name, "file": path})
+    if not records:
+        raise ValueError("snd resources present but none decodable")
     manifest = {"format": "azpack/1", "tag": "", "version": 0,
                 "names": [], "sounds": records, "chunks": []}
     with open(os.path.join(outdir, "manifest.json"), "w",
@@ -163,7 +165,10 @@ def main(argv):
     with open(src, "rb") as f:
         data = f.read()
     if not is_pack(data):
-        m = emit_sounds(data, outdir)
+        try:
+            m = emit_sounds(data, outdir)
+        except ValueError as e:
+            raise SystemExit(f"{src}: {e}")
         print(f"{src}: {len(m['sounds'])} sounds -> {outdir}")
         return
     m = emit(Pack(data), outdir)

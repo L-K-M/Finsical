@@ -102,9 +102,12 @@ class TestCliSounds(unittest.TestCase):
                                      + b"\x00" * 20)]})
         with tempfile.TemporaryDirectory() as td:
             src = os.path.join(td, "x.rsrc")
+            out = os.path.join(td, "o")
             with open(src, "wb") as f:
                 f.write(fork)
-            self.assertEqual(main([src, "-o", os.path.join(td, "o")]), 1)
+            self.assertEqual(main([src, "-o", out]), 1)
+            self.assertFalse(os.path.exists(
+                os.path.join(out, "manifest.json")))
 
 
 if __name__ == "__main__":
