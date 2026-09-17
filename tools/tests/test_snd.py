@@ -3,7 +3,8 @@ import struct
 import unittest
 import wave
 
-from tools.az.snd import mace3_decode, parse_snd, snd_to_wav, SndError
+from tools.az.mace import mace3_decode
+from tools.az.snd import parse_snd, snd_to_wav, SndError
 
 
 def snd_fmt1_u8(pcm: bytes, rate: float = 22254.5454) -> bytes:
