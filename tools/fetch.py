@@ -34,17 +34,37 @@ DOWNLOAD = "https://archive.org/download/{ident}/{name}"
 DEFAULT_IDENT = "aqua-zone-virtual-aquarium"
 IMPORTABLE = (".fsh", ".acc", ".plt", ".azn", ".rez", ".rsrc")
 _EMITTED: set[str] = set()  # paths written this run (re-runs replace)
+_MAX_ARCHIVE_BYTES = 1 << 30  # cap for a single in-memory download
 
 
 def _get(url: str, out: str | None = None) -> bytes | None:
     req = urllib.request.Request(url, headers={"User-Agent": "Finsical/1"})
     with urllib.request.urlopen(req, timeout=60) as r:
         if out is None:
-            return r.read()
+            blob = r.read(_MAX_ARCHIVE_BYTES + 1)
+            if len(blob) > _MAX_ARCHIVE_BYTES:
+                raise ValueError(f"{url}: over {_MAX_ARCHIVE_BYTES} bytes")
+            return blob
         with open(out, "wb") as f:
             while chunk := r.read(1 << 20):
                 f.write(chunk)
     return None
+
+
+def _cached_get(url: str, path: str, want_size: int | None = None) -> None:
+    """Download url into path via a .part file; reuse a good cache hit."""
+    if os.path.exists(path) and (want_size is None
+                                 or os.path.getsize(path) == want_size):
+        return
+    try:
+        _get(url, path + ".part")
+    except BaseException:
+        try:
+            os.remove(path + ".part")
+        except OSError:
+            pass
+        raise
+    os.replace(path + ".part", path)
 
 
 def _list_item(ident: str) -> list[dict]:
@@ -109,10 +129,9 @@ def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,
         except zipfile.BadZipFile:
             return []
         for zi in zf.infolist():
-            if zi.is_dir() or zi.filename.startswith("__MACOSX"):
-                continue
-            base = os.path.basename(zi.filename)
-            if not base:
+            base = os.path.basename(zi.filename.replace("\\", "/"))
+            if (zi.is_dir() or zi.filename.startswith("__MACOSX")
+                    or not base or base.startswith("._")):
                 continue
             if zi.file_size > _ENTRY_CAP:
                 print(f"  {zi.filename}: skipped, declares "
@@ -139,13 +158,14 @@ def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,
 
 
 def fetch(ident: str, outdir: str, include: re.Pattern,
-          downloads: str) -> list[str]:
+          downloads: str) -> tuple[list[str], int]:
     files = [f for f in _list_item(ident)
              if include.search(f.get("name", ""))]
     if not files:
         print(f"{ident}: no files match {include.pattern}")
-        return []
+        return [], 0
     made: list[str] = []
+    failed = 0
     os.makedirs(outdir, exist_ok=True)
     os.makedirs(downloads, exist_ok=True)
     for f in files:
@@ -154,16 +174,13 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
                               name=urllib.parse.quote(name))
         print(f"{name} ({f.get('size', '?')} bytes)")
         try:
+            try:
+                want = int(f.get("size"))
+            except (TypeError, ValueError):
+                want = None
+            path = os.path.join(downloads, os.path.basename(name))
+            _cached_get(url, path, want_size=want)
             if name.lower().endswith(".iso"):
-                path = os.path.join(downloads, os.path.basename(name))
-                try:
-                    want = int(f.get("size"))
-                except (TypeError, ValueError):
-                    want = None
-                if not os.path.exists(path) or (want is not None
-                                                and os.path.getsize(path) != want):
-                    _get(url, path + ".part")
-                    os.replace(path + ".part", path)
                 iso = Iso(path)
                 for entry, rec in iso.walk():
                     base = os.path.basename(entry)
@@ -176,10 +193,12 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
                         print(f"  {entry}: {type(e).__name__}: {e}",
                               file=sys.stderr)
             else:
-                made += _harvest(name, _get(url), outdir)
+                with open(path, "rb") as fh:
+                    made += _harvest(name, fh.read(), outdir)
         except Exception as e:
             print(f"  {name}: {type(e).__name__}: {e}", file=sys.stderr)
-    return made
+            failed += 1
+    return made, failed
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -202,14 +221,15 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     try:
-        made = fetch(args.ident, args.out, args.include, args.downloads)
+        made, failed = fetch(args.ident, args.out, args.include,
+                             args.downloads)
     except (OSError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     for p in made:
         print(f"  -> {p}")
     print(f"{len(made)} bundle(s) under {args.out}")
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import contextlib
 import io
 import os
 import struct
@@ -8,7 +9,9 @@ import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
-from tools.fetch import _emit_source, _harvest  # noqa: E402
+import tools.fetch  # noqa: E402
+from tools.fetch import (_MAX_ZIP_DEPTH, _emit_source,  # noqa: E402
+                         _harvest)
 
 
 def fake_pack(bmp_payload: bytes) -> bytes:
@@ -33,6 +36,7 @@ def bmp_8bit(w=4, h=4) -> bytes:
 
 class TestHarvest(unittest.TestCase):
     def setUp(self):
+        tools.fetch._EMITTED.clear()  # keep tests order-independent
         self.tmp = tempfile.TemporaryDirectory()
         self.out = self.tmp.name
 
@@ -65,6 +69,18 @@ class TestHarvest(unittest.TestCase):
         self.assertNotEqual(made[0], made[1])
         self.assertTrue(all(os.path.isdir(p) for p in made))
 
+    def test_zip_entry_paths_are_contained(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("../../evil.fsh", fake_pack(bmp_8bit()))
+            z.writestr("/abs/path.fsh", fake_pack(bmp_8bit()))
+            z.writestr("dir\\back.fsh", fake_pack(bmp_8bit()))
+            z.writestr("._meta.fsh", fake_pack(bmp_8bit()))
+        made = _harvest("slip.zip", buf.getvalue(), self.out)
+        for p in made:
+            self.assertEqual(os.path.commonpath([p, self.out]), self.out)
+        self.assertFalse(any("._" in os.path.basename(p) for p in made))
+
     def test_garbage_is_skipped(self):
         self.assertEqual(_harvest("x.bin", b"not a pack", self.out), [])
         self.assertEqual(_harvest("x.zip", b"not a zip", self.out), [])
@@ -86,7 +102,7 @@ class TestHarvest(unittest.TestCase):
         with zipfile.ZipFile(inner, "w") as z:
             z.writestr("deep.fsh", fake_pack(bmp_8bit()))
         blob = inner.getvalue()
-        for i in range(6):  # wrap 6 levels deep, beyond _MAX_ZIP_DEPTH
+        for i in range(_MAX_ZIP_DEPTH + 2):  # beyond _MAX_ZIP_DEPTH
             b = io.BytesIO()
             with zipfile.ZipFile(b, "w") as z:
                 z.writestr(f"l{i}.zip", blob)
@@ -98,7 +114,7 @@ class TestHarvest(unittest.TestCase):
         with zipfile.ZipFile(inner, "w") as z:
             z.writestr("deep.fsh", fake_pack(bmp_8bit()))
         blob = inner.getvalue()
-        for i in range(3):  # 3 wraps: within _MAX_ZIP_DEPTH of 4
+        for i in range(_MAX_ZIP_DEPTH - 1):  # within _MAX_ZIP_DEPTH
             b = io.BytesIO()
             with zipfile.ZipFile(b, "w") as z:
                 z.writestr(f"l{i}.zip", blob)
@@ -112,9 +128,11 @@ class TestHarvest(unittest.TestCase):
             z.writestr("a/fish.fsh", one)
             z.writestr("b/fish.fsh", one)
         self.assertEqual(
-            _harvest("z.zip", buf.getvalue(), self.out, 0, [0]), [])
+            _harvest("z.zip", buf.getvalue(), self.out,
+                     depth=0, budget=[0]), [])
         # Exactly enough budget for the first entry: it lands, rest skip.
-        made = _harvest("z.zip", buf.getvalue(), self.out, 0, [len(one)])
+        made = _harvest("z.zip", buf.getvalue(), self.out,
+                        depth=0, budget=[len(one)])
         self.assertEqual(len(made), 1)
 
     def test_read_capped_overrun(self):
@@ -130,12 +148,9 @@ class TestHarvest(unittest.TestCase):
     def test_invalid_include_regex_reports_usage_error(self):
         from tools.fetch import main
         buf = io.StringIO()
-        real, sys.stderr = sys.stderr, buf
-        try:
-            with self.assertRaises(SystemExit) as cm:
-                main(["--include", "["])
-        finally:
-            sys.stderr = real
+        with contextlib.redirect_stderr(buf), \
+                self.assertRaises(SystemExit) as cm:
+            main(["--include", "["])
         self.assertEqual(cm.exception.code, 2)
         self.assertIn("invalid regex", buf.getvalue())
 
@@ -145,10 +160,9 @@ class TestHarvest(unittest.TestCase):
         self.assertTrue(os.path.exists(out))
 
     def test_rerun_replaces_bundle(self):
-        import tools.fetch as fetch
         one = fake_pack(bmp_8bit())
         first = _emit_source("t.fsh", one, self.out)
-        fetch._EMITTED.clear()  # simulate a second process run
+        tools.fetch._EMITTED.clear()  # simulate a second process run
         second = _emit_source("t.fsh", one, self.out)
         self.assertEqual(first, second)
         self.assertTrue(os.path.exists(
