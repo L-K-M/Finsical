@@ -19,7 +19,7 @@ canvas.addEventListener("pointerdown", (e) => {
   const s = Math.min(r.width / TANK.width, r.height / TANK.height);
   const x = (e.clientX - r.left - (r.width - TANK.width * s) / 2) / s;
   const y = (e.clientY - r.top - (r.height - TANK.height * s) / 2) / s;
-  if (x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return; // letterbox bar
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return; // letterbox bar
   if (y < TANK.height * 0.15) sim.dropFood(x);
   else sim.tap(x, y);
 });
