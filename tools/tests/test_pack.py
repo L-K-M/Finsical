@@ -1,5 +1,6 @@
 import struct
 import unittest
+import zlib
 
 from tools.az.pack import Pack, PackError, is_pack
 from tools.tests.fixtures import build_bmp8, build_fsh, build_pack
@@ -104,6 +105,7 @@ class TestEmit(unittest.TestCase):
             self.assertEqual((meta["groups"], meta["framesPerGroup"]), (1, 2))
             self.assertEqual((meta["cellW"], meta["cellH"]), (4, 4))
             self.assertEqual(meta["dims"], [[0, 0, 4, 4], [0, 1, 4, 4]])
+            self.assertEqual(meta["paletteSrc"], "0258_ffff_104")
             path = os.path.join(td, meta["image"])
             self.assertTrue(os.path.exists(path))
             with open(path, "rb") as fh:
@@ -113,6 +115,11 @@ class TestEmit(unittest.TestCase):
             self.assertEqual((w, h), (8, 4))  # 2 frames of 4x4, 1 group
             self.assertEqual(data[25], 3)  # color type 3 = indexed
             self.assertIn(b"tRNS", data)
+            i = data.index(b"IDAT")
+            ln = struct.unpack(">I", data[i - 4:i])[0]
+            raw = zlib.decompress(data[i + 4:i + 4 + ln])
+            self.assertEqual(len(raw), 4 * 9)  # 4 rows x (filter + 8 idx)
+            self.assertTrue(all(raw[y * 9] == 0 for y in range(4)))
 
     def test_emit_survives_bad_bmp(self):
         import os
