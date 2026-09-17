@@ -38,6 +38,8 @@ export interface AzpackManifest {
   version: number;
   chunks: ChunkRecord[];
   names: { resId: number; name: string }[];
+  /** WAV files decoded from 'snd ' resources (tools/az/snd.py). */
+  sounds?: { name: string; file: string }[];
 }
 
 export interface IndexedImage {
