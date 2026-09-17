@@ -53,6 +53,16 @@ class TestHarvest(unittest.TestCase):
         self.assertEqual(len(made), 1)
         self.assertIn("NeonTetra", made[0])
 
+    def test_same_basename_does_not_collide(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("a/fish.fsh", fake_pack(bmp_8bit()))
+            z.writestr("b/fish.fsh", fake_pack(bmp_8bit()))
+        made = _harvest("two.zip", buf.getvalue(), self.out)
+        self.assertEqual(len(made), 2)
+        self.assertNotEqual(made[0], made[1])
+        self.assertTrue(all(os.path.isdir(p) for p in made))
+
     def test_garbage_is_skipped(self):
         self.assertEqual(_harvest("x.bin", b"not a pack", self.out), [])
         self.assertEqual(_harvest("x.zip", b"not a zip", self.out), [])

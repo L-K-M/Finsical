@@ -36,7 +36,7 @@ IMPORTABLE = (".fsh", ".acc", ".plt", ".azn", ".rez", ".rsrc")
 
 def _get(url: str, out: str | None = None) -> bytes | None:
     req = urllib.request.Request(url, headers={"User-Agent": "Finsical/1"})
-    with urllib.request.urlopen(req) as r:
+    with urllib.request.urlopen(req, timeout=60) as r:
         if out is None:
             return r.read()
         with open(out, "wb") as f:
@@ -52,13 +52,17 @@ def _list_item(ident: str) -> list[dict]:
 
 def _emit_source(name: str, data: bytes, outdir: str) -> str | None:
     """If data is importable, emit an .azpack under outdir; return path."""
+    base = os.path.splitext(os.path.basename(name))[0]
+    out = os.path.join(outdir, base + ".azpack")
+    n = 2
+    while os.path.exists(out):
+        out = os.path.join(outdir, f"{base}-{n}.azpack")
+        n += 1
     try:
         if is_pack(data):
-            out = os.path.join(outdir, os.path.splitext(name)[0] + ".azpack")
             emit(Pack(data), out)
             return out
         if any(True for _ in sounds_from_rsrc(data)):
-            out = os.path.join(outdir, os.path.splitext(name)[0] + ".azpack")
             emit_sounds(data, out)
             return out
     except Exception as e:
@@ -103,19 +107,23 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
         url = DOWNLOAD.format(ident=ident,
                               name=urllib.parse.quote(name))
         print(f"{name} ({f.get('size', '?')} bytes)")
-        if name.lower().endswith(".iso"):
-            path = os.path.join(downloads, name)
-            if not os.path.exists(path):
-                _get(url, path)
-            iso = Iso(path)
-            for entry, rec in iso.walk():
-                base = os.path.basename(entry)
-                if rec["dir"] or not base.lower().endswith(
-                        IMPORTABLE + (".zip",)):
-                    continue
-                made += _harvest(base, iso.read_file(rec), outdir)
-        else:
-            made += _harvest(name, _get(url), outdir)
+        try:
+            if name.lower().endswith(".iso"):
+                path = os.path.join(downloads, os.path.basename(name))
+                if not os.path.exists(path):
+                    _get(url, path + ".part")
+                    os.replace(path + ".part", path)
+                iso = Iso(path)
+                for entry, rec in iso.walk():
+                    base = os.path.basename(entry)
+                    if rec["dir"] or not base.lower().endswith(
+                            IMPORTABLE + (".zip",)):
+                        continue
+                    made += _harvest(base, iso.read_file(rec), outdir)
+            else:
+                made += _harvest(name, _get(url), outdir)
+        except Exception as e:
+            print(f"  {name}: {type(e).__name__}: {e}", file=sys.stderr)
     return made
 
 
@@ -125,7 +133,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="archive.org item identifier")
     ap.add_argument("-o", "--out", default="packs",
                     help="output dir for .azpack bundles")
-    ap.add_argument("--include", default=r"\.(iso|zip)$", type=re.compile,
+    ap.add_argument("--include", default=r"(?i)\.(iso|zip)$",
+                    type=re.compile,
                     help="regex over item file names (default: iso/zip)")
     ap.add_argument("--downloads", default="packs/downloads",
                     help="where big downloads are cached")
