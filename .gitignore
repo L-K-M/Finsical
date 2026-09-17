@@ -2,6 +2,7 @@ node_modules/
 dist/
 *.azpack
 az-data/
+web/pack/
 az-src/
 __pycache__/
 .DS_Store
