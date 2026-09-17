@@ -144,6 +144,71 @@ def build_pack(chunks, directory=(), tag=b"XXXX", version=0x5DC) -> bytes:
     return bytes(body + trailer)
 
 
+def _encode_frame_stream(px: bytes) -> bytes:
+    """Encode column-major pixels into the Aquazone run/literal format.
+
+    Each item is `op 0xFF col n lit…`: emit (0x100-op) of `col`, then n
+    literal bytes. A single pixel is a degenerate run (op = 0xFF).
+    """
+    out = bytearray()
+    n = len(px)
+    i = 0
+    while i < n:
+        j = i
+        while j < n and px[j] == px[i]:
+            j += 1
+        run = j - i
+        col = px[i]
+        if col == 0xFF:
+            raise ValueError(
+                "0xFF cannot lead a run command; 0xFF pixels must ride as "
+                "literals on a preceding non-0xFF run command")
+        # gather following literal stretch (lone pixels and 0xFF values,
+        # which can't lead a run command) up to the next real run
+        lits = bytearray()
+        k = j
+        while k < n:
+            m = k
+            while m < n and px[m] == px[k]:
+                m += 1
+            if m - k >= 2 and px[k] != 0xFF:
+                break
+            if len(lits) + (m - k) > 255:
+                if px[k] == 0xFF:
+                    raise ValueError(
+                        "255-literal cap strands a 0xFF stretch with no "
+                        "preceding non-0xFF run to carry it; split the data")
+                break
+            lits += px[k:m]
+            k = m
+        i = k
+        while run > 255:
+            out += b"\x01\xff" + bytes([col, 0])
+            run -= 255
+        out += bytes([0x100 - run, 0xFF, col, len(lits)]) + bytes(lits)
+    return bytes(out)
+
+
+def build_fsh(frames_per_group: int, frames: list) -> bytes:
+    """Sprite-stream chunk. frames: [(w, h, column_major_idx)], length a
+    multiple of frames_per_group. Returns header + records payload."""
+    nf = frames_per_group
+    ng = len(frames) // nf
+    assert ng * nf == len(frames)
+    out = bytearray(struct.pack("<HHI", ng, nf, 0))
+    for gi in range(ng):
+        for fi in range(nf):
+            w, h, px = frames[gi * nf + fi]
+            assert len(px) == w * h
+            stream = _encode_frame_stream(px)
+            out += struct.pack("<HHHI", w, h, 0, len(stream)) + stream
+            if fi == nf - 1:
+                out += b"" if gi == ng - 1 else struct.pack("<HI", nf, 0)
+            else:
+                out += b"\0" * 4
+    return bytes(out)
+
+
 def wrap_appledouble(rsrc: bytes) -> bytes:
     """Wrap resource-fork bytes in an AppleDouble file (entry id 2)."""
     entry_off = 26 + 12
