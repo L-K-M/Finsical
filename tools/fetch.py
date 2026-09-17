@@ -17,6 +17,7 @@ import io
 import json
 import os
 import re
+import shutil
 import sys
 import urllib.parse
 import urllib.request
@@ -26,12 +27,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.az.emit import emit, emit_sounds
 from tools.az.iso9660 import Iso
 from tools.az.pack import Pack, is_pack
-from tools.az.snd import sounds_from_rsrc
+from tools.az.snd import has_sounds
 
 META = "https://archive.org/metadata/{ident}"
 DOWNLOAD = "https://archive.org/download/{ident}/{name}"
 DEFAULT_IDENT = "aqua-zone-virtual-aquarium"
 IMPORTABLE = (".fsh", ".acc", ".plt", ".azn", ".rez", ".rsrc")
+_EMITTED: set[str] = set()  # paths written this run (re-runs replace)
 
 
 def _get(url: str, out: str | None = None) -> bytes | None:
@@ -55,18 +57,21 @@ def _emit_source(name: str, data: bytes, outdir: str) -> str | None:
     base = os.path.splitext(os.path.basename(name))[0]
     out = os.path.join(outdir, base + ".azpack")
     n = 2
-    while os.path.exists(out):
+    while out in _EMITTED:
         out = os.path.join(outdir, f"{base}-{n}.azpack")
         n += 1
     try:
         if is_pack(data):
+            shutil.rmtree(out, ignore_errors=True)
             emit(Pack(data), out)
+            _EMITTED.add(out)
             return out
-        if any(True for _ in sounds_from_rsrc(data)):
+        if has_sounds(data):
+            shutil.rmtree(out, ignore_errors=True)
             emit_sounds(data, out)
+            _EMITTED.add(out)
             return out
     except Exception as e:
-        import shutil
         if os.path.isdir(out):
             shutil.rmtree(out, ignore_errors=True)
         print(f"  {name}: {type(e).__name__}: {e}", file=sys.stderr)

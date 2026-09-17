@@ -143,8 +143,16 @@ class TestHarvest(unittest.TestCase):
         out = _emit_source("t.fsh", fake_pack(bmp_8bit()), self.out)
         self.assertIsNotNone(out)
         self.assertTrue(os.path.exists(out))
+
+    def test_rerun_replaces_bundle(self):
+        import tools.fetch as fetch
+        one = fake_pack(bmp_8bit())
+        first = _emit_source("t.fsh", one, self.out)
+        fetch._EMITTED.clear()  # simulate a second process run
+        second = _emit_source("t.fsh", one, self.out)
+        self.assertEqual(first, second)
         self.assertTrue(os.path.exists(
-            os.path.join(out, "manifest.json")))
+            os.path.join(second, "manifest.json")))
 
 
 if __name__ == "__main__":

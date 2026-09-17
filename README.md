@@ -28,7 +28,14 @@ Finsical ships no game data. Use a copy of the original disc you are
 entitled to (the fetch tool defaults to the public archive.org mirror of it):
 
 ```sh
-python3 tools/fetch.py                    # pull the public archive.org disc
+python3 tools/fetch.py   # pulls the disc; every .azpack lands in packs/
+```
+
+`fetch.py` converts each pack (`.fsh`/`.acc`/`.plt`/`.azn`/`.REZ`) and
+`snd ` resource fork it finds into an `.azpack` — no manual step needed.
+To convert loose files from your own disc copy instead:
+
+```sh
 python3 tools/azpack.py NeonTetra.fsh -o NeonTetra.azpack
 python3 tools/azpack.py "AQUAZONE.rsrc" -o sounds.azpack
 ```
