@@ -87,6 +87,12 @@ describe("decodeIndexedPng", () => {
     await expect(decodeIndexedPng(new Uint8Array([1, 2, 3, 4])))
       .rejects.toThrow("signature");
   });
+
+  it("rejects palette indices out of range", async () => {
+    const png = encodeIndexedPng(2, 1, new Uint8Array([5, 0]), PAL);
+    await expect(decodeIndexedPng(png))
+      .rejects.toThrow("palette index 5 out of range (palette size 3)");
+  });
 });
 
 describe("SpriteSheet", () => {
@@ -106,7 +112,7 @@ describe("SpriteSheet", () => {
   });
 
   it("rejects frames with invalid dims", () => {
-    const img = { w: 6, h: 2, palette: PAL, idx: new Uint8Array(12) };
+    const img = { w: 6, h: 3, palette: PAL, idx: new Uint8Array(18) };
     const meta = { image: "s.png", groups: 1, framesPerGroup: 3,
                    cellW: 2, cellH: 1,
                    dims: [[0, 0, -2, 1], [0, 1, 2, 1.5], [0, 2, 2, 1]] as [number, number, number, number][] };
