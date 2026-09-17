@@ -104,10 +104,20 @@ def write_png(path, w, h, rgba):
 
 
 def save_indexed_png(path, w, h, idx, pal):
-    """idx: bytes of palette indices; pal: list of (r,g,b)."""
-    rgba = bytearray(w * h * 4)
+    """Write an 8-bit indexed PNG. idx: bytes of palette indices; pal:
+    list of (r,g,b). Index 0 is marked transparent (sprites key on it)."""
     assert len(idx) == w * h, 'index buffer size does not match w*h'
-    for i, v in enumerate(idx):
-        r, g, b = pal[v] if v < len(pal) else (0, 0, 0)
-        rgba[i * 4:i * 4 + 4] = bytes((r, g, b, 255))
-    write_png(path, w, h, bytes(rgba))
+    pal = list(pal) + [(0, 0, 0)] * max(0, 256 - len(pal))
+
+    def chunk(tag, data):
+        c = struct.pack('>I', len(data)) + tag + data
+        return c + struct.pack('>I', zlib.crc32(tag + data) & 0xffffffff)
+    raw = b''.join(b'\x00' + idx[y * w:(y + 1) * w] for y in range(h))
+    png = (b'\x89PNG\r\n\x1a\n'
+           + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 3, 0, 0, 0))
+           + chunk(b'PLTE', b''.join(bytes(p) for p in pal[:256]))
+           + chunk(b'tRNS', b'\x00' + b'\xff' * 255)
+           + chunk(b'IDAT', zlib.compress(raw, 9))
+           + chunk(b'IEND', b''))
+    with open(path, 'wb') as f:
+        f.write(png)
