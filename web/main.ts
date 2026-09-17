@@ -31,13 +31,19 @@ canvas.addEventListener("pointerdown", (e) => {
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
 // drag the folder onto the window, and real Aquazone sprites replace the
 // placeholder fish.
-let fishSheet: SpriteSheet | null = null;
+// Best sheet per imported pack; fish get sheets round-robin so a tank can
+// mix species.
+let fishSheets: SpriteSheet[] = [];
 function usePack(pack: { sheets: Map<string, SpriteSheet> }): void {
   // Most orientation groups wins; tiebreak toward the crunchier cell.
   const sheets = [...pack.sheets.values()];
   sheets.sort((a, b) =>
     b.meta.groups - a.meta.groups || a.meta.cellH - b.meta.cellH);
-  fishSheet = sheets[0] ?? null;
+  if (sheets[0]) fishSheets.push(sheets[0]);
+}
+function sheetOf(f: Fish): SpriteSheet | null {
+  const i = sim.fish.indexOf(f);
+  return i < 0 ? null : fishSheets[i % fishSheets.length] ?? null;
 }
 loadAzpack(async (p) => {
   const r = await fetch(`pack/${p}`);
@@ -101,7 +107,7 @@ window.addEventListener("drop", (e) => {
       const sheets = fshToSheets(data);
       if (!sheets.size) continue;
       usePack({ sheets });
-      if (fishSheet) {
+      if (fishSheets.length) {
         console.info(`${name}: pack imported`);
         return;
       }
@@ -151,9 +157,10 @@ function animFrame(f: Fish, nf: number): number {
 }
 
 function drawFish(f: Fish): void {
-  if (!fishSheet) return drawPlaceholder(f.x, f.y, f.facing);
-  const { g, mirror } = groupFor(f.facing, fishSheet.meta.groups);
-  const cv = frameCanvas(fishSheet, g, animFrame(f, fishSheet.meta.framesPerGroup));
+  const sheet = sheetOf(f);
+  if (!sheet) return drawPlaceholder(f.x, f.y, f.facing);
+  const { g, mirror } = groupFor(f.facing, sheet.meta.groups);
+  const cv = frameCanvas(sheet, g, animFrame(f, sheet.meta.framesPerGroup));
   ctx.save();
   ctx.translate(Math.round(f.x), Math.round(f.y));
   if (mirror) ctx.scale(-1, 1);
