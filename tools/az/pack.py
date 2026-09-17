@@ -76,7 +76,7 @@ class Pack:
         d = self._d
         out = []
         i = self.dir_off + 16
-        limit = min(self.dir_off + 16 + 0x10000, len(d))
+        limit = len(d)
         while i + 12 <= limit:
             rid, sub, off, pad = struct.unpack_from("<HHII", d, i)
             if pad == 0 and off + DATA_BASE in self._by_pos:

@@ -44,10 +44,10 @@ class TestPack(unittest.TestCase):
 
     def test_chunk_overrunning_trailer_is_dropped(self):
         good = b"OK"
-        # last chunk claims a huge length running into the trailer
+        # last chunk claims 8 bytes: fits in the file but crosses dir_off
         body = bytearray(b"\0" * 0x100)
         body += struct.pack("<I", len(good)) + good
-        body += struct.pack("<I", 0xFFFF) + b"BMbad"
+        body += struct.pack("<I", 8) + b"BMbad"
         dir_off = len(body)
         hdr = struct.pack("<IIII", 0x00000100, dir_off,
                           dir_off - 0x100, 0x104)
