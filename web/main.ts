@@ -1,4 +1,4 @@
-import { Sim } from "../core/sim.js";
+import { BOTTOM_PAD, Sim } from "../core/sim.js";
 
 const TANK = { width: 320, height: 200 };
 
@@ -49,8 +49,8 @@ function render(): void {
   ctx.fillStyle = tankGradient;
   ctx.fillRect(0, 0, TANK.width, TANK.height);
 
-  ctx.fillStyle = "#8a6d3b"; // gravel — matches sim BOTTOM_PAD (12)
-  ctx.fillRect(0, TANK.height - 12, TANK.width, 12);
+  ctx.fillStyle = "#8a6d3b"; // gravel
+  ctx.fillRect(0, TANK.height - BOTTOM_PAD, TANK.width, BOTTOM_PAD);
 
   for (const fd of sim.food) {
     ctx.fillStyle = "#c9a227";
