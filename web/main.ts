@@ -41,9 +41,13 @@ function usePack(pack: { sheets: Map<string, SpriteSheet> }): void {
     b.meta.groups - a.meta.groups || a.meta.cellH - b.meta.cellH);
   if (sheets[0]) fishSheets.push(sheets[0]);
 }
+const fishSlot = new WeakMap<Fish, number>();
+let nextSlot = 0;
 function sheetOf(f: Fish): SpriteSheet | null {
-  const i = sim.fish.indexOf(f);
-  return i < 0 ? null : fishSheets[i % fishSheets.length] ?? null;
+  if (!fishSheets.length) return null;
+  let i = fishSlot.get(f);
+  if (i === undefined) fishSlot.set(f, (i = nextSlot++));
+  return fishSheets[i % fishSheets.length]!;
 }
 loadAzpack(async (p) => {
   const r = await fetch(`pack/${p}`);
