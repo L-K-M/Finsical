@@ -85,11 +85,14 @@ def _read_capped(zf: zipfile.ZipFile, zi: zipfile.ZipInfo,
 
 
 _MAX_ZIP_DEPTH = 4
+_MAX_TOTAL_BYTES = 64 << 20  # shared across the whole recursion tree
 
 
-def _harvest(name: str, data: bytes, outdir: str,
-             depth: int = 0) -> list[str]:
+def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,
+             budget: list[int] | None = None) -> list[str]:
     """Recurse into archives; emit .azpack for anything importable."""
+    if budget is None:
+        budget = [_MAX_TOTAL_BYTES]
     lower = name.lower()
     if lower.endswith(IMPORTABLE):
         out = _emit_source(name, data, outdir)
@@ -116,7 +119,12 @@ def _harvest(name: str, data: bytes, outdir: str,
                     print(f"  {zi.filename}: skipped, decompressed data "
                           "over cap", file=sys.stderr)
                     continue
-                made += _harvest(base, blob, outdir, depth + 1)
+                budget[0] -= len(blob)
+                if budget[0] <= 0:
+                    print(f"  {zi.filename}: skipped, total byte budget "
+                          "exhausted", file=sys.stderr)
+                    continue
+                made += _harvest(base, blob, outdir, depth + 1, budget)
             except Exception as e:
                 print(f"  {zi.filename}: {type(e).__name__}: {e}",
                       file=sys.stderr)
