@@ -3,11 +3,13 @@
 .azpack bundle the app can import.
 
     python3 tools/azpack.py NeonTetra.fsh -o NeonTetra.azpack
-    python3 tools/azpack.py *.fsh -o packs/    # one bundle per input
+    python3 tools/azpack.py *.fsh -o packs/    # one bundle per input (POSIX
+                                               # glob; list files on Windows)
 
 Then drag the output folder onto the Finsical window (or drop it in
 web/pack/ for the dev shell).
 """
+from __future__ import annotations
 import argparse
 import os
 import sys
@@ -30,6 +32,7 @@ def main(argv: list[str] | None = None) -> int:
         name = os.path.splitext(os.path.basename(src))[0]
         out = args.out if len(args.inputs) == 1 else os.path.join(args.out, name)
         try:
+            os.makedirs(out, exist_ok=True)
             with open(src, "rb") as f:
                 manifest = emit(Pack(f.read()), out)
         except Exception as e:
