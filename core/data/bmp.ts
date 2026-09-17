@@ -26,7 +26,7 @@ export function decodeBmp(d: Uint8Array): IndexedImage | null {
   let h = i32(d, 22);
   const bpp = u16(d, 28), comp = u32(d, 30);
   if (bpp !== 8 || (comp !== 0 && comp !== 1)) return null;
-  if (w <= 0 || h === 0 || w > 8192 || h > 8192) return null;
+  if (w <= 0 || h === 0 || w > 8192 || Math.abs(h) > 8192) return null;
   const topdown = h < 0;
   h = Math.abs(h);
 
