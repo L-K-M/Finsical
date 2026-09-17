@@ -20,7 +20,19 @@ def unwrap_appledouble(d):
 class ResFile:
     def __init__(self, path):
         with open(path, 'rb') as f:
-            d = f.read()
+            self._init(f.read())
+
+    @classmethod
+    def from_bytes(cls, d):
+        return cls._from_data(d)
+
+    @classmethod
+    def _from_data(cls, d):
+        self = cls.__new__(cls)
+        self._init(d)
+        return self
+
+    def _init(self, d):
         self.data = unwrap_appledouble(d)
         r = self.data
         self.do, self.mo, self.dl, self.ml = struct.unpack_from('>4I', r, 0)

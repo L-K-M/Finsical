@@ -15,8 +15,9 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tools.az.emit import emit
-from tools.az.pack import Pack
+from tools.az.emit import emit, emit_sounds
+from tools.az.pack import Pack, is_pack
+from tools.az.snd import sounds_from_rsrc
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -35,7 +36,12 @@ def main(argv: list[str] | None = None) -> int:
             with open(src, "rb") as f:
                 data = f.read()
             os.makedirs(out, exist_ok=True)
-            manifest = emit(Pack(data), out)
+            if is_pack(data):
+                manifest = emit(Pack(data), out)
+            elif any(True for _ in sounds_from_rsrc(data)):
+                manifest = emit_sounds(data, out)
+            else:
+                raise ValueError("not a pack or resource fork")
         except Exception as e:
             print(f"{src}: {type(e).__name__}: {e}", file=sys.stderr)
             rc = 1
