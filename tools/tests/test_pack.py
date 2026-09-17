@@ -1,8 +1,9 @@
 import struct
 import unittest
+import zlib
 
 from tools.az.pack import Pack, PackError, is_pack
-from tools.tests.fixtures import build_bmp8, build_pack
+from tools.tests.fixtures import build_bmp8, build_fsh, build_pack
 
 PAL = [(0, 0, 0), (255, 255, 255)]
 
@@ -85,6 +86,49 @@ class TestEmit(unittest.TestCase):
             self.assertTrue(os.path.exists(os.path.join(td, img[0]["image"])))
             for c in m["chunks"]:
                 self.assertTrue(os.path.exists(os.path.join(td, c["file"])))
+
+    def test_emit_decodes_sprite_streams(self):
+        import os
+        import tempfile
+        from tools.az.emit import emit
+
+        bmp = build_bmp8(2, 2, bytes([0, 1, 1, 0]), PAL)
+        px = bytes([1] * 8 + [0] * 8)  # 4x4, column-major-ish pattern
+        stream = build_fsh(2, [(4, 4, px), (4, 4, px[::-1])])
+        pack = Pack(build_pack([bmp, stream],
+                               [(0x258, 0xFFFF, 0), (0xC8, 0xFFFF, 1)]))
+        with tempfile.TemporaryDirectory() as td:
+            m = emit(pack, td)
+            sp = [c for c in m["chunks"] if "sprites" in c]
+            self.assertEqual(len(sp), 1)
+            meta = sp[0]["sprites"]
+            self.assertEqual((meta["groups"], meta["framesPerGroup"]), (1, 2))
+            self.assertEqual((meta["cellW"], meta["cellH"]), (4, 4))
+            self.assertEqual(meta["dims"], [[0, 0, 4, 4], [0, 1, 4, 4]])
+            self.assertEqual(meta["paletteSrc"], "0258_ffff_104")
+            path = os.path.join(td, meta["image"])
+            self.assertTrue(os.path.exists(path))
+            with open(path, "rb") as fh:
+                data = fh.read()
+            self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+            w, h = struct.unpack(">II", data[16:24])
+            self.assertEqual((w, h), (8, 4))  # 2 frames of 4x4, 1 group
+            self.assertEqual(data[25], 3)  # color type 3 = indexed
+            self.assertIn(b"tRNS", data)
+            pos, idat = 8, b""
+            while pos + 8 <= len(data):
+                ln, tag = struct.unpack(">I4s", data[pos:pos + 8])
+                if tag == b"IDAT":
+                    idat += data[pos + 8:pos + 8 + ln]
+                pos += 12 + ln
+            raw = zlib.decompress(idat)
+            self.assertEqual(len(raw), 4 * 9)  # 4 rows x (filter + 8 idx)
+            self.assertTrue(all(raw[y * 9] == 0 for y in range(4)))
+            # each frame row = column-major pixels picked at stride 4
+            rev = px[::-1]
+            for y in range(4):
+                self.assertEqual(raw[y*9+1:y*9+5], bytes(px[y + 4*i] for i in range(4)))
+                self.assertEqual(raw[y*9+5:y*9+9], bytes(rev[y + 4*i] for i in range(4)))
 
     def test_emit_survives_bad_bmp(self):
         import os
