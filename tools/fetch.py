@@ -196,7 +196,12 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
                 print(f"skipping {name}: declared size {want} over "
                       f"{cap} bytes", file=sys.stderr)
                 continue
-            _cached_get(url, path, want_size=want, max_bytes=cap)
+            try:
+                _cached_get(url, path, want_size=want, max_bytes=cap)
+            except ValueError as e:  # stream exceeded cap mid-download
+                print(f"  {name}: {e}", file=sys.stderr)
+                failed += 1
+                continue
             if is_iso:
                 iso = Iso(path)
                 for entry, rec in iso.walk():
