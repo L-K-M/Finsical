@@ -24,7 +24,7 @@ def read_bmp(d, off=0):
     rows = []
     if comp == 1:  # RLE8: one continuous stream, first stored scanline = image bottom
         p, done = off + px_off, False
-        end = off + size if size else len(d)
+        end = min(off + size, len(d)) if size else len(d)
         while len(rows) < h and not done and p + 1 < end:
             run = bytearray()
             while p + 1 < end:  # consume commands until EOL/EOB, clip at w
@@ -38,12 +38,15 @@ def read_bmp(d, off=0):
                     done = True
                     break
                 elif v == 2:  # delta: move right dx, down dy
+                    if p + 1 >= end:
+                        done = True
+                        break
                     dx, dy = d[p], d[p + 1]
                     p += 2
                     if dy:
                         rows.append(bytes(run[:w]).ljust(w, b'\0'))
                         rows += [bytes(w)] * (dy - 1)
-                        run = bytearray(b'\0' * dx)
+                        run = bytearray(b'\0' * min(len(run) + dx, w))
                     else:
                         run += b'\0' * dx
                 else:  # absolute run
