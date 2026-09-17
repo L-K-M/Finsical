@@ -104,6 +104,16 @@ describe("SpriteSheet", () => {
     expect([...sheet.frame(0, 1).idx]).toEqual([2, 2]);
     expect(() => sheet.frame(2, 0)).toThrow(RangeError);
   });
+
+  it("rejects frames with invalid dims", () => {
+    const img = { w: 4, h: 2, palette: PAL, idx: new Uint8Array(8) };
+    const meta = { image: "s.png", groups: 1, framesPerGroup: 2,
+                   cellW: 2, cellH: 1,
+                   dims: [[0, 0, -2, 1], [0, 1, 2, 1]] as [number, number, number, number][] };
+    const sheet = new SpriteSheet(meta, img);
+    expect(() => sheet.frame(0, 0)).toThrow(RangeError);
+    expect(() => sheet.frame(0, 1)).not.toThrow();
+  });
 });
 
 describe("loadAzpack", () => {
