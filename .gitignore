@@ -6,6 +6,6 @@ Finsical.app/
 az-data/
 web/pack/
 az-src/
-packs/
+/packs/
 __pycache__/
 .DS_Store
