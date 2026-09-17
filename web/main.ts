@@ -47,7 +47,8 @@ function sheetOf(f: Fish): SpriteSheet | null {
   if (!fishSheets.length) return null;
   let i = fishSlot.get(f);
   if (i === undefined) {
-    i = nextSlot++;
+    i = nextSlot;
+    nextSlot = (nextSlot + 1) % 4096; // bounded; wraps only past real tank sizes
     fishSlot.set(f, i);
   }
   return fishSheets[i % fishSheets.length]!;
