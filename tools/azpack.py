@@ -15,8 +15,9 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tools.az.emit import emit
-from tools.az.pack import Pack
+from tools.az.emit import emit, emit_sounds
+from tools.az.pack import Pack, is_pack
+from tools.az.snd import has_sounds
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -35,14 +36,25 @@ def main(argv: list[str] | None = None) -> int:
             with open(src, "rb") as f:
                 data = f.read()
             os.makedirs(out, exist_ok=True)
-            manifest = emit(Pack(data), out)
+            if is_pack(data):
+                manifest = emit(Pack(data), out)
+            elif has_sounds(data):
+                manifest = emit_sounds(data, out)
+            else:
+                raise ValueError("not a pack and no snd resources found")
         except Exception as e:
             print(f"{src}: {type(e).__name__}: {e}", file=sys.stderr)
             rc = 1
             continue
         n = sum(1 for c in manifest["chunks"] if "sprites" in c)
-        print(f"{src} -> {out}  ({len(manifest['chunks'])} chunks, "
-              f"{n} sprite sheets)")
+        snds = manifest.get("sounds") or []
+        if manifest["chunks"] or not snds:
+            detail = f"{len(manifest['chunks'])} chunks, {n} sprite sheets"
+            if snds:
+                detail += f", {len(snds)} sounds"
+        else:
+            detail = f"{len(snds)} sounds (sounds-only)"
+        print(f"{src} -> {out}  ({detail})")
     return rc
 
 
