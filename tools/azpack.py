@@ -41,16 +41,20 @@ def main(argv: list[str] | None = None) -> int:
             elif has_sounds(data):
                 manifest = emit_sounds(data, out)
             else:
-                raise ValueError("not a pack or resource fork")
+                raise ValueError("not a pack and no snd resources found")
         except Exception as e:
             print(f"{src}: {type(e).__name__}: {e}", file=sys.stderr)
             rc = 1
             continue
         n = sum(1 for c in manifest["chunks"] if "sprites" in c)
         snds = manifest.get("sounds") or []
-        s = f", {len(snds)} sounds" if snds else ""
-        print(f"{src} -> {out}  ({len(manifest['chunks'])} chunks, "
-              f"{n} sprite sheets{s})")
+        if manifest["chunks"]:
+            detail = f"{len(manifest['chunks'])} chunks, {n} sprite sheets"
+            if snds:
+                detail += f", {len(snds)} sounds"
+        else:
+            detail = f"{len(snds)} sounds (sounds-only)"
+        print(f"{src} -> {out}  ({detail})")
     return rc
 
 
