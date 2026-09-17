@@ -27,20 +27,74 @@ canvas.addEventListener("pointerdown", (e) => {
 });
 
 // ---- sprite loading ----------------------------------------------------
-// Drop an emitted .azpack into web/pack/ (manifest.json at its root) and
-// real Aquazone sprites replace the placeholder fish.
+// Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
+// drag the folder onto the window, and real Aquazone sprites replace the
+// placeholder fish.
 let fishSheet: SpriteSheet | null = null;
-loadAzpack(async (p) => {
-  const r = await fetch(`pack/${p}`);
-  if (!r.ok) throw new Error(`${p}: ${r.status}`);
-  return new Uint8Array(await r.arrayBuffer());
-}).then((pack) => {
+function usePack(pack: { sheets: Map<string, SpriteSheet> }): void {
   // Most orientation groups wins; tiebreak toward the crunchier cell.
   const sheets = [...pack.sheets.values()];
   sheets.sort((a, b) =>
     b.meta.groups - a.meta.groups || a.meta.cellH - b.meta.cellH);
   fishSheet = sheets[0] ?? null;
-}).catch((e) => console.warn("azpack load failed; using placeholder fish:", e));
+}
+loadAzpack(async (p) => {
+  const r = await fetch(`pack/${p}`);
+  if (!r.ok) throw new Error(`${p}: ${r.status}`);
+  return new Uint8Array(await r.arrayBuffer());
+}).then(usePack)
+  .catch((e) => console.warn("azpack load failed; using placeholder fish:", e));
+
+// Drag an .azpack folder onto the window to import it.
+async function walkEntry(ent: FileSystemEntry, prefix: string,
+                         out: Map<string, File>): Promise<void> {
+  if (ent.isFile) {
+    const file = await new Promise<File>((res, rej) =>
+      (ent as FileSystemFileEntry).file(res, rej));
+    out.set(prefix + file.name, file);
+  } else if (ent.isDirectory) {
+    const rd = (ent as FileSystemDirectoryEntry).createReader();
+    for (;;) {
+      const batch = await new Promise<FileSystemEntry[]>((res, rej) =>
+        rd.readEntries(res, rej));
+      if (!batch.length) break;
+      for (const e of batch) await walkEntry(e, `${prefix}${ent.name}/`, out);
+    }
+  }
+}
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  // Entries must be read before the handler returns — items invalidate.
+  const items = e.dataTransfer?.items;
+  const entries: FileSystemEntry[] = [];
+  for (let i = 0; items && i < items.length; i++) {
+    const ent = items[i]!.webkitGetAsEntry?.();
+    if (ent) entries.push(ent);
+  }
+  void (async () => {
+    const files = new Map<string, File>();
+    for (const ent of entries) await walkEntry(ent, "", files);
+    // Strip a shared top-level folder so manifest.json sits at the root.
+    const first = [...files.keys()][0] ?? "";
+    let flat = new Map(files);
+    if (!flat.has("manifest.json")) {
+      const root = first.slice(0, first.indexOf("/") + 1);
+      if (root && [...flat.keys()].every((p) => p.startsWith(root)))
+        flat = new Map([...flat].map(([p, f]) => [p.slice(root.length), f]));
+    }
+    if (!flat.has("manifest.json")) {
+      console.warn("drop: no manifest.json found — not an .azpack folder");
+      return;
+    }
+    usePack(await loadAzpack(async (p) => {
+      const f = flat.get(p);
+      if (!f) throw new Error(`pack file missing: ${p}`);
+      return new Uint8Array(await f.arrayBuffer());
+    }));
+    console.info(`azpack imported: ${flat.size} files`);
+  })().catch((e) => console.warn("azpack import failed:", e));
+});
 
 // Aquazone sprite groups: 2 = right-facing, 6 = left-facing (8 compass
 // buckets). Sheets with fewer groups get mirrored instead.
