@@ -12,8 +12,8 @@ export interface SpriteSheetMeta {
   framesPerGroup: number;
   cellW: number;
   cellH: number;
-  /** [w, h] per frame, in group-major emission order. */
-  dims: [number, number][];
+  /** [group, frame, w, h] per frame, in group-major emission order. */
+  dims: [number, number, number, number][];
 }
 
 export interface ChunkRecord {
@@ -130,7 +130,7 @@ export class SpriteSheet {
     if (group < 0 || group >= ng || frameIdx < 0 || frameIdx >= nf)
       throw new RangeError(`frame ${group},${frameIdx} out of ${ng}x${nf}`);
     const dim = this.meta.dims[group * nf + frameIdx];
-    const fw = dim?.[0] ?? 0, fh = dim?.[1] ?? 0;
+    const fw = dim?.[2] ?? 0, fh = dim?.[3] ?? 0;
     const idx = new Uint8Array(fw * fh);
     for (let y = 0; y < fh; y++) {
       const src = (group * ch + y) * this.img.w + frameIdx * cw;

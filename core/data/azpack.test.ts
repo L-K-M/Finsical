@@ -81,7 +81,8 @@ describe("SpriteSheet", () => {
     const idx = new Uint8Array([1, 1, 2, 2, 3, 3, 4, 4]); // 4x2
     const img = { w: 4, h: 2, palette: PAL, idx };
     const meta = { image: "s.png", groups: 2, framesPerGroup: 2,
-                   cellW: 2, cellH: 1, dims: [[2, 1], [2, 1], [2, 1], [2, 1]] as [number, number][] };
+                   cellW: 2, cellH: 1,
+                   dims: [[0, 0, 2, 1], [0, 1, 2, 1], [1, 0, 2, 1], [1, 1, 2, 1]] as [number, number, number, number][] };
     const sheet = new SpriteSheet(meta, img);
     const fr = sheet.frame(1, 0);
     expect(fr.w).toBe(2);
@@ -100,7 +101,7 @@ describe("loadAzpack", () => {
       chunks: [{ file: "chunks/a.bin", size: 5, resId: 0xc8, sub: 0xffff,
                  sprites: { image: "sprites/a.png", groups: 1,
                             framesPerGroup: 1, cellW: 2, cellH: 2,
-                            dims: [[2, 2]] } }],
+                            dims: [[0, 0, 2, 2]] } }],
     };
     const files: Record<string, Uint8Array> = {
       "manifest.json": new TextEncoder().encode(JSON.stringify(manifest)),
