@@ -99,10 +99,12 @@ export async function decodeIndexedPng(d: Uint8Array): Promise<IndexedImage> {
     const body = d.subarray(p + 8, p + 8 + len);
     if (p + 12 + len > d.length) throw new Error("png: truncated chunk");
     if (tag === "IHDR") {
+      if (len !== 13) throw new Error("png: bad IHDR length");
       const v = new DataView(d.buffer, d.byteOffset + p + 8);
       w = v.getUint32(0); h = v.getUint32(4);
-      if (v.getUint8(8) !== 8 || v.getUint8(9) !== 3 || v.getUint8(12) !== 0)
-        throw new Error("png: need 8-bit indexed, non-interlaced");
+      if (v.getUint8(8) !== 8 || v.getUint8(9) !== 3 ||
+          v.getUint8(10) !== 0 || v.getUint8(11) !== 0 || v.getUint8(12) !== 0)
+        throw new Error("png: need 8-bit indexed, non-interlaced, methods 0");
     } else if (tag === "PLTE") {
       for (let i = 0; i + 2 < len; i += 3)
         palette.push([body[i] ?? 0, body[i + 1] ?? 0, body[i + 2] ?? 0]);
