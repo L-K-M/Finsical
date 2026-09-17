@@ -1,11 +1,14 @@
 import io
 import os
 import struct
+import sys
 import tempfile
 import unittest
 import zipfile
 
-from tools.fetch import _emit_source, _harvest
+sys.path.insert(0, os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__)))))
+from tools.fetch import _emit_source, _harvest  # noqa: E402
 
 
 def fake_pack(bmp_payload: bytes) -> bytes:
