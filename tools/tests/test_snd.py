@@ -3,7 +3,7 @@ import struct
 import unittest
 import wave
 
-from tools.az.snd import mace3_decode, parse_snd, snd_to_wav, SndError
+from tools.az.snd import parse_snd, snd_to_wav, SndError
 
 
 def snd_fmt1_u8(pcm: bytes, rate: float = 22254.5454) -> bytes:
@@ -23,7 +23,7 @@ def snd_fmt2_u8(pcm: bytes, rate: float = 11127.2727) -> bytes:
 
 def snd_fmt1_mace(frames: bytes, nframes: int,
                   rate: float = 22254.5454) -> bytes:
-    """Format-1 'snd ' with a cmpSH (encode=0xfe, MACE3) header."""
+    """Format-1 'snd ' with a cmpSH (encode=0xfe) header."""
     hdr = struct.pack(">II I I I BB I", 0, 1, int(rate * 65536),
                       0, 0, 0xFE, 60, nframes)
     hdr += b"\x40\x0c\xad\xdd\x17\x3e\xab\x36\x7a\x0f"  # AIFF ext80 rate
@@ -50,10 +50,9 @@ class TestParse(unittest.TestCase):
         self.assertEqual(out, pcm)
         self.assertEqual(rate, 11127)
 
-    def test_fmt1_mace3(self):
-        rate, out, width = parse_snd(snd_fmt1_mace(b"\x24" * 20, 10))
-        self.assertEqual(width, 2)
-        self.assertEqual(len(out), 10 * 6 * 2)  # 6 s16 samples per frame
+    def test_fmt1_compressed_rejected(self):
+        with self.assertRaises(SndError):
+            parse_snd(snd_fmt1_mace(b"\x24" * 20, 10))
 
     def test_rejects_bad_format(self):
         with self.assertRaises(SndError):
@@ -62,14 +61,6 @@ class TestParse(unittest.TestCase):
     def test_rejects_truncated(self):
         with self.assertRaises(SndError):
             parse_snd(b"\x00\x01")
-
-    def test_mace3_is_deterministic_and_bounded(self):
-        a = mace3_decode(b"\x39\xf1" * 100, 100)
-        b = mace3_decode(b"\x39\xf1" * 100, 100)
-        self.assertEqual(a, b)
-        s = struct.unpack(f"<{len(a) // 2}h", a)
-        self.assertTrue(all(-32768 <= x <= 32767 for x in s))
-        self.assertTrue(any(abs(x) > 1000 for x in s))  # real signal, not mute
 
     def test_wav_roundtrip(self):
         wav = snd_to_wav(snd_fmt1_u8(bytes(range(64)), 11025))
