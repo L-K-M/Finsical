@@ -13,6 +13,7 @@ that looks like a pack (.fsh/.acc/.plt/.azn/.REZ) or a resource fork with
 """
 from __future__ import annotations
 import argparse
+import hashlib
 import io
 import json
 import os
@@ -178,7 +179,9 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
                 want = int(f.get("size"))
             except (TypeError, ValueError):
                 want = None
-            path = os.path.join(downloads, os.path.basename(name))
+            key = hashlib.sha256(url.encode()).hexdigest()[:16]
+            path = os.path.join(downloads,
+                                f"{key}-{os.path.basename(name)}")
             _cached_get(url, path, want_size=want)
             if name.lower().endswith(".iso"):
                 iso = Iso(path)
@@ -194,7 +197,11 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
                               file=sys.stderr)
             else:
                 with open(path, "rb") as fh:
-                    made += _harvest(name, fh.read(), outdir)
+                    blob = fh.read(_MAX_ARCHIVE_BYTES + 1)
+                if len(blob) > _MAX_ARCHIVE_BYTES:
+                    raise ValueError(
+                        f"{name}: over {_MAX_ARCHIVE_BYTES} bytes")
+                made += _harvest(name, blob, outdir)
         except Exception as e:
             print(f"  {name}: {type(e).__name__}: {e}", file=sys.stderr)
             failed += 1
