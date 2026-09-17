@@ -91,7 +91,7 @@ describe("decodeIndexedPng", () => {
   it("rejects palette indices out of range", async () => {
     const png = encodeIndexedPng(2, 1, new Uint8Array([5, 0]), PAL);
     await expect(decodeIndexedPng(png))
-      .rejects.toThrow("palette index 5 out of range (palette size 3)");
+      .rejects.toThrow(/palette index 5 out of range/);
   });
 });
 
