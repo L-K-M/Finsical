@@ -222,6 +222,10 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
                         print(f"  {entry}: skipped, {rec['size']} bytes "
                               "over cap", file=sys.stderr)
                         continue
+                    if budget[0] <= 0:
+                        print(f"  {entry}: skipped, disc byte budget "
+                              "exhausted", file=sys.stderr)
+                        break
                     try:
                         blob = iso.read_file(rec)
                         budget[0] -= len(blob)
