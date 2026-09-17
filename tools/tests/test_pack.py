@@ -107,7 +107,12 @@ class TestEmit(unittest.TestCase):
             path = os.path.join(td, meta["image"])
             self.assertTrue(os.path.exists(path))
             with open(path, "rb") as fh:
-                self.assertEqual(fh.read(8), b"\x89PNG\r\n\x1a\n")
+                data = fh.read()
+            self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+            w, h = struct.unpack(">II", data[16:24])
+            self.assertEqual((w, h), (8, 4))  # 2 frames of 4x4, 1 group
+            self.assertEqual(data[25], 3)  # color type 3 = indexed
+            self.assertIn(b"tRNS", data)
 
     def test_emit_survives_bad_bmp(self):
         import os
