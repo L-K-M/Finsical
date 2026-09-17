@@ -140,7 +140,8 @@ def emit_sounds(data: bytes, outdir: str) -> dict:
         with open(os.path.join(outdir, path), "wb") as f:
             f.write(wav)
         records.append({"name": name, "file": path})
-    manifest = {"format": "azpack/1", "sounds": records, "chunks": []}
+    manifest = {"format": "azpack/1", "tag": "", "version": 0,
+                "names": [], "sounds": records, "chunks": []}
     with open(os.path.join(outdir, "manifest.json"), "w",
               encoding="utf-8") as f:
         json.dump(manifest, f, indent=1)
