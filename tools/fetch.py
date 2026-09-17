@@ -89,6 +89,12 @@ def _emit_source(name: str, data: bytes, outdir: str) -> str | None:
     while out in _EMITTED:
         out = os.path.join(outdir, f"{base}-{n}.azpack")
         n += 1
+    n = 2  # drop numbered siblings orphaned by earlier runs
+    stale = os.path.join(outdir, f"{base}-{n}.azpack")
+    while os.path.isdir(stale) and stale not in _EMITTED:
+        shutil.rmtree(stale, ignore_errors=True)
+        n += 1
+        stale = os.path.join(outdir, f"{base}-{n}.azpack")
     try:
         if is_pack(data):
             shutil.rmtree(out, ignore_errors=True)
@@ -138,8 +144,9 @@ def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,
         except zipfile.BadZipFile:
             return []
         for zi in zf.infolist():
-            base = os.path.basename(zi.filename.replace("\\", "/"))
-            if (zi.is_dir() or zi.filename.startswith("__MACOSX")
+            norm = zi.filename.replace("\\", "/")
+            base = os.path.basename(norm)
+            if (zi.is_dir() or "__MACOSX/" in norm
                     or not base or base.startswith("._")):
                 continue
             if zi.file_size > _ENTRY_CAP:
@@ -175,6 +182,7 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
         return [], 0
     made: list[str] = []
     failed = 0
+    _EMITTED.clear()  # re-entry replaces bundles, like a fresh process
     os.makedirs(outdir, exist_ok=True)
     os.makedirs(downloads, exist_ok=True)
     for f in files:
@@ -204,13 +212,21 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
                 continue
             if is_iso:
                 iso = Iso(path)
+                budget = [_MAX_TOTAL_BYTES]  # one budget per disc
                 for entry, rec in iso.walk():
                     base = os.path.basename(entry)
                     if rec["dir"] or not base.lower().endswith(
                             IMPORTABLE + (".zip",)):
                         continue
+                    if rec["size"] > _MAX_ARCHIVE_BYTES:
+                        print(f"  {entry}: skipped, {rec['size']} bytes "
+                              "over cap", file=sys.stderr)
+                        continue
                     try:
-                        made += _harvest(base, iso.read_file(rec), outdir)
+                        blob = iso.read_file(rec)
+                        budget[0] -= len(blob)
+                        made += _harvest(base, blob, outdir,
+                                         depth=0, budget=budget)
                     except Exception as e:
                         print(f"  {entry}: {type(e).__name__}: {e}",
                               file=sys.stderr)

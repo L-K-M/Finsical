@@ -169,6 +169,51 @@ class TestHarvest(unittest.TestCase):
         self.assertTrue(os.path.exists(
             os.path.join(second, "manifest.json")))
 
+    def test_rerun_drops_orphaned_numbered_bundles(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("a/fish.fsh", fake_pack(bmp_8bit()))
+            z.writestr("b/fish.fsh", fake_pack(bmp_8bit()))
+        _harvest("two.zip", buf.getvalue(), self.out)
+        stale = os.path.join(self.out, "fish-2.azpack")
+        self.assertTrue(os.path.isdir(stale))
+        tools.fetch._EMITTED.clear()  # next run sees only one source
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("fish.fsh", fake_pack(bmp_8bit()))
+        _harvest("one.zip", buf.getvalue(), self.out)
+        self.assertFalse(os.path.exists(stale))
+
+    def test_cached_get_reuse_and_part_cleanup(self):
+        path = os.path.join(self.out, "a.zip")
+
+        def fake_get(url, out=None, max_bytes=None):
+            if out is None:
+                return b"{}"
+            with open(out, "wb") as f:
+                f.write(b"data")
+
+        real_get = tools.fetch._get
+        tools.fetch._get = fake_get
+        try:
+            tools.fetch._cached_get("u", path)          # downloads
+            self.assertEqual(open(path, "rb").read(), b"data")
+            tools.fetch._cached_get("u", path, want_size=4)  # cache hit
+            self.assertFalse(os.path.exists(path + ".part"))
+            tools.fetch._cached_get("u", path, want_size=9)  # re-downloads
+            self.assertEqual(open(path, "rb").read(), b"data")
+
+            def boom(url, out=None, max_bytes=None):
+                with open(out, "wb") as f:
+                    f.write(b"partial")
+                raise OSError("net down")
+            tools.fetch._get = boom
+            with self.assertRaises(OSError):
+                tools.fetch._cached_get("u", path + "2")
+            self.assertFalse(os.path.exists(path + "2.part"))
+        finally:
+            tools.fetch._get = real_get
+
 
 if __name__ == "__main__":
     unittest.main()
