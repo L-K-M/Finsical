@@ -149,7 +149,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="where big downloads are cached")
     args = ap.parse_args(argv)
 
-    made = fetch(args.ident, args.out, args.include, args.downloads)
+    try:
+        made = fetch(args.ident, args.out, args.include, args.downloads)
+    except (urllib.error.URLError, OSError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
     for p in made:
         print(f"  -> {p}")
     print(f"{len(made)} bundle(s) under {args.out}")
