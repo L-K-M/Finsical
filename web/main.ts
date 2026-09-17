@@ -95,9 +95,12 @@ window.addEventListener("drop", (e) => {
     }
     // Not an .azpack folder — try each dropped file as a raw .fsh/.REZ pack.
     for (const [name, file] of flat) {
+      const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());
+      if (!isPack(head)) continue;
       const data = new Uint8Array(await file.arrayBuffer());
-      if (!isPack(data)) continue;
-      usePack({ sheets: fshToSheets(data) });
+      const sheets = fshToSheets(data);
+      if (!sheets.size) continue;
+      usePack({ sheets });
       if (fishSheet) {
         console.info(`${name}: pack imported`);
         return;

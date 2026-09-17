@@ -66,24 +66,27 @@ function bmpPalette(d: Uint8Array): [number, number, number][] {
 interface RawFrame { w: number; h: number; idx: Uint8Array }
 
 function decodePixels(s: Uint8Array, w: number, h: number): Uint8Array {
-  const col: number[] = [];
+  const total = w * h;
+  const out = new Uint8Array(total); // zero-filled — padding comes free
+  let o = 0;
+  const emit = (c: number) => {
+    if (o < total) out[(o % h) * w + (o / h | 0)] = c;
+    o++;
+  };
   const n = s.length;
   let i = 0;
-  while (i < n && col.length < w * h) {
+  while (i < n && o < total) {
     if (i + 3 < n && s[i + 1] === 0xff) {
       const run = 0x100 - (s[i] ?? 0), c = s[i + 2] ?? 0;
-      for (let k = 0; k < run; k++) col.push(c);
+      for (let k = 0; k < run; k++) emit(c);
       const nl = s[i + 3] ?? 0;
-      for (let k = 0; k < nl && i + 4 + k < n; k++) col.push(s[i + 4 + k] ?? 0);
+      for (let k = 0; k < nl && i + 4 + k < n; k++) emit(s[i + 4 + k] ?? 0);
       i += 4 + nl;
     } else {
-      col.push(s[i] ?? 0);
+      emit(s[i] ?? 0);
       i += 1;
     }
   }
-  while (col.length < w * h) col.push(0);
-  const out = new Uint8Array(w * h);
-  for (let k = 0; k < w * h; k++) out[(k % h) * w + (k / h | 0)] = col[k] ?? 0;
   return out;
 }
 
@@ -117,6 +120,7 @@ function spriteSheet(b: Uint8Array, palette: [number, number, number][]):
   const cw = Math.max(...frames.map((x) => x.fr.w));
   const ch = Math.max(...frames.map((x) => x.fr.h));
   const sw = cw * nf, sh = ch * ng;
+  if (sw * sh > 1 << 26) return null; // reject corrupt streams before allocating
   const sheet = new Uint8Array(sw * sh);
   for (const { g, f, fr } of frames)
     for (let y = 0; y < fr.h; y++)
