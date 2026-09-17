@@ -32,9 +32,10 @@ def main(argv: list[str] | None = None) -> int:
         name = os.path.splitext(os.path.basename(src))[0]
         out = args.out if len(args.inputs) == 1 else os.path.join(args.out, name)
         try:
-            os.makedirs(out, exist_ok=True)
             with open(src, "rb") as f:
-                manifest = emit(Pack(f.read()), out)
+                data = f.read()
+            os.makedirs(out, exist_ok=True)
+            manifest = emit(Pack(data), out)
         except Exception as e:
             print(f"{src}: {type(e).__name__}: {e}", file=sys.stderr)
             rc = 1
