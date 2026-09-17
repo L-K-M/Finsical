@@ -14,6 +14,8 @@ export interface SpriteSheetMeta {
   cellH: number;
   /** [group, frame, w, h] per frame, in group-major emission order. */
   dims: [number, number, number, number][];
+  /** Chunk name of the BMP the sheet's palette was borrowed from. */
+  paletteSrc?: string | null;
 }
 
 export interface ChunkRecord {
@@ -26,6 +28,7 @@ export interface ChunkRecord {
   w?: number;
   h?: number;
   bad_image?: boolean;
+  spriteError?: string;
   sprites?: SpriteSheetMeta;
 }
 
