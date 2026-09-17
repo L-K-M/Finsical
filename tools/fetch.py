@@ -39,27 +39,34 @@ _MAX_ARCHIVE_BYTES = 1 << 30  # cap for a single in-memory download
 _MAX_ISO_BYTES = 4 << 30    # ISOs stream to disk; cap is anti-abuse
 
 
-def _get(url: str, out: str | None = None) -> bytes | None:
+def _get(url: str, out: str | None = None,
+         max_bytes: int | None = None) -> bytes | None:
     req = urllib.request.Request(url, headers={"User-Agent": "Finsical/1"})
     with urllib.request.urlopen(req, timeout=60) as r:
         if out is None:
-            blob = r.read(_MAX_ARCHIVE_BYTES + 1)
-            if len(blob) > _MAX_ARCHIVE_BYTES:
-                raise ValueError(f"{url}: over {_MAX_ARCHIVE_BYTES} bytes")
+            cap = _MAX_ARCHIVE_BYTES if max_bytes is None else max_bytes
+            blob = r.read(cap + 1)
+            if len(blob) > cap:
+                raise ValueError(f"{url}: over {cap} bytes")
             return blob
+        total = 0
         with open(out, "wb") as f:
             while chunk := r.read(1 << 20):
+                total += len(chunk)
+                if max_bytes is not None and total > max_bytes:
+                    raise ValueError(f"{url}: over {max_bytes} bytes")
                 f.write(chunk)
     return None
 
 
-def _cached_get(url: str, path: str, want_size: int | None = None) -> None:
+def _cached_get(url: str, path: str, want_size: int | None = None,
+                max_bytes: int | None = None) -> None:
     """Download url into path via a .part file; reuse a good cache hit."""
     if os.path.exists(path) and (want_size is None
                                  or os.path.getsize(path) == want_size):
         return
     try:
-        _get(url, path + ".part")
+        _get(url, path + ".part", max_bytes=max_bytes)
     except BaseException:
         try:
             os.remove(path + ".part")
@@ -183,14 +190,14 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
             key = hashlib.sha256(url.encode()).hexdigest()[:16]
             path = os.path.join(downloads,
                                 f"{key}-{os.path.basename(name)}")
-            cap = (_MAX_ISO_BYTES if name.lower().endswith(".iso")
-                   else _MAX_ARCHIVE_BYTES)
+            is_iso = name.lower().endswith(".iso")
+            cap = _MAX_ISO_BYTES if is_iso else _MAX_ARCHIVE_BYTES
             if want is not None and want > cap:
                 print(f"skipping {name}: declared size {want} over "
                       f"{cap} bytes", file=sys.stderr)
                 continue
-            _cached_get(url, path, want_size=want)
-            if name.lower().endswith(".iso"):
+            _cached_get(url, path, want_size=want, max_bytes=cap)
+            if is_iso:
                 iso = Iso(path)
                 for entry, rec in iso.walk():
                     base = os.path.basename(entry)
