@@ -88,7 +88,11 @@ def _harvest(name: str, data: bytes, outdir: str) -> list[str]:
             base = os.path.basename(zi.filename)
             if not base:
                 continue
-            made += _harvest(base, zf.read(zi), outdir)
+            try:
+                made += _harvest(base, zf.read(zi), outdir)
+            except Exception as e:
+                print(f"  {zi.filename}: {type(e).__name__}: {e}",
+                      file=sys.stderr)
         return made
     return []
 
