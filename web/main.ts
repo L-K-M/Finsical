@@ -42,13 +42,14 @@ function usePack(pack: { sheets: Map<string, SpriteSheet> }): void {
   if (sheets[0]) fishSheets.push(sheets[0]);
 }
 const fishSlot = new WeakMap<Fish, number>();
+const MAX_FISH_SLOTS = 4096;
 let nextSlot = 0;
 function sheetOf(f: Fish): SpriteSheet | null {
   if (!fishSheets.length) return null;
   let i = fishSlot.get(f);
   if (i === undefined) {
     i = nextSlot;
-    nextSlot = (nextSlot + 1) % 4096; // bounded; wraps only past real tank sizes
+    nextSlot = (nextSlot + 1) % MAX_FISH_SLOTS; // slots may repeat after wrap; only used to pick a sheet
     fishSlot.set(f, i);
   }
   return fishSheets[i % fishSheets.length]!;
