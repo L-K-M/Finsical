@@ -75,7 +75,7 @@ class TestHarvest(unittest.TestCase):
             z.writestr("tiny.fsh", fake_pack(bmp_8bit()))
         data = bytearray(buf.getvalue())
         # Lie about uncompressed size in local + central headers.
-        for sig, off in ((b"PK\x03\x04", 18), (b"PK\x01\x02", 24)):
+        for sig, off in ((b"PK\x03\x04", 22), (b"PK\x01\x02", 24)):
             i = data.find(sig)
             self.assertNotEqual(i, -1)
             data[i + off:i + off + 4] = (2 << 30).to_bytes(4, "little")

@@ -96,7 +96,13 @@ def _harvest(name: str, data: bytes, outdir: str) -> list[str]:
                       "over 1 GiB cap", file=sys.stderr)
                 continue
             try:
-                made += _harvest(base, zf.read(zi), outdir)
+                with zf.open(zi) as fh:
+                    data = fh.read((1 << 30) + 1)
+                if len(data) > 1 << 30:
+                    print(f"  {zi.filename}: skipped, decompressed over "
+                          "1 GiB cap", file=sys.stderr)
+                    continue
+                made += _harvest(base, data, outdir)
             except Exception as e:
                 print(f"  {zi.filename}: {type(e).__name__}: {e}",
                       file=sys.stderr)
