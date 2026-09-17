@@ -111,7 +111,7 @@ def emit(pack: Pack, outdir: str) -> dict:
                     rec["spriteError"] = f"{type(e).__name__}: {e}"
                     try:
                         os.remove(os.path.join(outdir, img))
-                    except OSError:
+                    except (OSError, NameError):
                         pass
         records.append(rec)
 
