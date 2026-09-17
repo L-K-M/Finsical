@@ -12,6 +12,6 @@ See [PLAN.md](PLAN.md) for the architecture and roadmap.
 - `core/` — TypeScript simulation engine (deterministic, node-testable)
 - `web/` — Canvas renderer + dev shell
 - `tools/` — Python asset pipeline (`.sit`/resource fork/PICT/pack formats)
-- `macos/` — WKWebView wrapper (later)
+- `macos/` — WKWebView floating-window shell; `cd macos && make` builds `Finsical.app`
 
 PRs are auto-reviewed by GLM-5.3 via `.github/workflows/zai-code-review.yml`.

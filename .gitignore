@@ -1,5 +1,6 @@
 node_modules/
 dist/
+Finsical.app/
 *.azpack
 az-data/
 web/pack/
