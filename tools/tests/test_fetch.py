@@ -70,6 +70,7 @@ class TestHarvest(unittest.TestCase):
     def test_emit_source_pack(self):
         out = _emit_source("t.fsh", fake_pack(bmp_8bit()), self.out)
         self.assertIsNotNone(out)
+        self.assertTrue(os.path.exists(out))
         p = Pack(fake_pack(bmp_8bit()))
         self.assertEqual(len(p.chunks), 1)
 
