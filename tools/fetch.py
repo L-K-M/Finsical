@@ -66,6 +66,9 @@ def _emit_source(name: str, data: bytes, outdir: str) -> str | None:
             emit_sounds(data, out)
             return out
     except Exception as e:
+        import shutil
+        if os.path.isdir(out):
+            shutil.rmtree(out, ignore_errors=True)
         print(f"  {name}: {type(e).__name__}: {e}", file=sys.stderr)
     return None
 
@@ -128,7 +131,11 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
                     if rec["dir"] or not base.lower().endswith(
                             IMPORTABLE + (".zip",)):
                         continue
-                    made += _harvest(base, iso.read_file(rec), outdir)
+                    try:
+                        made += _harvest(base, iso.read_file(rec), outdir)
+                    except Exception as e:
+                        print(f"  {entry}: {type(e).__name__}: {e}",
+                              file=sys.stderr)
             else:
                 made += _harvest(name, _get(url), outdir)
         except Exception as e:
