@@ -124,9 +124,11 @@ class TestEmit(unittest.TestCase):
             raw = zlib.decompress(idat)
             self.assertEqual(len(raw), 4 * 9)  # 4 rows x (filter + 8 idx)
             self.assertTrue(all(raw[y * 9] == 0 for y in range(4)))
-            # row 0 of each 4x4 frame = top of each column-major column
-            self.assertEqual(raw[1:5], bytes(px[i] for i in (0, 4, 8, 12)))
-            self.assertEqual(raw[5:9], bytes(px[::-1][i] for i in (0, 4, 8, 12)))
+            # each frame row = column-major pixels picked at stride 4
+            rev = px[::-1]
+            for y in range(4):
+                self.assertEqual(raw[y*9+1:y*9+5], bytes(px[y + 4*i] for i in range(4)))
+                self.assertEqual(raw[y*9+5:y*9+9], bytes(rev[y + 4*i] for i in range(4)))
 
     def test_emit_survives_bad_bmp(self):
         import os

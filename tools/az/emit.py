@@ -99,13 +99,16 @@ def emit(pack: Pack, outdir: str) -> dict:
             if sheet is not None:
                 ng, nf, cw, ch, idx, dims = sheet
                 img = f"sprites/{fname}.png"
-                save_indexed_png(os.path.join(outdir, img),
-                                 cw * nf, ch * ng, idx, pal)
-                rec["sprites"] = {
-                    "image": img, "groups": ng, "framesPerGroup": nf,
-                    "cellW": cw, "cellH": ch, "dims": dims,
-                    "paletteSrc": pal_src,
-                }
+                try:
+                    save_indexed_png(os.path.join(outdir, img),
+                                     cw * nf, ch * ng, idx, pal)
+                    rec["sprites"] = {
+                        "image": img, "groups": ng, "framesPerGroup": nf,
+                        "cellW": cw, "cellH": ch, "dims": dims,
+                        "paletteSrc": pal_src,
+                    }
+                except Exception as e:
+                    rec["spriteError"] = str(e)
         records.append(rec)
 
     manifest = {
