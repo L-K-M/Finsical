@@ -1,4 +1,6 @@
 import { BOTTOM_PAD, Sim } from "../core/sim.js";
+import { loadAzpack, SpriteSheet } from "../core/data/azpack.js";
+import type { Fish } from "../core/sim.js";
 
 const TANK = { width: 320, height: 200 };
 
@@ -24,8 +26,75 @@ canvas.addEventListener("pointerdown", (e) => {
   else sim.tap(x, y);
 });
 
+// ---- sprite loading ----------------------------------------------------
+// Drop an emitted .azpack into web/pack/ (manifest.json at its root) and
+// real Aquazone sprites replace the placeholder fish.
+let fishSheet: SpriteSheet | null = null;
+loadAzpack(async (p) => {
+  const r = await fetch(`pack/${p}`);
+  if (!r.ok) throw new Error(`${p}: ${r.status}`);
+  return new Uint8Array(await r.arrayBuffer());
+}).then((pack) => {
+  // Most orientation groups wins; tiebreak toward the crunchier cell.
+  const sheets = [...pack.sheets.values()];
+  sheets.sort((a, b) =>
+    b.meta.groups - a.meta.groups || a.meta.cellH - b.meta.cellH);
+  fishSheet = sheets[0] ?? null;
+}).catch((e) => console.warn("azpack load failed; using placeholder fish:", e));
+
+// Aquazone sprite groups: 2 = right-facing, 6 = left-facing (8 compass
+// buckets). Sheets with fewer groups get mirrored instead.
+const RIGHT_G = 2, LEFT_G = 6;
+function groupFor(facing: number, ng: number): { g: number; mirror: boolean } {
+  if (ng >= 8) return { g: facing > 0 ? RIGHT_G : LEFT_G, mirror: false };
+  return { g: Math.min(RIGHT_G, ng - 1), mirror: facing < 0 };
+}
+
+const frameCache = new WeakMap<SpriteSheet, Map<string, HTMLCanvasElement>>();
+function frameCanvas(sheet: SpriteSheet, g: number, f: number): HTMLCanvasElement {
+  let cache = frameCache.get(sheet);
+  if (!cache) frameCache.set(sheet, (cache = new Map()));
+  const key = `${g}:${f}`;
+  let cv = cache.get(key);
+  if (cv) return cv;
+  const fr = sheet.frame(g, f);
+  cv = document.createElement("canvas");
+  cv.width = fr.w; cv.height = fr.h;
+  const fctx = cv.getContext("2d")!;
+  const img = fctx.createImageData(fr.w, fr.h);
+  for (let i = 0; i < fr.idx.length; i++) {
+    const pi = fr.idx[i] ?? 0;
+    const [r, gg, b] = fr.palette[pi] ?? [0, 0, 0];
+    img.data[i * 4] = r; img.data[i * 4 + 1] = gg; img.data[i * 4 + 2] = b;
+    img.data[i * 4 + 3] = pi === 0 ? 0 : 255; // index 0 = transparent
+  }
+  fctx.putImageData(img, 0, 0);
+  cache.set(key, cv);
+  return cv;
+}
+
+// Tail-wag animation advances with swim speed.
+const anims = new WeakMap<Fish, number>();
+function animFrame(f: Fish, nf: number): number {
+  const total = Math.max(1, nf);
+  const a = ((anims.get(f) ?? 0) + 0.15 + f.speed * 0.12) % total;
+  anims.set(f, a);
+  return Math.floor(a);
+}
+
+function drawFish(f: Fish): void {
+  if (!fishSheet) return drawPlaceholder(f.x, f.y, f.facing);
+  const { g, mirror } = groupFor(f.facing, fishSheet.meta.groups);
+  const cv = frameCanvas(fishSheet, g, animFrame(f, fishSheet.meta.framesPerGroup));
+  ctx.save();
+  ctx.translate(Math.round(f.x), Math.round(f.y));
+  if (mirror) ctx.scale(-1, 1);
+  ctx.drawImage(cv, -(cv.width >> 1), -(cv.height >> 1));
+  ctx.restore();
+}
+
 // Placeholder sprite until real Aquazone assets are imported.
-function drawFish(x: number, y: number, facing: number): void {
+function drawPlaceholder(x: number, y: number, facing: number): void {
   ctx.save();
   ctx.translate(Math.round(x), Math.round(y));
   ctx.scale(-facing, 1);
@@ -56,7 +125,7 @@ function render(): void {
     ctx.fillStyle = "#c9a227";
     ctx.fillRect(Math.round(fd.x) - 1, Math.round(fd.y) - 1, 3, 3);
   }
-  for (const f of sim.fish) drawFish(f.x, f.y, f.facing);
+  for (const f of sim.fish) drawFish(f);
 
   ctx.fillStyle = "#cfe8ff";
   for (const b of sim.bubbles) {
