@@ -106,13 +106,14 @@ describe("SpriteSheet", () => {
   });
 
   it("rejects frames with invalid dims", () => {
-    const img = { w: 4, h: 2, palette: PAL, idx: new Uint8Array(8) };
-    const meta = { image: "s.png", groups: 1, framesPerGroup: 2,
+    const img = { w: 6, h: 2, palette: PAL, idx: new Uint8Array(12) };
+    const meta = { image: "s.png", groups: 1, framesPerGroup: 3,
                    cellW: 2, cellH: 1,
-                   dims: [[0, 0, -2, 1], [0, 1, 2, 1.5]] as [number, number, number, number][] };
+                   dims: [[0, 0, -2, 1], [0, 1, 2, 1.5], [0, 2, 2, 1]] as [number, number, number, number][] };
     const sheet = new SpriteSheet(meta, img);
     expect(() => sheet.frame(0, 0)).toThrow(RangeError);
     expect(() => sheet.frame(0, 1)).toThrow(RangeError);
+    expect(() => sheet.frame(0, 2)).not.toThrow();
   });
 });
 
