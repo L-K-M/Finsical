@@ -29,7 +29,9 @@ if ((clean_requested)); then
   rm -rf -- "$APP_PATH" "$REPOSITORY_ROOT/macos/Finsical.app.staging" "$REPOSITORY_ROOT/dist"
 fi
 
-if [[ ! -d node_modules ]]; then
+# Also re-sync when the lockfile is newer than node_modules, so a pull that
+# changed dependencies never verifies against the previously installed tree.
+if [[ ! -d node_modules || package-lock.json -nt node_modules ]]; then
   npm ci
 fi
 
