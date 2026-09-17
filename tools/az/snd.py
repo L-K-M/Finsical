@@ -39,11 +39,16 @@ def parse_snd(blob: bytes):
     except (struct.error, IndexError) as e:
         raise SndError(f"malformed snd header: {e}") from e
     try:
+        # All sound-header variants share the stdSH 22-byte prefix, so
+        # encode sits at +20 for stdSH/cmpSH/extSH alike (verified on the
+        # AQUAZONE 1.7.9 resource fork: every MACE resource reads 0xFE at
+        # +20, compID 3 at +56).
         enc = blob[hoff + 20]
         if enc == 0:
             rate, = struct.unpack_from(">I", blob, hoff + 8)
-            # fmt1: stdSH with u32 length at +4; fmt2: u32 channels,
-            # data runs to end of resource.
+            # fmt1: stdSH carries a u32 numBytes at +4. fmt2 has no length
+            # field (+4 holds 1 on real Aquazone resources — channels);
+            # samples run to end of resource.
             ln = struct.unpack_from(">I", blob, hoff + 4)[0] if fmt == 1 \
                 else len(blob) - hoff - 22
             pcm = blob[hoff + 22:hoff + 22 + ln]

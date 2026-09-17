@@ -131,10 +131,13 @@ def emit(pack: Pack, outdir: str) -> dict:
 
 def emit_sounds(data: bytes, outdir: str) -> dict:
     """Emit a sounds-only .azpack from a resource fork (.rsrc)."""
+    decoded = list(sounds_from_rsrc(data))
+    if not decoded:
+        raise ValueError("snd resources present but none decodable")
     os.makedirs(os.path.join(outdir, "sounds"), exist_ok=True)
     records = []
     used: set[str] = set()
-    for name, wav in sounds_from_rsrc(data):
+    for name, wav in decoded:
         safe = "".join(ch if ch.isalnum() or ch in "-_." else "_"
                        for ch in name) or "snd"
         base = safe
@@ -147,8 +150,6 @@ def emit_sounds(data: bytes, outdir: str) -> dict:
         with open(os.path.join(outdir, path), "wb") as f:
             f.write(wav)
         records.append({"name": name, "file": path})
-    if not records:
-        raise ValueError("snd resources present but none decodable")
     manifest = {"format": "azpack/1", "tag": "", "version": 0,
                 "names": [], "sounds": records, "chunks": []}
     with open(os.path.join(outdir, "manifest.json"), "w",

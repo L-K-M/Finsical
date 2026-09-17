@@ -108,6 +108,8 @@ class TestCliSounds(unittest.TestCase):
             self.assertEqual(main([src, "-o", out]), 1)
             self.assertFalse(os.path.exists(
                 os.path.join(out, "manifest.json")))
+            self.assertFalse(os.path.exists(
+                os.path.join(out, "sounds")))
 
 
 if __name__ == "__main__":
