@@ -1,5 +1,6 @@
 import { BOTTOM_PAD, Sim } from "../core/sim.js";
 import { loadAzpack, SpriteSheet } from "../core/data/azpack.js";
+import { fshToSheets, isPack } from "../core/data/fsh.js";
 import type { Fish } from "../core/sim.js";
 
 const TANK = { width: 320, height: 200 };
@@ -83,16 +84,26 @@ window.addEventListener("drop", (e) => {
       if (root && [...flat.keys()].every((p) => p.startsWith(root)))
         flat = new Map([...flat].map(([p, f]) => [p.slice(root.length), f]));
     }
-    if (!flat.has("manifest.json")) {
-      console.warn("drop: no manifest.json found — not an .azpack folder");
+    if (flat.has("manifest.json")) {
+      usePack(await loadAzpack(async (p) => {
+        const f = flat.get(p);
+        if (!f) throw new Error(`pack file missing: ${p}`);
+        return new Uint8Array(await f.arrayBuffer());
+      }));
+      console.info(`azpack imported: ${flat.size} files`);
       return;
     }
-    usePack(await loadAzpack(async (p) => {
-      const f = flat.get(p);
-      if (!f) throw new Error(`pack file missing: ${p}`);
-      return new Uint8Array(await f.arrayBuffer());
-    }));
-    console.info(`azpack imported: ${flat.size} files`);
+    // Not an .azpack folder — try each dropped file as a raw .fsh/.REZ pack.
+    for (const [name, file] of flat) {
+      const data = new Uint8Array(await file.arrayBuffer());
+      if (!isPack(data)) continue;
+      usePack({ sheets: fshToSheets(data) });
+      if (fishSheet) {
+        console.info(`${name}: pack imported`);
+        return;
+      }
+    }
+    console.warn("drop: no manifest.json or pack file found");
   })().catch((e) => console.warn("azpack import failed:", e));
 });
 
