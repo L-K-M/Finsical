@@ -105,7 +105,10 @@ class TestEmit(unittest.TestCase):
             self.assertEqual((meta["groups"], meta["framesPerGroup"]), (1, 2))
             self.assertEqual((meta["cellW"], meta["cellH"]), (4, 4))
             self.assertEqual(meta["dims"], [[4, 4], [4, 4]])
-            self.assertTrue(os.path.exists(os.path.join(td, meta["image"])))
+            path = os.path.join(td, meta["image"])
+            self.assertTrue(os.path.exists(path))
+            with open(path, "rb") as fh:
+                self.assertEqual(fh.read(8), b"\x89PNG\r\n\x1a\n")
 
     def test_emit_survives_bad_bmp(self):
         import os

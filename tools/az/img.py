@@ -74,9 +74,12 @@ def read_bmp(d, off=0):
 def bmp_palette(d, off=0):
     """Return the BMP color table as [(r,g,b), ...] (empty if unreadable)."""
     try:
-        assert d[off:off + 2] == b'BM'
+        if d[off:off + 2] != b'BM':
+            return []
         hdr = struct.unpack_from('<I', d, off + 14)[0]
         bpp = struct.unpack_from('<H', d, off + 28)[0]
+        if bpp not in (1, 4, 8):
+            return []  # paletted formats only
         ncol = struct.unpack_from('<I', d, off + 46)[0] or (1 << bpp)
         pal = []
         for i in range(min(ncol, 256)):

@@ -57,9 +57,10 @@ def emit(pack: Pack, outdir: str) -> dict:
 
     # sprite frames are palette-indexed; borrow the palette of the first
     # BMP chunk (fish packs embed a portrait that shares it), else gray.
-    pal = next((bmp_palette(c.payload) for c in pack.chunks
-                if c.is_bmp and bmp_palette(c.payload)),
+    pal = next((p for c in pack.chunks
+                if c.is_bmp and (p := bmp_palette(c.payload))),
                [(i, i, i) for i in range(256)])
+    pal += [(i, i, i) for i in range(len(pal), 256)]  # sprite indices are 8-bit
 
     records = []
     for c in pack.chunks:
@@ -87,7 +88,10 @@ def emit(pack: Pack, outdir: str) -> dict:
                 rec["image"] = img
                 rec["w"], rec["h"] = w, h
         else:
-            sheet = _sprite_sheet(c.payload)
+            try:
+                sheet = _sprite_sheet(c.payload)
+            except Exception:
+                sheet = None
             if sheet is not None:
                 ng, nf, cw, ch, idx, dims = sheet
                 img = f"sprites/{fname}.png"
