@@ -1,8 +1,9 @@
 import { BOTTOM_PAD, Sim } from "../core/sim.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
-import type { IndexedImage } from "../core/data/azpack.js";
+import { TankAudio } from "./audio.js";
 import type { Fish } from "../core/sim.js";
+import type { AzpackManifest, IndexedImage } from "../core/data/azpack.js";
 
 const TANK = { width: 320, height: 200 };
 
@@ -11,6 +12,7 @@ const ctx = canvas.getContext("2d")!;
 ctx.imageSmoothingEnabled = false;
 
 const sim = new Sim(TANK, 0x9003);
+const audio = new TankAudio();
 for (let i = 0; i < 4; i++) {
   sim.addFish({ x: 40 + i * 60, y: 50 + i * 30, facing: i % 2 ? -1 : 1 });
 }
@@ -24,8 +26,9 @@ canvas.addEventListener("pointerdown", (e) => {
   const x = (e.clientX - r.left - (r.width - TANK.width * s) / 2) / s;
   const y = (e.clientY - r.top - (r.height - TANK.height * s) / 2) / s;
   if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return; // letterbox bar
-  if (y < TANK.height * 0.15) sim.dropFood(x);
-  else sim.tap(x, y);
+  audio.unlock();
+  if (y < TANK.height * 0.15) { sim.dropFood(x); audio.feed(); }
+  else { sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height); }
 });
 
 // ---- sprite loading ----------------------------------------------------
@@ -35,12 +38,18 @@ canvas.addEventListener("pointerdown", (e) => {
 // Best sheet per imported pack; fish get sheets round-robin so a tank can
 // mix species.
 let fishSheets: SpriteSheet[] = [];
-function usePack(pack: { sheets: Map<string, SpriteSheet> }): void {
+function usePack(pack: { sheets: Map<string, SpriteSheet>;
+                         manifest?: AzpackManifest },
+                 read?: (path: string) => Promise<Uint8Array>): void {
   // Most orientation groups wins; tiebreak toward the crunchier cell.
   const sheets = [...pack.sheets.values()];
   sheets.sort((a, b) =>
     b.meta.groups - a.meta.groups || a.meta.cellH - b.meta.cellH);
   if (sheets[0]) fishSheets.push(sheets[0]);
+  if (pack.manifest && read)
+    void audio.load(read, pack.manifest)
+      .then(() => audio.startAmbient())
+      .catch((e) => console.warn("audio load failed:", e));
 }
 
 // Biggest pack image large enough to matter becomes the tank backdrop —
@@ -68,18 +77,18 @@ function sheetOf(f: Fish): SpriteSheet | null {
   }
   return fishSheets[i % fishSheets.length]!;
 }
-const fetchPack = async (p: string) => {
+const packFetch = async (p: string): Promise<Uint8Array> => {
   const r = await fetch(`pack/${p}`);
   if (!r.ok) throw new Error(`${p}: ${r.status}`);
   return new Uint8Array(await r.arrayBuffer());
 };
 void (async () => {
-  const pack = await loadAzpack(fetchPack);
-  usePack(pack);
+  const pack = await loadAzpack(packFetch);
+  usePack(pack, packFetch);
   const imgs: IndexedImage[] = [];
   for (const c of pack.manifest.chunks) {
     if (!c.image) continue;
-    try { imgs.push(await decodeIndexedPng(await fetchPack(c.image))); }
+    try { imgs.push(await decodeIndexedPng(await packFetch(c.image))); }
     catch { /* keep going without that image */ }
   }
   pickBackdrop(imgs);
@@ -130,7 +139,7 @@ window.addEventListener("drop", (e) => {
     };
     if (flat.has("manifest.json")) {
       const pack = await loadAzpack(readFile);
-      usePack(pack);
+      usePack(pack, readFile);
       const imgs: IndexedImage[] = [];
       for (const c of pack.manifest.chunks) {
         if (!c.image) continue;
@@ -238,6 +247,7 @@ const tankGradient = (() => {
   return g;
 })();
 
+let prevBubbles = 0;
 function render(): void {
   if (backdropCv) {
     ctx.drawImage(backdropCv, 0, 0, TANK.width, TANK.height);
@@ -258,6 +268,10 @@ function render(): void {
   for (const b of sim.bubbles) {
     ctx.fillRect(Math.round(b.x), Math.round(b.y), 2, 2);
   }
+  // Sparse bloops: only some spawns make a sound.
+  if (sim.bubbles.length > prevBubbles && Math.random() < 0.25)
+    audio.bubble();
+  prevBubbles = sim.bubbles.length;
 
   // day/night dimming
   const dark = 1 - sim.light;
