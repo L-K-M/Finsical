@@ -113,6 +113,10 @@ def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,
                 print(f"  {zi.filename}: skipped, declares "
                       f"{zi.file_size} bytes over cap", file=sys.stderr)
                 continue
+            if budget[0] <= 0:
+                print(f"  {zi.filename}: skipped, total byte budget "
+                      "exhausted", file=sys.stderr)
+                continue
             try:
                 blob = _read_capped(zf, zi, _ENTRY_CAP)
                 if blob is None:
@@ -120,10 +124,6 @@ def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,
                           "over cap", file=sys.stderr)
                     continue
                 budget[0] -= len(blob)
-                if budget[0] <= 0:
-                    print(f"  {zi.filename}: skipped, total byte budget "
-                          "exhausted", file=sys.stderr)
-                    continue
                 made += _harvest(base, blob, outdir, depth + 1, budget)
             except Exception as e:
                 print(f"  {zi.filename}: {type(e).__name__}: {e}",
