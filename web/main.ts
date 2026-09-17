@@ -47,7 +47,9 @@ function usePack(pack: { sheets: Map<string, SpriteSheet>;
     b.meta.groups - a.meta.groups || a.meta.cellH - b.meta.cellH);
   if (sheets[0]) fishSheets.push(sheets[0]);
   if (pack.manifest && read)
-    void audio.load(read, pack.manifest).then(() => audio.startAmbient());
+    void audio.load(read, pack.manifest)
+      .then(() => audio.startAmbient())
+      .catch((e) => console.warn("audio load failed:", e));
 }
 
 // Biggest pack image large enough to matter becomes the tank backdrop —
