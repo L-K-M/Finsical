@@ -48,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         n = sum(1 for c in manifest["chunks"] if "sprites" in c)
         snds = manifest.get("sounds") or []
-        if manifest["chunks"]:
+        if manifest["chunks"] or not snds:
             detail = f"{len(manifest['chunks'])} chunks, {n} sprite sheets"
             if snds:
                 detail += f", {len(snds)} sounds"

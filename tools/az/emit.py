@@ -166,10 +166,13 @@ def main(argv):
     with open(src, "rb") as f:
         data = f.read()
     if not is_pack(data):
+        from .snd import has_sounds
+        if not has_sounds(data):
+            raise SystemExit(f"{src}: not a pack and no snd resources found")
         try:
             m = emit_sounds(data, outdir)
-        except ValueError as e:
-            raise SystemExit(f"{src}: {e}")
+        except Exception as e:
+            raise SystemExit(f"{src}: {type(e).__name__}: {e}")
         print(f"{src}: {len(m['sounds'])} sounds -> {outdir}")
         return
     m = emit(Pack(data), outdir)
