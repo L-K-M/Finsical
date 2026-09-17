@@ -120,7 +120,7 @@ export async function decodeIndexedPng(d: Uint8Array): Promise<IndexedImage> {
   if (raw.length < h * (w + 1)) throw new Error("png: short pixel data");
   const idx = unfilter(raw, w, h, 1);
   for (let i = 0; i < idx.length; i++)
-    if (idx[i]! >= palette.length) throw new Error(`png palette index ${idx[i]} out of range`);
+    if (idx[i]! >= palette.length) throw new Error(`png: palette index ${idx[i]} out of range (palette size ${palette.length})`);
   return { w, h, palette, idx };
 }
 
