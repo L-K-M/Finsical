@@ -164,7 +164,7 @@ export async function loadAzpack(
     new TextDecoder().decode(await read("manifest.json")),
   ) as AzpackManifest;
   if (!manifest || manifest.format !== "azpack/1")
-    throw new Error(`bad pack format ${manifest?.format}`);
+    throw new Error(`bad pack format ${manifest?.format ?? JSON.stringify(manifest)}`);
   if (!Array.isArray(manifest.chunks))
     throw new Error("manifest: missing chunks array");
   const sheets = new Map<string, SpriteSheet>();
