@@ -24,7 +24,8 @@ core only. PRs are auto-reviewed by GLM-5.3 via
 
 ## Getting assets
 
-Finsical ships no game data. Point the tools at the originals you own:
+Finsical ships no game data. Use a copy of the original disc you are
+entitled to (the fetch tool defaults to the public archive.org mirror of it):
 
 ```sh
 python3 tools/fetch.py                    # pull the public archive.org disc
