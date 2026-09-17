@@ -69,6 +69,18 @@ class TestHarvest(unittest.TestCase):
         self.assertEqual(_harvest("x.bin", b"not a pack", self.out), [])
         self.assertEqual(_harvest("x.zip", b"not a zip", self.out), [])
 
+    def test_invalid_include_regex_reports_usage_error(self):
+        from tools.fetch import main
+        buf = io.StringIO()
+        real, sys.stderr = sys.stderr, buf
+        try:
+            with self.assertRaises(SystemExit) as cm:
+                main(["--include", "["])
+        finally:
+            sys.stderr = real
+        self.assertEqual(cm.exception.code, 2)
+        self.assertIn("invalid regex", buf.getvalue())
+
     def test_emit_source_pack(self):
         out = _emit_source("t.fsh", fake_pack(bmp_8bit()), self.out)
         self.assertIsNotNone(out)
