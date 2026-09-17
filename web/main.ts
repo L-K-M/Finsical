@@ -40,7 +40,7 @@ loadAzpack(async (p) => {
   sheets.sort((a, b) =>
     b.meta.groups - a.meta.groups || a.meta.cellH - b.meta.cellH);
   fishSheet = sheets[0] ?? null;
-}).catch(() => { /* no pack yet — placeholder fish */ });
+}).catch((e) => console.warn("azpack load failed; using placeholder fish:", e));
 
 // Aquazone sprite groups: 2 = right-facing, 6 = left-facing (8 compass
 // buckets). Sheets with fewer groups get mirrored instead.
@@ -50,10 +50,12 @@ function groupFor(facing: number, ng: number): { g: number; mirror: boolean } {
   return { g: Math.min(RIGHT_G, ng - 1), mirror: facing < 0 };
 }
 
-const frameCache = new Map<string, HTMLCanvasElement>();
+const frameCache = new WeakMap<SpriteSheet, Map<string, HTMLCanvasElement>>();
 function frameCanvas(sheet: SpriteSheet, g: number, f: number): HTMLCanvasElement {
+  let cache = frameCache.get(sheet);
+  if (!cache) frameCache.set(sheet, (cache = new Map()));
   const key = `${g}:${f}`;
-  let cv = frameCache.get(key);
+  let cv = cache.get(key);
   if (cv) return cv;
   const fr = sheet.frame(g, f);
   cv = document.createElement("canvas");
@@ -61,21 +63,23 @@ function frameCanvas(sheet: SpriteSheet, g: number, f: number): HTMLCanvasElemen
   const fctx = cv.getContext("2d")!;
   const img = fctx.createImageData(fr.w, fr.h);
   for (let i = 0; i < fr.idx.length; i++) {
-    const [r, gg, b] = fr.palette[fr.idx[i] ?? 0] ?? [0, 0, 0];
+    const pi = fr.idx[i] ?? 0;
+    const [r, gg, b] = fr.palette[pi] ?? [0, 0, 0];
     img.data[i * 4] = r; img.data[i * 4 + 1] = gg; img.data[i * 4 + 2] = b;
-    img.data[i * 4 + 3] = fr.idx[i] === 0 ? 0 : 255; // index 0 = transparent
+    img.data[i * 4 + 3] = pi === 0 ? 0 : 255; // index 0 = transparent
   }
   fctx.putImageData(img, 0, 0);
-  frameCache.set(key, cv);
+  cache.set(key, cv);
   return cv;
 }
 
 // Tail-wag animation advances with swim speed.
 const anims = new WeakMap<Fish, number>();
 function animFrame(f: Fish, nf: number): number {
-  const a = (anims.get(f) ?? 0) + 0.15 + f.speed * 0.12;
+  const total = Math.max(1, nf);
+  const a = ((anims.get(f) ?? 0) + 0.15 + f.speed * 0.12) % total;
   anims.set(f, a);
-  return Math.floor(a) % nf;
+  return Math.floor(a);
 }
 
 function drawFish(f: Fish): void {
