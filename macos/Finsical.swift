@@ -7,7 +7,8 @@ final class WebHandler: NSObject, WKURLSchemeHandler {
     static let scheme = "finsical"
     private static let mime: [String: String] = [
         "html": "text/html", "js": "text/javascript", "json": "application/json",
-        "png": "image/png", "bin": "application/octet-stream",
+        "png": "image/png", "svg": "image/svg+xml", "css": "text/css",
+        "wasm": "application/wasm", "bin": "application/octet-stream",
     ]
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
@@ -16,7 +17,7 @@ final class WebHandler: NSObject, WKURLSchemeHandler {
             task.didFailWithError(URLError(.unsupportedURL))
             return
         }
-        let file = root.appendingPathComponent(url.path)
+        let file = root.appendingPathComponent(url.path).standardizedFileURL
         // Stay inside the web root.
         guard file.path.hasPrefix(root.path + "/") else {
             task.didFailWithError(URLError(.fileDoesNotExist))
@@ -25,7 +26,7 @@ final class WebHandler: NSObject, WKURLSchemeHandler {
         do {
             let data = try Data(contentsOf: file)
             let ext = file.pathExtension.lowercased()
-            let res = URLResponse(url: url, mimeType: WebHandler.mime[ext],
+            let res = URLResponse(url: url, mimeType: WebHandler.mime[ext] ?? "application/octet-stream",
                                   expectedContentLength: data.count,
                                   textEncodingName: nil)
             task.didReceive(res)
@@ -54,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered, defer: false)
         window.title = "Finsical"
         window.level = .floating                    // always on top
-        window.collectionBehavior = [.canJoinAllSpaces]
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.contentAspectRatio = NSSize(width: 320, height: 200)
         window.contentView = webView
         window.center()
@@ -70,5 +71,14 @@ let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.regular)
+let mainMenu = NSMenu()
+let appItem = NSMenuItem()
+mainMenu.addItem(appItem)
+let appMenu = NSMenu()
+appMenu.addItem(withTitle: "Quit Finsical",
+                action: #selector(NSApplication.terminate(_:)),
+                keyEquivalent: "q")
+appItem.submenu = appMenu
+app.mainMenu = mainMenu
 app.activate(ignoringOtherApps: true)
 app.run()
