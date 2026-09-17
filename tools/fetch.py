@@ -36,6 +36,7 @@ DEFAULT_IDENT = "aqua-zone-virtual-aquarium"
 IMPORTABLE = (".fsh", ".acc", ".plt", ".azn", ".rez", ".rsrc")
 _EMITTED: set[str] = set()  # paths written this run (re-runs replace)
 _MAX_ARCHIVE_BYTES = 1 << 30  # cap for a single in-memory download
+_MAX_ISO_BYTES = 4 << 30    # ISOs stream to disk; cap is anti-abuse
 
 
 def _get(url: str, out: str | None = None) -> bytes | None:
@@ -182,11 +183,12 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
             key = hashlib.sha256(url.encode()).hexdigest()[:16]
             path = os.path.join(downloads,
                                 f"{key}-{os.path.basename(name)}")
-            if (want is not None and want > _MAX_ARCHIVE_BYTES
-                    and not name.lower().endswith(".iso")):
-                raise ValueError(
-                    f"{name}: declared size {want} over "
-                    f"{_MAX_ARCHIVE_BYTES} bytes")
+            cap = (_MAX_ISO_BYTES if name.lower().endswith(".iso")
+                   else _MAX_ARCHIVE_BYTES)
+            if want is not None and want > cap:
+                print(f"skipping {name}: declared size {want} over "
+                      f"{cap} bytes", file=sys.stderr)
+                continue
             _cached_get(url, path, want_size=want)
             if name.lower().endswith(".iso"):
                 iso = Iso(path)
