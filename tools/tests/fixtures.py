@@ -174,6 +174,10 @@ def _encode_frame_stream(px: bytes) -> bytes:
             if m - k >= 2 and px[k] != 0xFF:
                 break
             if len(lits) + (m - k) > 255:
+                if px[k] == 0xFF:
+                    raise ValueError(
+                        "255-literal cap strands a 0xFF stretch with no "
+                        "preceding non-0xFF run to carry it; split the data")
                 break
             lits += px[k:m]
             k = m
