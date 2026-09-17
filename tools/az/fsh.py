@@ -6,9 +6,11 @@ Chunk payload layout (little-endian):
 
         u16 width, u16 height, u16 sections, u32 stream_len
 
-    followed by `stream_len` encoded bytes. Every record is trailed by 4
-    zero bytes; between groups (after each group's last frame, except the
-    final group) sits a 6-byte separator: u16 frames_per_group, u32 0.
+    followed by `stream_len` encoded bytes. A record that is not the last
+    in its group is trailed by 4 zero bytes. The last frame of each group
+    except the final one is followed instead by a 6-byte separator holding
+    u16 frames_per_group and u32 0, and the payload's final record has no
+    trailing bytes.
 
 Pixel codec — each frame's stream is a sequence of items:
 
@@ -70,7 +72,11 @@ def iter_frames(b: bytes) -> Iterator[tuple[int, int, Frame]]:
             if p + 10 > len(b):
                 return
             w, h, a, ln = struct.unpack_from("<HHHI", b, p)
-            if not (0 < w < 4096 and 0 < h < 4096 and p + 10 + ln <= len(b)):
+            # the codec emits at most ~64 run pixels per stream byte plus
+            # 1 literal per byte, so w*h can't exceed ~64*ln; a small
+            # slack covers real streams that underfill slightly.
+            if not (0 < w < 4096 and 0 < h < 4096 and p + 10 + ln <= len(b)
+                    and w * h <= 64 * ln + 0x400):
                 return
             stream = b[p + 10:p + 10 + ln]
             yield g, f, Frame(w, h, a, decode_pixels(stream, w, h))

@@ -68,7 +68,9 @@ class TestSpriteStream(unittest.TestCase):
         self.assertFalse(is_sprite_stream(b"\x40\x00\x40\x00" + b"\0" * 100))
 
     def test_stops_on_garbage_record(self):
-        blob = build_fsh(1, [(4, 4, bytes(16))]) + b"GARBAGEGARBAGE"
+        good = build_fsh(1, [(4, 4, bytes(16))])
+        # claim a second frame so the trailing bytes get parsed as a record
+        blob = good[:2] + b"\x02\x00" + good[4:] + b"GARBAGEGARBAGE"
         frames = list(iter_frames(blob))
         self.assertEqual(len(frames), 1)
 

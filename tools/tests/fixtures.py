@@ -159,6 +159,10 @@ def _encode_frame_stream(px: bytes) -> bytes:
             j += 1
         run = j - i
         col = px[i]
+        if col == 0xFF:
+            raise ValueError(
+                "0xFF cannot lead a run command; 0xFF pixels must ride as "
+                "literals on a preceding non-0xFF run command")
         # gather following literal stretch (lone pixels and 0xFF values,
         # which can't lead a run command) up to the next real run
         lits = bytearray()
