@@ -182,6 +182,11 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
             key = hashlib.sha256(url.encode()).hexdigest()[:16]
             path = os.path.join(downloads,
                                 f"{key}-{os.path.basename(name)}")
+            if (want is not None and want > _MAX_ARCHIVE_BYTES
+                    and not name.lower().endswith(".iso")):
+                raise ValueError(
+                    f"{name}: declared size {want} over "
+                    f"{_MAX_ARCHIVE_BYTES} bytes")
             _cached_get(url, path, want_size=want)
             if name.lower().endswith(".iso"):
                 iso = Iso(path)
