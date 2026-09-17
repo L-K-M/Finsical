@@ -143,6 +143,8 @@ export class SpriteSheet {
     const fw = dim[2], fh = dim[3];
     if (!Number.isInteger(fw) || !Number.isInteger(fh) || fw < 0 || fh < 0)
       throw new RangeError(`frame ${group},${frameIdx} has invalid dims ${fw}x${fh}`);
+    if (fw > cw || fh > ch)
+      throw new RangeError(`frame ${group},${frameIdx} dims ${fw}x${fh} exceed cell ${cw}x${ch}`);
     if (group * ch + fh > this.img.h || frameIdx * cw + fw > this.img.w)
       throw new RangeError(`frame ${group},${frameIdx} exceeds sheet bounds ${this.img.w}x${this.img.h}`);
     const idx = new Uint8Array(fw * fh);
@@ -161,8 +163,10 @@ export async function loadAzpack(
   const manifest = JSON.parse(
     new TextDecoder().decode(await read("manifest.json")),
   ) as AzpackManifest;
-  if (manifest.format !== "azpack/1")
-    throw new Error(`bad pack format ${manifest.format}`);
+  if (!manifest || manifest.format !== "azpack/1")
+    throw new Error(`bad pack format ${manifest?.format}`);
+  if (!Array.isArray(manifest.chunks))
+    throw new Error("manifest: missing chunks array");
   const sheets = new Map<string, SpriteSheet>();
   const images = new Map<string, IndexedImage>();
   for (const c of manifest.chunks) {
