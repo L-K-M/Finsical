@@ -13,6 +13,7 @@
  *   any other byte is one literal. Pixels are column-major.
  */
 import { SpriteSheet } from "./azpack.js";
+import { decodeBmp, isBmp } from "./bmp.js";
 import type { IndexedImage, SpriteSheetMeta } from "./azpack.js";
 
 const MAGIC = 0x00000100;
@@ -155,4 +156,15 @@ export function fshToSheets(d: Uint8Array): Map<string, SpriteSheet> {
     if (r) sheets.set(`chunk@${c.pos.toString(16)}`, new SpriteSheet(r.meta, r.img));
   }
   return sheets;
+}
+
+/** Decode every BMP chunk in a pack (backdrops, portraits, props). */
+export function packImages(d: Uint8Array): Map<string, IndexedImage> {
+  const out = new Map<string, IndexedImage>();
+  for (const c of packChunks(d)) {
+    if (!isBmp(c.payload)) continue;
+    const img = decodeBmp(c.payload);
+    if (img) out.set(`chunk@${c.pos.toString(16)}`, img);
+  }
+  return out;
 }

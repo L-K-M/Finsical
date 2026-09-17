@@ -1,6 +1,7 @@
 import { BOTTOM_PAD, Sim } from "../core/sim.js";
-import { loadAzpack, SpriteSheet } from "../core/data/azpack.js";
-import { fshToSheets, isPack } from "../core/data/fsh.js";
+import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
+import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
+import type { IndexedImage } from "../core/data/azpack.js";
 import type { Fish } from "../core/sim.js";
 
 const TANK = { width: 320, height: 200 };
@@ -41,6 +42,18 @@ function usePack(pack: { sheets: Map<string, SpriteSheet> }): void {
     b.meta.groups - a.meta.groups || a.meta.cellH - b.meta.cellH);
   if (sheets[0]) fishSheets.push(sheets[0]);
 }
+
+// Biggest pack image large enough to matter becomes the tank backdrop —
+// tiny fish portraits/icons are skipped.
+let backdropCv: HTMLCanvasElement | null = null;
+function pickBackdrop(images: Iterable<IndexedImage>): void {
+  let best: IndexedImage | null = null;
+  for (const img of images) {
+    if (img.w * img.h < (TANK.width * TANK.height) / 4) continue;
+    if (!best || img.w * img.h > best.w * best.h) best = img;
+  }
+  if (best) backdropCv = imageCanvas(best, true);
+}
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
 let nextSlot = 0;
@@ -54,12 +67,22 @@ function sheetOf(f: Fish): SpriteSheet | null {
   }
   return fishSheets[i % fishSheets.length]!;
 }
-loadAzpack(async (p) => {
+const fetchPack = async (p: string) => {
   const r = await fetch(`pack/${p}`);
   if (!r.ok) throw new Error(`${p}: ${r.status}`);
   return new Uint8Array(await r.arrayBuffer());
-}).then(usePack)
-  .catch((e) => console.warn("azpack load failed; using placeholder fish:", e));
+};
+void (async () => {
+  const pack = await loadAzpack(fetchPack);
+  usePack(pack);
+  const imgs: IndexedImage[] = [];
+  for (const c of pack.manifest.chunks) {
+    if (!c.image) continue;
+    try { imgs.push(await decodeIndexedPng(await fetchPack(c.image))); }
+    catch { /* keep going without that image */ }
+  }
+  pickBackdrop(imgs);
+})().catch((e) => console.warn("azpack load failed; using placeholder fish:", e));
 
 // Drag an .azpack folder onto the window to import it.
 async function walkEntry(ent: FileSystemEntry, prefix: string,
@@ -99,12 +122,21 @@ window.addEventListener("drop", (e) => {
       if (root && [...flat.keys()].every((p) => p.startsWith(root)))
         flat = new Map([...flat].map(([p, f]) => [p.slice(root.length), f]));
     }
+    const readFile = async (p: string) => {
+      const f = flat.get(p);
+      if (!f) throw new Error(`pack file missing: ${p}`);
+      return new Uint8Array(await f.arrayBuffer());
+    };
     if (flat.has("manifest.json")) {
-      usePack(await loadAzpack(async (p) => {
-        const f = flat.get(p);
-        if (!f) throw new Error(`pack file missing: ${p}`);
-        return new Uint8Array(await f.arrayBuffer());
-      }));
+      const pack = await loadAzpack(readFile);
+      usePack(pack);
+      const imgs: IndexedImage[] = [];
+      for (const c of pack.manifest.chunks) {
+        if (!c.image) continue;
+        try { imgs.push(await decodeIndexedPng(await readFile(c.image))); }
+        catch { /* keep going without that image */ }
+      }
+      pickBackdrop(imgs);
       console.info(`azpack imported: ${flat.size} files`);
       return;
     }
@@ -116,6 +148,7 @@ window.addEventListener("drop", (e) => {
       const sheets = fshToSheets(data);
       if (!sheets.size) continue;
       usePack({ sheets });
+      pickBackdrop(packImages(data).values());
       if (fishSheets.length) {
         console.info(`${name}: pack imported`);
         return;
@@ -133,6 +166,23 @@ function groupFor(facing: number, ng: number): { g: number; mirror: boolean } {
   return { g: Math.min(RIGHT_G, ng - 1), mirror: facing < 0 };
 }
 
+/** Rasterize an indexed image to a canvas. opaque=false makes index 0
+ * transparent (sprite convention); opaque=true keeps every pixel. */
+function imageCanvas(img: IndexedImage, opaque: boolean): HTMLCanvasElement {
+  const cv = document.createElement("canvas");
+  cv.width = img.w; cv.height = img.h;
+  const c = cv.getContext("2d")!;
+  const im = c.createImageData(img.w, img.h);
+  for (let i = 0; i < img.idx.length; i++) {
+    const pi = img.idx[i] ?? 0;
+    const [r, g, b] = img.palette[pi] ?? [0, 0, 0];
+    im.data[i * 4] = r; im.data[i * 4 + 1] = g; im.data[i * 4 + 2] = b;
+    im.data[i * 4 + 3] = opaque || pi !== 0 ? 255 : 0;
+  }
+  c.putImageData(im, 0, 0);
+  return cv;
+}
+
 const frameCache = new WeakMap<SpriteSheet, Map<string, HTMLCanvasElement>>();
 function frameCanvas(sheet: SpriteSheet, g: number, f: number): HTMLCanvasElement {
   let cache = frameCache.get(sheet);
@@ -140,18 +190,7 @@ function frameCanvas(sheet: SpriteSheet, g: number, f: number): HTMLCanvasElemen
   const key = `${g}:${f}`;
   let cv = cache.get(key);
   if (cv) return cv;
-  const fr = sheet.frame(g, f);
-  cv = document.createElement("canvas");
-  cv.width = fr.w; cv.height = fr.h;
-  const fctx = cv.getContext("2d")!;
-  const img = fctx.createImageData(fr.w, fr.h);
-  for (let i = 0; i < fr.idx.length; i++) {
-    const pi = fr.idx[i] ?? 0;
-    const [r, gg, b] = fr.palette[pi] ?? [0, 0, 0];
-    img.data[i * 4] = r; img.data[i * 4 + 1] = gg; img.data[i * 4 + 2] = b;
-    img.data[i * 4 + 3] = pi === 0 ? 0 : 255; // index 0 = transparent
-  }
-  fctx.putImageData(img, 0, 0);
+  cv = imageCanvas(sheet.frame(g, f), false);
   cache.set(key, cv);
   return cv;
 }
@@ -199,11 +238,14 @@ const tankGradient = (() => {
 })();
 
 function render(): void {
-  ctx.fillStyle = tankGradient;
-  ctx.fillRect(0, 0, TANK.width, TANK.height);
-
-  ctx.fillStyle = "#8a6d3b"; // gravel
-  ctx.fillRect(0, TANK.height - BOTTOM_PAD, TANK.width, BOTTOM_PAD);
+  if (backdropCv) {
+    ctx.drawImage(backdropCv, 0, 0, TANK.width, TANK.height);
+  } else {
+    ctx.fillStyle = tankGradient;
+    ctx.fillRect(0, 0, TANK.width, TANK.height);
+    ctx.fillStyle = "#8a6d3b"; // gravel
+    ctx.fillRect(0, TANK.height - BOTTOM_PAD, TANK.width, BOTTOM_PAD);
+  }
 
   for (const fd of sim.food) {
     ctx.fillStyle = "#c9a227";
