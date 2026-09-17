@@ -89,7 +89,7 @@ export class Sim {
     }
   }
 
-  /** 0 = night, 1 = full daylight. */
+  /** 0.15 = night, 1 = full daylight. */
   get light(): number {
     const t = (this.tickCount % DAY_TICKS) / DAY_TICKS;
     return 0.15 + 0.85 * Math.max(0, Math.sin(t * Math.PI));
