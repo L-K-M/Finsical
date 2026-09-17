@@ -81,7 +81,7 @@ describe("Sim", () => {
       min = Math.min(min, sim.light);
       max = Math.max(max, sim.light);
     }
-    expect(min).toBeGreaterThanOrEqual(0);
+    expect(min).toBeGreaterThanOrEqual(0.15);
     expect(max).toBeLessThanOrEqual(1);
     expect(max - min).toBeGreaterThan(0.5);
   });

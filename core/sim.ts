@@ -34,7 +34,7 @@ export interface Bubble {
 
 const MARGIN = 16;
 const SURFACE = 10;
-const BOTTOM_PAD = 12;
+export const BOTTOM_PAD = 12;
 const HUNGER_PER_TICK = 1 / (30 * 120); // starving after ~2 min
 const HUNGER_SEEK = 0.4;
 const EAT_DIST = 6;
