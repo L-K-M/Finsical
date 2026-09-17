@@ -17,7 +17,8 @@ final class WebHandler: NSObject, WKURLSchemeHandler {
             task.didFailWithError(URLError(.unsupportedURL))
             return
         }
-        let path = url.path.hasSuffix("/") ? url.path + "index.html" : url.path
+        var path = url.path
+        if path.isEmpty || path.hasSuffix("/") { path += "index.html" }
         let file = root.appendingPathComponent(path).standardizedFileURL
         // Stay inside the web root.
         guard file.path.hasPrefix(root.path + "/") else {
