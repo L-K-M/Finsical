@@ -146,4 +146,20 @@ describe("loadAzpack", () => {
     const sheet = pack.sheets.get("chunks/a.bin")!;
     expect([...sheet.frame(0, 0).idx]).toEqual([...idx]);
   });
+
+  it("rejects a manifest with an unknown format", async () => {
+    const files: Record<string, Uint8Array> = {
+      "manifest.json": new TextEncoder().encode(JSON.stringify({ format: "azpack/2", chunks: [] })),
+    };
+    await expect(loadAzpack(async (p) => files[p] ?? new Uint8Array(0)))
+      .rejects.toThrow("bad pack format azpack/2");
+  });
+
+  it("rejects a manifest without a chunks array", async () => {
+    const files: Record<string, Uint8Array> = {
+      "manifest.json": new TextEncoder().encode(JSON.stringify({ format: "azpack/1" })),
+    };
+    await expect(loadAzpack(async (p) => files[p] ?? new Uint8Array(0)))
+      .rejects.toThrow("manifest: missing chunks array");
+  });
 });
