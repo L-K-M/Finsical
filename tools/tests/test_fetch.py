@@ -6,7 +6,6 @@ import unittest
 import zipfile
 
 from tools.fetch import _emit_source, _harvest
-from tools.az.pack import Pack
 
 
 def fake_pack(bmp_payload: bytes) -> bytes:
@@ -71,8 +70,8 @@ class TestHarvest(unittest.TestCase):
         out = _emit_source("t.fsh", fake_pack(bmp_8bit()), self.out)
         self.assertIsNotNone(out)
         self.assertTrue(os.path.exists(out))
-        p = Pack(fake_pack(bmp_8bit()))
-        self.assertEqual(len(p.chunks), 1)
+        self.assertTrue(os.path.exists(
+            os.path.join(out, "manifest.json")))
 
 
 if __name__ == "__main__":
