@@ -113,7 +113,10 @@ describe("SpriteSheet", () => {
     const sheet = new SpriteSheet(meta, img);
     expect(() => sheet.frame(0, 0)).toThrow(RangeError);
     expect(() => sheet.frame(0, 1)).toThrow(RangeError);
-    expect(() => sheet.frame(0, 2)).not.toThrow();
+    const ok = sheet.frame(0, 2);
+    expect(ok.w).toBe(2);
+    expect(ok.h).toBe(1);
+    expect(ok.idx.length).toBe(2);
   });
 });
 

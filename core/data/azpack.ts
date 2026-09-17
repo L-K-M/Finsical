@@ -118,7 +118,10 @@ export async function decodeIndexedPng(d: Uint8Array): Promise<IndexedImage> {
   for (const c of idat) { z.set(c, o); o += c.length; }
   const raw = await inflate(z);
   if (raw.length < h * (w + 1)) throw new Error("png: short pixel data");
-  return { w, h, palette, idx: unfilter(raw, w, h, 1) };
+  const idx = unfilter(raw, w, h, 1);
+  for (let i = 0; i < idx.length; i++)
+    if (idx[i]! >= palette.length) throw new Error(`png palette index ${idx[i]} out of range`);
+  return { w, h, palette, idx };
 }
 
 /** A loaded sprite sheet: grid of cellW×cellH frames, groups per row. */
