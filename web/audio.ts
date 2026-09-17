@@ -48,7 +48,13 @@ export class TankAudio {
     if (!buf || !this.ctx) return null;
     if (this.ctx.state === "suspended" && retry) {
       const ac = this.ctx;
-      void ac.resume().then(() => this.play(buf, gain, loop, false));
+      void ac.resume()
+        .then(() => {
+          if (loop && !this.ambientWanted) return; // superseded by load()
+          const n = this.play(buf, gain, loop, false);
+          if (n && loop) this.ambientSrc = n; // keep the loop stoppable
+        })
+        .catch(() => { /* resume blocked until a user gesture */ });
       return null;
     }
     if (this.ctx.state !== "running") return null;
