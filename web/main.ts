@@ -65,19 +65,24 @@ async function walkEntry(ent: FileSystemEntry, prefix: string,
 window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener("drop", (e) => {
   e.preventDefault();
+  // Entries must be read before the handler returns — items invalidate.
+  const items = e.dataTransfer?.items;
+  const entries: FileSystemEntry[] = [];
+  for (let i = 0; items && i < items.length; i++) {
+    const ent = items[i]!.webkitGetAsEntry?.();
+    if (ent) entries.push(ent);
+  }
   void (async () => {
     const files = new Map<string, File>();
-    const items = e.dataTransfer?.items;
-    for (let i = 0; items && i < items.length; i++) {
-      const item = items[i]!;
-      const ent = item.webkitGetAsEntry?.();
-      if (ent) await walkEntry(ent, "", files);
-    }
+    for (const ent of entries) await walkEntry(ent, "", files);
     // Strip a shared top-level folder so manifest.json sits at the root.
     const first = [...files.keys()][0] ?? "";
-    const root = first.slice(0, first.indexOf("/") + 1);
-    const flat = new Map([...files].map(([p, f]) =>
-      [p.startsWith(root) ? p.slice(root.length) : p, f]));
+    let flat = new Map(files);
+    if (!flat.has("manifest.json")) {
+      const root = first.slice(0, first.indexOf("/") + 1);
+      if (root && [...flat.keys()].every((p) => p.startsWith(root)))
+        flat = new Map([...flat].map(([p, f]) => [p.slice(root.length), f]));
+    }
     if (!flat.has("manifest.json")) {
       console.warn("drop: no manifest.json found — not an .azpack folder");
       return;
