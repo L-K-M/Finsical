@@ -69,6 +69,18 @@ class TestHarvest(unittest.TestCase):
         self.assertEqual(_harvest("x.bin", b"not a pack", self.out), [])
         self.assertEqual(_harvest("x.zip", b"not a zip", self.out), [])
 
+    def test_oversized_zip_entry_skipped(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("tiny.fsh", fake_pack(bmp_8bit()))
+        data = bytearray(buf.getvalue())
+        # Lie about uncompressed size in local + central headers.
+        for sig, off in ((b"PK\x03\x04", 18), (b"PK\x01\x02", 24)):
+            i = data.find(sig)
+            self.assertNotEqual(i, -1)
+            data[i + off:i + off + 4] = (2 << 30).to_bytes(4, "little")
+        self.assertEqual(_harvest("a.zip", bytes(data), self.out), [])
+
     def test_invalid_include_regex_reports_usage_error(self):
         from tools.fetch import main
         buf = io.StringIO()

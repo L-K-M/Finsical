@@ -91,6 +91,10 @@ def _harvest(name: str, data: bytes, outdir: str) -> list[str]:
             base = os.path.basename(zi.filename)
             if not base:
                 continue
+            if zi.file_size > 1 << 30:
+                print(f"  {zi.filename}: skipped, {zi.file_size} bytes "
+                      "over 1 GiB cap", file=sys.stderr)
+                continue
             try:
                 made += _harvest(base, zf.read(zi), outdir)
             except Exception as e:
@@ -108,6 +112,7 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
         print(f"{ident}: no files match {include.pattern}")
         return []
     made: list[str] = []
+    os.makedirs(outdir, exist_ok=True)
     os.makedirs(downloads, exist_ok=True)
     for f in files:
         name = f["name"]
