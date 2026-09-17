@@ -137,13 +137,19 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
 
 
 def main(argv: list[str] | None = None) -> int:
+    def _regex(pattern: str) -> re.Pattern:
+        try:
+            return re.compile(pattern)
+        except re.error as e:
+            raise argparse.ArgumentTypeError(f"invalid regex: {e}")
+
     ap = argparse.ArgumentParser(prog="fetch", description=__doc__)
     ap.add_argument("ident", nargs="?", default=DEFAULT_IDENT,
                     help="archive.org item identifier")
     ap.add_argument("-o", "--out", default="packs",
                     help="output dir for .azpack bundles")
     ap.add_argument("--include", default=r"(?i)\.(iso|zip)$",
-                    type=re.compile,
+                    type=_regex,
                     help="regex over item file names (default: iso/zip)")
     ap.add_argument("--downloads", default="packs/downloads",
                     help="where big downloads are cached")
@@ -151,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         made = fetch(args.ident, args.out, args.include, args.downloads)
-    except OSError as e:
+    except (OSError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     for p in made:
