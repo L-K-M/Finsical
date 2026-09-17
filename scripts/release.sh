@@ -49,10 +49,11 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
-# Releasing a stale main tags old code; refuse unless main is current.
+# Releasing from anything but origin/main itself tags a tree nobody has
+# reviewed on the remote: behind means stale, ahead means unpushed.
 git fetch origin main
-if [[ -n "$(git rev-list HEAD..origin/main)" ]]; then
-  echo "Local main is behind origin/main; pull first." >&2
+if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+  echo "Local main must match origin/main; sync first." >&2
   exit 1
 fi
 
