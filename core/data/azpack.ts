@@ -136,6 +136,8 @@ export class SpriteSheet {
     const dim = this.meta.dims[group * nf + frameIdx];
     if (!dim) throw new RangeError(`dims[${group * nf + frameIdx}] missing for frame ${group},${frameIdx}`);
     const fw = dim[2], fh = dim[3];
+    if (fw < 0 || fh < 0)
+      throw new RangeError(`frame ${group},${frameIdx} has negative dims ${fw}x${fh}`);
     if (group * ch + fh > this.img.h || frameIdx * cw + fw > this.img.w)
       throw new RangeError(`frame ${group},${frameIdx} exceeds sheet bounds ${this.img.w}x${this.img.h}`);
     const idx = new Uint8Array(fw * fh);
