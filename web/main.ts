@@ -46,7 +46,10 @@ let nextSlot = 0;
 function sheetOf(f: Fish): SpriteSheet | null {
   if (!fishSheets.length) return null;
   let i = fishSlot.get(f);
-  if (i === undefined) fishSlot.set(f, (i = nextSlot++));
+  if (i === undefined) {
+    i = nextSlot++;
+    fishSlot.set(f, i);
+  }
   return fishSheets[i % fishSheets.length]!;
 }
 loadAzpack(async (p) => {
