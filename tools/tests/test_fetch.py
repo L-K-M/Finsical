@@ -106,12 +106,16 @@ class TestHarvest(unittest.TestCase):
         self.assertEqual(len(_harvest("outer.zip", blob, self.out)), 1)
 
     def test_budget_exhaustion_skips_remaining_entries(self):
+        one = fake_pack(bmp_8bit())
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as z:
-            z.writestr("a/fish.fsh", fake_pack(bmp_8bit()))
-            z.writestr("b/fish.fsh", fake_pack(bmp_8bit()))
+            z.writestr("a/fish.fsh", one)
+            z.writestr("b/fish.fsh", one)
         self.assertEqual(
             _harvest("z.zip", buf.getvalue(), self.out, 0, [0]), [])
+        # Exactly enough budget for the first entry: it lands, rest skip.
+        made = _harvest("z.zip", buf.getvalue(), self.out, 0, [len(one)])
+        self.assertEqual(len(made), 1)
 
     def test_read_capped_overrun(self):
         from tools.fetch import _read_capped

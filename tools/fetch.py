@@ -118,7 +118,7 @@ def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,
                       "exhausted", file=sys.stderr)
                 continue
             try:
-                blob = _read_capped(zf, zi, _ENTRY_CAP)
+                blob = _read_capped(zf, zi, min(_ENTRY_CAP, budget[0]))
                 if blob is None:
                     print(f"  {zi.filename}: skipped, decompressed data "
                           "over cap", file=sys.stderr)
