@@ -151,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         made = fetch(args.ident, args.out, args.include, args.downloads)
-    except (urllib.error.URLError, OSError) as e:
+    except OSError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     for p in made:
