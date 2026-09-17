@@ -72,9 +72,9 @@ def iter_frames(b: bytes) -> Iterator[tuple[int, int, Frame]]:
             if p + 10 > len(b):
                 return
             w, h, a, ln = struct.unpack_from("<HHHI", b, p)
-            # the codec emits at most ~64 run pixels per stream byte plus
-            # 1 literal per byte, so w*h can't exceed ~64*ln; a small
-            # slack covers real streams that underfill slightly.
+            # Plausibility guard: ~64 decoded pixels per stream byte, plus
+            # slack for frames whose stream underfills the frame. Keep the
+            # figures in sync with decode_pixels' item grammar.
             if not (0 < w < 4096 and 0 < h < 4096 and p + 10 + ln <= len(b)
                     and w * h <= 64 * ln + 0x400):
                 return
