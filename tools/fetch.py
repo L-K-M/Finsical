@@ -73,6 +73,17 @@ def _emit_source(name: str, data: bytes, outdir: str) -> str | None:
     return None
 
 
+_ENTRY_CAP = 1 << 30  # per-entry decompressed-byte cap
+
+
+def _read_capped(zf: zipfile.ZipFile, zi: zipfile.ZipInfo,
+                 cap: int) -> bytes | None:
+    """Read a zip entry, returning None when it exceeds cap bytes."""
+    with zf.open(zi) as fh:
+        blob = fh.read(cap + 1)
+    return None if len(blob) > cap else blob
+
+
 def _harvest(name: str, data: bytes, outdir: str) -> list[str]:
     """Recurse into archives; emit .azpack for anything importable."""
     lower = name.lower()
@@ -91,18 +102,17 @@ def _harvest(name: str, data: bytes, outdir: str) -> list[str]:
             base = os.path.basename(zi.filename)
             if not base:
                 continue
-            if zi.file_size > 1 << 30:
-                print(f"  {zi.filename}: skipped, {zi.file_size} bytes "
-                      "over 1 GiB cap", file=sys.stderr)
+            if zi.file_size > _ENTRY_CAP:
+                print(f"  {zi.filename}: skipped, declares "
+                      f"{zi.file_size} bytes over cap", file=sys.stderr)
                 continue
             try:
-                with zf.open(zi) as fh:
-                    data = fh.read((1 << 30) + 1)
-                if len(data) > 1 << 30:
-                    print(f"  {zi.filename}: skipped, decompressed over "
-                          "1 GiB cap", file=sys.stderr)
+                blob = _read_capped(zf, zi, _ENTRY_CAP)
+                if blob is None:
+                    print(f"  {zi.filename}: skipped, decompressed data "
+                          "over cap", file=sys.stderr)
                     continue
-                made += _harvest(base, data, outdir)
+                made += _harvest(base, blob, outdir)
             except Exception as e:
                 print(f"  {zi.filename}: {type(e).__name__}: {e}",
                       file=sys.stderr)

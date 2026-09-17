@@ -81,6 +81,16 @@ class TestHarvest(unittest.TestCase):
             data[i + off:i + off + 4] = (2 << 30).to_bytes(4, "little")
         self.assertEqual(_harvest("a.zip", bytes(data), self.out), [])
 
+    def test_read_capped_overrun(self):
+        from tools.fetch import _read_capped
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("big.bin", b"\x00" * 2048)
+        with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as zf:
+            zi = zf.infolist()[0]
+            self.assertIsNone(_read_capped(zf, zi, 1024))
+            self.assertEqual(len(_read_capped(zf, zi, 4096)), 2048)
+
     def test_invalid_include_regex_reports_usage_error(self):
         from tools.fetch import main
         buf = io.StringIO()
