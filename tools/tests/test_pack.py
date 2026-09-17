@@ -2,7 +2,7 @@ import struct
 import unittest
 
 from tools.az.pack import Pack, PackError, is_pack
-from tools.tests.fixtures import build_bmp8, build_pack
+from tools.tests.fixtures import build_bmp8, build_fsh, build_pack
 
 PAL = [(0, 0, 0), (255, 255, 255)]
 
@@ -85,6 +85,27 @@ class TestEmit(unittest.TestCase):
             self.assertTrue(os.path.exists(os.path.join(td, img[0]["image"])))
             for c in m["chunks"]:
                 self.assertTrue(os.path.exists(os.path.join(td, c["file"])))
+
+    def test_emit_decodes_sprite_streams(self):
+        import json
+        import os
+        import tempfile
+        from tools.az.emit import emit
+
+        bmp = build_bmp8(2, 2, bytes([0, 1, 1, 0]), PAL)
+        px = bytes([1] * 8 + [0] * 8)  # 4x4, column-major-ish pattern
+        stream = build_fsh(2, [(4, 4, px), (4, 4, px[::-1])])
+        pack = Pack(build_pack([bmp, stream],
+                               [(0x258, 0xFFFF, 0), (0xC8, 0xFFFF, 1)]))
+        with tempfile.TemporaryDirectory() as td:
+            m = emit(pack, td)
+            sp = [c for c in m["chunks"] if "sprites" in c]
+            self.assertEqual(len(sp), 1)
+            meta = sp[0]["sprites"]
+            self.assertEqual((meta["groups"], meta["framesPerGroup"]), (1, 2))
+            self.assertEqual((meta["cellW"], meta["cellH"]), (4, 4))
+            self.assertEqual(meta["dims"], [[4, 4], [4, 4]])
+            self.assertTrue(os.path.exists(os.path.join(td, meta["image"])))
 
     def test_emit_survives_bad_bmp(self):
         import os

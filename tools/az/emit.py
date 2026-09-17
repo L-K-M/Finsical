@@ -3,13 +3,15 @@
 A bundle is:
   manifest.json   — pack metadata + per-chunk records (id, kind, file)
   images/         — BMP chunks converted to PNG
+  sprites/        — decoded sprite-stream chunks as PNG sheets
   chunks/         — every chunk's raw payload (id-named), for later decoding
 """
 import json
 import os
 import struct
 
-from .img import read_bmp, write_png
+from .fsh import is_sprite_stream, iter_frames
+from .img import bmp_palette, read_bmp, save_indexed_png, write_png
 from .pack import Pack
 
 
@@ -19,9 +21,45 @@ def _chunk_name(c):
     return f"{rid}_{sub}_{c.pos:x}"
 
 
+def _sprite_sheet(payload: bytes):
+    """Decode a sprite-stream chunk into a grid sheet.
+
+    Returns (groups, frames_per_group, cell_w, cell_h, sheet_idx, dims)
+    where dims lists each frame's real (w, h) in emission order, or None
+    if the payload isn't a sprite stream.
+    """
+    if not is_sprite_stream(payload):
+        return None
+    frames = []
+    ng = nf = 0
+    for g, f, fr in iter_frames(payload):
+        frames.append((g, f, fr))
+        ng = max(ng, g + 1)
+        nf = max(nf, f + 1)
+    if not frames:
+        return None
+    cw = max(fr.w for _, _, fr in frames)
+    ch = max(fr.h for _, _, fr in frames)
+    sw, sh = cw * nf, ch * ng
+    sheet = bytearray(sw * sh)
+    for g, f, fr in frames:
+        for y in range(fr.h):
+            base = (g * ch + y) * sw + f * cw
+            sheet[base:base + fr.w] = fr.idx[y * fr.w:(y + 1) * fr.w]
+    dims = [[fr.w, fr.h] for _, _, fr in frames]
+    return ng, nf, cw, ch, bytes(sheet), dims
+
+
 def emit(pack: Pack, outdir: str) -> dict:
     os.makedirs(os.path.join(outdir, "images"), exist_ok=True)
+    os.makedirs(os.path.join(outdir, "sprites"), exist_ok=True)
     os.makedirs(os.path.join(outdir, "chunks"), exist_ok=True)
+
+    # sprite frames are palette-indexed; borrow the palette of the first
+    # BMP chunk (fish packs embed a portrait that shares it), else gray.
+    pal = next((bmp_palette(c.payload) for c in pack.chunks
+                if c.is_bmp and bmp_palette(c.payload)),
+               [(i, i, i) for i in range(256)])
 
     records = []
     for c in pack.chunks:
@@ -48,6 +86,17 @@ def emit(pack: Pack, outdir: str) -> dict:
                 write_png(os.path.join(outdir, img), w, h, rgba)
                 rec["image"] = img
                 rec["w"], rec["h"] = w, h
+        else:
+            sheet = _sprite_sheet(c.payload)
+            if sheet is not None:
+                ng, nf, cw, ch, idx, dims = sheet
+                img = f"sprites/{fname}.png"
+                save_indexed_png(os.path.join(outdir, img),
+                                 cw * nf, ch * ng, idx, pal)
+                rec["sprites"] = {
+                    "image": img, "groups": ng, "framesPerGroup": nf,
+                    "cellW": cw, "cellH": ch, "dims": dims,
+                }
         records.append(rec)
 
     manifest = {

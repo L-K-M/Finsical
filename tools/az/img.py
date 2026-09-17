@@ -71,6 +71,22 @@ def read_bmp(d, off=0):
     return w, h, bytes(rgba), size
 
 
+def bmp_palette(d, off=0):
+    """Return the BMP color table as [(r,g,b), ...] (empty if unreadable)."""
+    try:
+        assert d[off:off + 2] == b'BM'
+        hdr = struct.unpack_from('<I', d, off + 14)[0]
+        bpp = struct.unpack_from('<H', d, off + 28)[0]
+        ncol = struct.unpack_from('<I', d, off + 46)[0] or (1 << bpp)
+        pal = []
+        for i in range(min(ncol, 256)):
+            b, g, r, _ = d[off + 14 + hdr + i * 4: off + 18 + hdr + i * 4]
+            pal.append((r, g, b))
+        return pal
+    except Exception:
+        return []
+
+
 def write_png(path, w, h, rgba):
     def chunk(tag, data):
         c = struct.pack('>I', len(data)) + tag + data
