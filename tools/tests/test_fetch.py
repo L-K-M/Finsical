@@ -105,6 +105,14 @@ class TestHarvest(unittest.TestCase):
             blob = b.getvalue()
         self.assertEqual(len(_harvest("outer.zip", blob, self.out)), 1)
 
+    def test_budget_exhaustion_skips_remaining_entries(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("a/fish.fsh", fake_pack(bmp_8bit()))
+            z.writestr("b/fish.fsh", fake_pack(bmp_8bit()))
+        self.assertEqual(
+            _harvest("z.zip", buf.getvalue(), self.out, 0, [0]), [])
+
     def test_read_capped_overrun(self):
         from tools.fetch import _read_capped
         buf = io.BytesIO()
