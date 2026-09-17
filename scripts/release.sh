@@ -49,6 +49,13 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
+# Releasing a stale main tags old code; refuse unless main is current.
+git fetch origin main
+if [[ -n "$(git rev-list HEAD..origin/main)" ]]; then
+  echo "Local main is behind origin/main; pull first." >&2
+  exit 1
+fi
+
 readonly tag="v$version"
 if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
   echo "Tag $tag already exists." >&2
