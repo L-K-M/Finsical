@@ -9,7 +9,7 @@ $(APP): bundle Finsical.swift Info.plist
 	cp Info.plist $(APP).staging/Contents/
 	cp ../web/index.html ../dist/bundle.js $(APP).staging/Contents/Resources/web/
 	@if [ -d ../web/pack ]; then cp -r ../web/pack $(APP).staging/Contents/Resources/web/; fi
-	swiftc -O -o $(APP).staging/Contents/MacOS/Finsical Finsical.swift
+	MACOSX_DEPLOYMENT_TARGET=12.0 swiftc -O -o $(APP).staging/Contents/MacOS/Finsical Finsical.swift
 	rm -rf $(APP) && mv $(APP).staging $(APP)
 	codesign --force --sign - $(APP)
 	@echo "Built $(APP)"

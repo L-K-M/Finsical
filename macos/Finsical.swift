@@ -17,7 +17,8 @@ final class WebHandler: NSObject, WKURLSchemeHandler {
             task.didFailWithError(URLError(.unsupportedURL))
             return
         }
-        let file = root.appendingPathComponent(url.path).standardizedFileURL
+        let path = url.path.hasSuffix("/") ? url.path + "index.html" : url.path
+        let file = root.appendingPathComponent(path).standardizedFileURL
         // Stay inside the web root.
         guard file.path.hasPrefix(root.path + "/") else {
             task.didFailWithError(URLError(.fileDoesNotExist))
@@ -28,7 +29,7 @@ final class WebHandler: NSObject, WKURLSchemeHandler {
             let ext = file.pathExtension.lowercased()
             let res = URLResponse(url: url, mimeType: WebHandler.mime[ext] ?? "application/octet-stream",
                                   expectedContentLength: data.count,
-                                  textEncodingName: nil)
+                                  textEncodingName: "utf-8")
             task.didReceive(res)
             task.didReceive(data)
             task.didFinish()
