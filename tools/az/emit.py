@@ -45,7 +45,8 @@ def _sprite_sheet(payload: bytes):
     for g, f, fr in frames:
         for y in range(fr.h):
             base = (g * ch + y) * sw + f * cw
-            sheet[base:base + fr.w] = fr.idx[y * fr.w:(y + 1) * fr.w]
+            row = fr.idx[y * fr.w:(y + 1) * fr.w]
+            sheet[base:base + fr.w] = row.ljust(fr.w, b"\x00")[:fr.w]
     dims = [[fr.w, fr.h] for _, _, fr in frames]
     return ng, nf, cw, ch, bytes(sheet), dims
 

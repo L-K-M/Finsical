@@ -87,7 +87,6 @@ class TestEmit(unittest.TestCase):
                 self.assertTrue(os.path.exists(os.path.join(td, c["file"])))
 
     def test_emit_decodes_sprite_streams(self):
-        import json
         import os
         import tempfile
         from tools.az.emit import emit
