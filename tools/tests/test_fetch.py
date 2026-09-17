@@ -84,7 +84,7 @@ class TestHarvest(unittest.TestCase):
     def test_read_capped_overrun(self):
         from tools.fetch import _read_capped
         buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w") as z:
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
             z.writestr("big.bin", b"\x00" * 2048)
         with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as zf:
             zi = zf.infolist()[0]
