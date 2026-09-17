@@ -173,8 +173,8 @@ export async function loadAzpack(
   for (const c of manifest.chunks) {
     if (!c.sprites) continue;
     const imagePath = c.sprites.image;
-    if (imagePath.includes("..") || imagePath.startsWith("/"))
-      throw new Error(`manifest: unsafe image path ${imagePath}`);
+    if (typeof imagePath !== "string" || imagePath.includes("..") || imagePath.startsWith("/"))
+      throw new Error(`manifest: unsafe image path ${String(imagePath)}`);
     let img = images.get(imagePath);
     if (!img) {
       img = await decodeIndexedPng(await read(imagePath));

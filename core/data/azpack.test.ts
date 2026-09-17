@@ -24,7 +24,8 @@ function deflateStore(data: Uint8Array): Uint8Array {
 
 /** Minimal indexed-PNG encoder — mirrors tools/az/img.py save_indexed_png. */
 function encodeIndexedPng(w: number, h: number, idx: Uint8Array,
-                          pal: [number, number, number][]): Uint8Array {
+                          pal: [number, number, number][],
+                          plteBytes?: Uint8Array): Uint8Array {
   const chunk = (tag: string, data: Uint8Array) => {
     const out = new Uint8Array(12 + data.length);
     const v = new DataView(out.buffer);
@@ -43,7 +44,7 @@ function encodeIndexedPng(w: number, h: number, idx: Uint8Array,
   const hv = new DataView(ihdr.buffer);
   hv.setUint32(0, w); hv.setUint32(4, h);
   ihdr.set([8, 3, 0, 0, 0], 8); // 8-bit, indexed, no interlace
-  const plte = new Uint8Array(pal.flat());
+  const plte = plteBytes ?? new Uint8Array(pal.flat());
   const raw = new Uint8Array(h * (w + 1));
   for (let y = 0; y < h; y++) {
     const f = y % 5; // cycle row filters 0–4 to cover all unfilter branches
@@ -92,6 +93,11 @@ describe("decodeIndexedPng", () => {
     const png = encodeIndexedPng(2, 1, new Uint8Array([5, 0]), PAL);
     await expect(decodeIndexedPng(png))
       .rejects.toThrow(/palette index 5 out of range \(palette size \d+\)/);
+  });
+
+  it("rejects a PLTE whose length is not a multiple of 3", async () => {
+    const png = encodeIndexedPng(1, 1, new Uint8Array([0]), PAL, new Uint8Array(4));
+    await expect(decodeIndexedPng(png)).rejects.toThrow("png: bad PLTE length");
   });
 });
 
@@ -161,5 +167,20 @@ describe("loadAzpack", () => {
     };
     await expect(loadAzpack(async (p) => files[p] ?? new Uint8Array(0)))
       .rejects.toThrow("manifest: missing chunks array");
+  });
+
+  it("rejects an unsafe sprite image path", async () => {
+    const manifest = {
+      format: "azpack/1", tag: "XXXX", version: 1, names: [],
+      chunks: [{ file: "chunks/a.bin", size: 5, resId: 0xc8, sub: 0xffff,
+                 sprites: { image: "../outside/a.png", groups: 1,
+                            framesPerGroup: 1, cellW: 1, cellH: 1,
+                            dims: [[0, 0, 1, 1]] } }],
+    };
+    const files: Record<string, Uint8Array> = {
+      "manifest.json": new TextEncoder().encode(JSON.stringify(manifest)),
+    };
+    await expect(loadAzpack(async (p) => files[p] ?? new Uint8Array(0)))
+      .rejects.toThrow(/unsafe image path/);
   });
 });
