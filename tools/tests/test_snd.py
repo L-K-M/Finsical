@@ -100,5 +100,22 @@ class TestEmitSounds(unittest.TestCase):
             emit.sounds_from_rsrc = src
 
 
+class TestCliSounds(unittest.TestCase):
+    def test_all_undecodable_snd_fails(self):
+        import os, sys, tempfile
+        sys.path.insert(0, os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))))
+        from tools.tests.fixtures import build_rsrc
+        from tools.azpack import main
+        # fmt 99 is neither 1 nor 2 → every resource undecodable.
+        fork = build_rsrc({b"snd ": [(1, "bad", 0, struct.pack(">H", 99)
+                                     + b"\x00" * 20)]})
+        with tempfile.TemporaryDirectory() as td:
+            src = os.path.join(td, "x.rsrc")
+            with open(src, "wb") as f:
+                f.write(fork)
+            self.assertEqual(main([src, "-o", os.path.join(td, "o")]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

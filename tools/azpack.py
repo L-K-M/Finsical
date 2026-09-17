@@ -40,6 +40,9 @@ def main(argv: list[str] | None = None) -> int:
                 manifest = emit(Pack(data), out)
             elif has_sounds(data):
                 manifest = emit_sounds(data, out)
+                if not manifest["sounds"]:
+                    raise ValueError(
+                        "snd resources present but none decodable")
             else:
                 raise ValueError("not a pack or resource fork")
         except Exception as e:
@@ -47,7 +50,8 @@ def main(argv: list[str] | None = None) -> int:
             rc = 1
             continue
         n = sum(1 for c in manifest["chunks"] if "sprites" in c)
-        s = f", {len(manifest['sounds'])} sounds" if manifest["sounds"] else ""
+        snds = manifest.get("sounds") or []
+        s = f", {len(snds)} sounds" if snds else ""
         print(f"{src} -> {out}  ({len(manifest['chunks'])} chunks, "
               f"{n} sprite sheets{s})")
     return rc
