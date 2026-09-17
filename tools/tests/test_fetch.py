@@ -81,6 +81,18 @@ class TestHarvest(unittest.TestCase):
             data[i + off:i + off + 4] = (2 << 30).to_bytes(4, "little")
         self.assertEqual(_harvest("a.zip", bytes(data), self.out), [])
 
+    def test_nested_zip_depth_limited(self):
+        inner = io.BytesIO()
+        with zipfile.ZipFile(inner, "w") as z:
+            z.writestr("deep.fsh", fake_pack(bmp_8bit()))
+        blob = inner.getvalue()
+        for i in range(6):  # wrap 6 levels deep, beyond _MAX_ZIP_DEPTH
+            b = io.BytesIO()
+            with zipfile.ZipFile(b, "w") as z:
+                z.writestr(f"l{i}.zip", blob)
+            blob = b.getvalue()
+        self.assertEqual(_harvest("outer.zip", blob, self.out), [])
+
     def test_read_capped_overrun(self):
         from tools.fetch import _read_capped
         buf = io.BytesIO()

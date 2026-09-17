@@ -84,13 +84,17 @@ def _read_capped(zf: zipfile.ZipFile, zi: zipfile.ZipInfo,
     return None if len(blob) > cap else blob
 
 
-def _harvest(name: str, data: bytes, outdir: str) -> list[str]:
+_MAX_ZIP_DEPTH = 4
+
+
+def _harvest(name: str, data: bytes, outdir: str,
+             depth: int = 0) -> list[str]:
     """Recurse into archives; emit .azpack for anything importable."""
     lower = name.lower()
     if lower.endswith(IMPORTABLE):
         out = _emit_source(name, data, outdir)
         return [out] if out else []
-    if lower.endswith(".zip"):
+    if lower.endswith(".zip") and depth < _MAX_ZIP_DEPTH:
         made = []
         try:
             zf = zipfile.ZipFile(io.BytesIO(data))
@@ -112,7 +116,7 @@ def _harvest(name: str, data: bytes, outdir: str) -> list[str]:
                     print(f"  {zi.filename}: skipped, decompressed data "
                           "over cap", file=sys.stderr)
                     continue
-                made += _harvest(base, blob, outdir)
+                made += _harvest(base, blob, outdir, depth + 1)
             except Exception as e:
                 print(f"  {zi.filename}: {type(e).__name__}: {e}",
                       file=sys.stderr)
