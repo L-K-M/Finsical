@@ -1,23 +1,22 @@
 # Build Finsical.app — no Xcode project required, just the CLT toolchain.
 APP := Finsical.app
-WEB := $(APP)/Contents/Resources/web
 
 all: $(APP)
 
 $(APP): bundle Finsical.swift Info.plist
-	mkdir -p $(APP)/Contents/MacOS
-	rm -rf $(WEB)
-	mkdir -p $(WEB)
-	swiftc -O -o $(APP)/Contents/MacOS/Finsical Finsical.swift
-	cp Info.plist $(APP)/Contents/
-	cp ../web/index.html ../dist/bundle.js $(WEB)/
-	@if [ -d ../web/pack ]; then cp -r ../web/pack $(WEB)/; fi
+	rm -rf $(APP).staging
+	mkdir -p $(APP).staging/Contents/MacOS $(APP).staging/Contents/Resources/web
+	cp Info.plist $(APP).staging/Contents/
+	cp ../web/index.html ../dist/bundle.js $(APP).staging/Contents/Resources/web/
+	@if [ -d ../web/pack ]; then cp -r ../web/pack $(APP).staging/Contents/Resources/web/; fi
+	swiftc -O -o $(APP).staging/Contents/MacOS/Finsical Finsical.swift
+	rm -rf $(APP) && mv $(APP).staging $(APP)
 	@echo "Built $(APP)"
 
 bundle:
 	cd .. && npm run build
 
 clean:
-	rm -rf $(APP)
+	rm -rf $(APP) $(APP).staging
 
 .PHONY: all bundle clean
