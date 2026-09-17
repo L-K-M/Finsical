@@ -65,7 +65,7 @@ describe("Sim", () => {
   it("tap startles nearby fish only", () => {
     const sim = new Sim({ width: 300, height: 200 }, 9);
     const near = sim.addFish({ x: 100, y: 100 });
-    const far = sim.addFish({ x: 290, y: 190 });
+    const far = sim.addFish({ x: 280, y: 180 });
     sim.tap(90, 100);
     expect(near.state).toBe("startle");
     expect(far.state).toBe("drift");
