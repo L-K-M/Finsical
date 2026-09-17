@@ -24,10 +24,6 @@ class ResFile:
 
     @classmethod
     def from_bytes(cls, d):
-        return cls._from_data(d)
-
-    @classmethod
-    def _from_data(cls, d):
         self = cls.__new__(cls)
         self._init(d)
         return self

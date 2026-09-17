@@ -17,7 +17,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.az.emit import emit, emit_sounds
 from tools.az.pack import Pack, is_pack
-from tools.az.snd import sounds_from_rsrc
+from tools.az.snd import has_sounds
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -38,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
             os.makedirs(out, exist_ok=True)
             if is_pack(data):
                 manifest = emit(Pack(data), out)
-            elif any(True for _ in sounds_from_rsrc(data)):
+            elif has_sounds(data):
                 manifest = emit_sounds(data, out)
             else:
                 raise ValueError("not a pack or resource fork")
@@ -47,8 +47,9 @@ def main(argv: list[str] | None = None) -> int:
             rc = 1
             continue
         n = sum(1 for c in manifest["chunks"] if "sprites" in c)
+        s = f", {len(manifest['sounds'])} sounds" if manifest["sounds"] else ""
         print(f"{src} -> {out}  ({len(manifest['chunks'])} chunks, "
-              f"{n} sprite sheets)")
+              f"{n} sprite sheets{s})")
     return rc
 
 

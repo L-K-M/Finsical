@@ -80,5 +80,25 @@ class TestParse(unittest.TestCase):
         self.assertEqual(w.readframes(64), bytes(range(64)))
 
 
+class TestEmitSounds(unittest.TestCase):
+    def test_sanitized_name_collisions_deduped(self):
+        import tempfile, os, json
+        from tools.az import emit
+        wav = snd_to_wav(snd_fmt1_u8(b"\x80" * 8))
+        src = emit.sounds_from_rsrc
+        emit.sounds_from_rsrc = lambda d: iter(
+            [("A!B", wav), ("A?B", wav), ("", wav), ("a_b", wav)])
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                m = emit.emit_sounds(b"x", td)
+                files = [s["file"] for s in m["sounds"]]
+                self.assertEqual(len(set(files)), 4)
+                self.assertTrue(all(
+                    os.path.exists(os.path.join(td, f)) for f in files))
+                json.dumps(m)  # manifest stays serializable
+        finally:
+            emit.sounds_from_rsrc = src
+
+
 if __name__ == "__main__":
     unittest.main()

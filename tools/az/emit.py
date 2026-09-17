@@ -133,9 +133,16 @@ def emit_sounds(data: bytes, outdir: str) -> dict:
     """Emit a sounds-only .azpack from a resource fork (.rsrc)."""
     os.makedirs(os.path.join(outdir, "sounds"), exist_ok=True)
     records = []
+    used: set[str] = set()
     for name, wav in sounds_from_rsrc(data):
         safe = "".join(ch if ch.isalnum() or ch in "-_." else "_"
-                       for ch in name)
+                       for ch in name) or "snd"
+        base = safe
+        n = 2
+        while safe.casefold() in used:
+            safe = f"{base}-{n}"
+            n += 1
+        used.add(safe.casefold())
         path = f"sounds/{safe}.wav"
         with open(os.path.join(outdir, path), "wb") as f:
             f.write(wav)
@@ -152,9 +159,14 @@ def main(argv):
     if len(argv) != 3:
         raise SystemExit(f"usage: {argv[0]} <pack-file> <outdir>")
     src, outdir = argv[1], argv[2]
+    from .pack import is_pack
     with open(src, "rb") as f:
-        pack = Pack(f.read())
-    m = emit(pack, outdir)
+        data = f.read()
+    if not is_pack(data):
+        m = emit_sounds(data, outdir)
+        print(f"{src}: {len(m['sounds'])} sounds -> {outdir}")
+        return
+    m = emit(Pack(data), outdir)
     n_img = sum(1 for c in m["chunks"] if "image" in c)
     print(f"{src}: {len(m['chunks'])} chunks, {n_img} images -> {outdir}")
 
