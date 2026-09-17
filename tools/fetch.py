@@ -110,9 +110,10 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
         try:
             if name.lower().endswith(".iso"):
                 path = os.path.join(downloads, os.path.basename(name))
-                size = f.get("size")
-                want = (int(size)
-                        if isinstance(size, str) and size.isdigit() else None)
+                try:
+                    want = int(f.get("size"))
+                except (TypeError, ValueError):
+                    want = None
                 if not os.path.exists(path) or (want is not None
                                                 and os.path.getsize(path) != want):
                     _get(url, path + ".part")
