@@ -5,13 +5,20 @@
   <title>Finsical</title>
   <style>
     html, body { margin: 0; height: 100%; background: #000; }
+    #hint {
+      position: fixed; top: 6px; left: 8px; z-index: 1;
+      color: #9ab; font: 12px monospace; opacity: .6;
+      pointer-events: none;
+    }
     canvas {
       display: block; width: 100vw; height: 100vh; object-fit: contain;
       image-rendering: pixelated; /* keep the crunch */
+      touch-action: none;
     }
   </style>
 </head>
 <body>
+  <div id="hint">click surface to feed &middot; click glass to tap</div>
   <canvas id="tank" width="320" height="200"></canvas>
   <script src="bundle.js"></script>
 </body>
