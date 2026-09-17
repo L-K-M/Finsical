@@ -78,8 +78,8 @@ def bmp_palette(d, off=0):
             return []
         hdr = struct.unpack_from('<I', d, off + 14)[0]
         bpp = struct.unpack_from('<H', d, off + 28)[0]
-        if bpp not in (1, 4, 8):
-            return []  # paletted formats only
+        if hdr < 40 or bpp not in (1, 4, 8):
+            return []  # BITMAPINFOHEADER+ layouts, paletted formats only
         ncol = struct.unpack_from('<I', d, off + 46)[0] or (1 << bpp)
         pal = []
         for i in range(min(ncol, 256)):

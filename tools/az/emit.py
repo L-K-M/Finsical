@@ -25,8 +25,8 @@ def _sprite_sheet(payload: bytes):
     """Decode a sprite-stream chunk into a grid sheet.
 
     Returns (groups, frames_per_group, cell_w, cell_h, sheet_idx, dims)
-    where dims lists each frame's real (w, h) in emission order, or None
-    if the payload isn't a sprite stream.
+    where dims lists each frame's (group, frame, w, h) in emission order,
+    or None if the payload isn't a sprite stream.
     """
     if not is_sprite_stream(payload):
         return None
@@ -47,7 +47,7 @@ def _sprite_sheet(payload: bytes):
             base = (g * ch + y) * sw + f * cw
             row = fr.idx[y * fr.w:(y + 1) * fr.w]
             sheet[base:base + fr.w] = row.ljust(fr.w, b"\x00")[:fr.w]
-    dims = [[fr.w, fr.h] for _, _, fr in frames]
+    dims = [[g, f, fr.w, fr.h] for g, f, fr in frames]
     return ng, nf, cw, ch, bytes(sheet), dims
 
 

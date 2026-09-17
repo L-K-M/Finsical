@@ -103,7 +103,7 @@ class TestEmit(unittest.TestCase):
             meta = sp[0]["sprites"]
             self.assertEqual((meta["groups"], meta["framesPerGroup"]), (1, 2))
             self.assertEqual((meta["cellW"], meta["cellH"]), (4, 4))
-            self.assertEqual(meta["dims"], [[4, 4], [4, 4]])
+            self.assertEqual(meta["dims"], [[0, 0, 4, 4], [0, 1, 4, 4]])
             path = os.path.join(td, meta["image"])
             self.assertTrue(os.path.exists(path))
             with open(path, "rb") as fh:
