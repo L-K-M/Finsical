@@ -106,6 +106,7 @@ export async function decodeIndexedPng(d: Uint8Array): Promise<IndexedImage> {
           v.getUint8(10) !== 0 || v.getUint8(11) !== 0 || v.getUint8(12) !== 0)
         throw new Error("png: need 8-bit indexed, non-interlaced, methods 0");
     } else if (tag === "PLTE") {
+      if (len % 3 !== 0) throw new Error("png: bad PLTE length");
       for (let i = 0; i + 2 < len; i += 3)
         palette.push([body[i] ?? 0, body[i + 1] ?? 0, body[i + 2] ?? 0]);
     } else if (tag === "IDAT") idat.push(body);
@@ -171,10 +172,13 @@ export async function loadAzpack(
   const images = new Map<string, IndexedImage>();
   for (const c of manifest.chunks) {
     if (!c.sprites) continue;
-    let img = images.get(c.sprites.image);
+    const imagePath = c.sprites.image;
+    if (imagePath.includes("..") || imagePath.startsWith("/"))
+      throw new Error(`manifest: unsafe image path ${imagePath}`);
+    let img = images.get(imagePath);
     if (!img) {
-      img = await decodeIndexedPng(await read(c.sprites.image));
-      images.set(c.sprites.image, img);
+      img = await decodeIndexedPng(await read(imagePath));
+      images.set(imagePath, img);
     }
     sheets.set(c.file, new SpriteSheet(c.sprites, img));
   }
