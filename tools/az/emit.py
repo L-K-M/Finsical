@@ -108,7 +108,11 @@ def emit(pack: Pack, outdir: str) -> dict:
                         "paletteSrc": pal_src,
                     }
                 except Exception as e:
-                    rec["spriteError"] = str(e)
+                    rec["spriteError"] = f"{type(e).__name__}: {e}"
+                    try:
+                        os.remove(os.path.join(outdir, img))
+                    except OSError:
+                        pass
         records.append(rec)
 
     manifest = {
