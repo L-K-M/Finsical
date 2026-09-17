@@ -14,6 +14,8 @@ def _packbits_literal(data: bytes) -> bytes:
 
 def build_bmp8(w: int, h: int, idx: bytes, pal: list) -> bytes:
     """8-bit uncompressed BMP. idx is top-down row-major pixel indices."""
+    assert len(idx) == w * h, f"idx is {len(idx)} bytes, expected {w * h}"
+    assert 0 < len(pal) <= 256, "8-bit palette must hold 1-256 entries"
     stride = ((w * 8 + 31) // 32) * 4
     palbytes = b"".join(struct.pack("<4B", b, g, r, 0) for r, g, b in pal)
     palbytes += b"\0" * (256 - len(pal)) * 4
@@ -25,6 +27,26 @@ def build_bmp8(w: int, h: int, idx: bytes, pal: list) -> bytes:
     size = px_off + len(px)
     hdr = (b"BM" + struct.pack("<IHHI", size, 0, 0, px_off)
            + struct.pack("<IiiHHIIiiII", 40, w, h, 1, 8, 0, len(px),
+                         2835, 2835, 256, 0))
+    return hdr + palbytes + bytes(px)
+
+
+def build_bmp8_rle(w: int, h: int, idx: bytes, pal: list) -> bytes:
+    """8-bit RLE8 BMP: each row one absolute run + EOL, then end-of-bitmap."""
+    assert len(idx) == w * h
+    palbytes = b"".join(struct.pack("<4B", b, g, r, 0) for r, g, b in pal)
+    palbytes += b"\0" * (256 - len(pal)) * 4
+    px = bytearray()
+    for y in range(h - 1, -1, -1):  # stored bottom-up
+        px += b"\x00" + bytes([w]) + idx[y * w:(y + 1) * w]
+        if w & 1:
+            px += b"\x00"          # absolute runs pad to even
+        px += b"\x00\x00"          # end of line
+    px += b"\x00\x01"              # end of bitmap
+    px_off = 14 + 40 + 256 * 4
+    size = px_off + len(px)
+    hdr = (b"BM" + struct.pack("<IHHI", size, 0, 0, px_off)
+           + struct.pack("<IiiHHIIiiII", 40, w, h, 1, 8, 1, len(px),
                          2835, 2835, 256, 0))
     return hdr + palbytes + bytes(px)
 
@@ -48,7 +70,10 @@ def build_pict8(w: int, h: int, idx: bytes, pal: list) -> bytes:
     out += struct.pack(">4H4HH", 0, 0, h, w, 0, 0, h, w, 0)  # src, dst, mode
     for y in range(h):
         enc = _packbits_literal(idx[y * w:(y + 1) * w])
-        out.append(len(enc))
+        if rowbytes > 250:  # word-length row counts when rowBytes > 250
+            out += struct.pack(">H", len(enc))
+        else:
+            out.append(len(enc))
         out += enc
     out += struct.pack(">H", 0x00FF)               # endOfPic
     return bytes(out)
@@ -65,6 +90,7 @@ def build_rsrc(types: dict) -> bytes:
 
     type_list = bytearray(struct.pack(">H", len(types) - 1))
     ref_lists = bytearray()
+    # ref-list offsets are relative to the start of the type list
     ref_base = 2 + 8 * len(types)
     name_list = bytearray()
     name_offsets = {}

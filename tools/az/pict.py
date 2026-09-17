@@ -56,7 +56,8 @@ class Pict:
         pal = []
         self._u32()                      # ctSeed
         self._u16()                      # ctFlags
-        n = self._u16() + 1              # ctSize
+        ct = self._u16()                 # ctSize (-1 = no entries)
+        n = 0 if ct == 0xFFFF else ct + 1
         for _ in range(min(n, 4096)):
             self._u16()                  # value
             r, g, b = struct.unpack_from('>3H', self.d, self.p); self.p += 6
@@ -91,7 +92,7 @@ class Pict:
                 continue
             if struct.unpack_from('>H', d, i + 10)[0] != 0:  # pmVersion
                 continue
-            if struct.unpack_from('>H', d, i + 30)[0] not in (1, 2, 4, 8, 16, 32):
+            if struct.unpack_from('>H', d, i + 28)[0] not in (1, 2, 4, 8, 16, 32):
                 continue
             self.p = i
             return True

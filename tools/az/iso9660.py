@@ -37,7 +37,7 @@ class Iso:
         data = self._read(rec['extent'], rec['size'])
         out = []
         p = 0
-        while p < rec['size']:
+        while p < len(data):
             if data[p] == 0:
                 p += self.sector - (p % self.sector)
                 continue
@@ -50,12 +50,17 @@ class Iso:
     def read_file(self, rec):
         return self._read(rec['extent'], rec['size'])
 
-    def walk(self, rec=None, prefix=''):
+    def walk(self, rec=None, prefix='', seen=None):
+        seen = set() if seen is None else seen
         for r in self.listdir(rec):
+            if r['dir']:
+                if r['extent'] in seen:
+                    continue
+                seen.add(r['extent'])
             p = prefix + '/' + r['name']
             yield p, r
             if r['dir']:
-                yield from self.walk(r, p)
+                yield from self.walk(r, p, seen)
 
 
 if __name__ == '__main__':
