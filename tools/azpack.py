@@ -40,9 +40,6 @@ def main(argv: list[str] | None = None) -> int:
                 manifest = emit(Pack(data), out)
             elif has_sounds(data):
                 manifest = emit_sounds(data, out)
-                if not manifest["sounds"]:
-                    raise ValueError(
-                        "snd resources present but none decodable")
             else:
                 raise ValueError("not a pack or resource fork")
         except Exception as e:
