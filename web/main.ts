@@ -135,7 +135,8 @@ window.addEventListener("keydown", (e) => {
   }
   if ((e.metaKey || e.ctrlKey) && k === "i") {
     importPanel.open(); e.preventDefault();
-  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" && !e.repeat) {
+  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" &&
+             !e.repeat && !importPanel.isOpen) {
     feedFish(); // bare F: Cmd-F is Find in browsers; the native menu owns ⌘F
   }
 });
