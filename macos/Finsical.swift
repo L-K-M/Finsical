@@ -54,15 +54,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     private var window: NSWindow!
     private var webView: WKWebView!
 
-    /// Menu actions evaluate JS entry points exposed by web/main.ts.
+    /// Menu actions evaluate JS entry points exposed by web/main.ts. A
+    /// missing hook throws so the failure lands in the log, not silently.
     @objc func openImport() {
-        webView?.evaluateJavaScript("window.finsical?.openImport() ?? null") { _, error in
+        let js = "window.finsical?.openImport ? window.finsical.openImport()" +
+                 " : (() => { throw new Error('window.finsical.openImport missing') })()"
+        webView?.evaluateJavaScript(js) { _, error in
             if let error { NSLog("Finsical: openImport JS failed: \(error.localizedDescription)") }
         }
     }
 
     @objc func feedFish() {
-        webView?.evaluateJavaScript("window.finsical?.feedFish() ?? null") { _, error in
+        let js = "window.finsical?.feedFish ? window.finsical.feedFish()" +
+                 " : (() => { throw new Error('window.finsical.feedFish missing') })()"
+        webView?.evaluateJavaScript(js) { _, error in
             if let error { NSLog("Finsical: feedFish JS failed: \(error.localizedDescription)") }
         }
     }
@@ -71,6 +76,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         if let url = URL(string: "https://archive.org/donate") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    /// Keep the aquarium on screen: hand any top-level http(s) navigation
+    /// to the default browser instead of replacing the app's content.
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor action: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if action.targetFrame?.isMainFrame == true,
+           let url = action.request.url,
+           url.scheme == "http" || url.scheme == "https" {
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
     }
 
     /// target=_blank links (the donate link) have no host view; open them
