@@ -181,7 +181,9 @@ describe("fshToSheets", () => {
     // the encoder splits a >255 run into a max-run `01 FF col 00 00` plus a
     // trailing partial command; a 1-wide frame keeps column/row-major equal.
     const px = new Uint8Array(300).fill(7);
-    const sheet = [...fshToSheets(buildPack(rawSpriteChunk(1, 300, encodeFrameStream(px)))).values()][0]!;
+    const stream = encodeFrameStream(px);
+    expect([...stream]).toEqual([0x01, 0xff, 0x07, 0x00, 0x00, 0xd3, 0xff, 0x07, 0x00, 0x00]);
+    const sheet = [...fshToSheets(buildPack(rawSpriteChunk(1, 300, stream))).values()][0]!;
     expect([...sheet.frame(0, 0).idx]).toEqual([...px]);
   });
 });

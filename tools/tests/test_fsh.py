@@ -81,7 +81,7 @@ class TestSpriteStream(unittest.TestCase):
         from tools.tests.fixtures import _encode_frame_stream
         px = bytes([7]) * 300  # one 300-tall column of color 7
         stream = _encode_frame_stream(px)
-        self.assertTrue(stream.startswith(b"\x01\xff\x07\x00\x00"))
+        self.assertEqual(stream, b"\x01\xff\x07\x00\x00\xd3\xff\x07\x00\x00")
         self.assertEqual(decode_pixels(stream, 1, 300), px)
 
     def test_sniff(self):
