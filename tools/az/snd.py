@@ -4,13 +4,15 @@ Formats handled:
   - encode 0x00: raw 8-bit samples -> 8-bit WAV. Verified unsigned on the
     AQUAZONE 1.7.9 fork: every raw resource's samples center on 0x80
     (silence), so bytes pass through unmodified — no sign flip.
-  - encode 0xfe (cmpSH/MACE) is rejected here; the MACE3 decoder lands
-    separately (branch tools/sounds-mace) because the coefficient-table
-    diff exceeds the automated reviewer's output budget.
+  - encode 0xfe (cmpSH) with compID 3: MACE 3:1 -> 16-bit WAV
+    (decoder: tools/az/mace.py, ported from FFmpeg libavcodec/mace.c)
 """
 import struct
 import wave
 import io
+
+from .mace import mace3_decode
+
 
 class SndError(Exception):
     pass
@@ -58,7 +60,27 @@ def parse_snd(blob: bytes):
                 raise SndError("truncated samples")
             return rate // 65536, pcm, 1
         if enc == 0xFE:
-            raise SndError("compressed snd (MACE) unsupported")
+            # cmpSH: numChannels at +6 (1 on every real resource),
+            # sampleFrames at +22 counts 2-byte MACE packets — on every
+            # MACE resource in the AQUAZONE 1.7.9 fork, field*2 equals the
+            # bytes following the 64-byte header (one, 'EventTiyu', carries
+            # a single trailing pad byte, so compare with < not !=).
+            if len(blob) < hoff + 64:
+                raise SndError("truncated cmpSH header")
+            nch, = struct.unpack_from(">h", blob, hoff + 6)
+            if nch != 1:
+                raise SndError(f"unsupported channel count {nch}")
+            rate, = struct.unpack_from(">I", blob, hoff + 8)
+            npackets, = struct.unpack_from(">I", blob, hoff + 22)
+            comp, = struct.unpack_from(">h", blob, hoff + 56)
+            if comp != 3:
+                raise SndError(f"unsupported compression {comp}")
+            data = blob[hoff + 64:hoff + 64 + npackets * 2]
+            if len(data) < npackets * 2:
+                raise SndError(
+                    f"truncated samples: need {npackets * 2} bytes "
+                    f"for {npackets} packets, got {len(data)}")
+            return rate // 65536, mace3_decode(data, npackets), 2
     except (struct.error, IndexError) as e:
         raise SndError(f"malformed snd data: {e}") from e
     raise SndError(f"unsupported encode {enc:#x}")
