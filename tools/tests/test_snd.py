@@ -83,6 +83,18 @@ class TestParse(unittest.TestCase):
                          "150be20e43645c06031f3dbde785d2a7"
                          "e996450eb07766e331a5ad94656b9eac")
 
+    def test_parse_snd_mace3_golden(self):
+        # End-to-end pin of the 0xFE branch: header reads at hoff+8/+22/+56
+        # and the +64 data slice. Synthetic fixture — no original sample
+        # data committed.
+        import hashlib
+        rate, pcm, width = parse_snd(snd_fmt1_mace(b"\x24" * 20, 10))
+        self.assertEqual(width, 2)
+        self.assertEqual(rate, 22254)
+        self.assertEqual(hashlib.sha256(pcm).hexdigest(),
+                         "39205b11a9f1c4636aa66013b7f36ee6"
+                         "87e6ac5993d325ecab0835b6e91a016f")
+
     def test_rejects_bad_format(self):
         with self.assertRaises(SndError):
             parse_snd(b"\x00\x07" + b"\x00" * 20)

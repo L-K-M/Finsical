@@ -33,15 +33,16 @@ def _to_s16(current):
         (0x10000 if current & 0x8000 else 0)
 
 
-def mace3_decode(data: bytes, nframes: int) -> bytes:
-    """MACE 3:1 mono: 2 bytes -> 6 samples. Returns s16-LE PCM."""
-    if len(data) < nframes * 2:
+def mace3_decode(data: bytes, npackets: int) -> bytes:
+    """MACE 3:1 mono: each 2-byte packet decodes to 6 samples.
+    Returns s16-LE PCM."""
+    if len(data) < npackets * 2:
         raise ValueError(
-            f"MACE3: need {nframes} frames ({nframes * 2} bytes), "
-            f"got {len(data)}")
+            f"MACE3: need {npackets} packets "
+            f"({npackets * 2} bytes), got {len(data)}")
     index = level = 0
     out = bytearray()
-    for j in range(nframes):
+    for j in range(npackets):
         for k in range(2):
             pkt = data[j * 2 + k]
             for val in (pkt & 7, (pkt >> 3) & 3, pkt >> 5):

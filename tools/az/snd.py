@@ -61,16 +61,19 @@ def parse_snd(blob: bytes):
             return rate // 65536, pcm, 1
         if enc == 0xFE:
             rate, = struct.unpack_from(">I", blob, hoff + 8)
-            nframes, = struct.unpack_from(">I", blob, hoff + 22)
+            # cmpSH calls this field numFrames, but for MACE it counts
+            # 2-byte packets: on every MACE resource in the AQUAZONE 1.7.9
+            # fork, field*2 == bytes following the 64-byte header.
+            npackets, = struct.unpack_from(">I", blob, hoff + 22)
             comp, = struct.unpack_from(">h", blob, hoff + 56)
             if comp != 3:
                 raise SndError(f"unsupported compression {comp}")
-            data = blob[hoff + 64:hoff + 64 + nframes * 2]
-            if len(data) < nframes * 2:
+            data = blob[hoff + 64:hoff + 64 + npackets * 2]
+            if len(data) < npackets * 2:
                 raise SndError(
-                    f"truncated samples: need {nframes * 2} bytes "
-                    f"for {nframes} frames, got {len(data)}")
-            return rate // 65536, mace3_decode(data, nframes), 2
+                    f"truncated samples: need {npackets * 2} bytes "
+                    f"for {npackets} packets, got {len(data)}")
+            return rate // 65536, mace3_decode(data, npackets), 2
     except (struct.error, IndexError) as e:
         raise SndError(f"malformed snd data: {e}") from e
     raise SndError(f"unsupported encode {enc:#x}")
