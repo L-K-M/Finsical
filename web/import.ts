@@ -140,9 +140,9 @@ export function mountImportPanel(h: ImportHandlers): void {
           a.textContent = `${it.inner}…`;
           void importAddon(it.url)
             .then((rs) => {
-              if (!rs.length)
-                throw new Error("no pack inside");
-              for (const r of rs) {
+              const usable = rs.filter((r) => r.sheets.size || r.images.size);
+              if (!usable.length) throw new Error("no pack inside");
+              for (const r of usable) {
                 if (r.sheets.size) h.onSheets(r.sheets, it.inner);
                 if (r.images.size) h.onImages(r.images.values(), it.inner);
               }
