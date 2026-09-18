@@ -95,4 +95,12 @@ describe("zipRead", () => {
     new DataView(bad.buffer).setUint16(cdOff + 28, 0xffff, true);
     expect(() => zipEntries(bad)).toThrow(/truncated/);
   });
+
+  it("rejects encrypted entries", () => {
+    const z = buildZip("x.fsh", enc.encode("abc"));
+    const bad = z.slice();
+    const cdOff = 30 + 5 + 3;
+    new DataView(bad.buffer).setUint16(cdOff + 8, 1, true);
+    expect(() => zipEntries(bad)).toThrow(/encrypted/);
+  });
 });
