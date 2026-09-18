@@ -39,30 +39,36 @@ function buildBmp8(pal: [number, number, number][]): Uint8Array {
   return hdr;
 }
 
-/** Run/literal encoder mirroring tools/tests/fixtures.py. */
+/** Signed-i16 run/literal encoder mirroring tools/tests/fixtures.py. */
 function encodeFrameStream(px: Uint8Array): Uint8Array {
   const out: number[] = [];
   const n = px.length;
+  const i16 = (v: number) => { out.push(v & 0xff, (v >> 8) & 0xff); };
   let i = 0;
   while (i < n) {
     let j = i;
     while (j < n && px[j] === px[i]) j++;
-    let run = j - i;
-    const col = px[i]!;
-    if (col === 0xff) throw new Error("0xFF cannot lead a run command");
-    const lits: number[] = [];
-    let k = j;
+    if (j - i >= 2) {
+      let run = j - i;
+      while (run > 0x7fff) { i16(-0x7fff); out.push(px[i]!); run -= 0x7fff; }
+      i16(-run); out.push(px[i]!);
+      i = j;
+      continue;
+    }
+    let k = i;
     while (k < n) {
       let m = k;
       while (m < n && px[m] === px[k]) m++;
-      if (m - k >= 2 && px[k] !== 0xff) break;
-      if (lits.length + (m - k) > 255) break;
-      lits.push(...px.subarray(k, m));
+      if (m - k >= 2) break;
       k = m;
     }
+    const lits = px.subarray(i, k);
+    for (let off = 0; off < lits.length; off += 0x7fff) {
+      const c = Math.min(lits.length - off, 0x7fff);
+      i16(c);
+      for (let x = 0; x < c; x++) out.push(lits[off + x]!);
+    }
     i = k;
-    while (run > 255) { out.push(0x01, 0xff, col, 0, 0); run -= 255; }
-    out.push(0x100 - run, 0xff, col, lits.length, 0, ...lits);
   }
   return new Uint8Array(out);
 }
@@ -159,30 +165,27 @@ describe("fshToSheets", () => {
     expect(fshToSheets(buildPack(bad)).size).toBe(0);
   });
 
-  it("treats a literal 0x00 0xFF pair as pixels, not a command", () => {
-    // 0x00 0xFF would mis-parse as a run command under a grammar that ignores
-    // op==0; here every byte must land as one literal pixel.
-    const stream = new Uint8Array([0x03, 0x00, 0xff, 0x07]);
+  it("emits a literal run verbatim, 0xFF bytes included", () => {
+    // `04 00` = a 4-pixel literal run; the FF bytes are pixel data, and the
+    // positive i16 cannot be mistaken for a color run.
+    const stream = new Uint8Array([0x04, 0x00, 0xff, 0x07, 0xaa, 0xbb]);
     const sheet = [...fshToSheets(buildPack(rawSpriteChunk(2, 2, stream))).values()][0]!;
-    // column-major emit [3,0,255,7] -> row-major [3,255,0,7]
-    expect([...sheet.frame(0, 0).idx]).toEqual([3, 255, 0, 7]);
+    // column-major emit [ff,07,aa,bb] -> row-major [ff,aa,07,bb]
+    expect([...sheet.frame(0, 0).idx]).toEqual([0xff, 0xaa, 0x07, 0xbb]);
   });
 
-  it("consumes the count high byte as structure, not a pixel", () => {
-    // `FE FF 09 01 00 2A`: run of 2 × col 9, then 1 literal 0x2A. The 0x00 is
-    // the u16 count's high byte; the old 4-byte grammar emitted it as a pixel
-    // and shifted the real literal out of frame.
+  it("decodes a color run followed by a literal run", () => {
+    // `FE FF 09` = i16 -2 → run of 2 × col 9; `01 00 2A` = 1 literal 0x2A.
     const stream = new Uint8Array([0xfe, 0xff, 0x09, 0x01, 0x00, 0x2a]);
     const sheet = [...fshToSheets(buildPack(rawSpriteChunk(3, 1, stream))).values()][0]!;
     expect([...sheet.frame(0, 0).idx]).toEqual([9, 9, 0x2a]);
   });
 
   it("round-trips runs longer than 255", () => {
-    // the encoder splits a >255 run into a max-run `01 FF col 00 00` plus a
-    // trailing partial command; a 1-wide frame keeps column/row-major equal.
+    // a run of 300 fits a single signed-i16 color-run command.
     const px = new Uint8Array(300).fill(7);
     const stream = encodeFrameStream(px);
-    expect([...stream]).toEqual([0x01, 0xff, 0x07, 0x00, 0x00, 0xd3, 0xff, 0x07, 0x00, 0x00]);
+    expect([...stream]).toEqual([0xd4, 0xfe, 0x07]);
     const sheet = [...fshToSheets(buildPack(rawSpriteChunk(1, 300, stream))).values()][0]!;
     expect([...sheet.frame(0, 0).idx]).toEqual([...px]);
   });

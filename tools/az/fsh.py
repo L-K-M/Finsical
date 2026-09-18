@@ -12,20 +12,18 @@ Chunk payload layout (little-endian):
     u16 frames_per_group and u32 0, and the payload's final record has no
     trailing bytes.
 
-Pixel codec — each frame's stream is a sequence of items:
+Pixel codec — each frame's stream is a run-length encoding of signed
+little-endian i16 items:
 
-    - command: ``op 0xFF col n 0x00 lit…`` — emit (0x100 - op) pixels of
-      `col`, then `n` raw literal pixels. The byte after the count is always
-      0 (the count reads as a u16 whose high byte is 0). `op` is 1-255; op 0
-      never encodes a command, so ``0x00 0xFF`` is literal data, not a
-      command.
-    - any other byte — one literal pixel.
+    v < 0 — emit ``-v`` pixels of the next byte (a color run; 3 bytes).
+    v > 0 — emit the next ``v`` bytes as literal pixels (2+v bytes).
+    v = 0 — two bytes of padding, no output.
 
 Emitted pixels fill the frame column-major (x = i // h, y = i % h).
-Streams routinely emit a few pixels more or less than w*h (a small
-trailer follows the image data), so decode stops at w*h and pads short
-output with 0. The record's `sections` field counts the encoder's plot
-sections — informational, not needed to decode.
+Every verified stream emits exactly w*h pixels and consumes exactly
+`stream_len` bytes; decode still stops at w*h and pads short output with 0
+to be robust to corrupt inputs. The record's `sections` field counts the
+encoder's plot sections — informational, not needed to decode.
 """
 import struct
 from dataclasses import dataclass
@@ -45,16 +43,18 @@ def decode_pixels(s: bytes, w: int, h: int) -> bytes:
     n = len(s)
     col = bytearray()
     i = 0
-    while i < n and len(col) < w * h:
-        if (i + 5 <= n and s[i] != 0 and s[i + 1] == 0xFF and s[i + 4] == 0
-                and i + 5 + s[i + 3] <= n):
-            col += bytes([s[i + 2]]) * (0x100 - s[i])
-            nl = s[i + 3]
-            col += s[i + 5:i + 5 + nl]
-            i += 5 + nl
+    while i + 1 <= n and len(col) < w * h:
+        v = s[i] | (s[i + 1] << 8)
+        if v >= 0x8000:
+            v -= 0x10000
+        if v < 0:
+            col.extend(bytes([s[i + 2] if i + 2 < n else 0]) * (-v))
+            i += 3
+        elif v > 0:
+            col.extend(s[i + 2:i + 2 + v])
+            i += 2 + v
         else:
-            col.append(s[i])
-            i += 1
+            i += 2
     if len(col) < w * h:
         col += b"\0" * (w * h - len(col))
     out = bytearray(w * h)

@@ -60,28 +60,26 @@ class TestSpriteStream(unittest.TestCase):
         self.assertEqual(idx[0:8], bytes([5, 5, 9, 0, 5, 5, 9, 0]))
         self.assertEqual(idx[-1], 0)
 
-    def test_zero_ff_pair_is_literal(self):
-        # op==0 never encodes a command: the 00 FF below must decode as two
-        # literal pixels, not a 256-pixel run that swallows the stream.
-        stream = bytes([0x03, 0x00, 0xFF, 0x07])
+    def test_literal_run_emits_verbatim(self):
+        # `04 00` = a 4-pixel literal run; its bytes (0xFF included) land as
+        # pixel data — a positive i16 cannot be misread as a color run.
+        stream = bytes([0x04, 0x00, 0xFF, 0x07, 0xAA, 0xBB])
         idx = decode_pixels(stream, 2, 2)
-        # column-major emit [3,0,255,7] -> row-major [3,255,0,7]
-        self.assertEqual(idx, bytes([3, 255, 0, 7]))
+        # column-major emit [255,7,170,187] -> row-major [255,170,7,187]
+        self.assertEqual(idx, bytes([255, 170, 7, 187]))
 
-    def test_count_high_byte_is_structure(self):
-        # `FE FF 09 01 00 2A`: run of 2 x col 9, then 1 literal 0x2A. The 0x00
-        # is the u16 count's high byte, not a pixel.
+    def test_color_run_then_literal_run(self):
+        # `FE FF 09` = i16 -2 -> run of 2 x col 9; `01 00 2A` = 1 literal.
         stream = bytes([0xFE, 0xFF, 0x09, 0x01, 0x00, 0x2A])
         idx = decode_pixels(stream, 3, 1)
         self.assertEqual(idx, bytes([9, 9, 0x2A]))
 
     def test_long_run_roundtrip(self):
-        # a >255 run is emitted as a max-run command (`01 FF col 00 00`) plus
-        # a trailing partial command — exercise both halves through the codec.
+        # a run of 300 fits one signed-i16 color-run command.
         from tools.tests.fixtures import _encode_frame_stream
         px = bytes([7]) * 300  # one 300-tall column of color 7
         stream = _encode_frame_stream(px)
-        self.assertEqual(stream, b"\x01\xff\x07\x00\x00\xd3\xff\x07\x00\x00")
+        self.assertEqual(stream, b"\xd4\xfe\x07")
         self.assertEqual(decode_pixels(stream, 1, 300), px)
 
     def test_sniff(self):
