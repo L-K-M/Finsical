@@ -59,11 +59,11 @@ class TestParse(unittest.TestCase):
 
     def test_fmt1_mace_truncated(self):
         # nframes claims 11 frames but only 20 bytes (10 frames) follow.
-        with self.assertRaises(SndError):
+        with self.assertRaisesRegex(SndError, "truncated"):
             parse_snd(snd_fmt1_mace(b"\x24" * 20, 11))
 
     def test_fmt1_mace_bad_comp(self):
-        with self.assertRaises(SndError):
+        with self.assertRaisesRegex(SndError, "unsupported compression 6"):
             parse_snd(snd_fmt1_mace(b"\x24" * 20, 10, comp=6))
 
     def test_mace3_is_deterministic_and_bounded(self):
