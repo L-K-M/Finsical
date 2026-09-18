@@ -54,7 +54,8 @@ if ((install_requested)); then
   rm -rf -- "$INSTALL_PATH"
   ditto "$APP_PATH" "$INSTALL_PATH"
   echo "Installed to $INSTALL_PATH"
-  open -R "$INSTALL_PATH" || true  # headless SSH: no GUI session
+  open -R "$INSTALL_PATH" ||
+    echo "Skipped revealing in Finder (no GUI session)" >&2
 fi
 
 if ((run_requested)); then
