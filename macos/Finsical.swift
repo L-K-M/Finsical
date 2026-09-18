@@ -50,14 +50,41 @@ final class DragStrip: NSView {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate {
     private var window: NSWindow!
+    private var webView: WKWebView!
+
+    /// Menu actions evaluate JS entry points exposed by web/main.ts.
+    @objc private func openImport() {
+        webView.evaluateJavaScript("window.finsical?.openImport()") { _, _ in }
+    }
+
+    @objc private func feedFish() {
+        webView.evaluateJavaScript("window.finsical?.feedFish()") { _, _ in }
+    }
+
+    @objc private func supportArchive() {
+        NSWorkspace.shared.open(URL(string: "https://archive.org/donate")!)
+    }
+
+    /// target=_blank links (the donate link) have no host view; open them
+    /// in the default browser instead.
+    func webView(_ webView: WKWebView,
+                 createWebViewWith configuration: WKWebViewConfiguration,
+                 for action: WKNavigationAction,
+                 windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let url = action.request.url, url.scheme?.hasPrefix("http") == true {
+            NSWorkspace.shared.open(url)
+        }
+        return nil
+    }
 
     func applicationDidFinishLaunching(_ note: Notification) {
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(WebHandler(), forURLScheme: WebHandler.scheme)
-        let webView = WKWebView(frame: .init(x: 0, y: 0, width: 640, height: 400),
-                              configuration: config)
+        webView = WKWebView(frame: .init(x: 0, y: 0, width: 640, height: 400),
+                            configuration: config)
+        webView.uiDelegate = self
 
         window = NSWindow(
             contentRect: webView.frame,
@@ -103,6 +130,20 @@ appMenu.addItem(withTitle: "Quit Finsical",
                 action: #selector(NSApplication.terminate(_:)),
                 keyEquivalent: "q")
 appItem.submenu = appMenu
+let tankItem = NSMenuItem()
+mainMenu.addItem(tankItem)
+let tankMenu = NSMenu(title: "Tank")
+tankMenu.addItem(withTitle: "Import Add-ons…",
+                 action: #selector(AppDelegate.openImport),
+                 keyEquivalent: "i")
+tankMenu.addItem(withTitle: "Feed Fish",
+                 action: #selector(AppDelegate.feedFish),
+                 keyEquivalent: "f")
+tankMenu.addItem(.separator())
+tankMenu.addItem(withTitle: "Support the Internet Archive",
+                 action: #selector(AppDelegate.supportArchive),
+                 keyEquivalent: "")
+tankItem.submenu = tankMenu
 let editItem = NSMenuItem()
 mainMenu.addItem(editItem)
 let editMenu = NSMenu(title: "Edit")
