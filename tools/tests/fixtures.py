@@ -147,8 +147,9 @@ def build_pack(chunks, directory=(), tag=b"XXXX", version=0x5DC) -> bytes:
 def _encode_frame_stream(px: bytes) -> bytes:
     """Encode column-major pixels into the Aquazone run/literal format.
 
-    Each item is `op 0xFF col n lit…`: emit (0x100-op) of `col`, then n
-    literal bytes. A single pixel is a degenerate run (op = 0xFF).
+    Each item is `op 0xFF col n 0x00 lit…`: emit (0x100-op) of `col`, then n
+    literal bytes; the byte after the count is the high byte of a u16 count,
+    always 0 in this format. A single pixel is a degenerate run (op = 0xFF).
     """
     out = bytearray()
     n = len(px)
@@ -183,9 +184,9 @@ def _encode_frame_stream(px: bytes) -> bytes:
             k = m
         i = k
         while run > 255:
-            out += b"\x01\xff" + bytes([col, 0])
+            out += b"\x01\xff" + bytes([col, 0, 0])
             run -= 255
-        out += bytes([0x100 - run, 0xFF, col, len(lits)]) + bytes(lits)
+        out += bytes([0x100 - run, 0xFF, col, len(lits), 0]) + bytes(lits)
     return bytes(out)
 
 

@@ -54,11 +54,35 @@ class TestSpriteStream(unittest.TestCase):
 
     def test_short_stream_pads_with_zero(self):
         # stream emits fewer pixels than w*h -> tail fills with 0
-        stream = bytes([0xF8, 0xFF, 5, 2, 9, 9])  # 8 of col5 + lits 9,9
+        stream = bytes([0xF8, 0xFF, 5, 2, 0, 9, 9])  # 8 of col5 + lits 9,9
         idx = decode_pixels(stream, 4, 4)
         # column-major: 8 px of 5 fill columns x0,x1; lits 9,9 -> x2 y0,y1
         self.assertEqual(idx[0:8], bytes([5, 5, 9, 0, 5, 5, 9, 0]))
         self.assertEqual(idx[-1], 0)
+
+    def test_zero_ff_pair_is_literal(self):
+        # op==0 never encodes a command: the 00 FF below must decode as two
+        # literal pixels, not a 256-pixel run that swallows the stream.
+        stream = bytes([0x03, 0x00, 0xFF, 0x07])
+        idx = decode_pixels(stream, 2, 2)
+        # column-major emit [3,0,255,7] -> row-major [3,255,0,7]
+        self.assertEqual(idx, bytes([3, 255, 0, 7]))
+
+    def test_count_high_byte_is_structure(self):
+        # `FE FF 09 01 00 2A`: run of 2 x col 9, then 1 literal 0x2A. The 0x00
+        # is the u16 count's high byte, not a pixel.
+        stream = bytes([0xFE, 0xFF, 0x09, 0x01, 0x00, 0x2A])
+        idx = decode_pixels(stream, 3, 1)
+        self.assertEqual(idx, bytes([9, 9, 0x2A]))
+
+    def test_long_run_roundtrip(self):
+        # a >255 run is emitted as a max-run command (`01 FF col 00 00`) plus
+        # a trailing partial command — exercise both halves through the codec.
+        from tools.tests.fixtures import _encode_frame_stream
+        px = bytes([7]) * 300  # one 300-tall column of color 7
+        stream = _encode_frame_stream(px)
+        self.assertEqual(stream, b"\x01\xff\x07\x00\x00\xd3\xff\x07\x00\x00")
+        self.assertEqual(decode_pixels(stream, 1, 300), px)
 
     def test_sniff(self):
         blob = build_fsh(1, [(4, 4, bytes(16))])
