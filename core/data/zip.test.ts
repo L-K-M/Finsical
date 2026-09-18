@@ -103,4 +103,20 @@ describe("zipRead", () => {
     new DataView(bad.buffer).setUint16(cdOff + 8, 1, true);
     expect(() => zipEntries(bad)).toThrow(/encrypted/);
   });
+
+  it("rejects entries whose declared size exceeds the cap", async () => {
+    const payload = enc.encode("abc");
+    const z = buildZip("x.fsh", payload, 8, await deflate(payload));
+    const es = zipEntries(z);
+    es[0]!.usize = 10;
+    await expect(zipRead(z, es[0]!, 4)).rejects.toThrow(/too large/);
+  });
+
+  it("caps inflate expansion even when usize lies", async () => {
+    const payload = enc.encode("a".repeat(64));
+    const z = buildZip("x.fsh", payload, 8, await deflate(payload));
+    const es = zipEntries(z);
+    es[0]!.usize = 3; // declaration lies; real inflate exceeds the cap
+    await expect(zipRead(z, es[0]!, 4)).rejects.toThrow(/exceeded/);
+  });
 });

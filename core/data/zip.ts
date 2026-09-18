@@ -60,7 +60,7 @@ export function zipEntries(d: Uint8Array): ZipEntry[] {
 const MAX_ENTRY = 1 << 27; // 128MB — remote input, cap inflate expansion
 
 /** Extract one entry. Returns the decompressed bytes. */
-export async function zipRead(d: Uint8Array, e: ZipEntry): Promise<Uint8Array> {
+export async function zipRead(d: Uint8Array, e: ZipEntry, maxBytes = MAX_ENTRY): Promise<Uint8Array> {
   const v = new DataView(d.buffer, d.byteOffset, d.byteLength);
   if (e.lhOff + 30 > d.length || u32(v, e.lhOff) !== LFH)
     throw new Error(`zip ${e.name}: bad local header`);
@@ -72,7 +72,7 @@ export async function zipRead(d: Uint8Array, e: ZipEntry): Promise<Uint8Array> {
   if (e.method === 0) return new Uint8Array(data);
   if (e.method !== 8)
     throw new Error(`zip ${e.name}: unsupported method ${e.method}`);
-  if (e.usize > MAX_ENTRY)
+  if (e.usize > maxBytes)
     throw new Error(`zip ${e.name}: entry too large (${e.usize} bytes)`);
   const ds = new DecompressionStream("deflate-raw");
   const stream = new Blob([data]).stream().pipeThrough(ds);
@@ -83,9 +83,9 @@ export async function zipRead(d: Uint8Array, e: ZipEntry): Promise<Uint8Array> {
     const { done, value } = await reader.read();
     if (done) break;
     total += value.byteLength;
-    if (total > MAX_ENTRY) {
+    if (total > maxBytes) {
       await reader.cancel();
-      throw new Error(`zip ${e.name}: inflate exceeded ${MAX_ENTRY} bytes`);
+      throw new Error(`zip ${e.name}: inflate exceeded ${maxBytes} bytes`);
     }
     chunks.push(value);
   }
