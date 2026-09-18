@@ -96,7 +96,9 @@ function previewOf(rs: PackResult[]): HTMLCanvasElement | null {
   }
   const imgs = rs.flatMap((r) => [...r.images.values()]);
   imgs.sort((a, b) => b.w * b.h - a.w * a.h);
-  return imgs[0] ? imageCanvas(imgs[0], true) : null;
+  if (!imgs[0]) return null;
+  try { return imageCanvas(imgs[0], true); }
+  catch { return null; } // corrupt image: no preview
 }
 
 const importPanel = mountImportPanel({
