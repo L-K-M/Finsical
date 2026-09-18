@@ -272,8 +272,10 @@ export function mountImportPanel(h: ImportHandlers):
     if (e.target === ov) ov.style.display = "none";
   });
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && ov.style.display !== "none")
+    if (e.key === "Escape" && ov.style.display !== "none") {
       ov.style.display = "none";
+      e.preventDefault();
+    }
   });
 
   let loaded = false;
