@@ -62,7 +62,7 @@ jobs:
           ZAI_API_KEY: ${{ env.ZAI_API_KEY }}
           ZAI_MODEL: glm-5.3
           ZAI_REASONING_EFFORT: high
-          ZAI_MAX_OUTPUT_TOKENS: 131072
+          ZAI_MAX_OUTPUT_TOKENS: 98304  # glm documented max output cap
           ZAI_REQUEST_TIMEOUT_SECONDS: 900
           # A follow-up round reviews the delta since the last fully reviewed
           # head plus a bounded rotating sample of the rest, so a PR that gets
