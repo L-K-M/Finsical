@@ -119,4 +119,11 @@ describe("zipRead", () => {
     es[0]!.usize = 3; // declaration lies; real inflate exceeds the cap
     await expect(zipRead(z, es[0]!, 4)).rejects.toThrow(/exceeded/);
   });
+
+  it("reads entries that exactly hit the cap", async () => {
+    const payload = enc.encode("abcd");
+    const z = buildZip("x.fsh", payload, 8, await deflate(payload));
+    const es = zipEntries(z);
+    await expect(zipRead(z, es[0]!, 4)).resolves.toEqual(payload);
+  });
 });

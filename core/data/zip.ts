@@ -59,7 +59,8 @@ export function zipEntries(d: Uint8Array): ZipEntry[] {
 
 const MAX_ENTRY = 1 << 27; // 128MB — remote input, cap inflate expansion
 
-/** Extract one entry. Returns the decompressed bytes. */
+/** Extract one entry. maxBytes caps decompressed size of deflated
+ * entries; stored entries are inherently bounded by the archive size. */
 export async function zipRead(d: Uint8Array, e: ZipEntry, maxBytes = MAX_ENTRY): Promise<Uint8Array> {
   const v = new DataView(d.buffer, d.byteOffset, d.byteLength);
   if (e.lhOff + 30 > d.length || u32(v, e.lhOff) !== LFH)
