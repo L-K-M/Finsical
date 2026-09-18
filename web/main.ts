@@ -98,7 +98,7 @@ function previewOf(rs: PackResult[]): HTMLCanvasElement | null {
   imgs.sort((a, b) => b.w * b.h - a.w * a.h);
   if (!imgs[0]) return null;
   try { return imageCanvas(imgs[0], true); }
-  catch { return null; } // corrupt image: no preview
+  catch (e) { console.warn("preview render failed:", e); return null; }
 }
 
 const importPanel = mountImportPanel({

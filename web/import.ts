@@ -116,6 +116,17 @@ export function mountImportPanel(h: ImportHandlers):
     { open(): void; close(): void; readonly isOpen: boolean } {
   const installed = new Set<string>();
   const thumbs = new Map<string, HTMLCanvasElement>();
+  // Packs are immutable per URL — memoize so re-visits skip the download.
+  const packCache = new Map<string, Promise<PackResult[]>>();
+  const fetchPack = (url: string): Promise<PackResult[]> => {
+    let p = packCache.get(url);
+    if (!p) {
+      p = importAddon(url);
+      packCache.set(url, p);
+      p.catch(() => packCache.delete(url)); // failed fetches stay retryable
+    }
+    return p;
+  };
 
   const ov = el("div", "ov");
   ov.setAttribute("role", "dialog");
@@ -201,7 +212,7 @@ export function mountImportPanel(h: ImportHandlers):
     act.style.display = "none";
     detail.appendChild(act);
 
-    void importAddon(it.url).then((rs) => {
+    void fetchPack(it.url).then((rs) => {
       const usable = rs.filter((r) => r.sheets.size || r.images.size);
       if (!usable.length) throw new Error("no pack inside");
       const pv = h.preview(usable);
@@ -282,6 +293,7 @@ export function mountImportPanel(h: ImportHandlers):
   return {
     open() {
       ov.style.display = "flex";
+      close.focus();
       if (!loaded) { loaded = true; loadListing(); }
       showBrowse();
     },
