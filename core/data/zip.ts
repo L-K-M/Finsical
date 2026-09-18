@@ -41,6 +41,8 @@ export function zipEntries(d: Uint8Array): ZipEntry[] {
     if (p + 46 > d.length || u32(v, p) !== CDIR)
       throw new Error("zip: truncated central directory");
     const nlen = u16(v, p + 28), elen = u16(v, p + 30), clen = u16(v, p + 32);
+    if (p + 46 + nlen + elen + clen > eocd)
+      throw new Error("zip: truncated central directory");
     out.push({
       name: dec.decode(d.subarray(p + 46, p + 46 + nlen)),
       method: u16(v, p + 10),
@@ -56,7 +58,8 @@ export function zipEntries(d: Uint8Array): ZipEntry[] {
 /** Extract one entry. Returns the decompressed bytes. */
 export async function zipRead(d: Uint8Array, e: ZipEntry): Promise<Uint8Array> {
   const v = new DataView(d.buffer, d.byteOffset, d.byteLength);
-  if (u32(v, e.lhOff) !== LFH) throw new Error(`zip ${e.name}: bad local header`);
+  if (e.lhOff + 30 > d.length || u32(v, e.lhOff) !== LFH)
+    throw new Error(`zip ${e.name}: bad local header`);
   const nlen = u16(v, e.lhOff + 26), elen = u16(v, e.lhOff + 28);
   const data = d.subarray(e.lhOff + 30 + nlen + elen,
                           e.lhOff + 30 + nlen + elen + e.csize);
