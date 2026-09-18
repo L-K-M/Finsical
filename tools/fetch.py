@@ -32,8 +32,9 @@ from tools.az.snd import has_sounds
 
 META = "https://archive.org/metadata/{ident}"
 DOWNLOAD = "https://archive.org/download/{ident}/{name}"
-DEFAULT_IDENT = "aqua-zone-virtual-aquarium"
-IMPORTABLE = (".fsh", ".acc", ".plt", ".azn", ".rez", ".rsrc")
+DEFAULT_IDENT = "aquazonewithguppiesandaddons"
+IMPORTABLE = (".fsh", ".acc", ".plt", ".azn", ".rez", ".rsrc",
+            ".grv", ".fod", ".med")
 _EMITTED: set[str] = set()  # paths written this run (re-runs replace)
 _MAX_ARCHIVE_BYTES = 1 << 30  # cap for a single in-memory download
 _MAX_ISO_BYTES = 4 << 30    # ISOs stream to disk; cap is anti-abuse
@@ -125,7 +126,9 @@ def _read_capped(zf: zipfile.ZipFile, zi: zipfile.ZipInfo,
 
 
 _MAX_ZIP_DEPTH = 4
-_MAX_TOTAL_BYTES = 64 << 20  # shared across the whole recursion tree
+_MAX_TOTAL_BYTES = 512 << 20  # shared across the recursion tree
+# (the real add-on collection zip decompresses past 64MB; still
+# bounded so a fan-out bomb stops)
 
 
 def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,
