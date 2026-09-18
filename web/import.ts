@@ -112,7 +112,8 @@ function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 /** Afterglow-style add-on browser: card grid -> detail w/ live preview. */
-export function mountImportPanel(h: ImportHandlers): { open(): void } {
+export function mountImportPanel(h: ImportHandlers):
+    { open(): void; close(): void; readonly isOpen: boolean } {
   const installed = new Set<string>();
   const thumbs = new Map<string, HTMLCanvasElement>();
 
@@ -274,5 +275,7 @@ export function mountImportPanel(h: ImportHandlers): { open(): void } {
       if (!loaded) { loaded = true; loadListing(); }
       showBrowse();
     },
+    close() { ov.style.display = "none"; },
+    get isOpen() { return ov.style.display !== "none"; },
   };
 }

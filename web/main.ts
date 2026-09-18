@@ -129,9 +129,15 @@ trigger.textContent = "+ add-ons";
 trigger.addEventListener("click", () => importPanel.open());
 document.body.appendChild(trigger);
 window.addEventListener("keydown", (e) => {
-  if (!e.metaKey && !e.ctrlKey) return;
-  if (e.key === "i") { importPanel.open(); e.preventDefault(); }
-  else if (e.key === "f") { feedFish(); e.preventDefault(); }
+  const k = e.key.toLowerCase();
+  if (k === "escape" && importPanel.isOpen) {
+    importPanel.close(); e.preventDefault(); return;
+  }
+  if ((e.metaKey || e.ctrlKey) && k === "i") {
+    importPanel.open(); e.preventDefault();
+  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" && !e.repeat) {
+    feedFish(); // bare F: Cmd-F is Find in browsers; the native menu owns ⌘F
+  }
 });
 
 const packFetch = async (p: string): Promise<Uint8Array> => {
