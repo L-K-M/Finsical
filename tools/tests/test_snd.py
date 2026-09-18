@@ -6,7 +6,7 @@ import wave
 from tools.az.mace import mace3_decode
 from tools.az.snd import parse_snd, snd_to_wav, SndError
 
-_MACE_TAB_SHA256 = ("2d7875ce06077795d98f9c2e4b0d96"
+_MACE_TAB_SHA256 = ("2d7875ce06077795d98f9c2e4b0d966"
                     "52ed6e25e70a16d7c127998c450aa52bf")
 
 
