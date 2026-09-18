@@ -50,14 +50,70 @@ final class DragStrip: NSView {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDelegate {
     private var window: NSWindow!
+    private var webView: WKWebView!
+
+    /// Menu actions evaluate JS entry points exposed by web/main.ts. A
+    /// missing hook throws so the failure lands in the log, not silently.
+    @objc func openImport() {
+        let js = "window.finsical?.openImport ? window.finsical.openImport()" +
+                 " : (() => { throw new Error('window.finsical.openImport missing') })()"
+        webView?.evaluateJavaScript(js) { _, error in
+            if let error { NSLog("Finsical: openImport JS failed: \(error.localizedDescription)") }
+        }
+    }
+
+    @objc func feedFish() {
+        let js = "window.finsical?.feedFish ? window.finsical.feedFish()" +
+                 " : (() => { throw new Error('window.finsical.feedFish missing') })()"
+        webView?.evaluateJavaScript(js) { _, error in
+            if let error { NSLog("Finsical: feedFish JS failed: \(error.localizedDescription)") }
+        }
+    }
+
+    @objc func supportArchive() {
+        if let url = URL(string: "https://archive.org/donate") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// Keep the aquarium on screen: hand any top-level http(s) navigation
+    /// to the default browser instead of replacing the app's content.
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor action: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if action.targetFrame?.isMainFrame == true,
+           let url = action.request.url,
+           url.scheme == "http" || url.scheme == "https" {
+            if !NSWorkspace.shared.open(url) {
+                NSLog("Finsical: failed to hand off URL to browser: \(url)")
+            }
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    /// target=_blank links (the donate link) have no host view; open them
+    /// in the default browser instead.
+    func webView(_ webView: WKWebView,
+                 createWebViewWith configuration: WKWebViewConfiguration,
+                 for action: WKNavigationAction,
+                 windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let url = action.request.url, url.scheme == "http" || url.scheme == "https" {
+            NSWorkspace.shared.open(url)
+        }
+        return nil
+    }
 
     func applicationDidFinishLaunching(_ note: Notification) {
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(WebHandler(), forURLScheme: WebHandler.scheme)
-        let webView = WKWebView(frame: .init(x: 0, y: 0, width: 640, height: 400),
-                              configuration: config)
+        webView = WKWebView(frame: .init(x: 0, y: 0, width: 640, height: 400),
+                            configuration: config)
+        webView.uiDelegate = self
+        webView.navigationDelegate = self
 
         window = NSWindow(
             contentRect: webView.frame,
@@ -103,6 +159,20 @@ appMenu.addItem(withTitle: "Quit Finsical",
                 action: #selector(NSApplication.terminate(_:)),
                 keyEquivalent: "q")
 appItem.submenu = appMenu
+let tankItem = NSMenuItem()
+mainMenu.addItem(tankItem)
+let tankMenu = NSMenu(title: "Tank")
+tankMenu.addItem(withTitle: "Import Add-ons…",
+                 action: #selector(AppDelegate.openImport),
+                 keyEquivalent: "i")
+tankMenu.addItem(withTitle: "Feed Fish",
+                 action: #selector(AppDelegate.feedFish),
+                 keyEquivalent: "f")
+tankMenu.addItem(.separator())
+tankMenu.addItem(withTitle: "Support the Internet Archive",
+                 action: #selector(AppDelegate.supportArchive),
+                 keyEquivalent: "")
+tankItem.submenu = tankMenu
 let editItem = NSMenuItem()
 mainMenu.addItem(editItem)
 let editMenu = NSMenu(title: "Edit")
