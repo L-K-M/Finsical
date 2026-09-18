@@ -75,6 +75,15 @@ class TestSpriteStream(unittest.TestCase):
         idx = decode_pixels(stream, 3, 1)
         self.assertEqual(idx, bytes([9, 9, 0x2A]))
 
+    def test_long_run_roundtrip(self):
+        # a >255 run is emitted as a max-run command (`01 FF col 00 00`) plus
+        # a trailing partial command — exercise both halves through the codec.
+        from tools.tests.fixtures import _encode_frame_stream
+        px = bytes([7]) * 300  # one 300-tall column of color 7
+        stream = _encode_frame_stream(px)
+        self.assertTrue(stream.startswith(b"\x01\xff\x07\x00\x00"))
+        self.assertEqual(decode_pixels(stream, 1, 300), px)
+
     def test_sniff(self):
         blob = build_fsh(1, [(4, 4, bytes(16))])
         self.assertTrue(is_sprite_stream(blob))

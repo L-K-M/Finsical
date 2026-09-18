@@ -176,4 +176,12 @@ describe("fshToSheets", () => {
     const sheet = [...fshToSheets(buildPack(rawSpriteChunk(3, 1, stream))).values()][0]!;
     expect([...sheet.frame(0, 0).idx]).toEqual([9, 9, 0x2a]);
   });
+
+  it("round-trips runs longer than 255", () => {
+    // the encoder splits a >255 run into a max-run `01 FF col 00 00` plus a
+    // trailing partial command; a 1-wide frame keeps column/row-major equal.
+    const px = new Uint8Array(300).fill(7);
+    const sheet = [...fshToSheets(buildPack(rawSpriteChunk(1, 300, encodeFrameStream(px)))).values()][0]!;
+    expect([...sheet.frame(0, 0).idx]).toEqual([...px]);
+  });
 });
