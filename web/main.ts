@@ -2,6 +2,7 @@ import { BOTTOM_PAD, Sim } from "../core/sim.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { TankAudio } from "./audio.js";
+import { mountImportPanel } from "./import.js";
 import type { Fish } from "../core/sim.js";
 import type { AzpackManifest, IndexedImage } from "../core/data/azpack.js";
 
@@ -53,16 +54,21 @@ function usePack(pack: { sheets: Map<string, SpriteSheet>;
 }
 
 // Biggest pack image large enough to matter becomes the tank backdrop —
-// tiny fish portraits/icons are skipped.
+// tiny fish portraits/icons are skipped. Wide, short images (Aquazone
+// .grv beds are ~6:1) become the gravel strip instead.
 let backdropCv: HTMLCanvasElement | null = null;
+let gravelCv: HTMLCanvasElement | null = null;
 function pickBackdrop(images: Iterable<IndexedImage>): void {
   let best: IndexedImage | null = null;
+  let gravel: IndexedImage | null = null;
   for (const img of images) {
+    if (img.w >= img.h * 3 && img.w >= TANK.width / 2) { if (!gravel || img.w > gravel.w) gravel = img; continue; }
     if (img.w * img.h < (TANK.width * TANK.height) / 4) continue;
     if (img.w < TANK.width / 2 || img.h < TANK.height / 2) continue;
     if (!best || img.w * img.h > best.w * best.h) best = img;
   }
   backdropCv = best ? imageCanvas(best, true) : null;
+  gravelCv = gravel ? imageCanvas(gravel, false) : null; // index 0 = transparent
 }
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
@@ -77,6 +83,21 @@ function sheetOf(f: Fish): SpriteSheet | null {
   }
   return fishSheets[i % fishSheets.length]!;
 }
+// archive.org add-on import: "+ import" opens a panel of fish/gravel
+// packs hosted as inner zip entries (see web/import.ts).
+mountImportPanel({
+  onSheets: (sheets, name) => {
+    usePack({ sheets });
+    console.info(`archive.org: imported fish ${name}`);
+  },
+  onImages: (images, name, section) => {
+    // fish packs carry portraits too — only scenery sections touch the tank
+    if (section !== "gravel") return;
+    pickBackdrop(images);
+    console.info(`archive.org: imported scenery ${name}`);
+  },
+});
+
 const packFetch = async (p: string): Promise<Uint8Array> => {
   const r = await fetch(`pack/${p}`);
   if (!r.ok) throw new Error(`${p}: ${r.status}`);
@@ -254,6 +275,11 @@ function render(): void {
   } else {
     ctx.fillStyle = tankGradient;
     ctx.fillRect(0, 0, TANK.width, TANK.height);
+  }
+  if (gravelCv) {
+    const gh = Math.round(gravelCv.height * TANK.width / gravelCv.width);
+    ctx.drawImage(gravelCv, 0, TANK.height - gh, TANK.width, gh);
+  } else if (!backdropCv) {
     ctx.fillStyle = "#8a6d3b"; // gravel
     ctx.fillRect(0, TANK.height - BOTTOM_PAD, TANK.width, BOTTOM_PAD);
   }
