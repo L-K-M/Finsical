@@ -73,7 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate {
                  createWebViewWith configuration: WKWebViewConfiguration,
                  for action: WKNavigationAction,
                  windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let url = action.request.url, url.scheme?.hasPrefix("http") == true {
+        if let url = action.request.url, url.scheme == "http" || url.scheme == "https" {
             NSWorkspace.shared.open(url)
         }
         return nil
