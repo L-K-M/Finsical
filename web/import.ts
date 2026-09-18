@@ -96,67 +96,175 @@ export async function listAddons(item = DEFAULT_ITEM):
 export interface ImportHandlers {
   onSheets(sheets: Map<string, SpriteSheet>, name: string, section: string): void;
   onImages(images: Iterable<IndexedImage>, name: string, section: string): void;
+  /** Render decoded packs to a preview canvas; null = nothing to show. */
+  preview(rs: PackResult[]): HTMLCanvasElement | null;
 }
 
-/** Small overlay listing archive.org add-ons; click a name to import it. */
-export function mountImportPanel(h: ImportHandlers): void {
-  const btn = document.createElement("button");
-  btn.id = "importbtn";
-  btn.textContent = "+ import";
-  document.body.appendChild(btn);
+const DONATE_URL = "https://archive.org/donate";
 
-  const panel = document.createElement("div");
-  panel.id = "importpanel";
-  panel.style.display = "none";
-  document.body.appendChild(panel);
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K, cls: string, text = "",
+): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text) e.textContent = text;
+  return e;
+}
 
-  btn.addEventListener("click", () => {
-    const opening = panel.style.display === "none";
-    panel.style.display = opening ? "block" : "none";
-    if (!opening || panel.dataset.loaded) return;
-    panel.dataset.loaded = "1";
-    panel.textContent = "fetching archive.org listing…";
-    void (async () => {
-      const items = await listAddons();
-      panel.textContent = "";
-      if (!items.length) {
-        delete panel.dataset.loaded; // allow retry on next open
-        panel.textContent = "no add-ons found (network blocked?)";
-        return;
+/** Afterglow-style add-on browser: card grid -> detail w/ live preview. */
+export function mountImportPanel(h: ImportHandlers): { open(): void } {
+  const installed = new Set<string>();
+  const thumbs = new Map<string, HTMLCanvasElement>();
+
+  const ov = el("div", "ov");
+  ov.style.display = "none";
+  const card = el("div", "card");
+  ov.appendChild(card);
+
+  const hd = el("div", "hd");
+  const titles = el("div", "titles");
+  titles.appendChild(el("div", "title", "Internet Archive"));
+  titles.appendChild(el("div", "sub", "Aquazone add-ons"));
+  hd.appendChild(titles);
+  const close = el("button", "x", "✕");
+  close.title = "Close";
+  hd.appendChild(close);
+  card.appendChild(hd);
+
+  const body = el("div", "body");
+  card.appendChild(body);
+  const browse = el("div", "browse");
+  const detail = el("div", "detail");
+  detail.style.display = "none";
+  body.appendChild(browse);
+  body.appendChild(detail);
+
+  const ft = el("div", "ft");
+  const donate = el("a", "", "♥ Support the Internet Archive");
+  donate.href = DONATE_URL;
+  donate.target = "_blank";
+  donate.rel = "noopener";
+  ft.appendChild(donate);
+  card.appendChild(ft);
+  document.body.appendChild(ov);
+
+  function showBrowse(): void {
+    detail.style.display = "none";
+    browse.style.display = "";
+  }
+
+  function applyAddon(it: Importable, rs: PackResult[]): void {
+    const usable = rs.filter((r) => r.sheets.size || r.images.size);
+    if (!usable.length) throw new Error("no pack inside");
+    for (const r of usable) {
+      if (r.sheets.size) h.onSheets(r.sheets, it.inner, it.section);
+      if (r.images.size) h.onImages(r.images.values(), it.inner, it.section);
+    }
+    installed.add(it.inner);
+    browse.querySelector(`[data-inner="${CSS.escape(it.inner)}"]`)
+      ?.classList.add("done");
+    const pv = h.preview(usable);
+    if (pv) thumbs.set(it.inner, pv);
+  }
+
+  function showDetail(it: Importable): void {
+    browse.style.display = "none";
+    detail.style.display = "";
+    detail.textContent = "";
+    const back = el("button", "back", "‹ All add-ons");
+    back.addEventListener("click", showBrowse);
+    detail.appendChild(back);
+    detail.appendChild(el("div", "dname", it.inner));
+    detail.appendChild(el("div", "dmeta", `${it.section} · archive.org`));
+    const pvBox = el("div", "pv");
+    detail.appendChild(pvBox);
+    const status = el("div", "dstatus", "Fetching add-on…");
+    detail.appendChild(status);
+    const act = el("button", "dact");
+    act.style.display = "none";
+    detail.appendChild(act);
+
+    void importAddon(it.url).then((rs) => {
+      const usable = rs.filter((r) => r.sheets.size || r.images.size);
+      if (!usable.length) throw new Error("no pack inside");
+      const pv = h.preview(usable);
+      if (pv) { pvBox.appendChild(pv); thumbs.set(it.inner, pv); }
+      const kinds = [...new Set(usable.map((r) =>
+        r.sheets.size ? "fish" : "scenery"))].join(" + ");
+      status.textContent =
+        `${usable.length} pack${usable.length > 1 ? "s" : ""} · ${kinds}`;
+      act.style.display = "";
+      act.textContent = installed.has(it.inner) ? "Add again" : "Add to tank";
+      act.addEventListener("click", () => {
+        try {
+          applyAddon(it, usable);
+          act.textContent = "In tank ✓ — add again?";
+        } catch (e) { status.textContent = String(e); }
+      });
+    }).catch((e) => {
+      status.textContent = `Couldn't load: ${e instanceof Error ? e.message : e}`;
+      const retry = el("button", "dact", "Retry");
+      retry.addEventListener("click", () => showDetail(it));
+      detail.appendChild(retry);
+    });
+  }
+
+  function buildBrowse(items: Importable[]): void {
+    browse.textContent = "";
+    let section = "";
+    let grid: HTMLElement | null = null;
+    for (const it of items) {
+      if (it.section !== section) {
+        section = it.section;
+        browse.appendChild(el("div", "sec",
+          `${section} · ${items.filter((x) => x.section === section).length}`));
+        grid = el("div", "grid");
+        browse.appendChild(grid);
       }
-      let section = "";
-      for (const it of items) {
-        if (it.section !== section) {
-          section = it.section;
-          const h2 = document.createElement("div");
-          h2.className = "sec";
-          h2.textContent = section;
-          panel.appendChild(h2);
-        }
-        const a = document.createElement("button");
-        a.className = "item";
-        a.textContent = it.inner;
-        a.addEventListener("click", () => {
-          a.disabled = true;
-          a.textContent = `${it.inner}…`;
-          void importAddon(it.url)
-            .then((rs) => {
-              const usable = rs.filter((r) => r.sheets.size || r.images.size);
-              if (!usable.length) throw new Error("no pack inside");
-              for (const r of usable) {
-                if (r.sheets.size) h.onSheets(r.sheets, it.inner, it.section);
-                if (r.images.size) h.onImages(r.images.values(), it.inner, it.section);
-              }
-              a.textContent = `${it.inner} ✓`;
-            })
-            .catch((e) => {
-              a.disabled = false;
-              a.textContent = `${it.inner} ✗`;
-              console.warn(`import ${it.inner} failed:`, e);
-            });
-        });
-        panel.appendChild(a);
+      const t = el("button", "tile");
+      t.dataset.inner = it.inner;
+      if (installed.has(it.inner)) t.classList.add("done");
+      const th = thumbs.get(it.inner);
+      if (th) {
+        const copy = el("canvas", "tthumb");
+        copy.width = th.width; copy.height = th.height;
+        copy.getContext("2d")!.drawImage(th, 0, 0);
+        t.appendChild(copy);
       }
-    })().catch((e) => { panel.textContent = String(e); });
+      t.appendChild(el("span", "tname", it.inner));
+      t.appendChild(el("span", "tick", "✓"));
+      t.addEventListener("click", () => showDetail(it));
+      grid!.appendChild(t);
+    }
+  }
+
+  function loadListing(): void {
+    browse.textContent = "";
+    browse.appendChild(el("div", "dstatus", "Fetching archive.org listing…"));
+    void listAddons().then((items) => {
+      if (!items.length) throw new Error("empty listing");
+      buildBrowse(items);
+    }).catch(() => {
+      browse.textContent = "";
+      browse.appendChild(el("div", "dstatus",
+        "Couldn't reach archive.org."));
+      const retry = el("button", "dact", "Retry");
+      retry.addEventListener("click", loadListing);
+      browse.appendChild(retry);
+    });
+  }
+
+  close.addEventListener("click", () => { ov.style.display = "none"; });
+  ov.addEventListener("pointerdown", (e) => {
+    if (e.target === ov) ov.style.display = "none";
   });
+
+  let loaded = false;
+  return {
+    open() {
+      ov.style.display = "flex";
+      if (!loaded) { loaded = true; loadListing(); }
+      showBrowse();
+    },
+  };
 }
