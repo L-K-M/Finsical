@@ -88,6 +88,13 @@ class TestSpriteStream(unittest.TestCase):
         idx = decode_pixels(bytes([0xFE, 0xFF, 0x09, 0x7A]), 4, 1)
         self.assertEqual(idx, bytes([9, 9, 0, 0]))
 
+    def test_truncated_mid_item_does_not_raise(self):
+        # A stream ending inside an item must not raise: the run color byte
+        # defaults to 0 and the literal slice clamps, then output pads.
+        self.assertEqual(decode_pixels(b"\xFE\xFF", 2, 1), bytes(2))
+        self.assertEqual(decode_pixels(bytes([0x09, 0x00, 0xAA]), 4, 1),
+                         bytes([0xAA, 0, 0, 0]))
+
     def test_sniff(self):
         blob = build_fsh(1, [(4, 4, bytes(16))])
         self.assertTrue(is_sprite_stream(blob))

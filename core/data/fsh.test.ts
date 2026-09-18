@@ -197,4 +197,13 @@ describe("fshToSheets", () => {
     const sheet = [...fshToSheets(buildPack(rawSpriteChunk(4, 1, stream))).values()][0]!;
     expect([...sheet.frame(0, 0).idx]).toEqual([9, 9, 0, 0]);
   });
+
+  it("does not read past the stream on a truncated item", () => {
+    // `FE FF` alone is a run header with no color byte -> col defaults to 0.
+    const a = [...fshToSheets(buildPack(rawSpriteChunk(2, 1, new Uint8Array([0xfe, 0xff])))).values()][0]!;
+    expect([...a.frame(0, 0).idx]).toEqual([0, 0]);
+    // `09 00 AA` claims 9 literals but only one remains -> pads the rest.
+    const b = [...fshToSheets(buildPack(rawSpriteChunk(4, 1, new Uint8Array([0x09, 0x00, 0xaa])))).values()][0]!;
+    expect([...b.frame(0, 0).idx]).toEqual([0xaa, 0, 0, 0]);
+  });
 });
