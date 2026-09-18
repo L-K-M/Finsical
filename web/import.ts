@@ -118,6 +118,9 @@ export function mountImportPanel(h: ImportHandlers):
   const thumbs = new Map<string, HTMLCanvasElement>();
 
   const ov = el("div", "ov");
+  ov.setAttribute("role", "dialog");
+  ov.setAttribute("aria-modal", "true");
+  ov.setAttribute("aria-label", "Import add-ons");
   ov.style.display = "none";
   const card = el("div", "card");
   ov.appendChild(card);
@@ -253,7 +256,8 @@ export function mountImportPanel(h: ImportHandlers):
     void listAddons().then((items) => {
       if (!items.length) throw new Error("empty listing");
       buildBrowse(items);
-    }).catch(() => {
+    }).catch((e) => {
+      console.warn("add-on listing failed:", e);
       browse.textContent = "";
       browse.appendChild(el("div", "dstatus",
         "Couldn't reach archive.org."));
@@ -266,6 +270,10 @@ export function mountImportPanel(h: ImportHandlers):
   close.addEventListener("click", () => { ov.style.display = "none"; });
   ov.addEventListener("pointerdown", (e) => {
     if (e.target === ov) ov.style.display = "none";
+  });
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && ov.style.display !== "none")
+      ov.style.display = "none";
   });
 
   let loaded = false;
