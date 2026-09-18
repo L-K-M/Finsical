@@ -53,6 +53,8 @@ make -C macos
 if ((install_requested)); then
   rm -rf -- "$INSTALL_PATH"
   ditto "$APP_PATH" "$INSTALL_PATH"
+  echo "Installed to $INSTALL_PATH"
+  open -R "$INSTALL_PATH"
 fi
 
 if ((run_requested)); then
