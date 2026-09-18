@@ -14,8 +14,11 @@ Chunk payload layout (little-endian):
 
 Pixel codec — each frame's stream is a sequence of items:
 
-    - command: ``op 0xFF col n lit…`` — emit (0x100 - op) pixels of
-      `col`, then `n` raw literal pixels.
+    - command: ``op 0xFF col n 0x00 lit…`` — emit (0x100 - op) pixels of
+      `col`, then `n` raw literal pixels. The byte after the count is always
+      0 (the count reads as a u16 whose high byte is 0). `op` is 1-255; op 0
+      never encodes a command, so ``0x00 0xFF`` is literal data, not a
+      command.
     - any other byte — one literal pixel.
 
 Emitted pixels fill the frame column-major (x = i // h, y = i % h).
@@ -43,11 +46,12 @@ def decode_pixels(s: bytes, w: int, h: int) -> bytes:
     col = bytearray()
     i = 0
     while i < n and len(col) < w * h:
-        if i + 3 < n and s[i + 1] == 0xFF:
+        if (i + 5 <= n and s[i] != 0 and s[i + 1] == 0xFF and s[i + 4] == 0
+                and i + 5 + s[i + 3] <= n):
             col += bytes([s[i + 2]]) * (0x100 - s[i])
             nl = s[i + 3]
-            col += s[i + 4:i + 4 + nl]
-            i += 4 + nl
+            col += s[i + 5:i + 5 + nl]
+            i += 5 + nl
         else:
             col.append(s[i])
             i += 1

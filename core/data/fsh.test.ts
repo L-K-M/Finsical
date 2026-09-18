@@ -61,8 +61,8 @@ function encodeFrameStream(px: Uint8Array): Uint8Array {
       k = m;
     }
     i = k;
-    while (run > 255) { out.push(0x01, 0xff, col, 0); run -= 255; }
-    out.push(0x100 - run, 0xff, col, lits.length, ...lits);
+    while (run > 255) { out.push(0x01, 0xff, col, 0, 0); run -= 255; }
+    out.push(0x100 - run, 0xff, col, lits.length, 0, ...lits);
   }
   return new Uint8Array(out);
 }
@@ -100,6 +100,15 @@ function toCol(w: number, h: number, fill: (x: number, y: number) => number): Ui
   for (let x = 0; x < w; x++)
     for (let y = 0; y < h; y++) px[x * h + y] = fill(x, y);
   return px;
+}
+
+/** Single-frame sprite chunk from a pre-encoded stream (bypasses the encoder). */
+function rawSpriteChunk(w: number, h: number, stream: Uint8Array): Uint8Array {
+  return cat(
+    u16le(1), u16le(1), u32le(0),                        // groups, frames, reserved
+    u16le(w), u16le(h), u16le(0), u32le(stream.length),  // record
+    stream,
+  );
 }
 
 describe("pack", () => {
@@ -148,5 +157,23 @@ describe("fshToSheets", () => {
   it("skips malformed payloads", () => {
     const bad = cat(u16le(4), u16le(4), u32le(0), new Uint8Array([9, 9]));
     expect(fshToSheets(buildPack(bad)).size).toBe(0);
+  });
+
+  it("treats a literal 0x00 0xFF pair as pixels, not a command", () => {
+    // 0x00 0xFF would mis-parse as a run command under a grammar that ignores
+    // op==0; here every byte must land as one literal pixel.
+    const stream = new Uint8Array([0x03, 0x00, 0xff, 0x07]);
+    const sheet = [...fshToSheets(buildPack(rawSpriteChunk(2, 2, stream))).values()][0]!;
+    // column-major emit [3,0,255,7] -> row-major [3,255,0,7]
+    expect([...sheet.frame(0, 0).idx]).toEqual([3, 255, 0, 7]);
+  });
+
+  it("consumes the count high byte as structure, not a pixel", () => {
+    // `FE FF 09 01 00 2A`: run of 2 × col 9, then 1 literal 0x2A. The 0x00 is
+    // the u16 count's high byte; the old 4-byte grammar emitted it as a pixel
+    // and shifted the real literal out of frame.
+    const stream = new Uint8Array([0xfe, 0xff, 0x09, 0x01, 0x00, 0x2a]);
+    const sheet = [...fshToSheets(buildPack(rawSpriteChunk(3, 1, stream))).values()][0]!;
+    expect([...sheet.frame(0, 0).idx]).toEqual([9, 9, 0x2a]);
   });
 });
