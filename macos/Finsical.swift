@@ -56,11 +56,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
 
     /// Menu actions evaluate JS entry points exposed by web/main.ts.
     @objc func openImport() {
-        webView?.evaluateJavaScript("window.finsical?.openImport()") { _, _ in }
+        webView?.evaluateJavaScript("window.finsical?.openImport() ?? null") { _, error in
+            if let error { NSLog("Finsical: openImport JS failed: \(error.localizedDescription)") }
+        }
     }
 
     @objc func feedFish() {
-        webView?.evaluateJavaScript("window.finsical?.feedFish()") { _, _ in }
+        webView?.evaluateJavaScript("window.finsical?.feedFish() ?? null") { _, error in
+            if let error { NSLog("Finsical: feedFish JS failed: \(error.localizedDescription)") }
+        }
     }
 
     @objc func supportArchive() {
