@@ -3,6 +3,7 @@ import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.j
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { TankAudio } from "./audio.js";
 import { mountImportPanel } from "./import.js";
+import type { PackResult } from "./import.js";
 import type { Fish } from "../core/sim.js";
 import type { AzpackManifest, IndexedImage } from "../core/data/azpack.js";
 
@@ -83,9 +84,24 @@ function sheetOf(f: Fish): SpriteSheet | null {
   }
   return fishSheets[i % fishSheets.length]!;
 }
-// archive.org add-on import: "+ import" opens a panel of fish/gravel
-// packs hosted as inner zip entries (see web/import.ts).
-mountImportPanel({
+// archive.org add-on import: Tank > Import Add-ons… (⌘I) opens the
+// browser of fish/gravel packs hosted as inner zip entries (web/import.ts).
+function previewOf(rs: PackResult[]): HTMLCanvasElement | null {
+  const sheets = rs.flatMap((r) => [...r.sheets.values()]);
+  sheets.sort((a, b) => b.meta.cellW * b.meta.cellH - a.meta.cellW * a.meta.cellH);
+  for (const sh of sheets) {
+    for (let g = 0; g < sh.meta.groups; g++)
+      for (let f = 0; f < sh.meta.framesPerGroup; f++)
+        try { return frameCanvas(sh, g, f); } catch { /* try next */ }
+  }
+  const imgs = rs.flatMap((r) => [...r.images.values()]);
+  imgs.sort((a, b) => b.w * b.h - a.w * a.h);
+  if (!imgs[0]) return null;
+  try { return imageCanvas(imgs[0], true); }
+  catch (e) { console.warn("preview render failed:", e); return null; }
+}
+
+const importPanel = mountImportPanel({
   onSheets: (sheets, name) => {
     usePack({ sheets });
     console.info(`archive.org: imported fish ${name}`);
@@ -96,6 +112,32 @@ mountImportPanel({
     pickBackdrop(images);
     console.info(`archive.org: imported scenery ${name}`);
   },
+  preview: previewOf,
+});
+
+// Native-menu / keyboard entry points (macos/Finsical.swift calls these).
+function feedFish(): void {
+  sim.dropFood(TANK.width / 2);
+  audio.feed();
+}
+(window as unknown as { finsical?: unknown }).finsical =
+  { openImport: () => importPanel.open(), feedFish };
+
+// Pointer/touch entry point — bottom-right keeps it clear of the
+// native drag strip and out of the fish's way until hovered.
+const trigger = document.createElement("button");
+trigger.id = "opentrigger";
+trigger.textContent = "+ add-ons";
+trigger.addEventListener("click", () => importPanel.open());
+document.body.appendChild(trigger);
+window.addEventListener("keydown", (e) => {
+  const k = e.key.toLowerCase();
+  if ((e.metaKey || e.ctrlKey) && k === "i") {
+    importPanel.open(); e.preventDefault();
+  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" &&
+             !e.repeat && !importPanel.isOpen) {
+    feedFish(); // bare F: Cmd-F is Find in browsers; the native menu owns ⌘F
+  }
 });
 
 const packFetch = async (p: string): Promise<Uint8Array> => {

@@ -5,34 +5,91 @@
   <title>Finsical</title>
   <style>
     html, body { margin: 0; height: 100%; background: #000; }
-    #hint {
-      position: fixed; top: 6px; left: 8px; z-index: 1;
-      color: #9ab; font: 12px monospace; opacity: .6;
-      pointer-events: none;
+    /* Add-on browser overlay. Interactive content stays below the top
+       22px native drag strip — a full-height overlay would swallow it. */
+    .ov {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: center;
+      padding: 30px 12px 12px; box-sizing: border-box;
+      background: rgba(3, 7, 13, .72);
+      font: 13px/1.4 -apple-system, system-ui, sans-serif;
     }
-    #importbtn {
-      position: fixed; top: 4px; right: 6px; z-index: 2;
+    .card {
+      width: min(560px, 100%); max-height: 100%;
+      display: flex; flex-direction: column;
+      background: #101823; border: 1px solid #24344a;
+      border-radius: 10px; overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, .6);
+    }
+    .hd {
+      display: flex; align-items: center;
+      padding: 12px 14px 10px; border-bottom: 1px solid #1c2938;
+    }
+    .hd .title { color: #e8eef6; font-weight: 600; font-size: 14px; }
+    .hd .sub { color: #6b7f96; font-size: 11px; }
+    .hd .titles { flex: 1; }
+    .hd .x {
       background: none; border: 0; cursor: pointer;
-      color: #9ab; font: 12px monospace; opacity: .6;
+      color: #6b7f96; font-size: 14px; padding: 4px 8px;
     }
-    #importbtn:hover { opacity: 1; }
-    #importpanel {
-      position: fixed; top: 24px; right: 6px; z-index: 2;
-      max-height: 80vh; overflow-y: auto; width: 190px;
-      background: rgba(8, 14, 24, .92); border: 1px solid #234;
-      color: #9ab; font: 12px monospace; padding: 6px;
+    .hd .x:hover { color: #fff; }
+    .body { overflow-y: auto; padding: 10px 14px; flex: 1; }
+    .sec {
+      color: #8fa5bd; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 1.2px;
+      margin: 10px 0 6px;
     }
-    #importpanel .sec {
-      color: #cde; margin: 6px 0 2px; text-transform: uppercase;
-      letter-spacing: 1px;
+    .grid {
+      display: grid; gap: 6px;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     }
-    #importpanel .item {
-      display: block; width: 100%; text-align: left;
-      background: none; border: 0; cursor: pointer;
-      color: #9ab; font: 12px monospace; padding: 2px 4px;
+    .tile {
+      position: relative; display: flex; flex-direction: column;
+      align-items: center; gap: 6px; padding: 10px 8px;
+      background: #0c1420; border: 1px solid #1c2938; border-radius: 8px;
+      color: #b8c7d8; font: inherit; cursor: pointer; text-align: center;
     }
-    #importpanel .item:hover:not(:disabled) { color: #fff; background: #123; }
-    #importpanel .item:disabled { color: #578; }
+    .tile:hover { border-color: #3b567a; color: #fff; background: #111d2e; }
+    .tile .tname { font-size: 12px; overflow-wrap: anywhere; }
+    .tile .tthumb { image-rendering: pixelated; max-width: 96px; max-height: 64px; }
+    .tile .tick {
+      display: none; position: absolute; top: 5px; right: 7px;
+      color: #7ddb8a; font-size: 12px;
+    }
+    .tile.done .tick { display: block; }
+    .detail .back {
+      background: none; border: 0; cursor: pointer; padding: 0 0 8px;
+      color: #6f9fd8; font: inherit; font-size: 12px;
+    }
+    .detail .back:hover { color: #a8ccf5; }
+    .detail .dname { color: #e8eef6; font-size: 16px; font-weight: 600; }
+    .detail .dmeta { color: #6b7f96; font-size: 11px; margin: 2px 0 10px; }
+    .detail .pv {
+      display: flex; justify-content: center; padding: 10px;
+      background: #081120; border: 1px solid #1c2938; border-radius: 8px;
+      min-height: 60px; align-items: center;
+    }
+    .detail .pv canvas { image-rendering: pixelated; max-width: 100%; max-height: 180px; }
+    .detail .dstatus, .browse .dstatus { color: #8fa5bd; font-size: 12px; margin: 10px 0; }
+    #opentrigger {
+      position: fixed; right: 8px; bottom: 8px; z-index: 5;
+      background: rgba(16, 24, 35, .8); border: 1px solid #24344a;
+      border-radius: 14px; cursor: pointer; opacity: .5;
+      color: #b8c7d8; font: 12px/1 -apple-system, system-ui, sans-serif;
+      padding: 6px 12px;
+    }
+    #opentrigger:hover { opacity: 1; }
+    @media (hover: none) { #opentrigger { opacity: .85; padding: 10px 16px; } }
+    .detail .dact, .browse .dact {
+      background: #2b6cb8; border: 0; border-radius: 7px; cursor: pointer;
+      color: #fff; font: inherit; font-weight: 600; padding: 8px 16px;
+    }
+    .detail .dact:hover, .browse .dact:hover { background: #3580d4; }
+    .ft {
+      padding: 8px 14px; border-top: 1px solid #1c2938; text-align: center;
+    }
+    .ft a { color: #e06c6c; font-size: 11px; text-decoration: none; }
+    .ft a:hover { text-decoration: underline; }
     canvas {
       display: block; width: 100vw; height: 100vh; object-fit: contain;
       image-rendering: pixelated; /* keep the crunch */
@@ -41,7 +98,6 @@
   </style>
 </head>
 <body>
-  <div id="hint">click surface to feed &middot; click glass to tap &middot; drop an .azpack folder to import fish</div>
   <canvas id="tank" width="320" height="200"></canvas>
   <script src="bundle.js"></script>
 </body>
