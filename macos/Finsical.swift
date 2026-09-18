@@ -50,17 +50,17 @@ final class DragStrip: NSView {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDelegate {
     private var window: NSWindow!
     private var webView: WKWebView!
 
     /// Menu actions evaluate JS entry points exposed by web/main.ts.
     @objc private func openImport() {
-        webView.evaluateJavaScript("window.finsical?.openImport()") { _, _ in }
+        webView?.evaluateJavaScript("window.finsical?.openImport()") { _, _ in }
     }
 
     @objc private func feedFish() {
-        webView.evaluateJavaScript("window.finsical?.feedFish()") { _, _ in }
+        webView?.evaluateJavaScript("window.finsical?.feedFish()") { _, _ in }
     }
 
     @objc private func supportArchive() {
@@ -85,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate {
         webView = WKWebView(frame: .init(x: 0, y: 0, width: 640, height: 400),
                             configuration: config)
         webView.uiDelegate = self
+        webView.navigationDelegate = self
 
         window = NSWindow(
             contentRect: webView.frame,
