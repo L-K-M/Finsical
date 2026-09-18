@@ -82,6 +82,12 @@ class TestSpriteStream(unittest.TestCase):
         self.assertEqual(stream, b"\xd4\xfe\x07")
         self.assertEqual(decode_pixels(stream, 1, 300), px)
 
+    def test_odd_trailing_byte_is_dropped_not_fatal(self):
+        # A truncated stream ending in a single stray byte must not raise;
+        # the shortfall pads with 0.
+        idx = decode_pixels(bytes([0xFE, 0xFF, 0x09, 0x7A]), 4, 1)
+        self.assertEqual(idx, bytes([9, 9, 0, 0]))
+
     def test_sniff(self):
         blob = build_fsh(1, [(4, 4, bytes(16))])
         self.assertTrue(is_sprite_stream(blob))

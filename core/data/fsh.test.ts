@@ -189,4 +189,12 @@ describe("fshToSheets", () => {
     const sheet = [...fshToSheets(buildPack(rawSpriteChunk(1, 300, stream))).values()][0]!;
     expect([...sheet.frame(0, 0).idx]).toEqual([...px]);
   });
+
+  it("drops a stray trailing byte instead of reading past the stream", () => {
+    // `FE FF 09` = run of 2 × col 9; `7A` is one orphan byte with no high
+    // byte, so it is dropped and the shortfall pads with 0.
+    const stream = new Uint8Array([0xfe, 0xff, 0x09, 0x7a]);
+    const sheet = [...fshToSheets(buildPack(rawSpriteChunk(4, 1, stream))).values()][0]!;
+    expect([...sheet.frame(0, 0).idx]).toEqual([9, 9, 0, 0]);
+  });
 });

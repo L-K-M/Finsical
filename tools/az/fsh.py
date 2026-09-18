@@ -43,7 +43,7 @@ def decode_pixels(s: bytes, w: int, h: int) -> bytes:
     n = len(s)
     col = bytearray()
     i = 0
-    while i + 1 <= n and len(col) < w * h:
+    while i + 2 <= n and len(col) < w * h:
         v = s[i] | (s[i + 1] << 8)
         if v >= 0x8000:
             v -= 0x10000
