@@ -13,10 +13,11 @@ import struct
 
 with open(os.path.join(os.path.dirname(__file__), "mace_tab.bin"),
           "rb") as _f:
-    _TAB2 = [tuple(x) for x in struct.iter_unpack(">4H", _f.read())]
-if len(_TAB2) != 128:
-    raise ValueError(
-        f"mace_tab.bin: expected 128 rows of 4 u16, got {len(_TAB2)}")
+    raw = _f.read()
+    if len(raw) != 1024:
+        raise ValueError(
+            f"mace_tab.bin: expected 1024 bytes, got {len(raw)}")
+    _TAB2 = [tuple(x) for x in struct.iter_unpack(">4H", raw)]
 _TAB1 = (-13, 8, 76, 222, 222, 76, 8, -13)
 
 
