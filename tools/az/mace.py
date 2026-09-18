@@ -3,8 +3,9 @@
 # distributed with the app.
 """MACE 3:1 mono decoder, ported from FFmpeg libavcodec/mace.c (LGPL).
 
-The coefficient table lives in the sibling mace_tab.bin (128 rows of
-4 big-endian u16 = 1024 bytes); keeping it out of the source keeps the
+The coefficient table lives in the sibling mace_tab.bin — a byte-level
+copy of FFmpeg libavcodec/mace.c's mace table (LGPL-2.1+), 128 rows of
+4 big-endian u16 = 1024 bytes; keeping it out of the source keeps the
 patch reviewable. Decode is verified against the real AQUAZONE 1.7.9
 resource fork.
 """
@@ -22,8 +23,9 @@ _TAB1 = (-13, 8, 76, 222, 222, 76, 8, -13)
 
 
 def _clip16(n):
-    # Asymmetric on purpose: mirrors FFmpeg/QuickTime MACE clipping, which
-    # clamps underflow to -32767 (not -32768). Verified against real data.
+    # FFmpeg's mace_broken_clip_int16: the original QuickTime quirk only
+    # clips strictly below -32768 (to -32767), so -32768 itself passes
+    # through. Do not "fix" — the asymmetry is the reference behavior.
     return 32767 if n > 32767 else (-32767 if n < -32768 else n)
 
 

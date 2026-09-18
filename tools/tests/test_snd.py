@@ -65,6 +65,12 @@ class TestParse(unittest.TestCase):
         with self.assertRaisesRegex(SndError, "truncated"):
             parse_snd(snd_fmt1_mace(b"\x24" * 20, 11))
 
+    def test_fmt1_mace_truncated_header(self):
+        # 64-byte cmpSH header cut one byte short at hoff (= 20).
+        blob = snd_fmt1_mace(b"\x24" * 20, 10)
+        with self.assertRaisesRegex(SndError, "truncated cmpSH header"):
+            parse_snd(blob[:20 + 63])
+
     def test_fmt1_mace_bad_comp(self):
         with self.assertRaisesRegex(SndError, "unsupported compression 6"):
             parse_snd(snd_fmt1_mace(b"\x24" * 20, 10, comp=6))
