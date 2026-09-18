@@ -55,16 +55,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     private var webView: WKWebView!
 
     /// Menu actions evaluate JS entry points exposed by web/main.ts.
-    @objc private func openImport() {
+    @objc func openImport() {
         webView?.evaluateJavaScript("window.finsical?.openImport()") { _, _ in }
     }
 
-    @objc private func feedFish() {
+    @objc func feedFish() {
         webView?.evaluateJavaScript("window.finsical?.feedFish()") { _, _ in }
     }
 
-    @objc private func supportArchive() {
-        NSWorkspace.shared.open(URL(string: "https://archive.org/donate")!)
+    @objc func supportArchive() {
+        if let url = URL(string: "https://archive.org/donate") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     /// target=_blank links (the donate link) have no host view; open them
