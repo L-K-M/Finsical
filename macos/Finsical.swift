@@ -86,7 +86,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         if action.targetFrame?.isMainFrame == true,
            let url = action.request.url,
            url.scheme == "http" || url.scheme == "https" {
-            NSWorkspace.shared.open(url)
+            if !NSWorkspace.shared.open(url) {
+                NSLog("Finsical: failed to hand off URL to browser: \(url)")
+            }
             decisionHandler(.cancel)
             return
         }
