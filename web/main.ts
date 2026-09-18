@@ -130,9 +130,6 @@ trigger.addEventListener("click", () => importPanel.open());
 document.body.appendChild(trigger);
 window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
-  if (k === "escape" && importPanel.isOpen) {
-    importPanel.close(); e.preventDefault(); return;
-  }
   if ((e.metaKey || e.ctrlKey) && k === "i") {
     importPanel.open(); e.preventDefault();
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" &&
