@@ -87,4 +87,12 @@ describe("zipRead", () => {
     const z = buildZip("x.fsh", enc.encode("abc"), 99);
     await expect(zipRead(z, zipEntries(z)[0]!)).rejects.toThrow(/method/);
   });
+
+  it("rejects a central directory entry that overruns the EOCD", () => {
+    const z = buildZip("x.fsh", enc.encode("abc"));
+    const bad = z.slice();
+    const cdOff = 30 + 5 + 3; // end of local header (30 + name + body)
+    new DataView(bad.buffer).setUint16(cdOff + 28, 0xffff, true);
+    expect(() => zipEntries(bad)).toThrow(/truncated/);
+  });
 });
