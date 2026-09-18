@@ -62,7 +62,7 @@ function pickBackdrop(images: Iterable<IndexedImage>): void {
   let best: IndexedImage | null = null;
   let gravel: IndexedImage | null = null;
   for (const img of images) {
-    if (img.w >= img.h * 3) { if (!gravel || img.w > gravel.w) gravel = img; continue; }
+    if (img.w >= img.h * 3 && img.w >= TANK.width / 2) { if (!gravel || img.w > gravel.w) gravel = img; continue; }
     if (img.w * img.h < (TANK.width * TANK.height) / 4) continue;
     if (img.w < TANK.width / 2 || img.h < TANK.height / 2) continue;
     if (!best || img.w * img.h > best.w * best.h) best = img;
