@@ -32,7 +32,7 @@ async function listCollection(item: string, outer: string):
   const prefix = `/download/${item}/${encodeURIComponent(outer)}/`;
   const out: Importable[] = [];
   for (const m of html.matchAll(/href="([^"]+\.zip)"/g)) {
-    const href = m[1]!.replace(/^[a-z]+:\/\/[^/]+|^\/+[^/]+/i, ""); // strip https://host or //host
+    const href = new URL(m[1]!, page).pathname; // absolute, root- or page-relative
     if (!href.startsWith(prefix)) continue;
     const inner = decodeURIComponent(href.slice(prefix.length));
     if (!inner || inner.includes("/")) continue;
@@ -94,8 +94,8 @@ export async function listAddons(item = DEFAULT_ITEM):
 // ---- import panel --------------------------------------------------------
 
 export interface ImportHandlers {
-  onSheets(sheets: Map<string, SpriteSheet>, name: string): void;
-  onImages(images: Iterable<IndexedImage>, name: string): void;
+  onSheets(sheets: Map<string, SpriteSheet>, name: string, section: string): void;
+  onImages(images: Iterable<IndexedImage>, name: string, section: string): void;
 }
 
 /** Small overlay listing archive.org add-ons; click a name to import it. */
@@ -144,8 +144,8 @@ export function mountImportPanel(h: ImportHandlers): void {
               const usable = rs.filter((r) => r.sheets.size || r.images.size);
               if (!usable.length) throw new Error("no pack inside");
               for (const r of usable) {
-                if (r.sheets.size) h.onSheets(r.sheets, it.inner);
-                if (r.images.size) h.onImages(r.images.values(), it.inner);
+                if (r.sheets.size) h.onSheets(r.sheets, it.inner, it.section);
+                if (r.images.size) h.onImages(r.images.values(), it.inner, it.section);
               }
               a.textContent = `${it.inner} ✓`;
             })

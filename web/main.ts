@@ -90,7 +90,9 @@ mountImportPanel({
     usePack({ sheets });
     console.info(`archive.org: imported fish ${name}`);
   },
-  onImages: (images, name) => {
+  onImages: (images, name, section) => {
+    // fish packs carry portraits too — only scenery sections touch the tank
+    if (section !== "gravel") return;
     pickBackdrop(images);
     console.info(`archive.org: imported scenery ${name}`);
   },
