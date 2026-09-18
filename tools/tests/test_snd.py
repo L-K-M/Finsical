@@ -74,6 +74,15 @@ class TestParse(unittest.TestCase):
         self.assertTrue(all(-32768 <= x <= 32767 for x in s))
         self.assertTrue(any(abs(x) > 1000 for x in s))  # real signal, not mute
 
+    def test_mace3_golden_vector(self):
+        # Pins the verified decode (checked against the AQUAZONE 1.7.9
+        # resource fork) — catches table-endianness/column regressions.
+        import hashlib
+        out = mace3_decode(b"\x39\xf1" * 100, 100)
+        self.assertEqual(hashlib.sha256(out).hexdigest(),
+                         "150be20e43645c06031f3dbde785d2a7"
+                         "e996450eb07766e331a5ad94656b9eac")
+
     def test_rejects_bad_format(self):
         with self.assertRaises(SndError):
             parse_snd(b"\x00\x07" + b"\x00" * 20)
