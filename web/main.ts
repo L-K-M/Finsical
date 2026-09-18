@@ -120,6 +120,14 @@ function feedFish(): void {
 }
 (window as unknown as { finsical?: unknown }).finsical =
   { openImport: () => importPanel.open(), feedFish };
+
+// Pointer/touch entry point — bottom-right keeps it clear of the
+// native drag strip and out of the fish's way until hovered.
+const trigger = document.createElement("button");
+trigger.id = "opentrigger";
+trigger.textContent = "+ add-ons";
+trigger.addEventListener("click", () => importPanel.open());
+document.body.appendChild(trigger);
 window.addEventListener("keydown", (e) => {
   if (!e.metaKey && !e.ctrlKey) return;
   if (e.key === "i") { importPanel.open(); e.preventDefault(); }

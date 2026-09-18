@@ -148,9 +148,22 @@ export function mountImportPanel(h: ImportHandlers): { open(): void } {
   card.appendChild(ft);
   document.body.appendChild(ov);
 
+  function paintThumb(tile: Element, th: HTMLCanvasElement): void {
+    if (tile.querySelector(".tthumb")) return;
+    const copy = el("canvas", "tthumb");
+    copy.width = th.width; copy.height = th.height;
+    copy.getContext("2d")!.drawImage(th, 0, 0);
+    tile.insertBefore(copy, tile.firstChild);
+  }
+
   function showBrowse(): void {
     detail.style.display = "none";
     browse.style.display = "";
+    // Detail fetches populate thumbs lazily — back-fill tiles on return.
+    for (const [inner, th] of thumbs) {
+      const t = browse.querySelector(`[data-inner="${CSS.escape(inner)}"]`);
+      if (t) paintThumb(t, th);
+    }
   }
 
   function applyAddon(it: Importable, rs: PackResult[]): void {
@@ -225,12 +238,7 @@ export function mountImportPanel(h: ImportHandlers): { open(): void } {
       t.dataset.inner = it.inner;
       if (installed.has(it.inner)) t.classList.add("done");
       const th = thumbs.get(it.inner);
-      if (th) {
-        const copy = el("canvas", "tthumb");
-        copy.width = th.width; copy.height = th.height;
-        copy.getContext("2d")!.drawImage(th, 0, 0);
-        t.appendChild(copy);
-      }
+      if (th) paintThumb(t, th);
       t.appendChild(el("span", "tname", it.inner));
       t.appendChild(el("span", "tick", "✓"));
       t.addEventListener("click", () => showDetail(it));
