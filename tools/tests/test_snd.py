@@ -6,6 +6,9 @@ import wave
 from tools.az.mace import mace3_decode
 from tools.az.snd import parse_snd, snd_to_wav, SndError
 
+_MACE_TAB_SHA256 = ("2d7875ce06077795d98f9c2e4b0d96"
+                    "52ed6e25e70a16d7c127998c450aa52bf")
+
 
 def snd_fmt1_u8(pcm: bytes, rate: float = 22254.5454) -> bytes:
     """Format-1 'snd ' (stdSH: u32 length at +4, u8 data)."""
@@ -95,6 +98,15 @@ class TestParse(unittest.TestCase):
         self.assertEqual(hashlib.sha256(pcm).hexdigest(),
                          "39205b11a9f1c4636aa66013b7f36ee6"
                          "87e6ac5993d325ecab0835b6e91a016f")
+
+    def test_mace_table_hash(self):
+        # Table corruption fails loudly instead of silently altering output.
+        import hashlib, os
+        from tools.az import mace
+        with open(os.path.join(os.path.dirname(mace.__file__),
+                               "mace_tab.bin"), "rb") as f:
+            self.assertEqual(hashlib.sha256(f.read()).hexdigest(),
+                             _MACE_TAB_SHA256)
 
     def test_rejects_bad_format(self):
         with self.assertRaises(SndError):
