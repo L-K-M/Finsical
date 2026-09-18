@@ -82,7 +82,9 @@ function decodePixels(s: Uint8Array, w: number, h: number): Uint8Array {
   while (i < n && o < total) {
     // Command: `op 0xFF col n 0x00 lit…`. The count is a u16 whose high byte
     // (s[i+4]) is always 0; op 0 never encodes a command, so `0x00 0xFF` is
-    // literal data. Both guards keep literal `XX 0xFF` runs from desyncing.
+    // literal data. These guards reduce, but do not eliminate, the chance
+    // that a literal `XX 0xFF` pair is misparsed as a command; correctness
+    // relies on streams produced by the matching encoder.
     if (i + 5 <= n && s[i] !== 0 && s[i + 1] === 0xff && s[i + 4] === 0 &&
         i + 5 + (s[i + 3] ?? 0) <= n) {
       const run = 0x100 - (s[i] ?? 0), c = s[i + 2] ?? 0;
