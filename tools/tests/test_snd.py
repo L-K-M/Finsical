@@ -91,6 +91,7 @@ class TestParse(unittest.TestCase):
         rate, pcm, width = parse_snd(snd_fmt1_mace(b"\x24" * 20, 10))
         self.assertEqual(width, 2)
         self.assertEqual(rate, 22254)
+        self.assertEqual(len(pcm), 10 * 6 * 2)
         self.assertEqual(hashlib.sha256(pcm).hexdigest(),
                          "39205b11a9f1c4636aa66013b7f36ee6"
                          "87e6ac5993d325ecab0835b6e91a016f")
