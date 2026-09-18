@@ -1,3 +1,6 @@
+# Ported from FFmpeg libavcodec/mace.c — FFmpeg is LGPL-2.1+; see
+# https://ffmpeg.org/legal.html. This is a build-time asset tool, not
+# distributed with the app.
 """MACE 3:1 mono decoder, ported from FFmpeg libavcodec/mace.c (LGPL).
 
 The coefficient table lives in the sibling mace_tab.bin (128 rows of
@@ -11,10 +14,15 @@ import struct
 with open(os.path.join(os.path.dirname(__file__), "mace_tab.bin"),
           "rb") as _f:
     _TAB2 = [tuple(x) for x in struct.iter_unpack(">4H", _f.read())]
+if len(_TAB2) != 128:
+    raise ValueError(
+        f"mace_tab.bin: expected 128 rows of 4 u16, got {len(_TAB2)}")
 _TAB1 = (-13, 8, 76, 222, 222, 76, 8, -13)
 
 
 def _clip16(n):
+    # Asymmetric on purpose: mirrors FFmpeg/QuickTime MACE clipping, which
+    # clamps underflow to -32767 (not -32768). Verified against real data.
     return 32767 if n > 32767 else (-32767 if n < -32768 else n)
 
 
@@ -26,9 +34,13 @@ def _to_s16(current):
 
 def mace3_decode(data: bytes, nframes: int) -> bytes:
     """MACE 3:1 mono: 2 bytes -> 6 samples. Returns s16-LE PCM."""
+    if len(data) < nframes * 2:
+        raise ValueError(
+            f"MACE3: need {nframes} frames ({nframes * 2} bytes), "
+            f"got {len(data)}")
     index = level = 0
     out = bytearray()
-    for j in range(min(nframes, len(data) // 2)):
+    for j in range(nframes):
         for k in range(2):
             pkt = data[j * 2 + k]
             for val in (pkt & 7, (pkt >> 3) & 3, pkt >> 5):

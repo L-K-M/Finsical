@@ -66,6 +66,8 @@ def parse_snd(blob: bytes):
             if comp != 3:
                 raise SndError(f"unsupported compression {comp}")
             data = blob[hoff + 64:hoff + 64 + nframes * 2]
+            if len(data) < nframes * 2:
+                raise SndError("truncated samples")
             return rate // 65536, mace3_decode(data, nframes), 2
     except (struct.error, IndexError) as e:
         raise SndError(f"malformed snd data: {e}") from e

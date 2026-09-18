@@ -23,14 +23,14 @@ def snd_fmt2_u8(pcm: bytes, rate: float = 11127.2727) -> bytes:
 
 
 def snd_fmt1_mace(frames: bytes, nframes: int,
-                  rate: float = 22254.5454) -> bytes:
+                  rate: float = 22254.5454, comp: int = 3) -> bytes:
     """Format-1 'snd ' with a cmpSH (encode=0xfe, MACE3) header."""
     hdr = struct.pack(">II I I I BB I", 0, 1, int(rate * 65536),
                       0, 0, 0xFE, 60, nframes)
     hdr += b"\x40\x0c\xad\xdd\x17\x3e\xab\x36\x7a\x0f"  # AIFF ext80 rate
     hdr += b"\x00" * 12                                # chunks
     hdr += struct.pack(">HHI", 0, 0, 0)[:8]            # size + future
-    hdr += struct.pack(">HHHH", 3, 16, 11, 8)          # compID=3 ...
+    hdr += struct.pack(">HHHH", comp, 16, 11, 8)       # compID ...
     assert len(hdr) == 64
     head = struct.pack(">HHHIHHI", 1, 1, 5, 0x3A0, 1, 0x8051, 20)
     head = head[:14] + b"\x00\x00" + head[14:]  # p1 field
@@ -54,7 +54,17 @@ class TestParse(unittest.TestCase):
     def test_fmt1_mace3(self):
         rate, out, width = parse_snd(snd_fmt1_mace(b"\x24" * 20, 10))
         self.assertEqual(width, 2)
+        self.assertEqual(rate, 22254)
         self.assertEqual(len(out), 10 * 6 * 2)  # 6 s16 samples per frame
+
+    def test_fmt1_mace_truncated(self):
+        # nframes claims 11 frames but only 20 bytes (10 frames) follow.
+        with self.assertRaises(SndError):
+            parse_snd(snd_fmt1_mace(b"\x24" * 20, 11))
+
+    def test_fmt1_mace_bad_comp(self):
+        with self.assertRaises(SndError):
+            parse_snd(snd_fmt1_mace(b"\x24" * 20, 10, comp=6))
 
     def test_mace3_is_deterministic_and_bounded(self):
         a = mace3_decode(b"\x39\xf1" * 100, 100)
