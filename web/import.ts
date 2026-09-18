@@ -32,29 +32,30 @@ async function listCollection(item: string, outer: string):
   const prefix = `/download/${item}/${encodeURIComponent(outer)}/`;
   const out: Importable[] = [];
   for (const m of html.matchAll(/href="([^"]+\.zip)"/g)) {
-    const href = m[1]!.replace(/^\/+[^/]+/, ""); // strip //host
+    const href = m[1]!.replace(/^[a-z]+:\/\/[^/]+|^\/+[^/]+/i, ""); // strip https://host or //host
     if (!href.startsWith("/download/")) continue;
     const inner = decodeURIComponent(href.slice(prefix.length));
     if (!inner || inner.includes("/")) continue;
     const name = inner.replace(/\.zip$/i, "");
-    if (!name || name === outer) continue;
+    if (!name || inner === outer) continue;
     out.push({ section: "", inner: name,
                url: `https://archive.org${href}` });
   }
   return out;
 }
 
-/** Fetch an inner zip and return the pack bytes of its first pack entry. */
-async function fetchInnerPack(url: string): Promise<Uint8Array | null> {
+/** Fetch an inner zip and return every pack entry inside. */
+async function fetchInnerPacks(url: string): Promise<Uint8Array[]> {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${url}: ${r.status}`);
   const z = new Uint8Array(await r.arrayBuffer());
+  const packs: Uint8Array[] = [];
   for (const e of zipEntries(z)) {
     if (!/\.(fsh|grv|plt|acc|azn|rez)$/i.test(e.name)) continue;
     const d = await zipRead(z, e);
-    if (isPack(d)) return d;
+    if (isPack(d)) packs.push(d);
   }
-  return null;
+  return packs;
 }
 
 export interface PackResult {
@@ -62,28 +63,32 @@ export interface PackResult {
   images: Map<string, IndexedImage>;
 }
 
-/** Download + decode one add-on (inner zip of a collection zip). */
-export async function importAddon(url: string): Promise<PackResult | null> {
-  const pack = await fetchInnerPack(url);
-  if (!pack) return null;
-  return { sheets: fshToSheets(pack), images: packImages(pack) };
+/** Download + decode one add-on (inner zip of a collection zip). Returns
+ * one result per pack entry — multi-fish zips keep species separate so
+ * the caller can pick each one's best sheet. */
+export async function importAddon(url: string): Promise<PackResult[]> {
+  const packs = await fetchInnerPacks(url);
+  return packs.map((p) => ({
+    sheets: fshToSheets(p),
+    images: packImages(p),
+  }));
 }
 
 /** Fetch the listing pages of all collections. Never rejects: a failed
  * section just comes back empty. */
 export async function listAddons(item = DEFAULT_ITEM):
     Promise<{ section: string; inner: string; url: string }[]> {
-  const out: Importable[] = [];
-  for (const [section, outer] of COLLECTIONS) {
+  const lists = await Promise.all(COLLECTIONS.map(async ([section, outer]) => {
     try {
       const items = await listCollection(item, outer);
       for (const it of items) it.section = section;
-      out.push(...items);
+      return items;
     } catch (e) {
       console.warn(`archive.org listing failed for ${outer}:`, e);
+      return [];
     }
-  }
-  return out;
+  }));
+  return lists.flat();
 }
 
 // ---- import panel --------------------------------------------------------
@@ -114,6 +119,7 @@ export function mountImportPanel(h: ImportHandlers): void {
       const items = await listAddons();
       panel.textContent = "";
       if (!items.length) {
+        delete panel.dataset.loaded; // allow retry on next open
         panel.textContent = "no add-ons found (network blocked?)";
         return;
       }
@@ -133,14 +139,17 @@ export function mountImportPanel(h: ImportHandlers): void {
           a.disabled = true;
           a.textContent = `${it.inner}…`;
           void importAddon(it.url)
-            .then((r) => {
-              if (!r || (!r.sheets.size && !r.images.size))
+            .then((rs) => {
+              if (!rs.length)
                 throw new Error("no pack inside");
-              if (r.sheets.size) h.onSheets(r.sheets, it.inner);
-              if (r.images.size) h.onImages(r.images.values(), it.inner);
+              for (const r of rs) {
+                if (r.sheets.size) h.onSheets(r.sheets, it.inner);
+                if (r.images.size) h.onImages(r.images.values(), it.inner);
+              }
               a.textContent = `${it.inner} ✓`;
             })
             .catch((e) => {
+              a.disabled = false;
               a.textContent = `${it.inner} ✗`;
               console.warn(`import ${it.inner} failed:`, e);
             });

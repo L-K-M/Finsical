@@ -68,7 +68,7 @@ function pickBackdrop(images: Iterable<IndexedImage>): void {
     if (!best || img.w * img.h > best.w * best.h) best = img;
   }
   backdropCv = best ? imageCanvas(best, true) : null;
-  if (gravel) gravelCv = imageCanvas(gravel, false); // index 0 = transparent
+  gravelCv = gravel ? imageCanvas(gravel, false) : null; // index 0 = transparent
 }
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
