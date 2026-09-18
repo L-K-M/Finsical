@@ -65,6 +65,8 @@ def parse_snd(blob: bytes):
             # MACE resource in the AQUAZONE 1.7.9 fork, field*2 equals the
             # bytes following the 64-byte header (one, 'EventTiyu', carries
             # a single trailing pad byte, so compare with < not !=).
+            if len(blob) < hoff + 64:
+                raise SndError("truncated cmpSH header")
             nch, = struct.unpack_from(">h", blob, hoff + 6)
             if nch != 1:
                 raise SndError(f"unsupported channel count {nch}")
