@@ -33,7 +33,7 @@ async function listCollection(item: string, outer: string):
   const out: Importable[] = [];
   for (const m of html.matchAll(/href="([^"]+\.zip)"/g)) {
     const href = m[1]!.replace(/^[a-z]+:\/\/[^/]+|^\/+[^/]+/i, ""); // strip https://host or //host
-    if (!href.startsWith("/download/")) continue;
+    if (!href.startsWith(prefix)) continue;
     const inner = decodeURIComponent(href.slice(prefix.length));
     if (!inner || inner.includes("/")) continue;
     const name = inner.replace(/\.zip$/i, "");
@@ -111,8 +111,9 @@ export function mountImportPanel(h: ImportHandlers): void {
   document.body.appendChild(panel);
 
   btn.addEventListener("click", () => {
-    panel.style.display = panel.style.display === "none" ? "block" : "none";
-    if (panel.dataset.loaded) return;
+    const opening = panel.style.display === "none";
+    panel.style.display = opening ? "block" : "none";
+    if (!opening || panel.dataset.loaded) return;
     panel.dataset.loaded = "1";
     panel.textContent = "fetching archive.org listing…";
     void (async () => {
