@@ -145,11 +145,11 @@ def build_pack(chunks, directory=(), tag=b"XXXX", version=0x5DC) -> bytes:
 
 
 def _encode_frame_stream(px: bytes) -> bytes:
-    """Encode column-major pixels into the Aquazone run/literal format.
+    """Encode column-major pixels into the Aquazone signed-i16 RLE format.
 
-    Each item is `op 0xFF col n 0x00 lit…`: emit (0x100-op) of `col`, then n
-    literal bytes; the byte after the count is the high byte of a u16 count,
-    always 0 in this format. A single pixel is a degenerate run (op = 0xFF).
+    Each item is a little-endian i16 `v`: v < 0 emits -v pixels of the next
+    byte (a color run), v > 0 emits the next v bytes as literal pixels.
+    Runs shorter than 2 ride as literals.
     """
     out = bytearray()
     n = len(px)
@@ -158,35 +158,27 @@ def _encode_frame_stream(px: bytes) -> bytes:
         j = i
         while j < n and px[j] == px[i]:
             j += 1
-        run = j - i
-        col = px[i]
-        if col == 0xFF:
-            raise ValueError(
-                "0xFF cannot lead a run command; 0xFF pixels must ride as "
-                "literals on a preceding non-0xFF run command")
-        # gather following literal stretch (lone pixels and 0xFF values,
-        # which can't lead a run command) up to the next real run
-        lits = bytearray()
-        k = j
+        if j - i >= 2:
+            run = j - i
+            while run > 0x7FFF:
+                out += struct.pack("<h", -0x7FFF) + bytes([px[i]])
+                run -= 0x7FFF
+            out += struct.pack("<h", -run) + bytes([px[i]])
+            i = j
+            continue
+        k = i
         while k < n:
             m = k
             while m < n and px[m] == px[k]:
                 m += 1
-            if m - k >= 2 and px[k] != 0xFF:
+            if m - k >= 2:
                 break
-            if len(lits) + (m - k) > 255:
-                if px[k] == 0xFF:
-                    raise ValueError(
-                        "255-literal cap strands a 0xFF stretch with no "
-                        "preceding non-0xFF run to carry it; split the data")
-                break
-            lits += px[k:m]
             k = m
+        lits = px[i:k]
+        for off in range(0, len(lits), 0x7FFF):
+            seg = lits[off:off + 0x7FFF]
+            out += struct.pack("<h", len(seg)) + seg
         i = k
-        while run > 255:
-            out += b"\x01\xff" + bytes([col, 0, 0])
-            run -= 255
-        out += bytes([0x100 - run, 0xFF, col, len(lits), 0]) + bytes(lits)
     return bytes(out)
 
 

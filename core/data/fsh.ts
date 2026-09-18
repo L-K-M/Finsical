@@ -8,12 +8,13 @@
  *
  * Sprite stream layout (see tools/az/fsh.py):
  *   u16 groups, u16 frames/group, u32 reserved, then frame records
- *   {u16 w, u16 h, u16 sections, u32 stream_len} + stream. Items in a
- *   stream: `op 0xFF col n 0x00 lit…` emits (0x100-op) of col then n literal
- *   pixels; the byte after the count is always 0 (the count reads as a u16
- *   whose high byte is 0). `op` is 1-255 (a run of 1-255); op 0 never occurs
- *   as a command, so `0x00 0xFF` inside a stream is literal pixel data, not a
- *   command. Any other byte is one literal. Pixels are column-major.
+ *   {u16 w, u16 h, u16 sections, u32 stream_len} + stream.
+ *
+ *   A stream is a run-length encoding of signed little-endian i16 items:
+ *     v < 0 — emit |v| pixels of the next byte (a color run; 3 bytes).
+ *     v > 0 — emit the next v bytes as literal pixels (2+v bytes).
+ *     v = 0 — two bytes of padding, no output.
+ *   Decoded pixels fill the frame column-major.
  */
 import { SpriteSheet } from "./azpack.js";
 import { decodeBmp, isBmp } from "./bmp.js";
@@ -72,29 +73,24 @@ interface RawFrame { w: number; h: number; idx: Uint8Array }
 function decodePixels(s: Uint8Array, w: number, h: number): Uint8Array {
   const total = w * h;
   const out = new Uint8Array(total); // zero-filled — padding comes free
-  let o = 0;
+  const n = s.length;
+  let o = 0, i = 0;
   const emit = (c: number) => {
     if (o < total) out[(o % h) * w + (o / h | 0)] = c;
     o++;
   };
-  const n = s.length;
-  let i = 0;
-  while (i < n && o < total) {
-    // Command: `op 0xFF col n 0x00 lit…`. The count is a u16 whose high byte
-    // (s[i+4]) is always 0; op 0 never encodes a command, so `0x00 0xFF` is
-    // literal data. These guards reduce, but do not eliminate, the chance
-    // that a literal `XX 0xFF` pair is misparsed as a command; correctness
-    // relies on streams produced by the matching encoder.
-    if (i + 5 <= n && s[i] !== 0 && s[i + 1] === 0xff && s[i + 4] === 0 &&
-        i + 5 + (s[i + 3] ?? 0) <= n) {
-      const run = 0x100 - (s[i] ?? 0), c = s[i + 2] ?? 0;
-      for (let k = 0; k < run; k++) emit(c);
-      const nl = s[i + 3] ?? 0;
-      for (let k = 0; k < nl; k++) emit(s[i + 5 + k] ?? 0);
-      i += 5 + nl;
+  while (i + 1 < n && o < total) {
+    let v = (s[i] ?? 0) | ((s[i + 1] ?? 0) << 8);
+    if (v >= 0x8000) v -= 0x10000;
+    if (v < 0) {
+      const c = s[i + 2] ?? 0;
+      for (let k = 0; k < -v; k++) emit(c);
+      i += 3;
+    } else if (v > 0) {
+      for (let k = 0; k < v; k++) emit(s[i + 2 + k] ?? 0);
+      i += 2 + v;
     } else {
-      emit(s[i] ?? 0);
-      i += 1;
+      i += 2;
     }
   }
   return out;
