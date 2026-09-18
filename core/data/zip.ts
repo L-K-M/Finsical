@@ -40,6 +40,8 @@ export function zipEntries(d: Uint8Array): ZipEntry[] {
   for (let i = 0; i < count; i++) {
     if (p + 46 > d.length || u32(v, p) !== CDIR)
       throw new Error("zip: truncated central directory");
+    if (u16(v, p + 8) & 1)
+      throw new Error("zip: encrypted entries unsupported");
     const nlen = u16(v, p + 28), elen = u16(v, p + 30), clen = u16(v, p + 32);
     if (p + 46 + nlen + elen + clen > eocd)
       throw new Error("zip: truncated central directory");
