@@ -1,6 +1,7 @@
 import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
+import { swimFrame } from "../core/data/orient.js";
 import { TankAudio } from "./audio.js";
 import { mountImportPanel } from "./import.js";
 import type { PackResult } from "./import.js";
@@ -90,9 +91,8 @@ function previewOf(rs: PackResult[]): HTMLCanvasElement | null {
   const sheets = rs.flatMap((r) => [...r.sheets.values()]);
   sheets.sort((a, b) => b.meta.cellW * b.meta.cellH - a.meta.cellW * a.meta.cellH);
   for (const sh of sheets) {
-    for (let g = 0; g < sh.meta.groups; g++)
-      for (let f = 0; f < sh.meta.framesPerGroup; f++)
-        try { return frameCanvas(sh, g, f); } catch { /* try next */ }
+    for (let f = 0; f < sh.meta.framesPerGroup; f++)
+      try { return swimCanvas(sh, f, 1); } catch { /* try next */ }
   }
   const imgs = rs.flatMap((r) => [...r.images.values()]);
   imgs.sort((a, b) => b.w * b.h - a.w * a.h);
@@ -239,13 +239,10 @@ window.addEventListener("drop", (e) => {
   })().catch((e) => console.warn("azpack import failed:", e));
 });
 
-// Aquazone sprite groups: 2 = right-facing, 6 = left-facing (8 compass
-// buckets). Sheets with fewer groups get mirrored instead.
-const RIGHT_G = 2, LEFT_G = 6;
-function groupFor(facing: number, ng: number): { g: number; mirror: boolean } {
-  if (ng >= 8) return { g: facing > 0 ? RIGHT_G : LEFT_G, mirror: false };
-  return { g: Math.min(RIGHT_G, ng - 1), mirror: facing < 0 };
-}
+// Aquazone fish art is stored vertical (profiles in groups 0 and
+// groups/2, dorsal toward x=0); orient.ts rotates the group-0 profile
+// into a canonical dorsal-up pose and mirrors it for right-facing
+// fish, so facing comes straight from Fish.facing.
 
 /** Rasterize an indexed image to a canvas. opaque=false makes index 0
  * transparent (sprite convention); opaque=true keeps every pixel. */
@@ -264,14 +261,15 @@ function imageCanvas(img: IndexedImage, opaque: boolean): HTMLCanvasElement {
   return cv;
 }
 
-const frameCache = new WeakMap<SpriteSheet, Map<string, HTMLCanvasElement>>();
-function frameCanvas(sheet: SpriteSheet, g: number, f: number): HTMLCanvasElement {
-  let cache = frameCache.get(sheet);
-  if (!cache) frameCache.set(sheet, (cache = new Map()));
-  const key = `${g}:${f}`;
+const swimCache = new WeakMap<SpriteSheet, Map<string, HTMLCanvasElement>>();
+function swimCanvas(sheet: SpriteSheet, f: number,
+                    facing: 1 | -1): HTMLCanvasElement {
+  let cache = swimCache.get(sheet);
+  if (!cache) swimCache.set(sheet, (cache = new Map()));
+  const key = `${f}:${facing}`;
   let cv = cache.get(key);
   if (cv) return cv;
-  cv = imageCanvas(sheet.frame(g, f), false);
+  cv = imageCanvas(swimFrame(sheet, f, facing), false);
   cache.set(key, cv);
   return cv;
 }
@@ -285,15 +283,20 @@ function animFrame(f: Fish, nf: number): number {
   return Math.floor(a);
 }
 
+// Sprite cells run large (the angelfish is 170px tall); scale big
+// sheets down to a share of the tank rather than clipping them.
+const MAX_FISH_W = TANK.width * 0.6, MAX_FISH_H = TANK.height * 0.6;
+
 function drawFish(f: Fish): void {
   const sheet = sheetOf(f);
   if (!sheet) return drawPlaceholder(f.x, f.y, f.facing);
-  const { g, mirror } = groupFor(f.facing, sheet.meta.groups);
-  const cv = frameCanvas(sheet, g, animFrame(f, sheet.meta.framesPerGroup));
+  const cv = swimCanvas(sheet, animFrame(f, sheet.meta.framesPerGroup),
+                        f.facing > 0 ? 1 : -1);
+  const s = Math.min(1, MAX_FISH_W / cv.width, MAX_FISH_H / cv.height);
+  const w = cv.width * s, h = cv.height * s;
   ctx.save();
   ctx.translate(Math.round(f.x), Math.round(f.y));
-  if (mirror) ctx.scale(-1, 1);
-  ctx.drawImage(cv, -(cv.width >> 1), -(cv.height >> 1));
+  ctx.drawImage(cv, -w / 2, -h / 2, w, h);
   ctx.restore();
 }
 
