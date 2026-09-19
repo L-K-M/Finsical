@@ -84,7 +84,8 @@ const QUALITY_SEEK = 0.3;
 const STARTLE_RADIUS = 48;
 const STARTLE_TICKS = 30;
 /** Reactions weaker than this read as frozen fish — trims the
- * effective startle radius to ~95% of STARTLE_RADIUS. */
+ * effective radius to ~95% of STARTLE_RADIUS (taps) and ~90% of
+ * PROP_RADIUS (propagated panic, whose strength is halved first). */
 const MIN_STARTLE_STRENGTH = 0.05;
 /** How close a darting fish must pass to startle a neighbor. */
 const PROP_RADIUS = 32;
