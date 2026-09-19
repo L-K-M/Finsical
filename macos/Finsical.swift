@@ -149,6 +149,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         if note.object as? NSWindow === window { NSApp.terminate(nil) }
     }
 
+    /// The tank has no zoom affordance; keep menu/double-click zoom off too.
+    func windowShouldZoom(_ window: NSWindow, toFrame newFrame: NSRect) -> Bool {
+        window !== self.window
+    }
+
     @objc func feedFish() {
         let js = "window.finsical?.feedFish ? window.finsical.feedFish()" +
                  " : (() => { throw new Error('window.finsical.feedFish missing') })()"
@@ -216,6 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         // floating tank. Quit lives in the menu; edges still resize.
         window.standardWindowButton(.closeButton)?.isHidden = true
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.styleMask.remove(.miniaturizable) // also blocks ⌘M / performMiniaturize
         window.standardWindowButton(.zoomButton)?.isHidden = true
 
         let strip = DragStrip()
