@@ -2,6 +2,8 @@ node_modules/
 dist/
 Finsical.app/
 *.app.staging/
+macos/Finsical.icns
+macos/Finsical.iconset/
 *.azpack
 az-data/
 web/pack/
