@@ -18,6 +18,7 @@ import type { IndexedImage } from "./azpack.js";
  * or null when the corners differ (thumbnail-style textured edge). */
 export function cornerKey(img: IndexedImage): number | null {
   const { w, h, idx } = img;
+  if (!w || !h) return null; // zero-area frames have no corner key
   const tl = idx[0]!;
   if (tl === idx[w - 1] && tl === idx[(h - 1) * w] && tl === idx[w * h - 1])
     return tl;
@@ -25,9 +26,12 @@ export function cornerKey(img: IndexedImage): number | null {
 }
 
 /** The decor art frame: largest image with a uniform corner key.
- * Falls back to the largest image keyed on index 0 (sprite convention). */
+ * Falls back (`guessed`) to the largest image with sprite-convention
+ * index-0 transparency when no frame declares a key — legacy packs may
+ * rely on enclosed index-0 holes staying transparent, so the fallback
+ * keeps the old global-clear semantics instead of flood-filling. */
 export function pickDecorArt(images: Iterable<IndexedImage>):
-    { img: IndexedImage; key: number } | null {
+    { img: IndexedImage; key: number; guessed?: boolean } | null {
   let best: { img: IndexedImage; key: number } | null = null;
   let anyImg: IndexedImage | null = null;
   for (const img of images) {
@@ -37,7 +41,7 @@ export function pickDecorArt(images: Iterable<IndexedImage>):
     if (!best || img.w * img.h > best.img.w * best.img.h)
       best = { img, key };
   }
-  return best ?? (anyImg ? { img: anyImg, key: 0 } : null);
+  return best ?? (anyImg ? { img: anyImg, key: 0, guessed: true } : null);
 }
 
 /** Alpha mask (1 = opaque): key-index pixels connected to the border

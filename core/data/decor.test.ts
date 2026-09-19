@@ -39,13 +39,20 @@ describe("pickDecorArt", () => {
   it("skips the catalog thumbnail and picks the largest frame", () => {
     const thumb = thumbnail();                    // 83×83, non-uniform
     const small = framed(40, 40, 255, 3);
-    const big = framed(139, 212, 255, 3);
+    const big = framed(64, 64, 255, 3);           // < thumb's 6889 px
     const pick = pickDecorArt([thumb, small, big]);
     expect(pick).toEqual({ img: big, key: 255 });
   });
-  it("falls back to the largest image with key 0", () => {
+  it("falls back to the largest image with key 0, flagged guessed", () => {
     const only = thumbnail(50);
-    expect(pickDecorArt([only])).toEqual({ img: only, key: 0 });
+    expect(pickDecorArt([only]))
+      .toEqual({ img: only, key: 0, guessed: true });
+  });
+  it("treats zero-area images as keyless", () => {
+    const empty = { w: 0, h: 0, palette: PAL, idx: new Uint8Array(0) };
+    expect(cornerKey(empty)).toBeNull();
+    expect(pickDecorArt([empty]))
+      .toEqual({ img: empty, key: 0, guessed: true });
   });
   it("returns null for an empty pack", () => {
     expect(pickDecorArt([])).toBeNull();
