@@ -185,6 +185,53 @@ export function mountImportPanel(h: ImportHandlers):
   let thumbRunning = 0;
   const THUMB_PAR = 3;
 
+  // Thumbnails persist across launches in localStorage so the browse grid
+  // doesn't re-download every inner zip each run. Best-effort: storage
+  // failures (private mode, quota) fall back to the fetch path.
+  const THUMB_PREFIX = "finsical:thumb:";
+  const thumbKey = (it: Importable): string =>
+    THUMB_PREFIX + it.section + ":" + it.inner;
+  function storeThumb(it: Importable, cv: HTMLCanvasElement): void {
+    const data = cv.toDataURL("image/png");
+    try {
+      localStorage.setItem(thumbKey(it), data);
+    } catch {
+      try {
+        for (const k of Object.keys(localStorage))
+          if (k.startsWith(THUMB_PREFIX)) localStorage.removeItem(k);
+        localStorage.setItem(thumbKey(it), data);
+      } catch { /* cache skipped */ }
+    }
+  }
+  // Returns true when a stored thumb was found (paint happens async).
+  function loadStoredThumb(it: Importable): boolean {
+    let url: string | null = null;
+    try { url = localStorage.getItem(thumbKey(it)); }
+    catch { /* storage unavailable */ }
+    if (!url) return false;
+    thumbQueued.add(it.inner);
+    const img = new Image();
+    img.onload = () => {
+      const cv = document.createElement("canvas");
+      cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+      cv.getContext("2d")!.drawImage(img, 0, 0);
+      thumbs.set(it.inner, cv);
+      thumbQueued.delete(it.inner);
+      const t =
+        browse.querySelector(`[data-inner="${CSS.escape(it.inner)}"]`);
+      if (t) paintThumb(t, cv);
+    };
+    img.onerror = () => {
+      try { localStorage.removeItem(thumbKey(it)); } catch { /* ignore */ }
+      thumbQueued.delete(it.inner);
+      if (!thumbQueue.some((q) => q.inner === it.inner))
+        thumbQueue.push(it); // corrupt entry — fall through to a real fetch
+      pumpThumbs();
+    };
+    img.src = url;
+    return true;
+  }
+
   function pumpThumbs(): void {
     while (thumbRunning < THUMB_PAR && thumbQueue.length) {
       const it = thumbQueue.shift()!;
@@ -194,6 +241,7 @@ export function mountImportPanel(h: ImportHandlers):
         const pv = usable.length ? h.preview(usable) : null;
         if (!pv) return;
         thumbs.set(it.inner, pv);
+        storeThumb(it, pv);
         const t =
           browse.querySelector(`[data-inner="${CSS.escape(it.inner)}"]`);
         if (t) paintThumb(t, pv);
@@ -206,6 +254,7 @@ export function mountImportPanel(h: ImportHandlers):
 
   function wantThumb(it: Importable): void {
     if (thumbs.has(it.inner) || thumbQueued.has(it.inner)) return;
+    if (loadStoredThumb(it)) return;
     thumbQueued.add(it.inner);
     thumbQueue.push(it);
     pumpThumbs();
@@ -248,7 +297,7 @@ export function mountImportPanel(h: ImportHandlers):
     browse.querySelector(`[data-inner="${CSS.escape(it.inner)}"]`)
       ?.classList.add("done");
     const pv = h.preview(usable);
-    if (pv) thumbs.set(it.inner, pv);
+    if (pv) { thumbs.set(it.inner, pv); storeThumb(it, pv); }
   }
 
   function applyAddon(it: Importable, rs: PackResult[]): void {
