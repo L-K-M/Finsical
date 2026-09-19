@@ -212,4 +212,22 @@ describe("Sim", () => {
     expect(seen.size).toBe(2);       // facing flipped at edge-on
     expect(f.facing).toBe(-1);       // ends facing the new way
   });
+
+  it("rolls once toward food dropped behind it, then seeks", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 7);
+    const f = sim.addFish({ x: 280, y: 50, facing: 1, heading: 0,
+                            hunger: 0.9 });
+    sim.dropFood(245); // behind the fish
+    sim.tick();
+    expect(f.state).toBe("turn");    // reversal rolls, doesn't snap
+    const dir = f.turnDir;
+    for (let i = 0; i < TURN_TICKS - 1; i++) {
+      sim.tick();
+      expect(f.state).toBe("turn");  // roll plays through, no churn
+      expect(f.turnDir).toBe(dir);
+    }
+    sim.tick();
+    expect(f.state).not.toBe("turn");
+    expect(f.facing).toBe(-1);       // ends facing the food
+  });
 });
