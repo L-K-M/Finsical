@@ -377,7 +377,10 @@ function fishPose(sheet: SpriteSheet, f: Fish): { g: number; mir: 1 | -1 } {
   if (ng < 4 || ng % 2 !== 0) return { g: 0, mir: f.facing };
   if (f.state === "turn") {
     const from = f.turnFrom > 0 ? ng / 2 : 0;
-    const step = Math.round(f.stateTicks * (ng / 2) / TURN_TICKS);
+    // stateTicks runs 1..TURN_TICKS-1 in the turn state — scale so the
+    // last rendered pose lands exactly on the opposite profile.
+    const step = Math.min(ng / 2,
+      Math.round(f.stateTicks * (ng / 2) / (TURN_TICKS - 1)));
     return { g: (((from + f.turnDir * step) % ng) + ng) % ng, mir: -1 };
   }
   return { g: f.facing > 0 ? ng / 2 : 0, mir: -1 };

@@ -231,21 +231,13 @@ export class Sim {
       if (food) {
         this.setState(f, "seek");
         f.tx = food.x; f.ty = food.y;
+        this.maybeTurn(f);
       }
       let dist = Math.hypot(f.tx - f.x, f.ty - f.y);
       if (!food && (f.phase >= MOVE_TICKS || dist < 4)) {
         this.decide(f);
         dist = Math.hypot(f.tx - f.x, f.ty - f.y);
-        // A destination behind the fish needs a reversal — the original
-        // plays the roll-through-edge-on turn rather than steering
-        // through it. A dead-vertical target (cos≈0) just pitches over.
-        const want = Math.atan2(f.ty - f.y, f.tx - f.x);
-        if (Math.cos(want) * f.facing < -1e-6) {
-          this.setState(f, "turn");
-          f.turnFrom = f.facing;
-          // Both half-rings reach the opposite profile; pick randomly.
-          f.turnDir = this.rand() < 0.5 ? 1 : -1;
-        }
+        this.maybeTurn(f);
       }
 
       // Steer the continuous heading toward the destination; the fish
@@ -334,6 +326,19 @@ export class Sim {
     f.latch = -1;
     // Rest speed — the pulse rebuilds it from here.
     f.speed = f.cruise * 0.15;
+  }
+
+  /** A target behind the fish needs a reversal — the original plays
+   * the roll-through-edge-on turn rather than steering through it.
+   * A dead-vertical target (cos≈0) just pitches over. */
+  private maybeTurn(f: Fish): void {
+    const want = Math.atan2(f.ty - f.y, f.tx - f.x);
+    if (Math.cos(want) * f.facing < -1e-6) {
+      this.setState(f, "turn");
+      f.turnFrom = f.facing;
+      // Both half-rings reach the opposite profile; pick randomly.
+      f.turnDir = this.rand() < 0.5 ? 1 : -1;
+    }
   }
 
   private setState(f: Fish, s: FishState): void {
