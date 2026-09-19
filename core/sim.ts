@@ -118,7 +118,7 @@ export class Sim {
       } else {
         fd.settled++;
         this.waterQuality -= WASTE_PER_TICK;
-        if (fd.settled > FOOD_ROT_TICKS) this.food.splice(i, 1);
+        if (fd.settled >= FOOD_ROT_TICKS) this.food.splice(i, 1);
       }
     }
     this.waterQuality =
@@ -143,8 +143,9 @@ export class Sim {
       f.vy *= 0.94;
       if (f.stateTicks > STARTLE_TICKS) this.setState(f, "drift");
     } else {
-      const target = f.hunger > HUNGER_SEEK &&
-          this.waterQuality > QUALITY_SEEK ? this.nearestFood(f) : null;
+      const target =
+          (f.hunger > HUNGER_SEEK && this.waterQuality > QUALITY_SEEK)
+            ? this.nearestFood(f) : null;
       if (target) {
         this.setState(f, "seek");
         const dx = target.x - f.x, dy = target.y - f.y;
