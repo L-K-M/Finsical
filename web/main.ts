@@ -294,7 +294,8 @@ function onBusMessage(m: BusMsg): void {
     void remoteInstall(m.item as Importable, m.again === true);
   else if (m.op === "removeFish" && typeof m.id === "number") {
     if (sim.removeFish(m.id)) saveTank();
-  } else if (m.op === "removeAddon" && typeof m.inner === "string") {
+  } else if (m.op === "removeAddon" &&
+             typeof m.inner === "string" && m.inner !== "") {
     removeAddon(m.inner);
   }
 }

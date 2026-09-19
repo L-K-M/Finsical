@@ -157,3 +157,8 @@ setInterval(() => {
   if (greeted && overviewEl.style.display !== "none" && !document.hidden)
     bus.post({ op: "hello" });
 }, 2000);
+// Snap to fresh state the moment the panel is shown again.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && greeted && overviewEl.style.display !== "none")
+    bus.post({ op: "hello" });
+});
