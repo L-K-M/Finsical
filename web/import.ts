@@ -193,7 +193,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   const thumbs = new Map<string, HTMLCanvasElement>();
   const fetchPack = fetchAddon;
   // Open detail view — remote install acks update its status line.
-  let detailRef: { inner: string; act: HTMLElement;
+  let detailRef: { inner: string; act: HTMLButtonElement;
                    status: HTMLElement } | null = null;
 
   const ov = opts?.host ? null : el("div", "ov");
@@ -371,6 +371,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
                       again: boolean): void {
     // Remote mode (panel window): the tank page owns the sim — send the
     // request there and flip the UI when its ack comes back via notify().
+    // Note: the tank page re-fetches the pack itself — this page's
+    // preview download lives in a separate JS context and can't be
+    // shared (WKWebView's URL cache usually covers the second fetch).
     if (remote) {
       remote.post({ op: "install", item: it, again });
       return;
@@ -417,7 +420,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
           applyAddon(it, usable, again);
           again = true; // later clicks on this button mean "add again"
           // Local installs are synchronous; remote ones flip on the ack.
-          act.textContent = remote ? "Adding…" : "In tank ✓ — add again?";
+          if (remote) {
+            act.disabled = true;
+            act.textContent = "Adding…";
+          } else act.textContent = "In tank ✓ — add again?";
         } catch (e) { status.textContent = String(e); }
       });
     }).catch((e) => {
@@ -507,11 +513,16 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         installed.add(inner);
         browse.querySelector(`[data-inner="${CSS.escape(inner)}"]`)
           ?.classList.add("done");
-        if (detailRef?.inner === inner)
+        if (detailRef?.inner === inner) {
+          detailRef.act.disabled = false;
           detailRef.act.textContent = "In tank ✓ — add again?";
+        }
       } else if (m.op === "installFailed" && typeof inner === "string") {
-        if (detailRef?.inner === inner)
+        if (detailRef?.inner === inner) {
+          detailRef.act.disabled = false;
+          detailRef.act.textContent = "Retry";
           detailRef.status.textContent = `Install failed: ${m.error}`;
+        }
       } else if (m.op === "state" && Array.isArray(m.addons)) {
         // Tank's add-on list — sync install badges (covers restores that
         // finished before this panel opened, and removals).

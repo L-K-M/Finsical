@@ -72,8 +72,8 @@ function saveTank(): void {
       addons: installedAddons,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(s));
-    postState();
   } catch { /* storage unavailable — the tank still runs */ }
+  postState(); // panel keeps fresh state even if persistence is off
 }
 window.addEventListener("pagehide", saveTank);
 setInterval(saveTank, 10_000);
@@ -277,11 +277,20 @@ function onBusMessage(m: BusMsg): void {
     void remoteInstall(m.item as Importable, m.again === true);
 }
 
+// Bus messages cross a page boundary — validate before trusting them.
+const KNOWN_SECTIONS = new Set(["fish", "gravel", "plants", "accessories"]);
 async function remoteInstall(it: Importable, again: boolean): Promise<void> {
-  if (!it?.url) return;
+  const fail = (error: string) =>
+    bus.post({ op: "installFailed", inner: it?.inner ?? "", error });
+  if (!it?.url || typeof it.url !== "string" ||
+      !it.url.startsWith("https://archive.org/") ||
+      !KNOWN_SECTIONS.has(it.section)) {
+    fail("invalid add-on item");
+    return;
+  }
   // A restore may have landed this add-on while the panel's detail fetch
   // was in flight — unless the user clicked "Add again", that's a dup.
-  if (!again && installedAddons.some((a) => a.inner === it.inner)) {
+  if (!again && installedAddons.some((a) => a.url === it.url)) {
     bus.post({ op: "installed", inner: it.inner });
     return;
   }
@@ -296,9 +305,7 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     recordInstall(it);
     bus.post({ op: "installed", inner: it.inner });
     postState();
-  } catch (e) {
-    bus.post({ op: "installFailed", inner: it.inner, error: String(e) });
-  }
+  } catch (e) { fail(String(e)); }
 }
 
 // Native-menu / keyboard entry points (macos/Finsical.swift calls these).

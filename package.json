@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "esbuild web/main.ts --bundle --format=iife --outfile=dist/bundle.js && esbuild web/panel.ts --bundle --format=iife --outfile=dist/panel.js && node -e \"const f=require('fs');f.mkdirSync('dist',{recursive:true});for(const s of['index.html','panel.html','app.css'])f.copyFileSync('web/'+s,'dist/'+s)\"",
-    "dev": "esbuild web/panel.ts --bundle --format=iife --outfile=web/panel.js && esbuild web/main.ts --bundle --format=iife --outfile=web/bundle.js --servedir=web --serve=8080 --watch"
+    "dev": "esbuild web/panel.ts --bundle --format=iife --outfile=web/panel.js --watch & esbuild web/main.ts --bundle --format=iife --outfile=web/bundle.js --servedir=web --serve=8080 --watch"
   },
   "devDependencies": {
     "esbuild": "0.24.2",

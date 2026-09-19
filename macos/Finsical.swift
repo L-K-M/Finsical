@@ -98,10 +98,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                   withJSONObject: message.body),
               let text = String(data: data, encoding: .utf8) else { return }
         let dest = message.webView === panelView ? webView : panelView
-        dest?.evaluateJavaScript("window.__bus && window.__bus(\(text))") {
-            _, error in
+        // __bus is only registered once the page's script ran — surface
+        // drops instead of silently losing the message.
+        dest?.evaluateJavaScript(
+            "window.__bus ? (window.__bus(\(text)), undefined) : 'dropped'") {
+            result, error in
             if let error {
                 NSLog("Finsical: bus relay failed: \(error.localizedDescription)")
+            } else if result as? String == "dropped" {
+                NSLog("Finsical: bus relay dropped — destination page not ready")
             }
         }
     }
