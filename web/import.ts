@@ -219,6 +219,7 @@ export function mountImportPanel(h: ImportHandlers):
     };
     img.onerror = () => {
       try { localStorage.removeItem(thumbKey(it)); } catch { /* ignore */ }
+      thumbQueued.delete(it.inner);
       thumbQueue.push(it); // corrupt entry — fall through to a real fetch
       pumpThumbs();
     };
