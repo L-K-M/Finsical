@@ -8,6 +8,12 @@ export interface Tank {
 export type FishState = "drift" | "seek" | "startle" | "turn";
 
 export interface Fish {
+  /** Stable identity — overview display and removal target. */
+  id: number;
+  /** Add-on/pack this fish came from; "" for starter fish. */
+  species: string;
+  /** Renderer sheet index; undefined = round-robin assignment. */
+  sheetIdx?: number;
   x: number;
   y: number;
   /** facing: +1 right, -1 left — derived from `heading` each tick. */
@@ -127,6 +133,7 @@ export class Sim {
   /** 1 = clean, 0 = foul. Rotted food fouls it; filtration recovers it. */
   waterQuality = 1;
   private rand: () => number;
+  private nextId = 0;
 
   constructor(tank: Tank, seed = 1) {
     this.tank = tank;
@@ -135,15 +142,28 @@ export class Sim {
 
   addFish(fish: Partial<Fish> & { x: number; y: number }): Fish {
     const f: Fish = {
+      id: this.nextId, species: "",
       facing: 1, heading: 0, phase: 0, latch: -1, peak: 0, cruise: 1,
       speed: 1, vy: 0, tx: 0, ty: 0, turnDir: 1, turnFrom: 1,
       bandY: 0, hunger: 0.2,
       state: "drift", stateTicks: 0, panicHops: 0, ...fish,
     };
+    // A spread of {id: undefined} would poison the counter with NaN.
+    if (!Number.isFinite(f.id)) f.id = this.nextId;
+    // Loaded fish carry their saved id — never reissue it.
+    this.nextId = Math.max(this.nextId, f.id + 1);
     if (!fish.tx && !fish.ty) { f.tx = f.x; f.ty = f.y; }
     if (!fish.bandY) f.bandY = f.y;
     this.fish.push(f);
     return f;
+  }
+
+  /** Remove a fish by id (tank overview). Returns false if not found. */
+  removeFish(id: number): boolean {
+    const i = this.fish.findIndex((f) => f.id === id);
+    if (i < 0) return false;
+    this.fish.splice(i, 1);
+    return true;
   }
 
   /** Drop a food pellet at x; it sinks to the gravel. */

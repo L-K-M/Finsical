@@ -291,4 +291,50 @@ describe("Sim", () => {
     expect(f.state).toBe("turn");
     expect(f.heading).toBe(0); // roll drifts on the old heading
   });
+
+  it("assigns unique ids that never reuse a loaded fish's id", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 7);
+    const a = sim.addFish({ x: 10, y: 10 });
+    const b = sim.addFish({ x: 20, y: 20 });
+    expect(new Set([a.id, b.id]).size).toBe(2);
+    // A restored fish carries its saved id; the next spawn must skip past.
+    const c = sim.addFish({ x: 30, y: 30, id: 42 });
+    const d = sim.addFish({ x: 40, y: 40 });
+    expect(c.id).toBe(42);
+    expect(d.id).toBe(43);
+  });
+
+  it("restores a saved fish without spawning extras", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 7);
+    const r = sim.addFish({ id: 9, species: "packB", x: 5, y: 5,
+                            sheetIdx: 1 });
+    expect(r.id).toBe(9);
+    expect(r.species).toBe("packB");
+    expect(r.sheetIdx).toBe(1);
+    expect(sim.fish.length).toBe(1);
+    expect(sim.addFish({ x: 1, y: 1 }).id).toBe(10);
+  });
+
+  it("survives an explicitly undefined id", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 7);
+    const a = sim.addFish({ x: 1, y: 1,
+                            id: undefined as unknown as number });
+    const b = sim.addFish({ x: 2, y: 2 });
+    expect(Number.isFinite(a.id)).toBe(true);
+    expect(a.id).not.toBe(b.id);
+    expect(sim.removeFish(a.id)).toBe(true);
+  });
+
+  it("removes a fish by id", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 7);
+    const a = sim.addFish({ x: 10, y: 10 });
+    const b = sim.addFish({ x: 20, y: 20 });
+    expect(sim.removeFish(a.id)).toBe(true);
+    expect(sim.fish).toEqual([b]);
+    expect(sim.removeFish(a.id)).toBe(false); // already gone
+    expect(sim.removeFish(999)).toBe(false);  // never existed
+    // ids stay unique across removal
+    const c = sim.addFish({ x: 30, y: 30 });
+    expect(c.id).not.toBe(a.id);
+  });
 });
