@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DAY_TICKS, Sim } from "./sim.js";
+import { DAY_TICKS, FOOD_ROT_TICKS, Sim } from "./sim.js";
 
 describe("Sim", () => {
   it("is deterministic for a given seed", () => {
@@ -71,6 +71,65 @@ describe("Sim", () => {
     expect(far.state).toBe("drift");
     for (let i = 0; i < 60; i++) sim.tick();
     expect(near.state).toBe("drift"); // calms down
+  });
+
+  it("uneaten food rots on the gravel, fouling then losing the pellet", () => {
+    const sim = new Sim({ width: 200, height: 100 }, 1);
+    sim.dropFood(50);
+    let minQ = 1;
+    for (let i = 0; i < FOOD_ROT_TICKS + 600; i++) {
+      sim.tick();
+      minQ = Math.min(minQ, sim.waterQuality);
+    }
+    expect(sim.food.length).toBe(0); // fully dissolved
+    expect(minQ).toBeLessThan(1);    // rotting drained quality
+    // filtration already recovering by the time the pellet is gone
+    expect(sim.waterQuality).toBeGreaterThan(minQ);
+  });
+
+  it("filtration recovers water quality toward 1", () => {
+    const sim = new Sim({ width: 100, height: 100 }, 1);
+    sim.waterQuality = 0.2;
+    for (let i = 0; i < 1200; i++) sim.tick();
+    expect(sim.waterQuality).toBeCloseTo(0.3, 5); // +1/12000 per tick
+    sim.waterQuality = 1;
+    sim.tick();
+    expect(sim.waterQuality).toBeLessThanOrEqual(1); // clamped
+  });
+
+  it("keeps quality >= 0 under heavy rot", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 1);
+    for (let i = 0; i < 8; i++) sim.dropFood(20 + i * 30);
+    for (let i = 0; i < FOOD_ROT_TICKS + 600; i++) sim.tick();
+    expect(sim.waterQuality).toBeGreaterThanOrEqual(0);
+  });
+
+  it("fish lose their appetite in foul water", () => {
+    const sim = new Sim({ width: 200, height: 100 }, 5);
+    const f = sim.addFish({ x: 40, y: 50, hunger: 0.9 });
+    sim.waterQuality = 0.1; // below QUALITY_SEEK even after filtration drift
+    sim.dropFood(120);
+    for (let i = 0; i < 600; i++) sim.tick();
+    expect(f.state).toBe("drift"); // never seeks despite hunger
+    expect(sim.food.length).toBe(1);
+  });
+
+  it("fish move slower in foul water", () => {
+    const clean = new Sim({ width: 300, height: 200 }, 11);
+    const foul = new Sim({ width: 300, height: 200 }, 11);
+    clean.addFish({ x: 150, y: 100, speed: 1 });
+    foul.addFish({ x: 150, y: 100, speed: 1 });
+    let dc = 0, df = 0;
+    let pc = { x: 150, y: 100 }, pf = { x: 150, y: 100 };
+    for (let i = 0; i < 1000; i++) {
+      clean.tick(); foul.tick();
+      foul.waterQuality = 0; // pin low — filtration would creep it up
+      const c = clean.fish[0]!, f = foul.fish[0]!;
+      dc += Math.hypot(c.x - pc.x, c.y - pc.y);
+      df += Math.hypot(f.x - pf.x, f.y - pf.y);
+      pc = { x: c.x, y: c.y }; pf = { x: f.x, y: f.y };
+    }
+    expect(df).toBeLessThan(dc * 0.7); // vigor 0.5 vs 1.0
   });
 
   it("day/night light oscillates in [0,1]", () => {
