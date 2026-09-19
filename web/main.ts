@@ -4,7 +4,7 @@ import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.j
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
 import { TankAudio } from "./audio.js";
-import { fetchAddon, mountImportPanel } from "./import.js";
+import { fetchAddon, mountImportPanel, COLLECTIONS } from "./import.js";
 import { imageCanvas, previewOf, swimCanvas } from "./render.js";
 import { openBus } from "./bus.js";
 import type { BusMsg } from "./bus.js";
@@ -278,7 +278,7 @@ function onBusMessage(m: BusMsg): void {
 }
 
 // Bus messages cross a page boundary — validate before trusting them.
-const KNOWN_SECTIONS = new Set(["fish", "gravel", "plants", "accessories"]);
+const KNOWN_SECTIONS = new Set(COLLECTIONS.map(([s]) => s));
 async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   const fail = (error: string) =>
     bus.post({ op: "installFailed", inner: it?.inner ?? "", error });

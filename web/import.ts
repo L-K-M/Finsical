@@ -18,7 +18,7 @@ export const DEFAULT_ITEM = "aquazonewithguppiesandaddons";
 /** Outer zips in that item that hold importable add-on packs. A path with
  * "/" is a nested zip-of-packs (archive.org only serves one zip level), so
  * its entries are enumerated locally after fetching the collection zip. */
-const COLLECTIONS: [section: string, outer: string][] = [
+export const COLLECTIONS: [section: string, outer: string][] = [
   ["fish", "addon and modded fish.zip"],
   ["gravel", "gravel.zip"],
   ["plants", "mekasia.zip/mekplants.zip"],
@@ -423,6 +423,14 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
           if (remote) {
             act.disabled = true;
             act.textContent = "Adding…";
+            // The relay can drop the message if the tank page is
+            // mid-reload — recover the button if no ack comes back.
+            setTimeout(() => {
+              if (act.disabled && detailRef?.act === act) {
+                act.disabled = false;
+                act.textContent = "Retry";
+              }
+            }, 15_000);
           } else act.textContent = "In tank ✓ — add again?";
         } catch (e) { status.textContent = String(e); }
       });
