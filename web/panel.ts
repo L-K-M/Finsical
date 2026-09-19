@@ -56,9 +56,11 @@ function showView(v: string): void {
   const b = document.querySelector<HTMLButtonElement>(
     `#tabs .tab[data-view="${v}"]`);
   if (!b) return;
-  document.querySelectorAll("#tabs .tab").forEach((t) => {
-    t.classList.toggle("on", t === b);
-    t.setAttribute("aria-selected", String(t === b));
+  document.querySelectorAll<HTMLButtonElement>("#tabs .tab").forEach((t) => {
+    const on = t === b;
+    t.classList.toggle("on", on);
+    t.setAttribute("aria-selected", String(on));
+    t.tabIndex = on ? 0 : -1; // roving tabindex: only the active tab stops
   });
   overviewEl.style.display = v === "overview" ? "" : "none";
   panelEl.style.display = v === "addons" ? "" : "none";
@@ -68,6 +70,8 @@ document.querySelectorAll<HTMLButtonElement>("#tabs .tab").forEach((b) =>
 // ARIA tabs imply arrow-key traversal — cycle between the two tabs.
 document.getElementById("tabs")!.addEventListener("keydown", (e) => {
   if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return; // don't hijack VO/history
+  e.preventDefault();
   const cur = document.querySelector<HTMLButtonElement>("#tabs .tab.on");
   const next = cur?.dataset.view === "overview" ? "addons" : "overview";
   showView(next);
