@@ -1,5 +1,5 @@
 import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
-import { fishPose } from "../core/pose.js";
+import { fishPose, pitch } from "../core/pose.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { swimFrame } from "../core/data/orient.js";
@@ -391,7 +391,7 @@ const MAX_FISH_W = TANK.width * 0.6, MAX_FISH_H = TANK.height * 0.6;
 
 function drawFish(f: Fish): void {
   const sheet = sheetOf(f);
-  if (!sheet) return drawPlaceholder(f.x, f.y, f.facing);
+  if (!sheet) return drawPlaceholder(f.x, f.y, f.facing, pitch(f));
   const pose = fishPose(sheet, f);
   const cv = swimCanvas(sheet, animFrame(f, sheet.meta.framesPerGroup),
                         pose.mir, pose.g);
@@ -399,15 +399,19 @@ function drawFish(f: Fish): void {
   const w = cv.width * s, h = cv.height * s;
   ctx.save();
   ctx.translate(Math.round(f.x), Math.round(f.y));
+  ctx.rotate(pitch(f));
   ctx.drawImage(cv, -w / 2, -h / 2, w, h);
   ctx.restore();
 }
 
 // Placeholder sprite until real Aquazone assets are imported.
-function drawPlaceholder(x: number, y: number, facing: number): void {
+function drawPlaceholder(x: number, y: number, facing: number,
+                         dev = 0): void {
   ctx.save();
   ctx.translate(Math.round(x), Math.round(y));
   ctx.scale(-facing, 1);
+  // In the mirrored draw space the pitch angle flips sign.
+  ctx.rotate(-facing * dev);
   ctx.fillStyle = "#e8a33d";
   ctx.fillRect(-8, -4, 14, 8);   // body
   ctx.fillRect(6, -6, 6, 12);    // tail

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fishPose } from "./pose.js";
+import { fishPose, pitch } from "./pose.js";
 import { TURN_TICKS } from "./sim.js";
 import type { Fish } from "./sim.js";
 import type { SpriteSheet } from "./data/azpack.js";
@@ -46,5 +46,35 @@ describe("fishPose", () => {
     expect(fishPose(sheet(8), fish({
       state: "turn", turnFrom: 1, turnDir: 1, stateTicks: TURN_TICKS,
     })).g).toBe(0);
+  });
+});
+
+describe("pitch", () => {
+  it("never exceeds ±π/4 for any heading at either facing", () => {
+    for (const facing of [1, -1] as const) {
+      for (let d = -180; d <= 180; d += 5) {
+        const p = pitch(fish({ facing, heading: d * Math.PI / 180 }));
+        expect(Math.abs(p)).toBeLessThanOrEqual(Math.PI / 4);
+      }
+    }
+  });
+
+  it("pins the y-down sign convention: diving positive, climbing negative",
+      () => {
+    expect(pitch(fish({ facing: 1, heading: Math.PI / 6 })))
+      .toBeCloseTo(Math.PI / 6);
+    expect(pitch(fish({ facing: 1, heading: -Math.PI / 6 })))
+      .toBeCloseTo(-Math.PI / 6);
+    // Left-facing fish: pitch doubles as the screen-space rotation
+    // angle, so its sign flips even though dive is still "down" in
+    // tank space.
+    expect(pitch(fish({ facing: -1, heading: (5 * Math.PI) / 6 })))
+      .toBeCloseTo(-Math.PI / 6);
+    expect(pitch(fish({ facing: -1, heading: -(5 * Math.PI) / 6 })))
+      .toBeCloseTo(Math.PI / 6);
+  });
+
+  it("stays flat during a turn — the pose ring encodes orientation", () => {
+    expect(pitch(fish({ state: "turn", heading: Math.PI / 2 }))).toBe(0);
   });
 });
