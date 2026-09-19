@@ -184,7 +184,8 @@ function sheetOf(f: Fish): SpriteSheet | null {
   // Fish spawned by a specific pack keep its sheet; the rest round-robin.
   // Out-of-range bindings fall through rather than wrapping onto an
   // unrelated species' art.
-  if (f.sheetIdx !== undefined && f.sheetIdx < fishSheets.length)
+  if (f.sheetIdx !== undefined && f.sheetIdx >= 0 &&
+      f.sheetIdx < fishSheets.length)
     return fishSheets[f.sheetIdx]!;
   let i = fishSlot.get(f);
   if (i === undefined) {
@@ -282,7 +283,8 @@ const packFetch = async (p: string): Promise<Uint8Array> => {
 };
 void (async () => {
   const pack = await loadAzpack(packFetch);
-  usePack(pack, packFetch);
+  const idx = usePack(pack, packFetch);
+  if (idx >= 0) sheetBySpecies.set(pack.manifest.tag, idx);
   const imgs: IndexedImage[] = [];
   for (const c of pack.manifest.chunks) {
     if (!c.image) continue;
@@ -301,8 +303,12 @@ void (async () => {
     for (const f of sim.fish) {
       if (!f.species) continue;
       const idx = sheetBySpecies.get(f.species);
-      if (idx === undefined) delete f.sheetIdx;
-      else f.sheetIdx = idx;
+      // Unknown species: strip only bindings that can't be valid —
+      // in-range ones (e.g. the bundled pack's slot) still hold.
+      if (idx !== undefined) f.sheetIdx = idx;
+      else if (f.sheetIdx !== undefined &&
+               (f.sheetIdx < 0 || f.sheetIdx >= fishSheets.length))
+        delete f.sheetIdx;
     }
   });
 
