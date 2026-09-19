@@ -208,6 +208,22 @@ describe("Sim", () => {
     for (let i = 0; i < 10 && bystander.state !== "startle"; i++)
       sim.tick();
     expect(bystander.state).toBe("startle"); // panic propagated
+    // Propagated darts are capped at half tap strength (3.5 * 0.5);
+    // the bystander is outside the tap radius, so only propagation
+    // could have startled it.
+    expect(bystander.speed).toBeLessThanOrEqual(1.75);
+  });
+
+  it("caps panic propagation at two hops", () => {
+    const sim = new Sim({ width: 400, height: 100 }, 5);
+    // Chain of fish 24px apart — within PROP_RADIUS each hop.
+    sim.addFish({ x: 60, y: 50 });   // tapped (hop 0)
+    sim.addFish({ x: 84, y: 50 });   // hop 1
+    sim.addFish({ x: 108, y: 50 });  // hop 2
+    const far = sim.addFish({ x: 132, y: 50 }); // hop 3 — beyond the cap
+    sim.tap(60, 50);
+    for (let i = 0; i < 60; i++) sim.tick();
+    expect(far.state).not.toBe("startle");
   });
 
   it("rolls through a turn when the destination is behind it", () => {
