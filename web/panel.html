@@ -6,9 +6,9 @@
   <link rel="stylesheet" href="app.css" />
 </head>
 <body class="panelpage">
-  <nav id="tabs">
-    <button class="tab on" data-view="overview">Tank</button>
-    <button class="tab" data-view="addons">Add-ons</button>
+  <nav id="tabs" role="tablist">
+    <button class="tab on" role="tab" aria-selected="true" data-view="overview">Tank</button>
+    <button class="tab" role="tab" aria-selected="false" data-view="addons">Add-ons</button>
   </nav>
   <div id="overview"></div>
   <div id="panel" style="display:none"></div>

@@ -56,8 +56,10 @@ function showView(v: string): void {
   const b = document.querySelector<HTMLButtonElement>(
     `#tabs .tab[data-view="${v}"]`);
   if (!b) return;
-  document.querySelectorAll("#tabs .tab").forEach((t) =>
-    t.classList.toggle("on", t === b));
+  document.querySelectorAll("#tabs .tab").forEach((t) => {
+    t.classList.toggle("on", t === b);
+    t.setAttribute("aria-selected", String(t === b));
+  });
   overviewEl.style.display = v === "overview" ? "" : "none";
   panelEl.style.display = v === "addons" ? "" : "none";
 }

@@ -72,6 +72,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     @objc func openOverview() { showPanel("overview") }
 
     private func showPanel(_ view: String) {
+        // view lands in both the URL hash and a JS string literal below —
+        // never let an unvalidated value through.
+        precondition(["addons", "overview"].contains(view),
+                     "unknown panel view: \(view)")
         if panelWindow == nil {
             let pv = WKWebView(frame: .init(x: 0, y: 0, width: 680, height: 520),
                                configuration: makeWebConfig())
@@ -88,6 +92,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             w.center()
             panelWindow = w
             panelView = pv
+            pv.load(URLRequest(
+                url: URL(string: "finsical://app/panel.html#\(view)")!))
+        } else if let pv = panelView, pv.isLoading {
+            // Still loading: window.panelUI doesn't exist yet — reload
+            // with the requested hash instead of silently no-op'ing.
             pv.load(URLRequest(
                 url: URL(string: "finsical://app/panel.html#\(view)")!))
         } else {

@@ -134,6 +134,10 @@ function spawnFish(sheetIdx: number, species: string): void {
 // .grv beds are ~6:1) become the gravel strip instead.
 // `src` records which add-on provided the art ("" = bundled/dropped) so
 // the overview can remove a pack's visuals again.
+// Picks are kept per source pack so removing the current winner falls
+// back to an earlier pack instead of leaving the tank bare.
+const backdropByPack = new Map<string, HTMLCanvasElement>();
+const gravelByPack = new Map<string, HTMLCanvasElement>();
 let backdropCv: HTMLCanvasElement | null = null;
 let backdropSrc = "";
 let gravelCv: HTMLCanvasElement | null = null;
@@ -147,9 +151,11 @@ function pickBackdrop(images: Iterable<IndexedImage>, src = ""): void {
     if (img.w < TANK.width / 2 || img.h < TANK.height / 2) continue;
     if (!best || img.w * img.h > best.w * best.h) best = img;
   }
-  backdropCv = best ? imageCanvas(best, true) : null;
+  if (best) backdropByPack.set(src, imageCanvas(best, true));
+  if (gravel) gravelByPack.set(src, imageCanvas(gravel, false));
+  backdropCv = best ? backdropByPack.get(src)! : null;
   backdropSrc = best ? src : "";
-  gravelCv = gravel ? imageCanvas(gravel, false) : null; // index 0 = transparent
+  gravelCv = gravel ? gravelByPack.get(src)! : null; // index 0 = transparent
   gravelSrc = gravel ? src : "";
 }
 function pickGravel(images: Iterable<IndexedImage>, src: string): void {
@@ -159,7 +165,8 @@ function pickGravel(images: Iterable<IndexedImage>, src: string): void {
     if (img.w >= img.h * 3 && img.w >= TANK.width / 2 &&
         (!gravel || img.w > gravel.w)) gravel = img;
   }
-  gravelCv = gravel ? imageCanvas(gravel, false) : null;
+  if (gravel) gravelByPack.set(src, imageCanvas(gravel, false));
+  gravelCv = gravel ? gravelByPack.get(src)! : null;
   gravelSrc = gravel ? src : "";
 }
 // Decorations (plants/accessories) sit on the gravel between the backdrop
@@ -300,8 +307,20 @@ function removeAddon(inner: string): void {
     if (f.species === inner) sim.removeFish(f.id);
   for (let i = decors.length - 1; i >= 0; i--)
     if (decors[i]!.pack === inner) decors.splice(i, 1);
-  if (gravelSrc === inner) { gravelCv = null; gravelSrc = ""; }
-  if (backdropSrc === inner) { backdropCv = null; backdropSrc = ""; }
+  gravelByPack.delete(inner);
+  backdropByPack.delete(inner);
+  // Fall back to the most recent remaining pack's art — Map order is
+  // insertion order, so the last key is the newest survivor.
+  if (gravelSrc === inner) {
+    const prev = [...gravelByPack.keys()].pop();
+    gravelCv = prev !== undefined ? gravelByPack.get(prev)! : null;
+    gravelSrc = prev ?? "";
+  }
+  if (backdropSrc === inner) {
+    const prev = [...backdropByPack.keys()].pop();
+    backdropCv = prev !== undefined ? backdropByPack.get(prev)! : null;
+    backdropSrc = prev ?? "";
+  }
   sheetBySpecies.delete(inner);
   saveTank(); // persists and pushes fresh state to the panel
   bus.post({ op: "uninstalled", inner });
