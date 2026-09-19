@@ -10,11 +10,30 @@ export type FishState = "drift" | "seek" | "startle";
 export interface Fish {
   x: number;
   y: number;
-  /** facing: +1 right, -1 left */
+  /** facing: +1 right, -1 left — derived from `heading` each tick. */
   facing: 1 | -1;
-  /** pixels per tick */
+  /**
+   * Swim heading in radians (screen coords: 0 = right, +y is down).
+   * The original drives fish by a continuous heading; ours does too.
+   */
+  heading: number;
+  /** Ticks since the current movement decision began (stroke phase). */
+  phase: number;
+  /** Tick at which the brake latched; -1 while still accelerating. */
+  latch: number;
+  /** Speed the fish carried when the brake latched. */
+  peak: number;
+  /** Cruise speed ceiling, px/tick. */
+  cruise: number;
+  /** pixels per tick — the stroke-pulse output */
   speed: number;
+  /** vertical velocity, kept in sync with heading·speed */
   vy: number;
+  /** Wander destination. */
+  tx: number;
+  ty: number;
+  /** Preferred depth band the fish wanders around. */
+  bandY: number;
   /** 0 = full, 1 = starving */
   hunger: number;
   state: FishState;
@@ -37,6 +56,12 @@ export interface Bubble {
 const MARGIN = 16;
 const SURFACE = 10;
 export const BOTTOM_PAD = 12;
+
+/** Smallest signed angle delta, wrapped to (−π, π]. */
+function wrapAngle(d: number): number {
+  return ((d + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) -
+    Math.PI;
+}
 const HUNGER_PER_TICK = 1 / (30 * 120); // starving after ~2 min
 const HUNGER_SEEK = 0.4;
 const EAT_DIST = 6;
@@ -51,6 +76,23 @@ const FILTER_PER_TICK = 1 / 12000;
 const QUALITY_SEEK = 0.3;
 const STARTLE_RADIUS = 48;
 const STARTLE_TICKS = 30;
+/**
+ * Movement budget per decision. The original runs 60 ticks/s and re-decides
+ * every 64 ticks (~1.07 s); halved here for our 30 tps clock.
+ */
+const MOVE_TICKS = 32;
+/** Stroke ramp divisor: speed = cruise·(phase+1)²/64 while accelerating. */
+const RAMP_DIV = 64;
+/** Brake decay divisor: speed = peak − (phase−latch)²·peak/128. */
+const BRAKE_DIV = 128;
+/** Approach radius around the destination where the brake latches. */
+const BRAKE_DIST = 24;
+/** Heading steer rate, rad/tick — a 180° reversal takes ~19 ticks. */
+const TURN_RATE = Math.PI / 20;
+/** Half-height of a fish's preferred depth band. */
+const BAND_HALF = 24;
+/** Chance per decision of picking a new depth band. */
+const BAND_SHIFT = 0.2;
 const BUBBLE_CHANCE = 0.004;
 /** One full day/night cycle in ticks (~13 min at 30 tps). */
 export const DAY_TICKS = 24000;
@@ -73,9 +115,12 @@ export class Sim {
 
   addFish(fish: Partial<Fish> & { x: number; y: number }): Fish {
     const f: Fish = {
-      facing: 1, speed: 1, vy: 0, hunger: 0.2,
+      facing: 1, heading: 0, phase: 0, latch: -1, peak: 0, cruise: 1,
+      speed: 1, vy: 0, tx: 0, ty: 0, bandY: 0, hunger: 0.2,
       state: "drift", stateTicks: 0, ...fish,
     };
+    if (!fish.tx && !fish.ty) { f.tx = f.x; f.ty = f.y; }
+    if (!fish.bandY) f.bandY = f.y;
     this.fish.push(f);
     return f;
   }
@@ -132,6 +177,7 @@ export class Sim {
 
   private tickFish(f: Fish): void {
     f.stateTicks++;
+    f.phase++;
     f.hunger = Math.min(1, f.hunger + HUNGER_PER_TICK);
     // Foul water makes fish sluggish; panic (startle) ignores it.
     const vigor = 0.5 + 0.5 * this.waterQuality;
@@ -141,43 +187,99 @@ export class Sim {
       f.y += f.vy;
       f.speed *= 0.94;
       f.vy *= 0.94;
-      if (f.stateTicks > STARTLE_TICKS) this.setState(f, "drift");
+      f.heading = Math.atan2(f.vy, f.speed * f.facing);
+      if (f.stateTicks > STARTLE_TICKS) {
+        this.setState(f, "drift");
+        this.decide(f);
+      }
     } else {
-      const target =
+      const food =
           (f.hunger > HUNGER_SEEK && this.waterQuality > QUALITY_SEEK)
             ? this.nearestFood(f) : null;
-      if (target) {
+      if (food) {
         this.setState(f, "seek");
-        const dx = target.x - f.x, dy = target.y - f.y;
-        const d = Math.max(Math.hypot(dx, dy), 1);
-        f.facing = dx >= 0 ? 1 : -1;
-        f.x += (dx / d) * Math.min(2.2, f.speed + 1) * vigor;
-        f.y += (dy / d) * Math.min(2.2, f.speed + 1) * vigor;
+        f.tx = food.x; f.ty = food.y;
+      }
+      let dist = Math.hypot(f.tx - f.x, f.ty - f.y);
+      if (f.phase >= MOVE_TICKS || dist < 4) {
+        this.decide(f);
+        dist = Math.hypot(f.tx - f.x, f.ty - f.y);
+      }
+
+      // Steer the continuous heading toward the destination; the fish
+      // curves instead of snapping around.
+      const want = Math.atan2(f.ty - f.y, f.tx - f.x);
+      const turn = wrapAngle(want - f.heading);
+      f.heading += Math.min(TURN_RATE, Math.max(-TURN_RATE, turn));
+
+      // Stroke pulse — the original's "fin push": quadratic acceleration
+      // out of the decision, then quadratic braking once the destination
+      // region is reached (dart-and-glide, not linear cruise).
+      if (f.latch < 0) {
+        if (dist < BRAKE_DIST) { f.latch = f.phase; f.peak = f.speed; }
+        else f.speed = Math.min(f.cruise,
+                                f.cruise * (f.phase + 1) ** 2 / RAMP_DIV);
+      } else {
+        const g = f.phase - f.latch;
+        f.speed = Math.max(f.cruise * 0.15,
+                           f.peak - g * g * f.peak / BRAKE_DIV);
+      }
+
+      const vx = Math.cos(f.heading) * f.speed * vigor;
+      const vy = Math.sin(f.heading) * f.speed * vigor;
+      f.x += vx;
+      f.y += vy;
+      f.vy = vy;
+      f.facing = Math.cos(f.heading) >= 0 ? 1 : -1;
+
+      if (food) {
+        const d = Math.max(Math.hypot(food.x - f.x, food.y - f.y), 1);
         if (d < EAT_DIST) {
-          target.eaten = true;
+          food.eaten = true;
           f.hunger = 0;
           this.setState(f, "drift");
+          this.decide(f);
         }
-      } else {
-        this.setState(f, "drift");
-        if (this.rand() < 0.02) f.speed = 0.4 + this.rand() * 1.2;
-        if (this.rand() < 0.03) f.vy = (this.rand() - 0.5) * 1.4;
-        if (this.rand() < 0.004) f.facing = -f.facing as 1 | -1;
-        f.vy *= 0.97;
-        f.x += f.speed * f.facing * vigor;
-        f.y += f.vy * vigor;
       }
     }
 
     const maxY = this.tank.height - BOTTOM_PAD;
-    if (f.x < MARGIN) { f.x = MARGIN; f.facing = 1; }
-    if (f.x > this.tank.width - MARGIN) { f.x = this.tank.width - MARGIN; f.facing = -1; }
-    f.y = Math.min(Math.max(f.y, SURFACE + MARGIN), maxY);
+    let hit = false;
+    if (f.x < MARGIN) { f.x = MARGIN; hit = true; }
+    if (f.x > this.tank.width - MARGIN) {
+      f.x = this.tank.width - MARGIN; hit = true;
+    }
+    if (f.y < SURFACE + MARGIN) { f.y = SURFACE + MARGIN; hit = true; }
+    if (f.y > maxY) { f.y = maxY; hit = true; }
+    // A hard clamp means the movement ran out of room — decide early.
+    if (hit && f.state !== "startle") f.phase = Math.max(f.phase, MOVE_TICKS);
 
     // Fish gasp in foul water — bubbles come up to twice as often.
     if (this.rand() < BUBBLE_CHANCE * (2 - this.waterQuality)) {
       this.bubbles.push({ x: f.x + f.facing * 6, y: f.y - 3 });
     }
+  }
+
+  /**
+   * Pick a new destination and reset the stroke. Wander targets stay in
+   * the fish's depth band; occasionally the band itself migrates, like
+   * the original's per-tick swim-bound jitter.
+   */
+  private decide(f: Fish): void {
+    const maxY = this.tank.height - BOTTOM_PAD;
+    if (this.rand() < BAND_SHIFT) {
+      f.bandY = SURFACE + MARGIN +
+                this.rand() * (maxY - SURFACE - MARGIN);
+    }
+    f.tx = MARGIN + this.rand() * (this.tank.width - MARGIN * 2);
+    f.ty = Math.min(
+      maxY,
+      Math.max(SURFACE + MARGIN,
+               f.bandY + (this.rand() - 0.5) * 2 * BAND_HALF));
+    f.phase = 0;
+    f.latch = -1;
+    // Rest speed — the pulse rebuilds it from here.
+    f.speed = f.cruise * 0.15;
   }
 
   private setState(f: Fish, s: FishState): void {
