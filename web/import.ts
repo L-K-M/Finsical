@@ -171,6 +171,55 @@ export function mountImportPanel(h: ImportHandlers):
     tile.insertBefore(copy, tile.firstChild);
   }
 
+  // Tile thumbs fetch lazily: when a tile scrolls into view its inner zip is
+  // downloaded through the same memoized path as the detail view, decoded
+  // via h.preview, and painted back. Bounded concurrency keeps the fetch
+  // trickle polite to archive.org; failures leave a name-only tile.
+  const byInner = new Map<string, Importable>();
+  const thumbQueued = new Set<string>();
+  const thumbQueue: Importable[] = [];
+  let thumbRunning = 0;
+  const THUMB_PAR = 3;
+
+  function pumpThumbs(): void {
+    while (thumbRunning < THUMB_PAR && thumbQueue.length) {
+      const it = thumbQueue.shift()!;
+      thumbRunning++;
+      void fetchPack(it.url).then((rs) => {
+        const usable = rs.filter((r) => r.sheets.size || r.images.size);
+        const pv = usable.length ? h.preview(usable) : null;
+        if (!pv) return;
+        thumbs.set(it.inner, pv);
+        const t =
+          browse.querySelector(`[data-inner="${CSS.escape(it.inner)}"]`);
+        if (t) paintThumb(t, pv);
+      }).catch((e) => {
+        console.warn(`add-on thumb failed for ${it.inner}:`, e);
+      })
+        .finally(() => { thumbRunning--; pumpThumbs(); });
+    }
+  }
+
+  function wantThumb(it: Importable): void {
+    if (thumbs.has(it.inner) || thumbQueued.has(it.inner)) return;
+    thumbQueued.add(it.inner);
+    thumbQueue.push(it);
+    pumpThumbs();
+  }
+
+  const io: IntersectionObserver | null =
+    "IntersectionObserver" in window
+      ? new IntersectionObserver((ents, obs) => {
+        for (const en of ents) {
+          if (!en.isIntersecting) continue;
+          obs.unobserve(en.target);
+          const it =
+            byInner.get((en.target as HTMLElement).dataset.inner ?? "");
+          if (it) wantThumb(it);
+        }
+      })
+      : null;
+
   function showBrowse(): void {
     detail.style.display = "none";
     browse.style.display = "";
@@ -239,9 +288,16 @@ export function mountImportPanel(h: ImportHandlers):
 
   function buildBrowse(items: Importable[]): void {
     browse.textContent = "";
+    byInner.clear();
+    // Drop still-pending items from the previous view; in-flight fetches
+    // complete anyway and their results stay memoized in packCache.
+    thumbQueue.length = 0;
+    thumbQueued.clear();
+    io?.disconnect();
     let section = "";
     let grid: HTMLElement | null = null;
     for (const it of items) {
+      byInner.set(it.inner, it);
       if (it.section !== section) {
         section = it.section;
         browse.appendChild(el("div", "sec",
@@ -258,6 +314,8 @@ export function mountImportPanel(h: ImportHandlers):
       t.appendChild(el("span", "tick", "✓"));
       t.addEventListener("click", () => showDetail(it));
       grid!.appendChild(t);
+      // No IntersectionObserver: trickle-fetch every thumb instead.
+      if (io) io.observe(t); else wantThumb(it);
     }
   }
 
