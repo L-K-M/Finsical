@@ -426,7 +426,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
             // The relay can drop the message if the tank page is
             // mid-reload — recover the button if no ack comes back.
             setTimeout(() => {
-              if (act.disabled && detailRef?.act === act) {
+              if (act.disabled && act.textContent === "Adding…" &&
+                  detailRef?.act === act) {
                 act.disabled = false;
                 act.textContent = "Retry";
               }
