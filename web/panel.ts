@@ -65,6 +65,15 @@ function showView(v: string): void {
 }
 document.querySelectorAll<HTMLButtonElement>("#tabs .tab").forEach((b) =>
   b.addEventListener("click", () => showView(b.dataset.view!)));
+// ARIA tabs imply arrow-key traversal — cycle between the two tabs.
+document.getElementById("tabs")!.addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  const cur = document.querySelector<HTMLButtonElement>("#tabs .tab.on");
+  const next = cur?.dataset.view === "overview" ? "addons" : "overview";
+  showView(next);
+  document.querySelector<HTMLButtonElement>(
+    `#tabs .tab[data-view="${next}"]`)?.focus();
+});
 
 // The native menu picks the initial view via the URL hash and can switch
 // views on an already-open panel.

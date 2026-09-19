@@ -151,8 +151,12 @@ function pickBackdrop(images: Iterable<IndexedImage>, src = ""): void {
     if (img.w < TANK.width / 2 || img.h < TANK.height / 2) continue;
     if (!best || img.w * img.h > best.w * best.h) best = img;
   }
-  if (best) backdropByPack.set(src, imageCanvas(best, true));
-  if (gravel) gravelByPack.set(src, imageCanvas(gravel, false));
+  // delete-then-set: Map keeps an existing key's insertion position, so
+  // re-picks must reinsert to keep key order == install recency.
+  if (best) { backdropByPack.delete(src);
+              backdropByPack.set(src, imageCanvas(best, true)); }
+  if (gravel) { gravelByPack.delete(src);
+                gravelByPack.set(src, imageCanvas(gravel, false)); }
   backdropCv = best ? backdropByPack.get(src)! : null;
   backdropSrc = best ? src : "";
   gravelCv = gravel ? gravelByPack.get(src)! : null; // index 0 = transparent
@@ -165,7 +169,8 @@ function pickGravel(images: Iterable<IndexedImage>, src: string): void {
     if (img.w >= img.h * 3 && img.w >= TANK.width / 2 &&
         (!gravel || img.w > gravel.w)) gravel = img;
   }
-  if (gravel) gravelByPack.set(src, imageCanvas(gravel, false));
+  if (gravel) { gravelByPack.delete(src);
+                gravelByPack.set(src, imageCanvas(gravel, false)); }
   gravelCv = gravel ? gravelByPack.get(src)! : null;
   gravelSrc = gravel ? src : "";
 }
