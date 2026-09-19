@@ -289,7 +289,7 @@ function animFrame(f: Fish, nf: number): number {
     % Math.max(1, nf);
   animPhase.set(f, ph);
   lastTick.set(f, sim.tickCount);
-  return Math.floor(ph) % Math.max(1, nf);
+  return Math.floor(ph);
 }
 
 // Sprite cells run large (the angelfish is 170px tall); scale big
