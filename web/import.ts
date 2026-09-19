@@ -382,11 +382,12 @@ export function mountImportPanel(h: ImportHandlers):
       status.textContent =
         `${usable.length} pack${usable.length > 1 ? "s" : ""} · ${kinds}`;
       act.style.display = "";
-      const again = installed.has(it.inner);
+      let again = installed.has(it.inner);
       act.textContent = again ? "Add again" : "Add to tank";
       act.addEventListener("click", () => {
         try {
           applyAddon(it, usable, again);
+          again = true; // later clicks on this button mean "add again"
           act.textContent = "In tank ✓ — add again?";
         } catch (e) { status.textContent = String(e); }
       });
