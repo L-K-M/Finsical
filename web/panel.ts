@@ -97,17 +97,41 @@ function hungerLabel(h: number): string {
   return "hungry";
 }
 
+// Rows are only rebuilt when membership changes — a full rebuild on
+// every 2s state push could swap a Remove button out mid-click and
+// drops keyboard focus. Live labels refresh in place instead.
+let lastStructure = "";
+let statsEl: HTMLElement | null = null;
+const fishMeta = new Map<number, HTMLElement>();
+
+function statsLine(s: TankState, count: number): string {
+  return `${count} fish · water ` +
+    `${Math.round((s.waterQuality ?? 1) * 100)}% · up ` +
+    uptime(s.tickCount ?? 0);
+}
+
 function renderOverview(): void {
   const s = tankState;
   if (!s) return;
   const fish = s.fish ?? [];
   const addons = s.addons ?? [];
+  const structure = JSON.stringify([
+    fish.map((f) => [f.id, f.species]),
+    addons.map((a) => [a.inner, a.section]),
+  ]);
+  if (structure === lastStructure) {
+    if (statsEl) statsEl.textContent = statsLine(s, fish.length);
+    for (const f of fish)
+      fishMeta.get(f.id)!.textContent =
+        `${f.state} · ${hungerLabel(f.hunger)}`;
+    return;
+  }
+  lastStructure = structure;
+  fishMeta.clear();
   overviewEl.textContent = "";
 
-  const stats = el("div", "ostats",
-    `${fish.length} fish · water ${Math.round((s.waterQuality ?? 1) * 100)}%` +
-    ` · up ${uptime(s.tickCount ?? 0)}`);
-  overviewEl.appendChild(stats);
+  statsEl = el("div", "ostats", statsLine(s, fish.length));
+  overviewEl.appendChild(statsEl);
 
   overviewEl.appendChild(el("div", "osec", `Fish (${fish.length})`));
   if (!fish.length)
@@ -116,8 +140,10 @@ function renderOverview(): void {
   for (const f of fish) {
     const row = el("div", "orow");
     row.appendChild(el("span", "oname", f.species || "Fish"));
-    row.appendChild(el("span", "ometa",
-      `${f.state} · ${hungerLabel(f.hunger)}`));
+    const meta = el("span", "ometa",
+      `${f.state} · ${hungerLabel(f.hunger)}`);
+    fishMeta.set(f.id, meta);
+    row.appendChild(meta);
     const rm = el("button", "orm", "Remove");
     rm.addEventListener("click", () =>
       bus.post({ op: "removeFish", id: f.id }));

@@ -107,9 +107,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 NSLog("Finsical: panel view switch failed: \(e)")
                 // Page loaded but panelUI is gone (script failed) —
                 // reload lands on the requested tab via the hash.
-                self?.panelView?.load(URLRequest(
-                    url: URL(string:
-                        "finsical://app/panel.html#\(view)")!))
+                if let u = URL(string: "finsical://app/panel.html#\(view)") {
+                    self?.panelView?.load(URLRequest(url: u))
+                }
             }
         }
         panelWindow?.makeKeyAndOrderFront(nil)
