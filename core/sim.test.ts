@@ -240,4 +240,14 @@ describe("Sim", () => {
     expect(f.state).toBe("seek");
     expect(f.turnFrom).toBe(1); // untouched — no roll began
   });
+
+  it("starts a roll without snapping heading when food is behind", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 11);
+    const f = sim.addFish({ x: 200, y: 50, facing: 1, heading: 0,
+                            hunger: 0.9 });
+    sim.dropFood(50); // behind the fish
+    sim.tick();
+    expect(f.state).toBe("turn");
+    expect(f.heading).toBe(0); // roll drifts on the old heading
+  });
 });
