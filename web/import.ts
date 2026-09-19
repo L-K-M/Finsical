@@ -96,6 +96,9 @@ export async function listAddons(item = DEFAULT_ITEM):
 export interface ImportHandlers {
   onSheets(sheets: Map<string, SpriteSheet>, name: string, section: string): void;
   onImages(images: Iterable<IndexedImage>, name: string, section: string): void;
+  /** Fired once per successful install — lets the caller record which
+   * add-ons went into the tank so they can be restored later. */
+  onInstall?(it: Importable): void;
   /** Render decoded packs to a preview canvas; null = nothing to show. */
   preview(rs: PackResult[]): HTMLCanvasElement | null;
 }
@@ -113,7 +116,8 @@ function el<K extends keyof HTMLElementTagNameMap>(
 
 /** Afterglow-style add-on browser: card grid -> detail w/ live preview. */
 export function mountImportPanel(h: ImportHandlers):
-    { open(): void; close(): void; readonly isOpen: boolean } {
+    { open(): void; close(): void; readonly isOpen: boolean;
+      restore(list: Importable[]): void } {
   const installed = new Set<string>();
   const thumbs = new Map<string, HTMLCanvasElement>();
   // Packs are immutable per URL — memoize so re-visits skip the download.
@@ -242,6 +246,7 @@ export function mountImportPanel(h: ImportHandlers):
       ?.classList.add("done");
     const pv = h.preview(usable);
     if (pv) thumbs.set(it.inner, pv);
+    h.onInstall?.(it);
   }
 
   function showDetail(it: Importable): void {
@@ -357,5 +362,25 @@ export function mountImportPanel(h: ImportHandlers):
     },
     close() { ov.style.display = "none"; },
     get isOpen() { return ov.style.display !== "none"; },
+    // Re-install saved add-ons in order (restores fish sheets and the
+    // gravel backdrop). Sequential so slot/backdrop assignment matches
+    // the original install order; failures skip that add-on. Deliberately
+    // bypasses applyAddon's onInstall so restores don't re-record.
+    restore(list: Importable[]) {
+      let p: Promise<void> = Promise.resolve();
+      for (const it of list) {
+        p = p.then(() => fetchPack(it.url)
+          .then((rs) => {
+            for (const r of rs) {
+              if (r.sheets.size) h.onSheets(r.sheets, it.inner, it.section);
+              if (r.images.size) h.onImages(r.images.values(), it.inner,
+                                            it.section);
+            }
+            installed.add(it.inner);
+          })
+          .catch((e) =>
+            console.warn(`add-on restore failed for ${it.inner}:`, e)));
+      }
+    },
   };
 }

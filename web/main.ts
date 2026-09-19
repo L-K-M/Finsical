@@ -4,7 +4,7 @@ import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { swimFrame } from "../core/data/orient.js";
 import { TankAudio } from "./audio.js";
 import { mountImportPanel } from "./import.js";
-import type { PackResult } from "./import.js";
+import type { Importable, PackResult } from "./import.js";
 import type { Fish } from "../core/sim.js";
 import type { AzpackManifest, IndexedImage } from "../core/data/azpack.js";
 
@@ -14,11 +14,59 @@ const canvas = document.getElementById("tank") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 ctx.imageSmoothingEnabled = false;
 
+// ---- persistence ---------------------------------------------------------
+// Tank state (fish, water, installed add-ons) survives restarts via
+// localStorage. Add-ons are re-imported on launch — archives are
+// immutable per URL so the same packs come back, in install order, so
+// fish keep the species they had.
+const SAVE_KEY = "finsical:tank";
+interface SavedTank {
+  v: 1;
+  tickCount: number;
+  waterQuality: number;
+  fish: Partial<Fish>[];
+  addons: Importable[];
+}
+function loadTank(): SavedTank | null {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as SavedTank;
+    if (s?.v !== 1 || !Array.isArray(s.fish) || !Array.isArray(s.addons))
+      return null;
+    return s;
+  } catch { return null; }
+}
+const saved = loadTank();
+const installedAddons: Importable[] = [...(saved?.addons ?? [])];
+
 const sim = new Sim(TANK, 0x9003);
 const audio = new TankAudio();
-for (let i = 0; i < 4; i++) {
-  sim.addFish({ x: 40 + i * 60, y: 50 + i * 30, facing: i % 2 ? -1 : 1 });
+if (saved) {
+  sim.tickCount = saved.tickCount;
+  sim.waterQuality = saved.waterQuality;
 }
+const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
+  [0, 1, 2, 3].map((i) =>
+    ({ x: 40 + i * 60, y: 50 + i * 30, facing: (i % 2 ? -1 : 1) as 1 | -1 }));
+const roster = saved?.fish.filter(
+  (f): f is Partial<Fish> & { x: number; y: number } =>
+    Number.isFinite(f.x) && Number.isFinite(f.y));
+for (const f of roster?.length ? roster : DEFAULT_FISH) sim.addFish(f);
+
+function saveTank(): void {
+  try {
+    const s: SavedTank = {
+      v: 1, tickCount: sim.tickCount, waterQuality: sim.waterQuality,
+      fish: sim.fish.map(({ x, y, facing, speed, vy, hunger }) =>
+        ({ x, y, facing, speed, vy, hunger })),
+      addons: installedAddons,
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(s));
+  } catch { /* storage unavailable — the tank still runs */ }
+}
+window.addEventListener("pagehide", saveTank);
+setInterval(saveTank, 10_000);
 
 // Click near the surface drops food; deeper clicks knock on the glass.
 canvas.addEventListener("pointerdown", (e) => {
@@ -112,6 +160,10 @@ const importPanel = mountImportPanel({
     pickBackdrop(images);
     console.info(`archive.org: imported scenery ${name}`);
   },
+  onInstall: (it) => {
+    installedAddons.push(it);
+    saveTank();
+  },
   preview: previewOf,
 });
 
@@ -163,7 +215,11 @@ void (async () => {
     catch { /* keep going without that image */ }
   }
   pickBackdrop(imgs);
-})().catch((e) => console.warn("azpack load failed; using placeholder fish:", e));
+})()
+  .catch((e) => console.warn("azpack load failed; using placeholder fish:", e))
+  // Saved add-ons re-import after the bundled pack so fishSheets order
+  // (bundled first) and species assignment match what was installed.
+  .finally(() => importPanel.restore(installedAddons));
 
 // Drag an .azpack folder onto the window to import it.
 async function walkEntry(ent: FileSystemEntry, prefix: string,
