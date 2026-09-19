@@ -274,12 +274,15 @@ function swimCanvas(sheet: SpriteSheet, f: number,
   return cv;
 }
 
-// Tail-wag animation advances with swim speed.
-const anims = new WeakMap<Fish, number>();
+// Tail-wag animation advances on the sim clock (30 tps), not per
+// rendered frame — ~4-7 fps at cruise, quicker when startled. A fixed
+// per-fish phase keeps the shoal out of sync.
+const animPhase = new WeakMap<Fish, number>();
+let nextPhase = 0;
 function animFrame(f: Fish, nf: number): number {
-  const total = Math.max(1, nf);
-  const a = ((anims.get(f) ?? 0) + 0.15 + f.speed * 0.12) % total;
-  anims.set(f, a);
+  let ph = animPhase.get(f);
+  if (ph === undefined) { ph = nextPhase; nextPhase += 1.618; animPhase.set(f, ph); }
+  const a = (sim.tickCount * (0.1 + f.speed * 0.08) + ph) % Math.max(1, nf);
   return Math.floor(a);
 }
 
