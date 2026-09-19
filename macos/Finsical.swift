@@ -101,7 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 url: URL(string: "finsical://app/panel.html#\(view)")!))
         } else {
             panelView?.evaluateJavaScript(
-                "window.panelUI && window.panelUI.show('\(view)')") { _, e in
+                "if (window.panelUI) { window.panelUI.show('\(view)') } " +
+                "else { throw new Error('panelUI missing') }") { _, e in
                 if let e { NSLog("Finsical: panel view switch failed: \(e)") }
             }
         }

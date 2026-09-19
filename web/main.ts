@@ -157,10 +157,9 @@ function pickBackdrop(images: Iterable<IndexedImage>, src = ""): void {
               backdropByPack.set(src, imageCanvas(best, true)); }
   if (gravel) { gravelByPack.delete(src);
                 gravelByPack.set(src, imageCanvas(gravel, false)); }
-  backdropCv = best ? backdropByPack.get(src)! : null;
-  backdropSrc = best ? src : "";
-  gravelCv = gravel ? gravelByPack.get(src)! : null; // index 0 = transparent
-  gravelSrc = gravel ? src : "";
+  // A pack with no qualifying art leaves the current winner in place.
+  if (best) { backdropCv = backdropByPack.get(src)!; backdropSrc = src; }
+  if (gravel) { gravelCv = gravelByPack.get(src)!; gravelSrc = src; }
 }
 function pickGravel(images: Iterable<IndexedImage>, src: string): void {
   // .grv packs also carry a ~square texture-fill tile — strip-only, never a backdrop
@@ -171,8 +170,7 @@ function pickGravel(images: Iterable<IndexedImage>, src: string): void {
   }
   if (gravel) { gravelByPack.delete(src);
                 gravelByPack.set(src, imageCanvas(gravel, false)); }
-  gravelCv = gravel ? gravelByPack.get(src)! : null;
-  gravelSrc = gravel ? src : "";
+  if (gravel) { gravelCv = gravelByPack.get(src)!; gravelSrc = src; }
 }
 // Decorations (plants/accessories) sit on the gravel between the backdrop
 // and the fish. Each pack's art frame is scaled to fit; the set is
