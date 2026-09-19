@@ -10,8 +10,8 @@
     <button class="tab on" role="tab" aria-selected="true" aria-controls="overview" data-view="overview" id="tab-overview">Tank</button>
     <button class="tab" role="tab" aria-selected="false" aria-controls="panel" data-view="addons" id="tab-addons" tabindex="-1">Add-ons</button>
   </nav>
-  <div id="overview" role="tabpanel" aria-labelledby="tab-overview"></div>
-  <div id="panel" role="tabpanel" aria-labelledby="tab-addons" style="display:none"></div>
+  <div id="overview" role="tabpanel" tabindex="0" aria-labelledby="tab-overview"></div>
+  <div id="panel" role="tabpanel" tabindex="0" aria-labelledby="tab-addons" style="display:none"></div>
   <script src="panel.js"></script>
 </body>
 </html>

@@ -305,6 +305,9 @@ function onBusMessage(m: BusMsg): void {
  * decor, and gravel/backdrop it supplied. Sprite sheets stay loaded so
  * other fish's sheetIdx bindings don't shift. */
 function removeAddon(inner: string): void {
+  // Unknown name — no teardown, persist, or ack for an add-on that
+  // was never installed (stale panel / double-fired remove).
+  if (!installedAddons.some((a) => a.inner === inner)) return;
   for (let i = installedAddons.length - 1; i >= 0; i--)
     if (installedAddons[i]!.inner === inner) installedAddons.splice(i, 1);
   for (const f of [...sim.fish])
