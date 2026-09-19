@@ -151,3 +151,9 @@ bus.post({ op: "hello" });
 // Slow heartbeat after first contact: re-syncs the panel if the tank
 // page reloads mid-session (state replies only touch install badges).
 setInterval(() => { if (greeted) bus.post({ op: "hello" }); }, 10_000);
+// Hunger/state/water drift continuously — poll faster while the Tank
+// tab is visible so the overview reads live.
+setInterval(() => {
+  if (greeted && overviewEl.style.display !== "none")
+    bus.post({ op: "hello" });
+}, 2000);
