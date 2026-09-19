@@ -162,7 +162,8 @@ const importPanel = mountImportPanel({
     console.info(`archive.org: imported scenery ${name}`);
   },
   onInstall: (it) => {
-    installedAddons.push(it);
+    if (!installedAddons.some((a) => a.url === it.url))
+      installedAddons.push(it);
     saveTank();
   },
   preview: previewOf,
