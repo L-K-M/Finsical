@@ -65,6 +65,13 @@ describe("pitch", () => {
       .toBeCloseTo(Math.PI / 6);
     expect(pitch(fish({ facing: 1, heading: -Math.PI / 6 })))
       .toBeCloseTo(-Math.PI / 6);
+    // Left-facing fish: pitch doubles as the screen-space rotation
+    // angle, so its sign flips even though dive is still "down" in
+    // tank space.
+    expect(pitch(fish({ facing: -1, heading: (5 * Math.PI) / 6 })))
+      .toBeCloseTo(-Math.PI / 6);
+    expect(pitch(fish({ facing: -1, heading: -(5 * Math.PI) / 6 })))
+      .toBeCloseTo(Math.PI / 6);
   });
 
   it("stays flat during a turn — the pose ring encodes orientation", () => {
