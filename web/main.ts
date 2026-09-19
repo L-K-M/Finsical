@@ -1,4 +1,5 @@
-import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim, TURN_TICKS } from "../core/sim.js";
+import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
+import { fishPose } from "../core/pose.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { swimFrame } from "../core/data/orient.js";
@@ -364,26 +365,6 @@ function swimCanvas(sheet: SpriteSheet, f: number,
   cv = imageCanvas(swimFrame(sheet, f, facing, group), false);
   cache.set(key, cv);
   return cv;
-}
-
-/**
- * Which pose group + mirror a fish draws with. Sheets with an even
- * group count >= 4 carry the original's pose ring: opposite-facing
- * profiles at 0 and groups/2 with roll poses between, so a "turn"
- * steps the ring instead of mirroring.
- */
-function fishPose(sheet: SpriteSheet, f: Fish): { g: number; mir: 1 | -1 } {
-  const ng = sheet.meta.groups;
-  if (ng < 4 || ng % 2 !== 0) return { g: 0, mir: f.facing };
-  if (f.state === "turn") {
-    const from = f.turnFrom > 0 ? ng / 2 : 0;
-    // stateTicks runs 1..TURN_TICKS-1 in the turn state — scale so the
-    // last rendered pose lands exactly on the opposite profile.
-    const step = Math.min(ng / 2,
-      Math.round(f.stateTicks * (ng / 2) / (TURN_TICKS - 1)));
-    return { g: (((from + f.turnDir * step) % ng) + ng) % ng, mir: -1 };
-  }
-  return { g: f.facing > 0 ? ng / 2 : 0, mir: -1 };
 }
 
 // Tail-wag animation advances on the sim clock (30 tps), not per
