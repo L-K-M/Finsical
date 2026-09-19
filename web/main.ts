@@ -123,13 +123,7 @@ function feedFish(): void {
 (window as unknown as { finsical?: unknown }).finsical =
   { openImport: () => importPanel.open(), feedFish };
 
-// Pointer/touch entry point — bottom-right keeps it clear of the
-// native drag strip and out of the fish's way until hovered.
-const trigger = document.createElement("button");
-trigger.id = "opentrigger";
-trigger.textContent = "+ add-ons";
-trigger.addEventListener("click", () => importPanel.open());
-document.body.appendChild(trigger);
+// Keyboard entry point — the native Tank menu (⌘I) is the primary path.
 window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if ((e.metaKey || e.ctrlKey) && k === "i") {
