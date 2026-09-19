@@ -188,13 +188,14 @@ export function mountImportPanel(h: ImportHandlers):
   const thumbKey = (it: Importable): string =>
     THUMB_PREFIX + it.section + ":" + it.inner;
   function storeThumb(it: Importable, cv: HTMLCanvasElement): void {
+    const data = cv.toDataURL("image/png");
     try {
-      localStorage.setItem(thumbKey(it), cv.toDataURL("image/png"));
+      localStorage.setItem(thumbKey(it), data);
     } catch {
       try {
         for (const k of Object.keys(localStorage))
           if (k.startsWith(THUMB_PREFIX)) localStorage.removeItem(k);
-        localStorage.setItem(thumbKey(it), cv.toDataURL("image/png"));
+        localStorage.setItem(thumbKey(it), data);
       } catch { /* cache skipped */ }
     }
   }
@@ -211,14 +212,15 @@ export function mountImportPanel(h: ImportHandlers):
       cv.width = img.naturalWidth; cv.height = img.naturalHeight;
       cv.getContext("2d")!.drawImage(img, 0, 0);
       thumbs.set(it.inner, cv);
+      thumbQueued.delete(it.inner);
       const t =
         browse.querySelector(`[data-inner="${CSS.escape(it.inner)}"]`);
       if (t) paintThumb(t, cv);
     };
     img.onerror = () => {
-      thumbQueued.delete(it.inner);
       try { localStorage.removeItem(thumbKey(it)); } catch { /* ignore */ }
-      wantThumb(it); // corrupt entry — fall through to a real fetch
+      thumbQueue.push(it); // corrupt entry — fall through to a real fetch
+      pumpThumbs();
     };
     img.src = url;
     return true;
