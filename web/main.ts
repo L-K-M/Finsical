@@ -1,5 +1,5 @@
-import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim, wrapAngle } from "../core/sim.js";
-import { fishPose } from "../core/pose.js";
+import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
+import { fishPose, pitch } from "../core/pose.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { swimFrame } from "../core/data/orient.js";
@@ -388,15 +388,6 @@ function animFrame(f: Fish, nf: number): number {
 // Sprite cells run large (the angelfish is 170px tall); scale big
 // sheets down to a share of the tank rather than clipping them.
 const MAX_FISH_W = TANK.width * 0.6, MAX_FISH_H = TANK.height * 0.6;
-
-/** Pitch of the heading off the facing's horizontal axis — the
- * screen-plane tilt the original applies when fish climb or dive.
- * During a turn the pose ring already encodes orientation, and facing
- * flips mid-roll — pitching then would invert the sprite. */
-function pitch(f: Fish): number {
-  if (f.state === "turn") return 0;
-  return wrapAngle(f.heading - (f.facing > 0 ? 0 : Math.PI));
-}
 
 function drawFish(f: Fish): void {
   const sheet = sheetOf(f);

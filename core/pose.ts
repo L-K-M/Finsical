@@ -1,4 +1,4 @@
-import { TURN_TICKS } from "./sim.js";
+import { TURN_TICKS, wrapAngle } from "./sim.js";
 import type { Fish } from "./sim.js";
 import type { SpriteSheet } from "./data/azpack.js";
 
@@ -20,4 +20,18 @@ export function fishPose(sheet: SpriteSheet, f: Fish):
     return { g: (((from + f.turnDir * step) % ng) + ng) % ng, mir: -1 };
   }
   return { g: f.facing > 0 ? ng / 2 : 0, mir: -1 };
+}
+
+/** Pitch of the heading off the facing's horizontal axis — the
+ * screen-plane tilt the original applies when fish climb or dive.
+ * Assumes heading = atan2(vy, vx) in screen space (y grows downward);
+ * a y-up convention would invert the tilt sign.
+ * During a turn the pose ring already encodes orientation, and facing
+ * flips mid-roll — pitching then would invert the sprite. */
+export function pitch(f: Fish): number {
+  if (f.state === "turn") return 0;
+  const p = wrapAngle(f.heading - (f.facing > 0 ? 0 : Math.PI));
+  // Clamp: a heading/facing mismatch (e.g. a startle dart) must never
+  // roll the sprite past a plausible tilt.
+  return Math.max(-Math.PI / 4, Math.min(Math.PI / 4, p));
 }
