@@ -201,7 +201,7 @@ export class Sim {
         f.tx = food.x; f.ty = food.y;
       }
       let dist = Math.hypot(f.tx - f.x, f.ty - f.y);
-      if (f.phase >= MOVE_TICKS || dist < 4) {
+      if (!food && (f.phase >= MOVE_TICKS || dist < 4)) {
         this.decide(f);
         dist = Math.hypot(f.tx - f.x, f.ty - f.y);
       }
@@ -210,7 +210,8 @@ export class Sim {
       // curves instead of snapping around.
       const want = Math.atan2(f.ty - f.y, f.tx - f.x);
       const turn = wrapAngle(want - f.heading);
-      f.heading += Math.min(TURN_RATE, Math.max(-TURN_RATE, turn));
+      f.heading = wrapAngle(f.heading +
+        Math.min(TURN_RATE, Math.max(-TURN_RATE, turn)));
 
       // Stroke pulse — the original's "fin push": quadratic acceleration
       // out of the decision, then quadratic braking once the destination
@@ -245,12 +246,23 @@ export class Sim {
 
     const maxY = this.tank.height - BOTTOM_PAD;
     let hit = false;
-    if (f.x < MARGIN) { f.x = MARGIN; hit = true; }
+    if (f.x < MARGIN) {
+      f.x = MARGIN; hit = true;
+      // Glance off the wall instead of keeping a heading into it.
+      if (Math.cos(f.heading) < 0) f.heading = wrapAngle(Math.PI - f.heading);
+    }
     if (f.x > this.tank.width - MARGIN) {
       f.x = this.tank.width - MARGIN; hit = true;
+      if (Math.cos(f.heading) > 0) f.heading = wrapAngle(Math.PI - f.heading);
     }
-    if (f.y < SURFACE + MARGIN) { f.y = SURFACE + MARGIN; hit = true; }
-    if (f.y > maxY) { f.y = maxY; hit = true; }
+    if (f.y < SURFACE + MARGIN) {
+      f.y = SURFACE + MARGIN; hit = true;
+      if (Math.sin(f.heading) < 0) f.heading = -f.heading;
+    }
+    if (f.y > maxY) {
+      f.y = maxY; hit = true;
+      if (Math.sin(f.heading) > 0) f.heading = -f.heading;
+    }
     // A hard clamp means the movement ran out of room — decide early.
     if (hit && f.state !== "startle") f.phase = Math.max(f.phase, MOVE_TICKS);
 
