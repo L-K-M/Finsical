@@ -48,8 +48,8 @@ export function pickDecorArt(images: Iterable<IndexedImage>):
 
 /** Alpha mask (1 = opaque): every pixel of the key index is transparent. */
 export function keyMask(img: IndexedImage, key: number): Uint8Array {
-  const { w, h, idx } = img;
-  const opaque = new Uint8Array(w * h);
+  const { idx } = img;
+  const opaque = new Uint8Array(idx.length);
   for (let i = 0; i < idx.length; i++) opaque[i] = idx[i] === key ? 0 : 1;
   return opaque;
 }
