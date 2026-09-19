@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { DAY_TICKS, FOOD_ROT_TICKS, Sim, TURN_TICKS } from "./sim.js";
 
+// States a fish may be in when it's not seeking food.
+const IDLE_STATES = ["drift", "turn"];
+
 describe("Sim", () => {
   it("is deterministic for a given seed", () => {
     const a = new Sim({ width: 320, height: 200 }, 42);
@@ -58,7 +61,7 @@ describe("Sim", () => {
     const f = sim.addFish({ x: 40, y: 50, hunger: 0 });
     sim.dropFood(60);
     for (let i = 0; i < 200; i++) sim.tick();
-    expect(["drift", "turn"]).toContain(f.state);
+    expect(IDLE_STATES).toContain(f.state);
     expect(sim.food.length).toBe(1);
   });
 
@@ -110,7 +113,7 @@ describe("Sim", () => {
     sim.waterQuality = 0.1; // below QUALITY_SEEK even after filtration drift
     sim.dropFood(120);
     for (let i = 0; i < 600; i++) sim.tick();
-    expect(["drift", "turn"]).toContain(f.state); // never seeks
+    expect(IDLE_STATES).toContain(f.state); // never seeks
     expect(sim.food.length).toBe(1);
   });
 
