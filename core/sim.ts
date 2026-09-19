@@ -212,7 +212,7 @@ export class Sim {
       f.y += vy;
       f.vy = vy;
       f.speed *= 0.88;
-      if (f.stateTicks === TURN_TICKS >> 1) {
+      if (f.stateTicks >= TURN_TICKS >> 1 && f.facing === f.turnFrom) {
         f.facing = (-f.facing) as 1 | -1;
       }
       if (f.stateTicks >= TURN_TICKS) {
