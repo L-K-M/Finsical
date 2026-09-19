@@ -378,10 +378,13 @@ export function mountImportPanel(h: ImportHandlers):
     restore(list: Importable[]) {
       let p: Promise<void> = Promise.resolve();
       for (const it of list) {
-        p = p.then(() => fetchPack(it.url)
-          .then((rs) => { if (!installed.has(it.inner)) applyPack(it, rs); })
-          .catch((e) =>
-            console.warn(`add-on restore failed for ${it.inner}:`, e)));
+        p = p.then(() => {
+          if (installed.has(it.inner)) return;
+          return fetchPack(it.url)
+            .then((rs) => { if (!installed.has(it.inner)) applyPack(it, rs); })
+            .catch((e) =>
+              console.warn(`add-on restore failed for ${it.inner}:`, e));
+        });
       }
     },
   };
