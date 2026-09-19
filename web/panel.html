@@ -2,11 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Finsical — Add-ons</title>
+  <title>Finsical</title>
   <link rel="stylesheet" href="app.css" />
 </head>
 <body class="panelpage">
-  <div id="panel"></div>
+  <nav id="tabs">
+    <button class="tab on" data-view="overview">Tank</button>
+    <button class="tab" data-view="addons">Add-ons</button>
+  </nav>
+  <div id="overview"></div>
+  <div id="panel" style="display:none"></div>
   <script src="panel.js"></script>
 </body>
 </html>

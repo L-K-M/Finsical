@@ -132,9 +132,13 @@ function spawnFish(sheetIdx: number, species: string): void {
 // Biggest pack image large enough to matter becomes the tank backdrop —
 // tiny fish portraits/icons are skipped. Wide, short images (Aquazone
 // .grv beds are ~6:1) become the gravel strip instead.
+// `src` records which add-on provided the art ("" = bundled/dropped) so
+// the overview can remove a pack's visuals again.
 let backdropCv: HTMLCanvasElement | null = null;
+let backdropSrc = "";
 let gravelCv: HTMLCanvasElement | null = null;
-function pickBackdrop(images: Iterable<IndexedImage>): void {
+let gravelSrc = "";
+function pickBackdrop(images: Iterable<IndexedImage>, src = ""): void {
   let best: IndexedImage | null = null;
   let gravel: IndexedImage | null = null;
   for (const img of images) {
@@ -144,9 +148,11 @@ function pickBackdrop(images: Iterable<IndexedImage>): void {
     if (!best || img.w * img.h > best.w * best.h) best = img;
   }
   backdropCv = best ? imageCanvas(best, true) : null;
+  backdropSrc = best ? src : "";
   gravelCv = gravel ? imageCanvas(gravel, false) : null; // index 0 = transparent
+  gravelSrc = gravel ? src : "";
 }
-function pickGravel(images: Iterable<IndexedImage>): void {
+function pickGravel(images: Iterable<IndexedImage>, src: string): void {
   // .grv packs also carry a ~square texture-fill tile — strip-only, never a backdrop
   let gravel: IndexedImage | null = null;
   for (const img of images) {
@@ -154,12 +160,13 @@ function pickGravel(images: Iterable<IndexedImage>): void {
         (!gravel || img.w > gravel.w)) gravel = img;
   }
   gravelCv = gravel ? imageCanvas(gravel, false) : null;
+  gravelSrc = gravel ? src : "";
 }
 // Decorations (plants/accessories) sit on the gravel between the backdrop
 // and the fish. Each pack's art frame is scaled to fit; the set is
 // re-spaced across the tank floor whenever one is added.
-const decors: HTMLCanvasElement[] = [];
-function addDecor(images: Iterable<IndexedImage>): void {
+const decors: { cv: HTMLCanvasElement; pack: string }[] = [];
+function addDecor(images: Iterable<IndexedImage>, src: string): void {
   // Art frames share one corner key index (0 or 255 depending on the
   // pack); catalog thumbnails have textured corners and are skipped.
   const pick = pickDecorArt(images);
@@ -170,14 +177,14 @@ function addDecor(images: Iterable<IndexedImage>): void {
     : imageCanvas(pick.img, false, keyMask(pick.img, pick.key));
   const s = Math.min(1, TANK.height * 0.8 / cv.height,
                      TANK.width * 0.5 / cv.width);
-  if (s >= 1) { decors.push(cv); return; }
+  if (s >= 1) { decors.push({ cv, pack: src }); return; }
   const scaled = document.createElement("canvas");
   scaled.width = Math.max(1, Math.round(cv.width * s));
   scaled.height = Math.max(1, Math.round(cv.height * s));
   const c2 = scaled.getContext("2d")!;
   c2.imageSmoothingEnabled = false;
   c2.drawImage(cv, 0, 0, scaled.width, scaled.height);
-  decors.push(scaled);
+  decors.push({ cv: scaled, pack: src });
 }
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
@@ -235,9 +242,9 @@ function remapSheetIdx(): void {
 function handleImages(images: Iterable<IndexedImage>, name: string,
                       section: string): void {
   // fish packs carry portraits too — only scenery sections touch the tank
-  if (section === "gravel") pickGravel(images);
+  if (section === "gravel") pickGravel(images, name);
   else if (section === "plants" || section === "accessories")
-    addDecor(images);
+    addDecor(images, name);
   else return;
   console.info(`archive.org: imported scenery ${name}`);
 }
@@ -275,6 +282,29 @@ function onBusMessage(m: BusMsg): void {
   if (m.op === "hello") postState();
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
+  else if (m.op === "removeFish" && typeof m.id === "number") {
+    if (sim.removeFish(m.id)) saveTank();
+  } else if (m.op === "removeAddon" && typeof m.inner === "string") {
+    removeAddon(m.inner);
+  }
+}
+
+/** Uninstall an add-on: drops it from the saved list (it won't restore
+ * next launch) and clears this session's contributions — its fish, its
+ * decor, and gravel/backdrop it supplied. Sprite sheets stay loaded so
+ * other fish's sheetIdx bindings don't shift. */
+function removeAddon(inner: string): void {
+  for (let i = installedAddons.length - 1; i >= 0; i--)
+    if (installedAddons[i]!.inner === inner) installedAddons.splice(i, 1);
+  for (const f of [...sim.fish])
+    if (f.species === inner) sim.removeFish(f.id);
+  for (let i = decors.length - 1; i >= 0; i--)
+    if (decors[i]!.pack === inner) decors.splice(i, 1);
+  if (gravelSrc === inner) { gravelCv = null; gravelSrc = ""; }
+  if (backdropSrc === inner) { backdropCv = null; backdropSrc = ""; }
+  sheetBySpecies.delete(inner);
+  saveTank(); // persists and pushes fresh state to the panel
+  bus.post({ op: "uninstalled", inner });
 }
 
 // Bus messages cross a page boundary — validate before trusting them.
@@ -531,7 +561,7 @@ function render(): void {
   // Decorations spread evenly across the floor, bottoms planted in gravel.
   const dn = decors.length;
   for (let i = 0; i < dn; i++) {
-    const d = decors[i]!;
+    const d = decors[i]!.cv;
     ctx.drawImage(d, Math.round(TANK.width * (i + 0.5) / dn - d.width / 2),
                   TANK.height - 6 - d.height);
   }

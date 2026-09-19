@@ -95,9 +95,44 @@ canvas#tank {
 .panelpage {
   font: 13px/1.4 -apple-system, system-ui, sans-serif;
   background: #101823;
+  display: flex; flex-direction: column;
 }
-.panelpage, .panelpage #panel { height: 100%; }
+.panelpage #overview, .panelpage #panel { flex: 1; min-height: 0; }
 .panelpage .card {
   width: auto; max-height: none; height: 100%;
   border: 0; border-radius: 0; box-shadow: none;
 }
+#tabs {
+  display: flex; gap: 2px; padding: 8px 10px 0;
+  border-bottom: 1px solid #1c2938; background: #101823;
+}
+#tabs .tab {
+  background: none; border: 0; cursor: pointer; font: inherit;
+  color: #6b7f96; padding: 6px 12px; font-weight: 600;
+  border-bottom: 2px solid transparent;
+}
+#tabs .tab:hover { color: #b8c7d8; }
+#tabs .tab.on { color: #e8eef6; border-bottom-color: #2b6cb8; }
+#overview {
+  flex: 1; overflow-y: auto; padding: 10px 14px;
+}
+.ostats { color: #8fa5bd; font-size: 12px; margin: 4px 0 6px; }
+.osec {
+  color: #8fa5bd; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.2px;
+  margin: 14px 0 6px;
+}
+.oempty { color: #54687e; font-size: 12px; margin: 4px 0; }
+.orow {
+  display: flex; align-items: center; gap: 10px;
+  background: #0c1420; border: 1px solid #1c2938; border-radius: 8px;
+  padding: 8px 12px; margin-bottom: 6px;
+}
+.orow .oname { color: #e8eef6; font-size: 13px; overflow-wrap: anywhere; }
+.orow .ometa { color: #6b7f96; font-size: 11px; flex: 1; }
+.orow .orm {
+  background: none; border: 1px solid #3b2b2b; border-radius: 6px;
+  color: #e08a8a; font: inherit; font-size: 11px; cursor: pointer;
+  padding: 4px 10px;
+}
+.orow .orm:hover { background: #2b1a1a; border-color: #6b3b3b; }
