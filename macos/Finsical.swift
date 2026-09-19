@@ -50,18 +50,78 @@ final class DragStrip: NSView {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
+                         WKNavigationDelegate, WKScriptMessageHandler,
+                         NSWindowDelegate {
     private var window: NSWindow!
     private var webView: WKWebView!
+    private var panelWindow: NSWindow?
+    private var panelView: WKWebView?
 
-    /// Menu actions evaluate JS entry points exposed by web/main.ts. A
-    /// missing hook throws so the failure lands in the log, not silently.
+    private func makeWebConfig() -> WKWebViewConfiguration {
+        let config = WKWebViewConfiguration()
+        config.setURLSchemeHandler(WebHandler(), forURLScheme: WebHandler.scheme)
+        // "finsical" posts are relayed to the sibling webview (bus.ts).
+        config.userContentController.add(self, name: "finsical")
+        return config
+    }
+
+    /// Tank > Import Add-ons… opens the panel window; the add-on browser
+    /// lives there so it isn't squeezed into the small tank window.
     @objc func openImport() {
-        let js = "window.finsical?.openImport ? window.finsical.openImport()" +
-                 " : (() => { throw new Error('window.finsical.openImport missing') })()"
-        webView?.evaluateJavaScript(js) { _, error in
-            if let error { NSLog("Finsical: openImport JS failed: \(error.localizedDescription)") }
+        if panelWindow == nil {
+            let pv = WKWebView(frame: .init(x: 0, y: 0, width: 680, height: 520),
+                               configuration: makeWebConfig())
+            pv.uiDelegate = self
+            pv.navigationDelegate = self
+            let w = NSWindow(
+                contentRect: pv.frame,
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered, defer: false)
+            w.title = "Finsical — Add-ons"
+            w.minSize = NSSize(width: 420, height: 360)
+            w.contentView = pv
+            w.isReleasedWhenClosed = false // reopen reuses the window
+            w.center()
+            panelWindow = w
+            panelView = pv
+            pv.load(URLRequest(url: URL(string: "finsical://app/panel.html")!))
         }
+        panelWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Bus relay: a post from one page is delivered to the other page's
+    /// window.__bus (web/bus.ts registers it).
+    func userContentController(_ ucc: WKUserContentController,
+                               didReceive message: WKScriptMessage) {
+        guard let data = try? JSONSerialization.data(
+                  withJSONObject: message.body),
+              let text = String(data: data, encoding: .utf8) else { return }
+        let dest = message.webView === panelView ? webView : panelView
+        if dest == nil {
+            NSLog("Finsical: bus relay dropped — destination webview missing: %@",
+                  String(text.prefix(160)))
+        }
+        // __bus is only registered once the page's script ran — surface
+        // drops instead of silently losing the message.
+        // U+2028/29 are legal raw inside JSON strings but terminate JS
+        // source lines — escape them so the splice stays parseable.
+        let js = text.replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+                     .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
+        dest?.evaluateJavaScript(
+            "window.__bus ? (window.__bus(\(js)), undefined) : 'dropped'") {
+            result, error in
+            if let error {
+                NSLog("Finsical: bus relay failed: \(error.localizedDescription)")
+            } else if result as? String == "dropped" {
+                NSLog("Finsical: bus relay dropped — destination page not ready")
+            }
+        }
+    }
+
+    /// Closing the tank quits the app even if the panel is still open.
+    func windowWillClose(_ note: Notification) {
+        if note.object as? NSWindow === window { NSApp.terminate(nil) }
     }
 
     @objc func feedFish() {
@@ -108,10 +168,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     }
 
     func applicationDidFinishLaunching(_ note: Notification) {
-        let config = WKWebViewConfiguration()
-        config.setURLSchemeHandler(WebHandler(), forURLScheme: WebHandler.scheme)
         webView = WKWebView(frame: .init(x: 0, y: 0, width: 640, height: 400),
-                            configuration: config)
+                            configuration: makeWebConfig())
         webView.uiDelegate = self
         webView.navigationDelegate = self
 
@@ -127,6 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.contentAspectRatio = NSSize(width: 320, height: 200)
         window.contentView = webView
+        window.delegate = self
 
         let strip = DragStrip()
         strip.translatesAutoresizingMaskIntoConstraints = false

@@ -10,7 +10,9 @@ $(APP): bundle Finsical.swift Info.plist Finsical.icns
 	mkdir -p $(APP).staging/Contents/MacOS $(APP).staging/Contents/Resources/web
 	cp Info.plist $(APP).staging/Contents/
 	cp Finsical.icns $(APP).staging/Contents/Resources/
-	cp ../web/index.html ../dist/bundle.js $(APP).staging/Contents/Resources/web/
+	cp ../web/index.html ../web/panel.html ../web/app.css \
+	   ../dist/bundle.js ../dist/panel.js \
+	   $(APP).staging/Contents/Resources/web/
 	@if [ -d ../web/pack ]; then cp -r ../web/pack $(APP).staging/Contents/Resources/web/; fi
 	MACOSX_DEPLOYMENT_TARGET=12.0 swiftc -O -o $(APP).staging/Contents/MacOS/Finsical Finsical.swift
 	rm -rf $(APP) && mv $(APP).staging $(APP)
