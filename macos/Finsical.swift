@@ -66,9 +66,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         return config
     }
 
-    /// Tank > Import Add-ons… opens the panel window; the add-on browser
-    /// lives there so it isn't squeezed into the small tank window.
-    @objc func openImport() {
+    /// The panel window hosts the tank overview and the add-on browser —
+    /// either would be squeezed inside the small tank window.
+    @objc func openImport() { showPanel("addons") }
+    @objc func openOverview() { showPanel("overview") }
+
+    private func showPanel(_ view: String) {
+        // view lands in both the URL hash and a JS string literal below —
+        // never let an unvalidated value through.
+        precondition(["addons", "overview"].contains(view),
+                     "unknown panel view: \(view)")
         if panelWindow == nil {
             let pv = WKWebView(frame: .init(x: 0, y: 0, width: 680, height: 520),
                                configuration: makeWebConfig())
@@ -78,14 +85,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 contentRect: pv.frame,
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered, defer: false)
-            w.title = "Finsical — Add-ons"
+            w.title = "Finsical"
             w.minSize = NSSize(width: 420, height: 360)
             w.contentView = pv
             w.isReleasedWhenClosed = false // reopen reuses the window
             w.center()
             panelWindow = w
             panelView = pv
-            pv.load(URLRequest(url: URL(string: "finsical://app/panel.html")!))
+            pv.load(URLRequest(
+                url: URL(string: "finsical://app/panel.html#\(view)")!))
+        } else if let pv = panelView, pv.isLoading {
+            // Still loading: window.panelUI doesn't exist yet — reload
+            // with the requested hash instead of silently no-op'ing.
+            pv.load(URLRequest(
+                url: URL(string: "finsical://app/panel.html#\(view)")!))
+        } else {
+            panelView?.evaluateJavaScript(
+                "if (window.panelUI) { window.panelUI.show('\(view)') } " +
+                "else { throw new Error('panelUI missing') }") { [weak self] _, e in
+                guard let e else { return }
+                NSLog("Finsical: panel view switch failed: \(e)")
+                // Page loaded but panelUI is gone (script failed) —
+                // reload lands on the requested tab via the hash.
+                if let u = URL(string: "finsical://app/panel.html#\(view)") {
+                    self?.panelView?.load(URLRequest(url: u))
+                }
+            }
         }
         panelWindow?.makeKeyAndOrderFront(nil)
     }
@@ -221,6 +246,9 @@ appItem.submenu = appMenu
 let tankItem = NSMenuItem()
 mainMenu.addItem(tankItem)
 let tankMenu = NSMenu(title: "Tank")
+tankMenu.addItem(withTitle: "Tank Overview",
+                 action: #selector(AppDelegate.openOverview),
+                 keyEquivalent: "o")
 tankMenu.addItem(withTitle: "Import Add-ons…",
                  action: #selector(AppDelegate.openImport),
                  keyEquivalent: "i")
