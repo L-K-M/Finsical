@@ -72,6 +72,15 @@ function pickBackdrop(images: Iterable<IndexedImage>): void {
   backdropCv = best ? imageCanvas(best, true) : null;
   gravelCv = gravel ? imageCanvas(gravel, false) : null; // index 0 = transparent
 }
+function pickGravel(images: Iterable<IndexedImage>): void {
+  // .grv packs also carry a ~square texture-fill tile — strip-only, never a backdrop
+  let gravel: IndexedImage | null = null;
+  for (const img of images) {
+    if (img.w >= img.h * 3 && img.w >= TANK.width / 2 &&
+        (!gravel || img.w > gravel.w)) gravel = img;
+  }
+  gravelCv = gravel ? imageCanvas(gravel, false) : null;
+}
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
 let nextSlot = 0;
@@ -109,7 +118,7 @@ const importPanel = mountImportPanel({
   onImages: (images, name, section) => {
     // fish packs carry portraits too — only scenery sections touch the tank
     if (section !== "gravel") return;
-    pickBackdrop(images);
+    pickGravel(images);
     console.info(`archive.org: imported scenery ${name}`);
   },
   preview: previewOf,
