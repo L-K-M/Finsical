@@ -97,6 +97,22 @@ describe("keyMask", () => {
     const m = keyMask(art, 255);
     expect(m[5 * 12 + 5]).toBe(1);           // enclosed pocket: opaque
   });
+  it("keeps enclosed key just below the threshold", () => {
+    // 2px-thick ring: 48 art + 16 enclosed key → 16*2 < 64, no clear.
+    const idx = new Uint8Array(12 * 12).fill(0);
+    for (let y = 2; y <= 9; y++) for (let x = 2; x <= 9; x++)
+      if (x < 4 || x > 7 || y < 4 || y > 7) idx[y * 12 + x] = 3;
+    const m = keyMask({ w: 12, h: 12, palette: PAL, idx }, 0);
+    expect(m[5 * 12 + 5]).toBe(1);           // enclosed key: opaque
+  });
+  it("clears on an exact tie (enclosed key == art pixels)", () => {
+    // 6-wide × 8-tall ring: 24 art vs 24 enclosed key → `>=` clears.
+    const idx = new Uint8Array(12 * 12).fill(0);
+    for (let x = 3; x <= 8; x++) { idx[2 * 12 + x] = 3; idx[9 * 12 + x] = 3; }
+    for (let y = 2; y <= 9; y++) { idx[y * 12 + 3] = 3; idx[y * 12 + 8] = 3; }
+    const m = keyMask({ w: 12, h: 12, palette: PAL, idx }, 0);
+    expect(m[5 * 12 + 5]).toBe(0);           // tie → treated as background
+  });
   it("clears a uniform image entirely", () => {
     const m = keyMask(framed(6, 6, 0, 0), 0);
     expect([...m].every((v) => v === 0)).toBe(true);
