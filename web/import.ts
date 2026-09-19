@@ -431,6 +431,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
                 delete act.dataset.pending;
                 act.disabled = false;
                 act.textContent = "Retry";
+                detailRef.status.textContent =
+                  "No response from the tank page — try again";
               }
             }, 15_000);
           } else act.textContent = "In tank ✓ — add again?";

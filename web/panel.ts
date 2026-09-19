@@ -28,3 +28,6 @@ const greet = setInterval(() => {
   else bus.post({ op: "hello" });
 }, 500);
 bus.post({ op: "hello" });
+// Slow heartbeat after first contact: re-syncs the panel if the tank
+// page reloads mid-session (state replies only touch install badges).
+setInterval(() => { if (greeted) bus.post({ op: "hello" }); }, 10_000);

@@ -99,7 +99,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
               let text = String(data: data, encoding: .utf8) else { return }
         let dest = message.webView === panelView ? webView : panelView
         if dest == nil {
-            NSLog("Finsical: bus relay dropped — destination webview missing")
+            NSLog("Finsical: bus relay dropped — destination webview missing: %@",
+                  String(text.prefix(160)))
         }
         // __bus is only registered once the page's script ran — surface
         // drops instead of silently losing the message.
