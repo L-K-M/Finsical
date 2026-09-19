@@ -98,10 +98,12 @@ describe("keyMask", () => {
     expect(m[5 * 12 + 5]).toBe(1);           // enclosed pocket: opaque
   });
   it("keeps enclosed key just below the threshold", () => {
-    // 2px-thick ring: 48 art + 16 enclosed key → 16*2 < 64, no clear.
+    // Tie ring (24 art, 24 enclosed key) + 1 extra art pixel →
+    // 24*2 = 48 < 49, keep. The (2,2) pixel sits outside the ring.
     const idx = new Uint8Array(12 * 12).fill(0);
-    for (let y = 2; y <= 9; y++) for (let x = 2; x <= 9; x++)
-      if (x < 4 || x > 7 || y < 4 || y > 7) idx[y * 12 + x] = 3;
+    for (let x = 3; x <= 8; x++) { idx[2 * 12 + x] = 3; idx[9 * 12 + x] = 3; }
+    for (let y = 2; y <= 9; y++) { idx[y * 12 + 3] = 3; idx[y * 12 + 8] = 3; }
+    idx[2 * 12 + 2] = 3;
     const m = keyMask({ w: 12, h: 12, palette: PAL, idx }, 0);
     expect(m[5 * 12 + 5]).toBe(1);           // enclosed key: opaque
   });

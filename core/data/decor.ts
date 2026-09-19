@@ -77,9 +77,9 @@ export function keyMask(img: IndexedImage, key: number): Uint8Array {
     if (idx[i] === key) enclosedKey++;
   }
   // Enclosed key >= half of remaining opaque pixels (i.e. enclosed key
-  // >= art pixels) → key is background showing through. Measured ratios
-  // across all 19 Meka packs: Silver Reed 0.69 (clears), Robobot 0.32,
-  // Pinna plumage 0.03 (keep) — a >2x margin below the threshold.
+  // >= art pixels) → key is background showing through. Measured
+  // enclosedKey/opaqueLeft ratios across all 19 Meka packs (cutoff 0.5):
+  // Silver Reed 0.69 (clears), Robobot 0.32, Pinna plumage 0.03 (keep).
   if (opaqueLeft && enclosedKey * 2 >= opaqueLeft)
     for (let i = 0; i < idx.length; i++) if (idx[i] === key) opaque[i] = 0;
   return opaque;
