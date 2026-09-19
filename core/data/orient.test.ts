@@ -24,17 +24,20 @@ function fishImg(): IndexedImage {
 }
 
 function makeSheet(): SpriteSheet {
-  const g0 = fishImg();
   const meta: SpriteSheetMeta = {
     image: "t.png", groups: 8, framesPerGroup: 3, cellW: W, cellH: H,
     dims: Array.from({ length: 24 }, (_, i) => [(i / 3) | 0, i % 3, W, H]),
   };
   const sheet = img(W * 3, H * 8); // 3 frame columns x 8 group rows
-  for (let g = 0; g < 8; g++)
-    for (let f = 0; f < 3; f++)
-      for (let y = 0; y < H; y++)
-        sheet.idx.set(
-          g0.idx.subarray(y * W, y * W + W), (g * H + y) * sheet.w + f * W);
+  // Art in group 0 only; groups 1-7 stay blank so a wrong-group read
+  // yields empty frames and fails the eye/dorsal assertions. Each frame
+  // gets a unique marker at (x=W-1, y=0) to check frameIdx pass-through.
+  for (let f = 0; f < 3; f++) {
+    const art = fishImg();
+    art.idx[W - 1] = 0x30 + f;
+    for (let y = 0; y < H; y++)
+      sheet.idx.set(art.idx.subarray(y * W, y * W + W), y * sheet.w + f * W);
+  }
   return new SpriteSheet(meta, sheet);
 }
 
@@ -63,16 +66,20 @@ describe("orient", () => {
   });
 
   it("swimFrame yields a right-facing dorsal-up fish for facing=1", () => {
-    const r = swimFrame(makeSheet(), 0, 1);
+    const r = swimFrame(makeSheet(), 1, 1);
     expect([r.w, r.h]).toEqual([H, W]);
     expect(eyeXs(r)).toBeGreaterThan(r.w / 2);
     // dorsal stays on top after the mirror
     expect(r.idx[1 * r.w + 13]).toBe(BODY);
+    // frame-1 marker (src x=W-1,y=0 -> CW bottom-right -> mirrored
+    // bottom-left) proves the requested frame was read.
+    expect(r.idx[(r.h - 1) * r.w]).toBe(0x31);
   });
 
   it("swimFrame faces left for facing=-1", () => {
-    const r = swimFrame(makeSheet(), 0, -1);
+    const r = swimFrame(makeSheet(), 2, -1);
     expect(eyeXs(r)).toBeLessThan(r.w / 2);
     expect(r.idx[1 * r.w + 6]).toBe(BODY); // dorsal up, unmirrored
+    expect(r.idx[(r.h - 1) * r.w + r.w - 1]).toBe(0x32); // frame-2 marker
   });
 });
