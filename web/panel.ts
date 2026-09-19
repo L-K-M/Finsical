@@ -121,9 +121,13 @@ function renderOverview(): void {
   ]);
   if (structure === lastStructure) {
     if (statsEl) statsEl.textContent = statsLine(s, fish.length);
-    for (const f of fish)
-      fishMeta.get(f.id)!.textContent =
-        `${f.state} · ${hungerLabel(f.hunger)}`;
+    for (const f of fish) {
+      const meta = fishMeta.get(f.id);
+      // Desync between lastStructure and the DOM degrades to a rebuild
+      // rather than a crash on every poll.
+      if (!meta) { lastStructure = ""; return renderOverview(); }
+      meta.textContent = `${f.state} · ${hungerLabel(f.hunger)}`;
+    }
     return;
   }
   lastStructure = structure;
