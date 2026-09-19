@@ -216,14 +216,20 @@ describe("Sim", () => {
 
   it("caps panic propagation at two hops", () => {
     const sim = new Sim({ width: 400, height: 100 }, 5);
-    // Chain of fish 24px apart — within PROP_RADIUS each hop.
-    sim.addFish({ x: 60, y: 50 });   // tapped (hop 0)
-    sim.addFish({ x: 84, y: 50 });   // hop 1
-    sim.addFish({ x: 108, y: 50 });  // hop 2
-    const far = sim.addFish({ x: 132, y: 50 }); // hop 3 — beyond the cap
+    // The tap radius (48px) directly startles the first two fish (hop 0);
+    // every fish beyond that is one more hop, 24px apart (< PROP_RADIUS 32).
+    sim.addFish({ x: 60, y: 50 });   // hop 0 (direct)
+    sim.addFish({ x: 84, y: 50 });   // hop 0 (direct — inside tap radius)
+    sim.addFish({ x: 108, y: 50 });  // hop 1
+    sim.addFish({ x: 132, y: 50 });  // hop 2 — last hop the cap allows
+    const far = sim.addFish({ x: 156, y: 50 }); // hop 3 — beyond the cap
     sim.tap(60, 50);
-    for (let i = 0; i < 60; i++) sim.tick();
-    expect(far.state).not.toBe("startle");
+    let everStartled = false;
+    for (let i = 0; i < 30 && !everStartled; i++) {
+      sim.tick();
+      everStartled = far.state === "startle";
+    }
+    expect(everStartled).toBe(false);
   });
 
   it("rolls through a turn when the destination is behind it", () => {
