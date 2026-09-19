@@ -240,9 +240,9 @@ window.addEventListener("drop", (e) => {
 });
 
 // Aquazone fish art is stored vertical (profiles in groups 0 and
-// groups/2, dorsal toward x=0); orient.ts rotates it to a canonical
-// horizontal swim pose. Head direction varies per pack — detected
-// from the art itself.
+// groups/2, dorsal toward x=0); orient.ts rotates the group-0 profile
+// into a canonical dorsal-up pose and mirrors it for right-facing
+// fish, so facing comes straight from Fish.facing.
 
 /** Rasterize an indexed image to a canvas. opaque=false makes index 0
  * transparent (sprite convention); opaque=true keeps every pixel. */
