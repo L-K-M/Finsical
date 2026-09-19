@@ -196,6 +196,20 @@ describe("Sim", () => {
     expect(f.phase).toBeLessThan(32);
   });
 
+  it("tap startle fades with distance and panic propagates", () => {
+    const sim = new Sim({ width: 300, height: 200 }, 9);
+    const close = sim.addFish({ x: 75, y: 100 });   // 15px from tap
+    const near = sim.addFish({ x: 100, y: 100 });   // 40px — weaker dart
+    const bystander = sim.addFish({ x: 125, y: 100 }); // outside tap radius
+    sim.tap(60, 100);
+    expect(close.state).toBe("startle");
+    expect(close.speed).toBeGreaterThan(near.speed); // distance-scaled
+    expect(bystander.state).toBe("drift");           // outside tap radius
+    for (let i = 0; i < 10 && bystander.state !== "startle"; i++)
+      sim.tick();
+    expect(bystander.state).toBe("startle"); // panic propagated
+  });
+
   it("rolls through a turn when the destination is behind it", () => {
     const sim = new Sim({ width: 300, height: 100 }, 7);
     // At the right wall facing right — every wander target is behind.
