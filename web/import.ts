@@ -422,12 +422,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
           // Local installs are synchronous; remote ones flip on the ack.
           if (remote) {
             act.disabled = true;
+            act.dataset.pending = "1";
             act.textContent = "Adding…";
             // The relay can drop the message if the tank page is
             // mid-reload — recover the button if no ack comes back.
             setTimeout(() => {
-              if (act.disabled && act.textContent === "Adding…" &&
-                  detailRef?.act === act) {
+              if (act.dataset.pending === "1" && detailRef?.act === act) {
+                delete act.dataset.pending;
                 act.disabled = false;
                 act.textContent = "Retry";
               }
@@ -523,11 +524,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         browse.querySelector(`[data-inner="${CSS.escape(inner)}"]`)
           ?.classList.add("done");
         if (detailRef?.inner === inner) {
+          delete detailRef.act.dataset.pending;
           detailRef.act.disabled = false;
           detailRef.act.textContent = "In tank ✓ — add again?";
         }
       } else if (m.op === "installFailed" && typeof inner === "string") {
         if (detailRef?.inner === inner) {
+          delete detailRef.act.dataset.pending;
           detailRef.act.disabled = false;
           detailRef.act.textContent = "Retry";
           detailRef.status.textContent = `Install failed: ${m.error}`;
