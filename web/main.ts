@@ -285,7 +285,8 @@ function animFrame(f: Fish, nf: number): number {
   let ph = animPhase.get(f);
   if (ph === undefined) { ph = nextPhase; nextPhase += 1.618; }
   const last = lastTick.get(f) ?? sim.tickCount;
-  ph += Math.max(0, sim.tickCount - last) * (0.1 + f.speed * 0.08);
+  ph = (ph + Math.max(0, sim.tickCount - last) * (0.1 + f.speed * 0.08))
+    % Math.max(1, nf);
   animPhase.set(f, ph);
   lastTick.set(f, sim.tickCount);
   return Math.floor(ph) % Math.max(1, nf);
