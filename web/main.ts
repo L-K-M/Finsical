@@ -1,4 +1,4 @@
-import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
+import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim, TURN_TICKS } from "../core/sim.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { swimFrame } from "../core/data/orient.js";
@@ -331,9 +331,10 @@ window.addEventListener("drop", (e) => {
 });
 
 // Aquazone fish art is stored vertical (profiles in groups 0 and
-// groups/2, dorsal toward x=0); orient.ts rotates the group-0 profile
-// into a canonical dorsal-up pose and mirrors it for right-facing
-// fish, so facing comes straight from Fish.facing.
+// groups/2, dorsal toward x=0); orient.ts rotates the profile into a
+// canonical dorsal-up pose. Sheets with a pose ring (groups >= 4) carry
+// real art for both facings and the roll poses between — turns step the
+// ring; simpler sheets mirror group 0 for right-facing fish.
 
 /** Rasterize an indexed image to a canvas. opaque=false makes index 0
  * transparent (sprite convention); opaque=true keeps every pixel. */
@@ -354,15 +355,32 @@ function imageCanvas(img: IndexedImage, opaque: boolean): HTMLCanvasElement {
 
 const swimCache = new WeakMap<SpriteSheet, Map<string, HTMLCanvasElement>>();
 function swimCanvas(sheet: SpriteSheet, f: number,
-                    facing: 1 | -1): HTMLCanvasElement {
+                    facing: 1 | -1, group = 0): HTMLCanvasElement {
   let cache = swimCache.get(sheet);
   if (!cache) swimCache.set(sheet, (cache = new Map()));
-  const key = `${f}:${facing}`;
+  const key = `${group}:${f}:${facing}`;
   let cv = cache.get(key);
   if (cv) return cv;
-  cv = imageCanvas(swimFrame(sheet, f, facing), false);
+  cv = imageCanvas(swimFrame(sheet, f, facing, group), false);
   cache.set(key, cv);
   return cv;
+}
+
+/**
+ * Which pose group + mirror a fish draws with. Sheets with an even
+ * group count >= 4 carry the original's pose ring: opposite-facing
+ * profiles at 0 and groups/2 with roll poses between, so a "turn"
+ * steps the ring instead of mirroring.
+ */
+function fishPose(sheet: SpriteSheet, f: Fish): { g: number; mir: 1 | -1 } {
+  const ng = sheet.meta.groups;
+  if (ng < 4 || ng % 2 !== 0) return { g: 0, mir: f.facing };
+  if (f.state === "turn") {
+    const from = f.turnFrom > 0 ? ng / 2 : 0;
+    const step = Math.round(f.stateTicks * (ng / 2) / TURN_TICKS);
+    return { g: (((from + f.turnDir * step) % ng) + ng) % ng, mir: -1 };
+  }
+  return { g: f.facing > 0 ? ng / 2 : 0, mir: -1 };
 }
 
 // Tail-wag animation advances on the sim clock (30 tps), not per
@@ -390,8 +408,9 @@ const MAX_FISH_W = TANK.width * 0.6, MAX_FISH_H = TANK.height * 0.6;
 function drawFish(f: Fish): void {
   const sheet = sheetOf(f);
   if (!sheet) return drawPlaceholder(f.x, f.y, f.facing);
+  const pose = fishPose(sheet, f);
   const cv = swimCanvas(sheet, animFrame(f, sheet.meta.framesPerGroup),
-                        f.facing > 0 ? 1 : -1);
+                        pose.mir, pose.g);
   const s = Math.min(1, MAX_FISH_W / cv.width, MAX_FISH_H / cv.height);
   const w = cv.width * s, h = cv.height * s;
   ctx.save();
