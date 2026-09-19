@@ -73,7 +73,9 @@
     .detail .dstatus, .browse .dstatus { color: #8fa5bd; font-size: 12px; margin: 10px 0; }
     /* Only exists on hover-less (touch) devices — see web/main.ts. */
     #opentrigger {
-      position: fixed; right: 8px; bottom: 8px; z-index: 5;
+      position: fixed; z-index: 5;
+      right: calc(8px + env(safe-area-inset-right, 0px));
+      bottom: calc(8px + env(safe-area-inset-bottom, 0px));
       background: rgba(16, 24, 35, .8); border: 1px solid #24344a;
       border-radius: 14px; cursor: pointer; opacity: .85;
       color: #b8c7d8; font: 12px/1 -apple-system, system-ui, sans-serif;

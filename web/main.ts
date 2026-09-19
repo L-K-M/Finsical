@@ -125,13 +125,19 @@ function feedFish(): void {
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
 // path. Touch fallback: hover-less devices have no keyboard or native menu.
-if (window.matchMedia("(hover: none)").matches) {
+// Re-evaluate on change so convertibles adapt when their input mode flips.
+const hoverNone = window.matchMedia("(hover: none)");
+const syncTrigger = (show: boolean): void => {
+  document.getElementById("opentrigger")?.remove();
+  if (!show) return;
   const trigger = document.createElement("button");
   trigger.id = "opentrigger";
   trigger.textContent = "+ add-ons";
   trigger.addEventListener("click", () => importPanel.open());
   document.body.appendChild(trigger);
-}
+};
+syncTrigger(hoverNone.matches);
+hoverNone.addEventListener("change", (e) => syncTrigger(e.matches));
 window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if ((e.metaKey || e.ctrlKey) && k === "i") {
