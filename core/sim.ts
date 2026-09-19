@@ -83,6 +83,9 @@ const FILTER_PER_TICK = 1 / 12000;
 const QUALITY_SEEK = 0.3;
 const STARTLE_RADIUS = 48;
 const STARTLE_TICKS = 30;
+/** Reactions weaker than this read as frozen fish — trims the
+ * effective startle radius to ~95% of STARTLE_RADIUS. */
+const MIN_STARTLE_STRENGTH = 0.05;
 /** How close a darting fish must pass to startle a neighbor. */
 const PROP_RADIUS = 32;
 /** Hops a panic wave may travel from the fish that was tapped. */
@@ -156,7 +159,7 @@ export class Sim {
       if (dx * dx + dy * dy < STARTLE_RADIUS * STARTLE_RADIUS) {
         const d = Math.max(Math.hypot(dx, dy), 1);
         const k = 1 - d / STARTLE_RADIUS;
-        if (k < 0.05) continue; // sub-threshold reactions read as frozen fish
+        if (k < MIN_STARTLE_STRENGTH) continue;
         f.state = "startle";
         f.stateTicks = 0;
         f.panicHops = 0;
@@ -187,7 +190,7 @@ export class Sim {
         if (dx * dx + dy * dy >= PROP_RADIUS * PROP_RADIUS) continue;
         const d = Math.max(Math.hypot(dx, dy), 1);
         const k = 0.5 * (1 - d / PROP_RADIUS);
-        if (k < 0.05) continue; // sub-threshold reactions read as frozen fish
+        if (k < MIN_STARTLE_STRENGTH) continue;
         b.state = "startle";
         b.stateTicks = 0;
         b.panicHops = a.panicHops + 1;
