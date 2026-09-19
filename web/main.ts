@@ -130,6 +130,27 @@ function pickGravel(images: Iterable<IndexedImage>): void {
   }
   gravelCv = gravel ? imageCanvas(gravel, false) : null;
 }
+// Decorations (plants/accessories) sit on the gravel between the backdrop
+// and the fish. Each pack's largest image is scaled to fit; the set is
+// re-spaced across the tank floor whenever one is added.
+const decors: HTMLCanvasElement[] = [];
+function addDecor(images: Iterable<IndexedImage>): void {
+  let best: IndexedImage | null = null;
+  for (const img of images)
+    if (!best || img.w * img.h > best.w * best.h) best = img;
+  if (!best) return;
+  const cv = imageCanvas(best, false); // index 0 = transparent
+  const s = Math.min(1, TANK.height * 0.8 / cv.height,
+                     TANK.width * 0.5 / cv.width);
+  if (s >= 1) { decors.push(cv); return; }
+  const scaled = document.createElement("canvas");
+  scaled.width = Math.max(1, Math.round(cv.width * s));
+  scaled.height = Math.max(1, Math.round(cv.height * s));
+  const c2 = scaled.getContext("2d")!;
+  c2.imageSmoothingEnabled = false;
+  c2.drawImage(cv, 0, 0, scaled.width, scaled.height);
+  decors.push(scaled);
+}
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
 let nextSlot = 0;
@@ -166,8 +187,10 @@ const importPanel = mountImportPanel({
   },
   onImages: (images, name, section) => {
     // fish packs carry portraits too — only scenery sections touch the tank
-    if (section !== "gravel") return;
-    pickGravel(images);
+    if (section === "gravel") pickGravel(images);
+    else if (section === "plants" || section === "accessories")
+      addDecor(images);
+    else return;
     console.info(`archive.org: imported scenery ${name}`);
   },
   onInstall: (it) => {
@@ -411,6 +434,13 @@ function render(): void {
   } else if (!backdropCv) {
     ctx.fillStyle = "#8a6d3b"; // gravel
     ctx.fillRect(0, TANK.height - BOTTOM_PAD, TANK.width, BOTTOM_PAD);
+  }
+  // Decorations spread evenly across the floor, bottoms planted in gravel.
+  const dn = decors.length;
+  for (let i = 0; i < dn; i++) {
+    const d = decors[i]!;
+    ctx.drawImage(d, Math.round(TANK.width * (i + 0.5) / dn - d.width / 2),
+                  TANK.height - 6 - d.height);
   }
 
   for (const fd of sim.food) {

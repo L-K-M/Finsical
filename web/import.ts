@@ -14,17 +14,54 @@ import type { IndexedImage } from "../core/data/azpack.js";
 
 const BASE = "https://archive.org/download";
 export const DEFAULT_ITEM = "aquazonewithguppiesandaddons";
-/** Outer zips in that item that hold importable add-on packs. */
+/** Outer zips in that item that hold importable add-on packs. A path with
+ * "/" is a nested zip-of-packs (archive.org only serves one zip level), so
+ * its entries are enumerated locally after fetching the collection zip. */
 const COLLECTIONS: [section: string, outer: string][] = [
   ["fish", "addon and modded fish.zip"],
   ["gravel", "gravel.zip"],
+  ["plants", "mekasia.zip/mekplants.zip"],
+  ["accessories", "mekasia.zip/mekaccs.zip"],
 ];
 
+const PACK_EXT = /\.(fsh|grv|plt|acc|azn|rez)$/i;
+
 export interface Importable { section: string; inner: string; url: string }
+
+/** Raw zip bytes, memoized by URL — nested collections share one parent
+ * download across all of their entry URLs. */
+const zipCache = new Map<string, Promise<Uint8Array>>();
+function fetchZip(url: string): Promise<Uint8Array> {
+  let p = zipCache.get(url);
+  if (!p) {
+    p = fetch(url).then(async (r) => {
+      if (!r.ok) throw new Error(`${url}: ${r.status}`);
+      return new Uint8Array(await r.arrayBuffer());
+    });
+    zipCache.set(url, p);
+    p.catch(() => zipCache.delete(url));
+  }
+  return p;
+}
 
 /** List inner .zip entries of an outer zip via its HTML listing page. */
 async function listCollection(item: string, outer: string):
     Promise<Importable[]> {
+  if (outer.includes("/")) {
+    // Nested collection zip: no HTML listing exists, so enumerate its own
+    // entries. Each pack entry is addressed as "{zip url}#{entry name}".
+    const zipUrl =
+      `${BASE}/${item}/${outer.split("/").map(encodeURIComponent).join("/")}`;
+    const z = await fetchZip(zipUrl);
+    const out: Importable[] = [];
+    for (const e of zipEntries(z)) {
+      if (!PACK_EXT.test(e.name) || e.name.includes("/")) continue;
+      const name = e.name.replace(/\.[^.]+$/, "");
+      if (name) out.push({ section: "", inner: name,
+                          url: `${zipUrl}#${e.name}` });
+    }
+    return out;
+  }
   const page = `${BASE}/${item}/${encodeURIComponent(outer)}/`;
   const r = await fetch(page);
   if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
@@ -44,17 +81,23 @@ async function listCollection(item: string, outer: string):
   return out;
 }
 
-/** Fetch an inner zip and return every pack entry inside. */
+/** Fetch an add-on zip and return every pack entry inside. A URL fragment
+ * ("{zip}#{entry}") addresses one pack directly inside a nested collection
+ * zip — archive.org can't serve entries two zips deep. */
 async function fetchInnerPacks(url: string): Promise<Uint8Array[]> {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`${url}: ${r.status}`);
-  const z = new Uint8Array(await r.arrayBuffer());
+  const i = url.indexOf("#");
+  const zipUrl = i === -1 ? url : url.slice(0, i);
+  const entry = i === -1 ? undefined : url.slice(i + 1);
+  const z = await fetchZip(zipUrl);
   const packs: Uint8Array[] = [];
   for (const e of zipEntries(z)) {
-    if (!/\.(fsh|grv|plt|acc|azn|rez)$/i.test(e.name)) continue;
+    if (entry !== undefined ? e.name !== entry : !PACK_EXT.test(e.name))
+      continue;
     const d = await zipRead(z, e);
     if (isPack(d)) packs.push(d);
   }
+  if (entry !== undefined && !packs.length)
+    throw new Error(`${url}: entry missing or not a pack`);
   return packs;
 }
 
