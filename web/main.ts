@@ -123,7 +123,15 @@ function feedFish(): void {
 (window as unknown as { finsical?: unknown }).finsical =
   { openImport: () => importPanel.open(), feedFish };
 
-// Keyboard entry point — the native Tank menu (⌘I) is the primary path.
+// Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
+// path. Touch fallback: hover-less devices have no keyboard or native menu.
+if (window.matchMedia("(hover: none)").matches) {
+  const trigger = document.createElement("button");
+  trigger.id = "opentrigger";
+  trigger.textContent = "+ add-ons";
+  trigger.addEventListener("click", () => importPanel.open());
+  document.body.appendChild(trigger);
+}
 window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if ((e.metaKey || e.ctrlKey) && k === "i") {
