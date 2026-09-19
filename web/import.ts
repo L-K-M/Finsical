@@ -346,7 +346,11 @@ export function mountImportPanel(h: ImportHandlers):
     if (pv) { thumbs.set(it.inner, pv); storeThumb(it, pv); }
   }
 
-  function applyAddon(it: Importable, rs: PackResult[]): void {
+  function applyAddon(it: Importable, rs: PackResult[],
+                      again: boolean): void {
+    // A launch-time restore may have installed it while the detail fetch
+    // was in flight — honor the label the user actually clicked.
+    if (!again && installed.has(it.inner)) return;
     applyPack(it, rs, true);
     h.onInstall?.(it);
   }
@@ -378,10 +382,11 @@ export function mountImportPanel(h: ImportHandlers):
       status.textContent =
         `${usable.length} pack${usable.length > 1 ? "s" : ""} · ${kinds}`;
       act.style.display = "";
-      act.textContent = installed.has(it.inner) ? "Add again" : "Add to tank";
+      const again = installed.has(it.inner);
+      act.textContent = again ? "Add again" : "Add to tank";
       act.addEventListener("click", () => {
         try {
-          applyAddon(it, usable);
+          applyAddon(it, usable, again);
           act.textContent = "In tank ✓ — add again?";
         } catch (e) { status.textContent = String(e); }
       });
