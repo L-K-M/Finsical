@@ -3,10 +3,12 @@ import { fishPose, pitch } from "../core/pose.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
-import { swimFrame } from "../core/data/orient.js";
 import { TankAudio } from "./audio.js";
-import { mountImportPanel } from "./import.js";
-import type { Importable, PackResult } from "./import.js";
+import { fetchAddon, mountImportPanel } from "./import.js";
+import { imageCanvas, previewOf, swimCanvas } from "./render.js";
+import { openBus } from "./bus.js";
+import type { BusMsg } from "./bus.js";
+import type { Importable } from "./import.js";
 import type { Fish } from "../core/sim.js";
 import type { AzpackManifest, IndexedImage } from "../core/data/azpack.js";
 
@@ -70,6 +72,7 @@ function saveTank(): void {
       addons: installedAddons,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(s));
+    postState();
   } catch { /* storage unavailable — the tank still runs */ }
 }
 window.addEventListener("pagehide", saveTank);
@@ -182,8 +185,8 @@ let nextSlot = 0;
 function sheetOf(f: Fish): SpriteSheet | null {
   if (!fishSheets.length) return null;
   // Fish spawned by a specific pack keep its sheet; the rest round-robin.
-  if (f.sheetIdx !== undefined)
-    return fishSheets[f.sheetIdx % fishSheets.length]!;
+  if (f.sheetIdx !== undefined && f.sheetIdx < fishSheets.length)
+    return fishSheets[f.sheetIdx]!;
   let i = fishSlot.get(f);
   if (i === undefined) {
     i = nextSlot;
@@ -194,43 +197,99 @@ function sheetOf(f: Fish): SpriteSheet | null {
 }
 // archive.org add-on import: Tank > Import Add-ons… (⌘I) opens the
 // browser of fish/gravel packs hosted as inner zip entries (web/import.ts).
-function previewOf(rs: PackResult[]): HTMLCanvasElement | null {
-  const sheets = rs.flatMap((r) => [...r.sheets.values()]);
-  sheets.sort((a, b) => b.meta.cellW * b.meta.cellH - a.meta.cellW * a.meta.cellH);
-  for (const sh of sheets) {
-    for (let f = 0; f < sh.meta.framesPerGroup; f++)
-      try { return swimCanvas(sh, f, 1); } catch { /* try next */ }
+// In the app that browser lives in the panel window (web/panel.ts) and
+// its installs arrive over the bus; the in-DOM panel below stays as the
+// fallback for plain-browser use.
+// Species name → fishSheets slot, rebuilt as packs load. Saved fish
+// bind to sheets by position, which drifts if a pack fails to restore
+// or a drag-dropped pack isn't restorable — remap by species instead.
+const sheetBySpecies = new Map<string, number>();
+function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
+                      section: string, live: boolean): void {
+  const idx = usePack({ sheets });
+  if (section === "fish" && idx >= 0) {
+    sheetBySpecies.set(name, idx);
+    // A live fish-pack install adds a real fish; restores replay sheets
+    // only — the saved roster already carries those fish.
+    if (live) spawnFish(idx, name);
   }
-  const imgs = rs.flatMap((r) => [...r.images.values()]);
-  imgs.sort((a, b) => b.w * b.h - a.w * a.h);
-  if (!imgs[0]) return null;
-  try { return imageCanvas(imgs[0], true); }
-  catch (e) { console.warn("preview render failed:", e); return null; }
+  console.info(`archive.org: imported ${section} ${name}`);
+}
+
+/** Rebind each saved fish's sheetIdx to where its species' pack actually
+ * landed this session; drop the binding when the pack didn't come back. */
+function remapSheetIdx(): void {
+  for (const f of sim.fish) {
+    if (!f.species) continue;
+    const idx = sheetBySpecies.get(f.species);
+    if (idx === undefined) delete f.sheetIdx;
+    else f.sheetIdx = idx;
+  }
+}
+function handleImages(images: Iterable<IndexedImage>, name: string,
+                      section: string): void {
+  // fish packs carry portraits too — only scenery sections touch the tank
+  if (section === "gravel") pickGravel(images);
+  else if (section === "plants" || section === "accessories")
+    addDecor(images);
+  else return;
+  console.info(`archive.org: imported scenery ${name}`);
+}
+function recordInstall(it: Importable): void {
+  if (!installedAddons.some((a) => a.url === it.url))
+    installedAddons.push(it);
+  saveTank();
 }
 
 const importPanel = mountImportPanel({
-  onSheets: (sheets, name, section, live) => {
-    const idx = usePack({ sheets });
-    // A live fish-pack install adds a real fish; restores replay sheets
-    // only — the saved roster already carries those fish.
-    if (live && section === "fish" && idx >= 0) spawnFish(idx, name);
-    console.info(`archive.org: imported ${section} ${name}`);
-  },
-  onImages: (images, name, section) => {
-    // fish packs carry portraits too — only scenery sections touch the tank
-    if (section === "gravel") pickGravel(images);
-    else if (section === "plants" || section === "accessories")
-      addDecor(images);
-    else return;
-    console.info(`archive.org: imported scenery ${name}`);
-  },
-  onInstall: (it) => {
-    if (!installedAddons.some((a) => a.url === it.url))
-      installedAddons.push(it);
-    saveTank();
-  },
+  onSheets: handleSheets,
+  onImages: handleImages,
+  onInstall: recordInstall,
   preview: previewOf,
 });
+
+// ---- panel-window bus ------------------------------------------------------
+// The add-on browser (and later the tank overview) can live in a second
+// native window. It sends intents here; replies and state pushes go back
+// over the same bus.
+const bus = openBus(onBusMessage);
+
+function postState(): void {
+  bus.post({
+    op: "state",
+    addons: installedAddons,
+    fish: sim.fish.map(({ id, species, hunger, state }) =>
+      ({ id, species, hunger, state })),
+    waterQuality: sim.waterQuality,
+    tickCount: sim.tickCount,
+  });
+}
+
+function onBusMessage(m: BusMsg): void {
+  if (m.op === "hello") postState();
+  else if (m.op === "install") void remoteInstall(m.item as Importable);
+}
+
+async function remoteInstall(it: Importable): Promise<void> {
+  if (!it || installedAddons.some((a) => a.inner === it.inner)) {
+    bus.post({ op: "installed", inner: it?.inner ?? "" });
+    return;
+  }
+  try {
+    const rs = await fetchAddon(it.url);
+    const usable = rs.filter((r) => r.sheets.size || r.images.size);
+    if (!usable.length) throw new Error("no pack inside");
+    for (const r of usable) {
+      if (r.sheets.size) handleSheets(r.sheets, it.inner, it.section, true);
+      if (r.images.size) handleImages(r.images.values(), it.inner, it.section);
+    }
+    recordInstall(it);
+    bus.post({ op: "installed", inner: it.inner });
+    postState();
+  } catch (e) {
+    bus.post({ op: "installFailed", inner: it.inner, error: String(e) });
+  }
+}
 
 // Native-menu / keyboard entry points (macos/Finsical.swift calls these).
 function feedFish(): void {
@@ -282,9 +341,10 @@ void (async () => {
   pickBackdrop(imgs);
 })()
   .catch((e) => console.warn("azpack load failed; using placeholder fish:", e))
-  // Saved add-ons re-import after the bundled pack so fishSheets order
-  // (bundled first) and species assignment match what was installed.
-  .finally(() => importPanel.restore([...installedAddons]));
+  // Saved add-ons re-import after the bundled pack; once they've landed,
+  // rebind saved fish to their species' actual sheet slot.
+  .then(() => importPanel.restore([...installedAddons]))
+  .then(remapSheetIdx);
 
 // Drag an .azpack folder onto the window to import it.
 async function walkEntry(ent: FileSystemEntry, prefix: string,
@@ -367,39 +427,6 @@ window.addEventListener("drop", (e) => {
 // canonical dorsal-up pose. Sheets with a pose ring (groups >= 4) carry
 // real art for both facings and the roll poses between — turns step the
 // ring; simpler sheets mirror group 0 for right-facing fish.
-
-/** Rasterize an indexed image to a canvas. opaque=false makes index 0
- * transparent (sprite convention); opaque=true keeps every pixel. A
- * mask overrides both — 0 = transparent, 1 = opaque. */
-function imageCanvas(img: IndexedImage, opaque: boolean,
-                     mask?: Uint8Array): HTMLCanvasElement {
-  const cv = document.createElement("canvas");
-  cv.width = img.w; cv.height = img.h;
-  const c = cv.getContext("2d")!;
-  const im = c.createImageData(img.w, img.h);
-  for (let i = 0; i < img.idx.length; i++) {
-    const pi = img.idx[i] ?? 0;
-    const [r, g, b] = img.palette[pi] ?? [0, 0, 0];
-    im.data[i * 4] = r; im.data[i * 4 + 1] = g; im.data[i * 4 + 2] = b;
-    im.data[i * 4 + 3] = mask ? mask[i]! * 255
-                            : (opaque || pi !== 0 ? 255 : 0);
-  }
-  c.putImageData(im, 0, 0);
-  return cv;
-}
-
-const swimCache = new WeakMap<SpriteSheet, Map<string, HTMLCanvasElement>>();
-function swimCanvas(sheet: SpriteSheet, f: number,
-                    facing: 1 | -1, group = 0): HTMLCanvasElement {
-  let cache = swimCache.get(sheet);
-  if (!cache) swimCache.set(sheet, (cache = new Map()));
-  const key = `${group}:${f}:${facing}`;
-  let cv = cache.get(key);
-  if (cv) return cv;
-  cv = imageCanvas(swimFrame(sheet, f, facing, group), false);
-  cache.set(key, cv);
-  return cv;
-}
 
 // Tail-wag animation advances on the sim clock (30 tps), not per
 // rendered frame — ~4-7 fps at cruise, quicker when startled. Phase is

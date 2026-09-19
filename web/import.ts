@@ -11,6 +11,7 @@ import { zipEntries, zipRead } from "../core/data/zip.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
+import type { Bus, BusMsg } from "./bus.js";
 
 const BASE = "https://archive.org/download";
 export const DEFAULT_ITEM = "aquazonewithguppiesandaddons";
@@ -160,40 +161,59 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return e;
 }
 
+// Packs are immutable per URL — memoize so re-visits skip the download.
+// Module-level so the tank page's remote-install path shares the cache.
+const packCache = new Map<string, Promise<PackResult[]>>();
+export function fetchAddon(url: string): Promise<PackResult[]> {
+  let p = packCache.get(url);
+  if (!p) {
+    p = importAddon(url);
+    packCache.set(url, p);
+    p.catch(() => packCache.delete(url)); // failed fetches stay retryable
+  }
+  return p;
+}
+
+export interface PanelOptions {
+  /** Mount point — renders the card inline (panel window) instead of
+   * inside a modal overlay. */
+  host?: HTMLElement;
+  /** Set on the panel page: installs are posted to the tank page, which
+   * owns the sim; results come back through notify(). */
+  remote?: Bus;
+}
+
 /** Afterglow-style add-on browser: card grid -> detail w/ live preview. */
-export function mountImportPanel(h: ImportHandlers):
+export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     { open(): void; close(): void; readonly isOpen: boolean;
-      restore(list: Importable[]): void } {
+      restore(list: Importable[]): Promise<void>;
+      notify(m: BusMsg): void } {
+  const remote = opts?.remote;
   const installed = new Set<string>();
   const thumbs = new Map<string, HTMLCanvasElement>();
-  // Packs are immutable per URL — memoize so re-visits skip the download.
-  const packCache = new Map<string, Promise<PackResult[]>>();
-  const fetchPack = (url: string): Promise<PackResult[]> => {
-    let p = packCache.get(url);
-    if (!p) {
-      p = importAddon(url);
-      packCache.set(url, p);
-      p.catch(() => packCache.delete(url)); // failed fetches stay retryable
-    }
-    return p;
-  };
+  const fetchPack = fetchAddon;
+  // Open detail view — remote install acks update its status line.
+  let detailRef: { inner: string; act: HTMLElement;
+                   status: HTMLElement } | null = null;
 
-  const ov = el("div", "ov");
-  ov.setAttribute("role", "dialog");
-  ov.setAttribute("aria-modal", "true");
-  ov.setAttribute("aria-label", "Import add-ons");
-  ov.style.display = "none";
+  const ov = opts?.host ? null : el("div", "ov");
+  ov?.setAttribute("role", "dialog");
+  ov?.setAttribute("aria-modal", "true");
+  ov?.setAttribute("aria-label", "Import add-ons");
+  if (ov) ov.style.display = "none";
   const card = el("div", "card");
-  ov.appendChild(card);
+  (ov ?? (opts!.host!)).appendChild(card);
 
   const hd = el("div", "hd");
   const titles = el("div", "titles");
   titles.appendChild(el("div", "title", "Internet Archive"));
   titles.appendChild(el("div", "sub", "Aquazone add-ons"));
   hd.appendChild(titles);
-  const close = el("button", "x", "✕");
-  close.title = "Close";
-  hd.appendChild(close);
+  const close = ov ? el("button", "x", "✕") : null;
+  if (close) {
+    close.title = "Close";
+    hd.appendChild(close);
+  }
   card.appendChild(hd);
 
   const body = el("div", "body");
@@ -211,7 +231,7 @@ export function mountImportPanel(h: ImportHandlers):
   donate.rel = "noopener";
   ft.appendChild(donate);
   card.appendChild(ft);
-  document.body.appendChild(ov);
+  if (ov) document.body.appendChild(ov);
 
   function paintThumb(tile: Element, th: HTMLCanvasElement): void {
     if (tile.querySelector(".tthumb")) return;
@@ -321,6 +341,7 @@ export function mountImportPanel(h: ImportHandlers):
 
   function showBrowse(): void {
     detail.style.display = "none";
+    detailRef = null;
     browse.style.display = "";
     // Detail fetches populate thumbs lazily — back-fill tiles on return.
     for (const [inner, th] of thumbs) {
@@ -347,6 +368,12 @@ export function mountImportPanel(h: ImportHandlers):
   }
 
   function applyAddon(it: Importable, rs: PackResult[]): void {
+    // Remote mode (panel window): the tank page owns the sim — send the
+    // request there and flip the UI when its ack comes back via notify().
+    if (remote) {
+      remote.post({ op: "install", item: it });
+      return;
+    }
     applyPack(it, rs, true);
     h.onInstall?.(it);
   }
@@ -367,6 +394,7 @@ export function mountImportPanel(h: ImportHandlers):
     const act = el("button", "dact");
     act.style.display = "none";
     detail.appendChild(act);
+    detailRef = { inner: it.inner, act, status };
 
     void fetchPack(it.url).then((rs) => {
       const usable = rs.filter((r) => r.sheets.size || r.images.size);
@@ -382,7 +410,8 @@ export function mountImportPanel(h: ImportHandlers):
       act.addEventListener("click", () => {
         try {
           applyAddon(it, usable);
-          act.textContent = "In tank ✓ — add again?";
+          // Local installs are synchronous; remote ones flip on the ack.
+          act.textContent = remote ? "Adding…" : "In tank ✓ — add again?";
         } catch (e) { status.textContent = String(e); }
       });
     }).catch((e) => {
@@ -443,34 +472,69 @@ export function mountImportPanel(h: ImportHandlers):
     });
   }
 
-  close.addEventListener("click", () => { ov.style.display = "none"; });
-  ov.addEventListener("pointerdown", (e) => {
-    if (e.target === ov) ov.style.display = "none";
-  });
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && ov.style.display !== "none") {
-      ov.style.display = "none";
-      e.preventDefault();
-    }
-  });
+  if (ov && close) {
+    close.addEventListener("click", () => { ov.style.display = "none"; });
+    ov.addEventListener("pointerdown", (e) => {
+      if (e.target === ov) ov.style.display = "none";
+    });
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && ov.style.display !== "none") {
+        ov.style.display = "none";
+        e.preventDefault();
+      }
+    });
+  }
 
   let loaded = false;
   return {
     open() {
-      ov.style.display = "flex";
-      close.focus();
+      if (ov) { ov.style.display = "flex"; close!.focus(); }
       if (!loaded) { loaded = true; loadListing(); }
       showBrowse();
     },
-    close() { ov.style.display = "none"; },
-    get isOpen() { return ov.style.display !== "none"; },
+    close() { if (ov) ov.style.display = "none"; },
+    get isOpen() { return ov ? ov.style.display !== "none" : true; },
+    // Remote-mode replies from the tank page and state pushes land here.
+    notify(m: BusMsg): void {
+      const inner = m.inner;
+      if (m.op === "installed" && typeof inner === "string") {
+        installed.add(inner);
+        browse.querySelector(`[data-inner="${CSS.escape(inner)}"]`)
+          ?.classList.add("done");
+        if (detailRef?.inner === inner)
+          detailRef.act.textContent = "In tank ✓ — add again?";
+      } else if (m.op === "installFailed" && typeof inner === "string") {
+        if (detailRef?.inner === inner)
+          detailRef.status.textContent = `Install failed: ${m.error}`;
+      } else if (m.op === "state" && Array.isArray(m.addons)) {
+        // Tank's add-on list — sync install badges (covers restores that
+        // finished before this panel opened, and removals).
+        const live = new Set(
+          (m.addons as { inner?: unknown }[])
+            .map((a) => a.inner)
+            .filter((x): x is string => typeof x === "string"));
+        for (const inner of installed) {
+          if (live.has(inner)) continue;
+          installed.delete(inner);
+          browse.querySelector(`[data-inner="${CSS.escape(inner)}"]`)
+            ?.classList.remove("done");
+        }
+        for (const inner of live) {
+          if (installed.has(inner)) continue;
+          installed.add(inner);
+          browse.querySelector(`[data-inner="${CSS.escape(inner)}"]`)
+            ?.classList.add("done");
+        }
+      }
+    },
     // Re-install saved add-ons in order (restores fish sheets and the
     // gravel backdrop). Sequential so slot/backdrop assignment matches
     // the original install order; failures skip that add-on. Shares
     // applyPack's dispatch so the two install paths can't diverge;
     // skips onInstall so restores don't re-record, and skips add-ons
     // already installed while the chain was in flight.
-    restore(list: Importable[]) {
+    restore(list: Importable[]): Promise<void> {
+      if (remote) return Promise.resolve(); // the tank page owns the sim
       let p: Promise<void> = Promise.resolve();
       for (const it of list) {
         p = p.then(() => {
@@ -483,6 +547,7 @@ export function mountImportPanel(h: ImportHandlers):
               console.warn(`add-on restore failed for ${it.inner}:`, e));
         });
       }
+      return p;
     },
   };
 }

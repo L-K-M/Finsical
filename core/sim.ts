@@ -148,6 +148,8 @@ export class Sim {
       bandY: 0, hunger: 0.2,
       state: "drift", stateTicks: 0, panicHops: 0, ...fish,
     };
+    // A spread of {id: undefined} would poison the counter with NaN.
+    if (!Number.isFinite(f.id)) f.id = this.nextId;
     // Loaded fish carry their saved id — never reissue it.
     this.nextId = Math.max(this.nextId, f.id + 1);
     if (!fish.tx && !fish.ty) { f.tx = f.x; f.ty = f.y; }
