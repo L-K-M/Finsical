@@ -59,8 +59,9 @@ function saveTank(): void {
   try {
     const s: SavedTank = {
       v: 1, tickCount: sim.tickCount, waterQuality: sim.waterQuality,
-      fish: sim.fish.map(({ x, y, facing, speed, vy, hunger }) =>
-        ({ x, y, facing, speed, vy, hunger })),
+      fish: sim.fish.map(({ x, y, facing, heading, speed, cruise, vy,
+                            bandY, hunger }) =>
+        ({ x, y, facing, heading, speed, cruise, vy, bandY, hunger })),
       addons: installedAddons,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(s));

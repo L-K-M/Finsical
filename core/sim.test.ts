@@ -144,4 +144,52 @@ describe("Sim", () => {
     expect(max).toBeLessThanOrEqual(1);
     expect(max - min).toBeGreaterThan(0.5);
   });
+
+  it("darts out of each decision — quadratic ramp capped at cruise", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 60, y: 100, cruise: 1.4 });
+    // Pin a distant target so the whole tick is the acceleration stroke.
+    f.tx = 300; f.ty = 100; f.phase = 0; f.latch = -1;
+    const speeds = [f.speed];
+    for (let i = 0; i < 10; i++) { sim.tick(); speeds.push(f.speed); }
+    // Quadratic ramp: deltas grow early, then the cruise cap flattens it.
+    expect(speeds[4]! - speeds[3]!).toBeGreaterThan(speeds[2]! - speeds[1]!);
+    expect(Math.max(...speeds)).toBeLessThanOrEqual(1.4 + 1e-9);
+    expect(speeds[10]).toBeCloseTo(1.4, 5);
+  });
+
+  it("latches the brake and glides into its destination", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 60, y: 100, cruise: 2 });
+    f.tx = 90; f.ty = 100; f.phase = 10; f.latch = -1; // mid-dart, 30px out
+    const braking: number[] = [];
+    for (let i = 0; i < 20 && braking.length < 3; i++) {
+      sim.tick();
+      if (f.latch >= 0) braking.push(f.speed);
+    }
+    expect(braking.length).toBe(3);         // brake latch engaged
+    expect(braking[2]!).toBeLessThan(braking[0]!); // quadratic decay
+  });
+
+  it("curves toward its target — steering, not snapping", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 160, y: 100, heading: 0 });
+    f.tx = 40; f.ty = 160; f.phase = 0; f.latch = -1; // behind and below
+    const h0 = f.heading;
+    sim.tick();
+    const turn = f.heading - h0;
+    expect(turn).toBeGreaterThan(0);                 // rotating toward π
+    expect(turn).toBeLessThanOrEqual(Math.PI / 20 + 1e-9); // rate-capped
+    // and facing only flips once the heading passes vertical
+    expect(f.facing).toBe(1);
+  });
+
+  it("re-decides when the movement budget expires", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 60, y: 100 });
+    f.tx = 300; f.ty = 30; f.phase = 0; f.latch = -1;
+    for (let i = 0; i < 40; i++) sim.tick();
+    // After 32 ticks the phase must have wrapped — a new decision ran.
+    expect(f.phase).toBeLessThan(32);
+  });
 });
