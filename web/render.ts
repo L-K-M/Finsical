@@ -12,6 +12,9 @@ export function imageCanvas(img: IndexedImage, opaque: boolean,
   const cv = document.createElement("canvas");
   cv.width = img.w; cv.height = img.h;
   const c = cv.getContext("2d")!;
+  if (mask && mask.length !== img.idx.length)
+    throw new Error(
+      `mask length ${mask.length} != pixel count ${img.idx.length}`);
   const im = c.createImageData(img.w, img.h);
   for (let i = 0; i < img.idx.length; i++) {
     const pi = img.idx[i] ?? 0;

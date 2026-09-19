@@ -279,6 +279,7 @@ function onBusMessage(m: BusMsg): void {
 
 // Bus messages cross a page boundary — validate before trusting them.
 const KNOWN_SECTIONS = new Set(COLLECTIONS.map(([s]) => s));
+const installsInFlight = new Set<string>();
 async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   const fail = (error: string) =>
     bus.post({ op: "installFailed", inner: it?.inner ?? "", error });
@@ -288,12 +289,16 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     fail("invalid add-on item");
     return;
   }
+  // The panel's retry timeout can fire while the original fetch is still
+  // running — a second request for the same url would double-install.
+  if (installsInFlight.has(it.url)) return; // original request will ack
   // A restore may have landed this add-on while the panel's detail fetch
   // was in flight — unless the user clicked "Add again", that's a dup.
   if (!again && installedAddons.some((a) => a.url === it.url)) {
     bus.post({ op: "installed", inner: it.inner });
     return;
   }
+  installsInFlight.add(it.url);
   try {
     const rs = await fetchAddon(it.url);
     const usable = rs.filter((r) => r.sheets.size || r.images.size);
@@ -306,6 +311,7 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     bus.post({ op: "installed", inner: it.inner });
     postState();
   } catch (e) { fail(String(e)); }
+  finally { installsInFlight.delete(it.url); }
 }
 
 // Native-menu / keyboard entry points (macos/Finsical.swift calls these).
