@@ -20,7 +20,7 @@ ctx.imageSmoothingEnabled = false;
 // Tank state (fish, water, installed add-ons) survives restarts via
 // localStorage. Add-ons are re-imported on launch — archives are
 // immutable per URL so the same packs come back, in install order, so
-// fish keep the species they had.
+// each fish's saved sheetIdx still points at the right sprite sheet.
 const SAVE_KEY = "finsical:tank";
 interface SavedTank {
   v: 1;
@@ -61,9 +61,12 @@ function saveTank(): void {
   try {
     const s: SavedTank = {
       v: 1, tickCount: sim.tickCount, waterQuality: sim.waterQuality,
-      fish: sim.fish.map(({ x, y, facing, heading, speed, cruise, vy,
-                            bandY, hunger }) =>
-        ({ x, y, facing, heading, speed, cruise, vy, bandY, hunger })),
+      fish: sim.fish.map((f) => ({
+        id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
+        heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
+        bandY: f.bandY, hunger: f.hunger,
+        ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
+      })),
       addons: installedAddons,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(s));
@@ -95,7 +98,7 @@ canvas.addEventListener("pointerdown", (e) => {
 let fishSheets: SpriteSheet[] = [];
 function usePack(pack: { sheets: Map<string, SpriteSheet>;
                          manifest?: AzpackManifest },
-                 read?: (path: string) => Promise<Uint8Array>): void {
+                 read?: (path: string) => Promise<Uint8Array>): number {
   // Most orientation groups wins; tiebreak toward the crunchier cell.
   const sheets = [...pack.sheets.values()];
   sheets.sort((a, b) =>
@@ -105,6 +108,22 @@ function usePack(pack: { sheets: Map<string, SpriteSheet>;
     void audio.load(read, pack.manifest)
       .then(() => audio.startAmbient())
       .catch((e) => console.warn("audio load failed:", e));
+  return sheets[0] ? fishSheets.length - 1 : -1;
+}
+
+/** A newly installed fish pack adds one fish bound to its sheet —
+ * "Add again" adds another of the same species. */
+function spawnFish(sheetIdx: number, species: string): void {
+  const facing = Math.random() < 0.5 ? 1 : -1;
+  sim.addFish({
+    x: 60 + Math.random() * (TANK.width - 120),
+    y: 30 + Math.random() * (TANK.height - 90),
+    facing: facing as 1 | -1,
+    heading: facing > 0 ? 0 : Math.PI,
+    cruise: 1.1 + Math.random() * 0.7,
+    sheetIdx, species,
+  });
+  saveTank();
 }
 
 // Biggest pack image large enough to matter becomes the tank backdrop —
@@ -162,6 +181,9 @@ const MAX_FISH_SLOTS = 4096;
 let nextSlot = 0;
 function sheetOf(f: Fish): SpriteSheet | null {
   if (!fishSheets.length) return null;
+  // Fish spawned by a specific pack keep its sheet; the rest round-robin.
+  if (f.sheetIdx !== undefined)
+    return fishSheets[f.sheetIdx % fishSheets.length]!;
   let i = fishSlot.get(f);
   if (i === undefined) {
     i = nextSlot;
@@ -187,9 +209,12 @@ function previewOf(rs: PackResult[]): HTMLCanvasElement | null {
 }
 
 const importPanel = mountImportPanel({
-  onSheets: (sheets, name) => {
-    usePack({ sheets });
-    console.info(`archive.org: imported fish ${name}`);
+  onSheets: (sheets, name, section, live) => {
+    const idx = usePack({ sheets });
+    // A live fish-pack install adds a real fish; restores replay sheets
+    // only — the saved roster already carries those fish.
+    if (live && section === "fish" && idx >= 0) spawnFish(idx, name);
+    console.info(`archive.org: imported ${section} ${name}`);
   },
   onImages: (images, name, section) => {
     // fish packs carry portraits too — only scenery sections touch the tank
@@ -306,7 +331,8 @@ window.addEventListener("drop", (e) => {
     };
     if (flat.has("manifest.json")) {
       const pack = await loadAzpack(readFile);
-      usePack(pack, readFile);
+      const idx = usePack(pack, readFile);
+      if (idx >= 0) spawnFish(idx, pack.manifest.tag);
       const imgs: IndexedImage[] = [];
       for (const c of pack.manifest.chunks) {
         if (!c.image) continue;
@@ -324,7 +350,8 @@ window.addEventListener("drop", (e) => {
       const data = new Uint8Array(await file.arrayBuffer());
       const sheets = fshToSheets(data);
       if (!sheets.size) continue;
-      usePack({ sheets });
+      const idx = usePack({ sheets });
+      if (idx >= 0) spawnFish(idx, name.replace(/\.[^.]*$/, ""));
       pickBackdrop(packImages(data).values());
       if (fishSheets.length) {
         console.info(`${name}: pack imported`);

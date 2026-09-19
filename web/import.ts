@@ -137,7 +137,10 @@ export async function listAddons(item = DEFAULT_ITEM):
 // ---- import panel --------------------------------------------------------
 
 export interface ImportHandlers {
-  onSheets(sheets: Map<string, SpriteSheet>, name: string, section: string): void;
+  /** `live` = user-initiated install; false on launch-time restore, which
+   * must not spawn fish (the saved roster already holds them). */
+  onSheets(sheets: Map<string, SpriteSheet>, name: string,
+           section: string, live: boolean): void;
   onImages(images: Iterable<IndexedImage>, name: string, section: string): void;
   /** Fired once per successful install — lets the caller record which
    * add-ons went into the tank so they can be restored later. */
@@ -328,12 +331,12 @@ export function mountImportPanel(h: ImportHandlers):
 
   // Shared fetch→dispatch→mark-installed core for applyAddon (manual
   // install) and restore (re-import on launch); only the onInstall
-  // side effect differs.
-  function applyPack(it: Importable, rs: PackResult[]): void {
+  // side effect differs. `live` marks user installs vs restores.
+  function applyPack(it: Importable, rs: PackResult[], live: boolean): void {
     const usable = rs.filter((r) => r.sheets.size || r.images.size);
     if (!usable.length) throw new Error("no pack inside");
     for (const r of usable) {
-      if (r.sheets.size) h.onSheets(r.sheets, it.inner, it.section);
+      if (r.sheets.size) h.onSheets(r.sheets, it.inner, it.section, live);
       if (r.images.size) h.onImages(r.images.values(), it.inner, it.section);
     }
     installed.add(it.inner);
@@ -344,7 +347,7 @@ export function mountImportPanel(h: ImportHandlers):
   }
 
   function applyAddon(it: Importable, rs: PackResult[]): void {
-    applyPack(it, rs);
+    applyPack(it, rs, true);
     h.onInstall?.(it);
   }
 
@@ -473,7 +476,9 @@ export function mountImportPanel(h: ImportHandlers):
         p = p.then(() => {
           if (installed.has(it.inner)) return;
           return fetchPack(it.url)
-            .then((rs) => { if (!installed.has(it.inner)) applyPack(it, rs); })
+            .then((rs) => {
+              if (!installed.has(it.inner)) applyPack(it, rs, false);
+            })
             .catch((e) =>
               console.warn(`add-on restore failed for ${it.inner}:`, e));
         });
