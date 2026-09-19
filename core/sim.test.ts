@@ -218,7 +218,9 @@ describe("Sim", () => {
     const sim = new Sim({ width: 400, height: 100 }, 5);
     // The tap radius (48px) directly startles the first two fish (hop 0);
     // every fish beyond that is one more hop, 24px apart (< PROP_RADIUS 32).
-    sim.addFish({ x: 60, y: 50 });   // hop 0 (direct)
+    sim.addFish({ x: 60, y: 46 });   // hop 0 (direct; off the tap
+                                     // point so the dart direction
+                                     // is well-defined)
     sim.addFish({ x: 84, y: 50 });   // hop 0 (direct — inside tap radius)
     sim.addFish({ x: 108, y: 50 });              // hop 1
     const hop2 = sim.addFish({ x: 132, y: 50 }); // hop 2 — last allowed
