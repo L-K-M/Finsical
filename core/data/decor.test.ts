@@ -17,6 +17,19 @@ function framed(w: number, h: number, bg: number, art: number,
   return { w, h, palette: PAL, idx };
 }
 
+/** Sparse line art: thin `art` outline enclosing key-colored interior. */
+function outlined(w: number, h: number, bg: number,
+                  art: number): IndexedImage {
+  const idx = new Uint8Array(w * h).fill(bg);
+  for (let x = 2; x < w - 2; x++) {
+    idx[2 * w + x] = art; idx[(h - 3) * w + x] = art;
+  }
+  for (let y = 2; y < h - 2; y++) {
+    idx[y * w + 2] = art; idx[y * w + w - 3] = art;
+  }
+  return { w, h, palette: PAL, idx };
+}
+
 /** Thumbnail-style image: different index at each corner. */
 function thumbnail(s = 83): IndexedImage {
   const idx = new Uint8Array(s * s).fill(42);
@@ -67,6 +80,22 @@ describe("keyMask", () => {
     expect(m[3 * 12 + 3]).toBe(1);           // art: opaque
     expect(m[5 * 12 + 5]).toBe(1);           // enclosed pocket: opaque
     expect(m[11 * 12 + 5]).toBe(0);          // bottom edge: transparent
+  });
+  it("clears enclosed key pixels when they dominate the art", () => {
+    // Sparse line art (Silver Reed-style): the strokes enclose more
+    // key-colored space than they occupy, so the key is background.
+    const art = outlined(12, 12, 0, 3);
+    const m = keyMask(art, 0);
+    expect(m[0]).toBe(0);                    // corner: transparent
+    expect(m[2 * 12 + 4]).toBe(1);           // outline stroke: opaque
+    expect(m[5 * 12 + 5]).toBe(0);           // enclosed key: transparent
+  });
+  it("keeps enclosed key pixels when art dominates", () => {
+    // Dense subject (Pinna/Robobot-style): the enclosed key region is
+    // real content (white plumage/body), not leaked background.
+    const art = framed(12, 12, 255, 3, /*pocket*/ true);
+    const m = keyMask(art, 255);
+    expect(m[5 * 12 + 5]).toBe(1);           // enclosed pocket: opaque
   });
   it("clears a uniform image entirely", () => {
     const m = keyMask(framed(6, 6, 0, 0), 0);

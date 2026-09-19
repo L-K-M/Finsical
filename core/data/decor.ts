@@ -45,7 +45,14 @@ export function pickDecorArt(images: Iterable<IndexedImage>):
 }
 
 /** Alpha mask (1 = opaque): key-index pixels connected to the border
- * become transparent; enclosed same-index pixels stay opaque. */
+ * become transparent; enclosed same-index pixels stay opaque.
+ *
+ * Exception: line-art packs (e.g. Silver Reed) draw sparse strokes on the
+ * key color, so the fronds enclose huge key-index regions the flood can't
+ * reach. When enclosed key pixels make up half or more of what remains
+ * opaque, they are background showing through the art — clear the index
+ * globally. Dense subjects keep far less enclosed key color (Robobot's
+ * white body ~0.3, a bird's plumage ~0.03), so they survive the flood. */
 export function keyMask(img: IndexedImage, key: number): Uint8Array {
   const { w, h, idx } = img;
   const opaque = new Uint8Array(w * h).fill(1);
@@ -63,5 +70,13 @@ export function keyMask(img: IndexedImage, key: number): Uint8Array {
     if (y > 0) push(i - w);
     if (y < h - 1) push(i + w);
   }
+  let left = 0, keyLeft = 0;
+  for (let i = 0; i < idx.length; i++) {
+    if (!opaque[i]) continue;
+    left++;
+    if (idx[i] === key) keyLeft++;
+  }
+  if (left && keyLeft * 2 >= left)
+    for (let i = 0; i < idx.length; i++) if (idx[i] === key) opaque[i] = 0;
   return opaque;
 }
