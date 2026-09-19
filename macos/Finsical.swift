@@ -211,6 +211,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         window.contentAspectRatio = NSSize(width: 320, height: 200)
         window.contentView = webView
         window.delegate = self
+        // No traffic lights: closing the tank alone is meaningless (the
+        // app quits on close anyway), and minimize/zoom do nothing for a
+        // floating tank. Quit lives in the menu; edges still resize.
+        window.standardWindowButton(.closeButton)?.isHidden = true
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
 
         let strip = DragStrip()
         strip.translatesAutoresizingMaskIntoConstraints = false
