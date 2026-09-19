@@ -102,8 +102,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         } else {
             panelView?.evaluateJavaScript(
                 "if (window.panelUI) { window.panelUI.show('\(view)') } " +
-                "else { throw new Error('panelUI missing') }") { _, e in
-                if let e { NSLog("Finsical: panel view switch failed: \(e)") }
+                "else { throw new Error('panelUI missing') }") { [weak self] _, e in
+                guard let e else { return }
+                NSLog("Finsical: panel view switch failed: \(e)")
+                // Page loaded but panelUI is gone (script failed) —
+                // reload lands on the requested tab via the hash.
+                self?.panelView?.load(URLRequest(
+                    url: URL(string:
+                        "finsical://app/panel.html#\(view)")!))
             }
         }
         panelWindow?.makeKeyAndOrderFront(nil)
