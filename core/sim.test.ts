@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { DAY_TICKS, FOOD_ROT_TICKS, Sim } from "./sim.js";
+import { DAY_TICKS, FOOD_ROT_TICKS, Sim, TURN_TICKS } from "./sim.js";
+
+// States a fish may be in when it's not seeking food.
+const IDLE_STATES = ["drift", "turn"];
 
 describe("Sim", () => {
   it("is deterministic for a given seed", () => {
@@ -58,7 +61,7 @@ describe("Sim", () => {
     const f = sim.addFish({ x: 40, y: 50, hunger: 0 });
     sim.dropFood(60);
     for (let i = 0; i < 200; i++) sim.tick();
-    expect(f.state).toBe("drift");
+    expect(IDLE_STATES).toContain(f.state);
     expect(sim.food.length).toBe(1);
   });
 
@@ -110,7 +113,7 @@ describe("Sim", () => {
     sim.waterQuality = 0.1; // below QUALITY_SEEK even after filtration drift
     sim.dropFood(120);
     for (let i = 0; i < 600; i++) sim.tick();
-    expect(f.state).toBe("drift"); // never seeks despite hunger
+    expect(IDLE_STATES).toContain(f.state); // never seeks
     expect(sim.food.length).toBe(1);
   });
 
@@ -191,5 +194,60 @@ describe("Sim", () => {
     for (let i = 0; i < 40; i++) sim.tick();
     // After 32 ticks the phase must have wrapped — a new decision ran.
     expect(f.phase).toBeLessThan(32);
+  });
+
+  it("rolls through a turn when the destination is behind it", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 7);
+    // At the right wall facing right — every wander target is behind.
+    const f = sim.addFish({ x: 284, y: 50, facing: 1, heading: 0 });
+    f.tx = 284; f.ty = 50; f.phase = 32; // decide fires on this tick
+    sim.tick();
+    expect(f.state).toBe("turn");
+    const seen = new Set<number>();
+    for (let i = 0; i < TURN_TICKS; i++) {
+      sim.tick();
+      seen.add(f.facing);
+    }
+    expect(f.state).toBe("drift");   // roll completed
+    expect(seen.size).toBe(2);       // facing flipped at edge-on
+    expect(f.facing).toBe(-1);       // ends facing the new way
+  });
+
+  it("rolls once toward food dropped behind it, then seeks", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 7);
+    const f = sim.addFish({ x: 280, y: 50, facing: 1, heading: 0,
+                            hunger: 0.9 });
+    sim.dropFood(245); // behind the fish
+    sim.tick();
+    expect(f.state).toBe("turn");    // reversal rolls, doesn't snap
+    const dir = f.turnDir;
+    for (let i = 0; i < TURN_TICKS - 1; i++) {
+      sim.tick();
+      expect(f.state).toBe("turn");  // roll plays through, no churn
+      expect(f.turnDir).toBe(dir);
+    }
+    sim.tick();
+    expect(f.state).not.toBe("turn");
+    expect(f.facing).toBe(-1);       // ends facing the food
+  });
+
+  it("seeks without rolling when food is ahead", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 11);
+    const f = sim.addFish({ x: 50, y: 50, facing: 1, heading: 0,
+                            hunger: 0.9 });
+    sim.dropFood(200); // ahead of the fish
+    sim.tick();
+    expect(f.state).toBe("seek");
+    expect(f.turnFrom).toBe(1); // untouched — no roll began
+  });
+
+  it("starts a roll without snapping heading when food is behind", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 11);
+    const f = sim.addFish({ x: 200, y: 50, facing: 1, heading: 0,
+                            hunger: 0.9 });
+    sim.dropFood(50); // behind the fish
+    sim.tick();
+    expect(f.state).toBe("turn");
+    expect(f.heading).toBe(0); // roll drifts on the old heading
   });
 });

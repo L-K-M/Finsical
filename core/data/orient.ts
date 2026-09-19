@@ -31,10 +31,12 @@ export function mirrorX(img: IndexedImage): IndexedImage {
   return { w, h, palette, idx: out };
 }
 
-/** Canonical swim frame: the group-0 profile rotated dorsal-up and
- * facing `facing` (1 = right, -1 = left). */
+/** Canonical swim frame: the profile from pose `group` rotated
+ * dorsal-up and facing `facing` (1 = right, -1 = left). Roll-capable
+ * sheets (groups >= 4) carry real art for both directions in groups
+ * 0 and groups/2 — pass facing=-1 there so nothing is mirrored. */
 export function swimFrame(sheet: SpriteSheet, frameIdx: number,
-                          facing: 1 | -1): IndexedImage {
-  const img = rotateCW(sheet.frame(0, frameIdx));
+                          facing: 1 | -1, group = 0): IndexedImage {
+  const img = rotateCW(sheet.frame(group, frameIdx));
   return facing > 0 ? mirrorX(img) : img;
 }
