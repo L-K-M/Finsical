@@ -154,6 +154,6 @@ setInterval(() => { if (greeted) bus.post({ op: "hello" }); }, 10_000);
 // Hunger/state/water drift continuously — poll faster while the Tank
 // tab is visible so the overview reads live.
 setInterval(() => {
-  if (greeted && overviewEl.style.display !== "none")
+  if (greeted && overviewEl.style.display !== "none" && !document.hidden)
     bus.post({ op: "hello" });
 }, 2000);
