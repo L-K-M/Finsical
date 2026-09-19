@@ -43,15 +43,16 @@ const installedAddons: Importable[] = [...(saved?.addons ?? [])];
 const sim = new Sim(TANK, 0x9003);
 const audio = new TankAudio();
 if (saved) {
-  sim.tickCount = saved.tickCount;
-  sim.waterQuality = saved.waterQuality;
+  if (Number.isFinite(saved.tickCount)) sim.tickCount = saved.tickCount;
+  if (Number.isFinite(saved.waterQuality))
+    sim.waterQuality = saved.waterQuality;
 }
 const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
   [0, 1, 2, 3].map((i) =>
     ({ x: 40 + i * 60, y: 50 + i * 30, facing: (i % 2 ? -1 : 1) as 1 | -1 }));
-const roster = saved?.fish.filter(
+const roster = (saved?.fish ?? []).filter(
   (f): f is Partial<Fish> & { x: number; y: number } =>
-    Number.isFinite(f.x) && Number.isFinite(f.y));
+    !!f && Number.isFinite(f.x) && Number.isFinite(f.y));
 for (const f of roster?.length ? roster : DEFAULT_FISH) sim.addFish(f);
 
 function saveTank(): void {
@@ -219,7 +220,7 @@ void (async () => {
   .catch((e) => console.warn("azpack load failed; using placeholder fish:", e))
   // Saved add-ons re-import after the bundled pack so fishSheets order
   // (bundled first) and species assignment match what was installed.
-  .finally(() => importPanel.restore(installedAddons));
+  .finally(() => importPanel.restore([...installedAddons]));
 
 // Drag an .azpack folder onto the window to import it.
 async function walkEntry(ent: FileSystemEntry, prefix: string,
