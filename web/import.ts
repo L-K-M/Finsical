@@ -85,8 +85,10 @@ async function listCollection(item: string, outer: string):
  * ("{zip}#{entry}") addresses one pack directly inside a nested collection
  * zip — archive.org can't serve entries two zips deep. */
 async function fetchInnerPacks(url: string): Promise<Uint8Array[]> {
-  const [zipUrl, entry] = url.split("#", 2);
-  const z = await fetchZip(zipUrl!);
+  const i = url.indexOf("#");
+  const zipUrl = i === -1 ? url : url.slice(0, i);
+  const entry = i === -1 ? undefined : url.slice(i + 1);
+  const z = await fetchZip(zipUrl);
   const packs: Uint8Array[] = [];
   for (const e of zipEntries(z)) {
     if (entry !== undefined ? e.name !== entry : !PACK_EXT.test(e.name))
