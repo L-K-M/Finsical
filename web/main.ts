@@ -145,6 +145,7 @@ function addDecor(images: Iterable<IndexedImage>): void {
   const cv = pick.guessed
     ? imageCanvas(pick.img, false) // legacy: global index-0 clear
     : imageCanvas(pick.img, false, keyMask(pick.img, pick.key));
+  if (!cv.width || !cv.height) return; // zero-area art renders nothing
   const s = Math.min(1, TANK.height * 0.8 / cv.height,
                      TANK.width * 0.5 / cv.width);
   if (s >= 1) { decors.push(cv); return; }
