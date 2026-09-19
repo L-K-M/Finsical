@@ -196,6 +196,47 @@ describe("Sim", () => {
     expect(f.phase).toBeLessThan(32);
   });
 
+  it("tap startle fades with distance and panic propagates", () => {
+    const sim = new Sim({ width: 300, height: 200 }, 9);
+    const close = sim.addFish({ x: 75, y: 100 });   // 15px from tap
+    const near = sim.addFish({ x: 100, y: 100 });   // 40px — weaker dart
+    const bystander = sim.addFish({ x: 125, y: 100 }); // outside tap radius
+    sim.tap(60, 100);
+    expect(close.state).toBe("startle");
+    expect(close.speed).toBeGreaterThan(near.speed); // distance-scaled
+    expect(bystander.state).toBe("drift");           // outside tap radius
+    for (let i = 0; i < 10 && bystander.state !== "startle"; i++)
+      sim.tick();
+    expect(bystander.state).toBe("startle"); // panic propagated
+    // Propagated darts are capped at half tap strength (3.5 * 0.5);
+    // the bystander is outside the tap radius, so only propagation
+    // could have startled it.
+    expect(bystander.speed).toBeLessThanOrEqual(1.75);
+  });
+
+  it("caps panic propagation at two hops", () => {
+    const sim = new Sim({ width: 400, height: 100 }, 5);
+    // The tap radius (48px) directly startles the first two fish (hop 0);
+    // every fish beyond that is one more hop, 24px apart (< PROP_RADIUS 32).
+    sim.addFish({ x: 60, y: 46 });   // hop 0 (direct; off the tap
+                                     // point so the dart direction
+                                     // is well-defined)
+    sim.addFish({ x: 84, y: 50 });   // hop 0 (direct — inside tap radius)
+    sim.addFish({ x: 108, y: 50 });              // hop 1
+    const hop2 = sim.addFish({ x: 132, y: 50 }); // hop 2 — last allowed
+    const far = sim.addFish({ x: 156, y: 50 });  // hop 3 — beyond the cap
+    sim.tap(60, 50);
+    let everStartled = false;
+    let waveReachedCap = false;
+    for (let i = 0; i < 30 && !everStartled; i++) {
+      sim.tick();
+      everStartled = far.state === "startle";
+      if (hop2.state === "startle") waveReachedCap = true;
+    }
+    expect(waveReachedCap).toBe(true); // wave must reach the last allowed hop
+    expect(everStartled).toBe(false);
+  });
+
   it("rolls through a turn when the destination is behind it", () => {
     const sim = new Sim({ width: 300, height: 100 }, 7);
     // At the right wall facing right — every wander target is behind.

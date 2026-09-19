@@ -42,6 +42,9 @@ export interface Fish {
   hunger: number;
   state: FishState;
   stateTicks: number;
+  /** Hops this panic wave has traveled from the tapped fish — caps
+   * how far a startle cascade can spread. */
+  panicHops: number;
 }
 
 export interface Food {
@@ -80,6 +83,14 @@ const FILTER_PER_TICK = 1 / 12000;
 const QUALITY_SEEK = 0.3;
 const STARTLE_RADIUS = 48;
 const STARTLE_TICKS = 30;
+/** Reactions weaker than this read as frozen fish — trims the
+ * effective radius to ~95% of STARTLE_RADIUS (taps) and ~90% of
+ * PROP_RADIUS (propagated panic, whose strength is halved first). */
+const MIN_STARTLE_STRENGTH = 0.05;
+/** How close a darting fish must pass to startle a neighbor. */
+const PROP_RADIUS = 32;
+/** Hops a panic wave may travel from the fish that was tapped. */
+const MAX_PANIC_HOPS = 2;
 /**
  * Movement budget per decision. The original runs 60 ticks/s and re-decides
  * every 64 ticks (~1.07 s); halved here for our 30 tps clock.
@@ -127,7 +138,7 @@ export class Sim {
       facing: 1, heading: 0, phase: 0, latch: -1, peak: 0, cruise: 1,
       speed: 1, vy: 0, tx: 0, ty: 0, turnDir: 1, turnFrom: 1,
       bandY: 0, hunger: 0.2,
-      state: "drift", stateTicks: 0, ...fish,
+      state: "drift", stateTicks: 0, panicHops: 0, ...fish,
     };
     if (!fish.tx && !fish.ty) { f.tx = f.x; f.ty = f.y; }
     if (!fish.bandY) f.bandY = f.y;
@@ -141,17 +152,21 @@ export class Sim {
     this.food.push({ x: cx, y: SURFACE + 2, eaten: false, settled: 0 });
   }
 
-  /** Knock on the glass: startle fish near (x, y). */
+  /** Knock on the glass: startle fish near (x, y), strength fading
+   * with distance like the original's 1 − dist/radius falloff. */
   tap(x: number, y: number): void {
     for (const f of this.fish) {
       const dx = f.x - x, dy = f.y - y;
       if (dx * dx + dy * dy < STARTLE_RADIUS * STARTLE_RADIUS) {
+        const d = Math.max(Math.hypot(dx, dy), 1);
+        const k = 1 - d / STARTLE_RADIUS;
+        if (k < MIN_STARTLE_STRENGTH) continue;
         f.state = "startle";
         f.stateTicks = 0;
-        const d = Math.max(Math.hypot(dx, dy), 1);
+        f.panicHops = 0;
         f.facing = dx >= 0 ? 1 : -1;
-        f.speed = 3.5;
-        f.vy = (dy / d) * 2.5;
+        f.speed = 3.5 * k;
+        f.vy = (dy / d) * 2.5 * k;
       }
     }
   }
@@ -165,6 +180,26 @@ export class Sim {
   tick(): void {
     this.tickCount++;
     for (const f of this.fish) this.tickFish(f);
+    // Panic propagates: a freshly darting fish startles close
+    // neighbors — fish-on-fish reaction on the same distance falloff.
+    for (const a of this.fish) {
+      if (a.state !== "startle" || a.stateTicks > 4 ||
+          a.panicHops >= MAX_PANIC_HOPS) continue;
+      for (const b of this.fish) {
+        if (b === a || b.state === "startle") continue;
+        const dx = b.x - a.x, dy = b.y - a.y;
+        if (dx * dx + dy * dy >= PROP_RADIUS * PROP_RADIUS) continue;
+        const d = Math.max(Math.hypot(dx, dy), 1);
+        const k = 0.5 * (1 - d / PROP_RADIUS);
+        if (k < MIN_STARTLE_STRENGTH) continue;
+        b.state = "startle";
+        b.stateTicks = 0;
+        b.panicHops = a.panicHops + 1;
+        b.facing = dx >= 0 ? 1 : -1;
+        b.speed = 3.5 * k;
+        b.vy = (dy / d) * 2.5 * k;
+      }
+    }
     for (let i = this.food.length - 1; i >= 0; i--) {
       const fd = this.food[i]!;
       if (fd.eaten) { this.food.splice(i, 1); continue; }
