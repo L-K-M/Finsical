@@ -156,6 +156,7 @@ export class Sim {
       if (dx * dx + dy * dy < STARTLE_RADIUS * STARTLE_RADIUS) {
         const d = Math.max(Math.hypot(dx, dy), 1);
         const k = 1 - d / STARTLE_RADIUS;
+        if (k < 0.05) continue; // sub-threshold reactions read as frozen fish
         f.state = "startle";
         f.stateTicks = 0;
         f.panicHops = 0;

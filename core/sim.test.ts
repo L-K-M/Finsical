@@ -220,15 +220,18 @@ describe("Sim", () => {
     // every fish beyond that is one more hop, 24px apart (< PROP_RADIUS 32).
     sim.addFish({ x: 60, y: 50 });   // hop 0 (direct)
     sim.addFish({ x: 84, y: 50 });   // hop 0 (direct — inside tap radius)
-    sim.addFish({ x: 108, y: 50 });  // hop 1
-    sim.addFish({ x: 132, y: 50 });  // hop 2 — last hop the cap allows
-    const far = sim.addFish({ x: 156, y: 50 }); // hop 3 — beyond the cap
+    sim.addFish({ x: 108, y: 50 });              // hop 1
+    const hop2 = sim.addFish({ x: 132, y: 50 }); // hop 2 — last allowed
+    const far = sim.addFish({ x: 156, y: 50 });  // hop 3 — beyond the cap
     sim.tap(60, 50);
     let everStartled = false;
+    let waveReachedCap = false;
     for (let i = 0; i < 30 && !everStartled; i++) {
       sim.tick();
       everStartled = far.state === "startle";
+      if (hop2.state === "startle") waveReachedCap = true;
     }
+    expect(waveReachedCap).toBe(true); // wave must reach the last allowed hop
     expect(everStartled).toBe(false);
   });
 
