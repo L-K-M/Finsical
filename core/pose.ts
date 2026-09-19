@@ -31,7 +31,7 @@ export function fishPose(sheet: SpriteSheet, f: Fish):
 export function pitch(f: Fish): number {
   if (f.state === "turn") return 0;
   const p = wrapAngle(f.heading - (f.facing > 0 ? 0 : Math.PI));
-  // Clamp: a heading/facing mismatch (e.g. a startle dart) must never
-  // roll the sprite past a plausible tilt.
+  // Clamp the tilt at ±45°: bounds heading/facing mismatches (e.g. a
+  // startle dart) and caps genuinely steep climb/dive angles.
   return Math.max(-Math.PI / 4, Math.min(Math.PI / 4, p));
 }

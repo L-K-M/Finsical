@@ -59,6 +59,14 @@ describe("pitch", () => {
     }
   });
 
+  it("pins the y-down sign convention: diving positive, climbing negative",
+      () => {
+    expect(pitch(fish({ facing: 1, heading: Math.PI / 6 })))
+      .toBeCloseTo(Math.PI / 6);
+    expect(pitch(fish({ facing: 1, heading: -Math.PI / 6 })))
+      .toBeCloseTo(-Math.PI / 6);
+  });
+
   it("stays flat during a turn — the pose ring encodes orientation", () => {
     expect(pitch(fish({ state: "turn", heading: Math.PI / 2 }))).toBe(0);
   });
