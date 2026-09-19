@@ -104,8 +104,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         }
         // __bus is only registered once the page's script ran — surface
         // drops instead of silently losing the message.
+        // U+2028/29 are legal raw inside JSON strings but terminate JS
+        // source lines — escape them so the splice stays parseable.
+        let js = text.replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+                     .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
         dest?.evaluateJavaScript(
-            "window.__bus ? (window.__bus(\(text)), undefined) : 'dropped'") {
+            "window.__bus ? (window.__bus(\(js)), undefined) : 'dropped'") {
             result, error in
             if let error {
                 NSLog("Finsical: bus relay failed: \(error.localizedDescription)")

@@ -529,6 +529,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
           delete detailRef.act.dataset.pending;
           detailRef.act.disabled = false;
           detailRef.act.textContent = "In tank ✓ — add again?";
+          detailRef.status.textContent = "";
         }
       } else if (m.op === "installFailed" && typeof inner === "string") {
         if (detailRef?.inner === inner) {
