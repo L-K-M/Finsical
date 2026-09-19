@@ -325,8 +325,8 @@ function drawPlaceholder(x: number, y: number, facing: number): void {
 
 const tankGradient = (() => {
   const g = ctx.createLinearGradient(0, 0, 0, TANK.height);
-  g.addColorStop(0, "#1a4d7a");
-  g.addColorStop(1, "#0b2a45");
+  g.addColorStop(0, "#2e7fc4");
+  g.addColorStop(1, "#14508c");
   return g;
 })();
 
@@ -374,7 +374,7 @@ function render(): void {
   // day/night dimming
   const dark = 1 - sim.light;
   if (dark > 0.01) {
-    ctx.fillStyle = `rgba(4,8,24,${(dark * 0.75).toFixed(3)})`;
+    ctx.fillStyle = `rgba(4,8,24,${(dark * 0.55).toFixed(3)})`;
     ctx.fillRect(0, 0, TANK.width, TANK.height);
   }
 }
