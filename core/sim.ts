@@ -25,6 +25,8 @@ export interface Food {
   x: number;
   y: number;
   eaten: boolean;
+  /** ticks spent rotting on the gravel — fouls the water while it lasts */
+  settled: number;
 }
 
 export interface Bubble {
@@ -39,6 +41,14 @@ const HUNGER_PER_TICK = 1 / (30 * 120); // starving after ~2 min
 const HUNGER_SEEK = 0.4;
 const EAT_DIST = 6;
 const FOOD_SINK = 0.35;
+/** Ticks a settled pellet takes to dissolve away (~45 s at 30 tps). */
+export const FOOD_ROT_TICKS = 30 * 45;
+/** Quality drained per tick per rotting pellet (~0.2 over a full rot). */
+const WASTE_PER_TICK = 1 / 6000;
+/** Filtration: recovers a fouled tank over ~7 min of clean water. */
+const FILTER_PER_TICK = 1 / 12000;
+/** Below this fish lose their appetite and stop seeking food. */
+const QUALITY_SEEK = 0.3;
 const STARTLE_RADIUS = 48;
 const STARTLE_TICKS = 30;
 const BUBBLE_CHANCE = 0.004;
@@ -52,6 +62,8 @@ export class Sim {
   readonly food: Food[] = [];
   readonly bubbles: Bubble[] = [];
   tickCount = 0;
+  /** 1 = clean, 0 = foul. Rotted food fouls it; filtration recovers it. */
+  waterQuality = 1;
   private rand: () => number;
 
   constructor(tank: Tank, seed = 1) {
@@ -71,7 +83,7 @@ export class Sim {
   /** Drop a food pellet at x; it sinks to the gravel. */
   dropFood(x: number): void {
     const cx = Math.min(Math.max(x, MARGIN), this.tank.width - MARGIN);
-    this.food.push({ x: cx, y: SURFACE + 2, eaten: false });
+    this.food.push({ x: cx, y: SURFACE + 2, eaten: false, settled: 0 });
   }
 
   /** Knock on the glass: startle fish near (x, y). */
@@ -100,9 +112,17 @@ export class Sim {
     for (const f of this.fish) this.tickFish(f);
     for (let i = this.food.length - 1; i >= 0; i--) {
       const fd = this.food[i]!;
-      if (fd.eaten) this.food.splice(i, 1);
-      else if (fd.y < this.tank.height - BOTTOM_PAD) fd.y += FOOD_SINK;
+      if (fd.eaten) { this.food.splice(i, 1); continue; }
+      if (fd.y < this.tank.height - BOTTOM_PAD) {
+        fd.y += FOOD_SINK;
+      } else {
+        fd.settled++;
+        this.waterQuality -= WASTE_PER_TICK;
+        if (fd.settled > FOOD_ROT_TICKS) this.food.splice(i, 1);
+      }
     }
+    this.waterQuality =
+      Math.min(1, Math.max(0, this.waterQuality + FILTER_PER_TICK));
     for (let i = this.bubbles.length - 1; i >= 0; i--) {
       const b = this.bubbles[i]!;
       b.y -= 0.8;
@@ -113,6 +133,8 @@ export class Sim {
   private tickFish(f: Fish): void {
     f.stateTicks++;
     f.hunger = Math.min(1, f.hunger + HUNGER_PER_TICK);
+    // Foul water makes fish sluggish; panic (startle) ignores it.
+    const vigor = 0.5 + 0.5 * this.waterQuality;
 
     if (f.state === "startle") {
       f.x += f.speed * f.facing;
@@ -121,14 +143,15 @@ export class Sim {
       f.vy *= 0.94;
       if (f.stateTicks > STARTLE_TICKS) this.setState(f, "drift");
     } else {
-      const target = f.hunger > HUNGER_SEEK ? this.nearestFood(f) : null;
+      const target = f.hunger > HUNGER_SEEK &&
+          this.waterQuality > QUALITY_SEEK ? this.nearestFood(f) : null;
       if (target) {
         this.setState(f, "seek");
         const dx = target.x - f.x, dy = target.y - f.y;
         const d = Math.max(Math.hypot(dx, dy), 1);
         f.facing = dx >= 0 ? 1 : -1;
-        f.x += (dx / d) * Math.min(2.2, f.speed + 1);
-        f.y += (dy / d) * Math.min(2.2, f.speed + 1);
+        f.x += (dx / d) * Math.min(2.2, f.speed + 1) * vigor;
+        f.y += (dy / d) * Math.min(2.2, f.speed + 1) * vigor;
         if (d < EAT_DIST) {
           target.eaten = true;
           f.hunger = 0;
@@ -140,8 +163,8 @@ export class Sim {
         if (this.rand() < 0.03) f.vy = (this.rand() - 0.5) * 1.4;
         if (this.rand() < 0.004) f.facing = -f.facing as 1 | -1;
         f.vy *= 0.97;
-        f.x += f.speed * f.facing;
-        f.y += f.vy;
+        f.x += f.speed * f.facing * vigor;
+        f.y += f.vy * vigor;
       }
     }
 
@@ -150,7 +173,8 @@ export class Sim {
     if (f.x > this.tank.width - MARGIN) { f.x = this.tank.width - MARGIN; f.facing = -1; }
     f.y = Math.min(Math.max(f.y, SURFACE + MARGIN), maxY);
 
-    if (this.rand() < BUBBLE_CHANCE) {
+    // Fish gasp in foul water — bubbles come up to twice as often.
+    if (this.rand() < BUBBLE_CHANCE * (2 - this.waterQuality)) {
       this.bubbles.push({ x: f.x + f.facing * 6, y: f.y - 3 });
     }
   }
