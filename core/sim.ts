@@ -62,7 +62,7 @@ const SURFACE = 10;
 export const BOTTOM_PAD = 12;
 
 /** Smallest signed angle delta, wrapped to (−π, π]. */
-function wrapAngle(d: number): number {
+export function wrapAngle(d: number): number {
   return ((d + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) -
     Math.PI;
 }
