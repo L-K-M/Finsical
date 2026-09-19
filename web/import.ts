@@ -193,7 +193,9 @@ export function mountImportPanel(h: ImportHandlers):
         const t =
           browse.querySelector(`[data-inner="${CSS.escape(it.inner)}"]`);
         if (t) paintThumb(t, pv);
-      }).catch(() => { /* name-only tile stays */ })
+      }).catch((e) => {
+        console.warn(`add-on thumb failed for ${it.inner}:`, e);
+      })
         .finally(() => { thumbRunning--; pumpThumbs(); });
     }
   }
@@ -287,6 +289,10 @@ export function mountImportPanel(h: ImportHandlers):
   function buildBrowse(items: Importable[]): void {
     browse.textContent = "";
     byInner.clear();
+    // Drop still-pending items from the previous view; in-flight fetches
+    // complete anyway and their results stay memoized in packCache.
+    thumbQueue.length = 0;
+    thumbQueued.clear();
     io?.disconnect();
     let section = "";
     let grid: HTMLElement | null = null;
