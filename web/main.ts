@@ -2,6 +2,7 @@ import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
 import { fishPose, pitch } from "../core/pose.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
+import { keyMask, pickDecorArt } from "../core/data/decor.js";
 import { swimFrame } from "../core/data/orient.js";
 import { TankAudio } from "./audio.js";
 import { mountImportPanel } from "./import.js";
@@ -133,15 +134,15 @@ function pickGravel(images: Iterable<IndexedImage>): void {
   gravelCv = gravel ? imageCanvas(gravel, false) : null;
 }
 // Decorations (plants/accessories) sit on the gravel between the backdrop
-// and the fish. Each pack's largest image is scaled to fit; the set is
+// and the fish. Each pack's art frame is scaled to fit; the set is
 // re-spaced across the tank floor whenever one is added.
 const decors: HTMLCanvasElement[] = [];
 function addDecor(images: Iterable<IndexedImage>): void {
-  let best: IndexedImage | null = null;
-  for (const img of images)
-    if (!best || img.w * img.h > best.w * best.h) best = img;
-  if (!best) return;
-  const cv = imageCanvas(best, false); // index 0 = transparent
+  // Art frames share one corner key index (0 or 255 depending on the
+  // pack); catalog thumbnails have textured corners and are skipped.
+  const pick = pickDecorArt(images);
+  if (!pick) return;
+  const cv = imageCanvas(pick.img, false, keyMask(pick.img, pick.key));
   const s = Math.min(1, TANK.height * 0.8 / cv.height,
                      TANK.width * 0.5 / cv.width);
   if (s >= 1) { decors.push(cv); return; }
@@ -338,8 +339,10 @@ window.addEventListener("drop", (e) => {
 // ring; simpler sheets mirror group 0 for right-facing fish.
 
 /** Rasterize an indexed image to a canvas. opaque=false makes index 0
- * transparent (sprite convention); opaque=true keeps every pixel. */
-function imageCanvas(img: IndexedImage, opaque: boolean): HTMLCanvasElement {
+ * transparent (sprite convention); opaque=true keeps every pixel. A
+ * mask overrides both — 0 = transparent, 1 = opaque. */
+function imageCanvas(img: IndexedImage, opaque: boolean,
+                     mask?: Uint8Array): HTMLCanvasElement {
   const cv = document.createElement("canvas");
   cv.width = img.w; cv.height = img.h;
   const c = cv.getContext("2d")!;
@@ -348,7 +351,8 @@ function imageCanvas(img: IndexedImage, opaque: boolean): HTMLCanvasElement {
     const pi = img.idx[i] ?? 0;
     const [r, g, b] = img.palette[pi] ?? [0, 0, 0];
     im.data[i * 4] = r; im.data[i * 4 + 1] = g; im.data[i * 4 + 2] = b;
-    im.data[i * 4 + 3] = opaque || pi !== 0 ? 255 : 0;
+    im.data[i * 4 + 3] = mask ? mask[i]! * 255
+                            : (opaque || pi !== 0 ? 255 : 0);
   }
   c.putImageData(im, 0, 0);
   return cv;
