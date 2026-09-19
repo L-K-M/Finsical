@@ -22,7 +22,7 @@ $(APP): bundle Finsical.swift Info.plist Finsical.icns
 Finsical.icns: $(ICON_SRC)
 	rm -rf $(ICONSET)
 	mkdir $(ICONSET)
-	@for s in 16 32 128 256 512; do \
+	@set -e; for s in 16 32 128 256 512; do \
 		sips -z $$s $$s $(ICON_SRC) --out $(ICONSET)/icon_$${s}x$${s}.png >/dev/null; \
 		sips -z $$((s * 2)) $$((s * 2)) $(ICON_SRC) --out $(ICONSET)/icon_$${s}x$${s}@2x.png >/dev/null; \
 	done
