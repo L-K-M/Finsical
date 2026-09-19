@@ -96,6 +96,9 @@ export async function listAddons(item = DEFAULT_ITEM):
 export interface ImportHandlers {
   onSheets(sheets: Map<string, SpriteSheet>, name: string, section: string): void;
   onImages(images: Iterable<IndexedImage>, name: string, section: string): void;
+  /** Fired once per successful install — lets the caller record which
+   * add-ons went into the tank so they can be restored later. */
+  onInstall?(it: Importable): void;
   /** Render decoded packs to a preview canvas; null = nothing to show. */
   preview(rs: PackResult[]): HTMLCanvasElement | null;
 }
@@ -113,7 +116,8 @@ function el<K extends keyof HTMLElementTagNameMap>(
 
 /** Afterglow-style add-on browser: card grid -> detail w/ live preview. */
 export function mountImportPanel(h: ImportHandlers):
-    { open(): void; close(): void; readonly isOpen: boolean } {
+    { open(): void; close(): void; readonly isOpen: boolean;
+      restore(list: Importable[]): void } {
   const installed = new Set<string>();
   const thumbs = new Map<string, HTMLCanvasElement>();
   // Packs are immutable per URL — memoize so re-visits skip the download.
@@ -230,7 +234,10 @@ export function mountImportPanel(h: ImportHandlers):
     }
   }
 
-  function applyAddon(it: Importable, rs: PackResult[]): void {
+  // Shared fetch→dispatch→mark-installed core for applyAddon (manual
+  // install) and restore (re-import on launch); only the onInstall
+  // side effect differs.
+  function applyPack(it: Importable, rs: PackResult[]): void {
     const usable = rs.filter((r) => r.sheets.size || r.images.size);
     if (!usable.length) throw new Error("no pack inside");
     for (const r of usable) {
@@ -242,6 +249,11 @@ export function mountImportPanel(h: ImportHandlers):
       ?.classList.add("done");
     const pv = h.preview(usable);
     if (pv) thumbs.set(it.inner, pv);
+  }
+
+  function applyAddon(it: Importable, rs: PackResult[]): void {
+    applyPack(it, rs);
+    h.onInstall?.(it);
   }
 
   function showDetail(it: Importable): void {
@@ -357,5 +369,23 @@ export function mountImportPanel(h: ImportHandlers):
     },
     close() { ov.style.display = "none"; },
     get isOpen() { return ov.style.display !== "none"; },
+    // Re-install saved add-ons in order (restores fish sheets and the
+    // gravel backdrop). Sequential so slot/backdrop assignment matches
+    // the original install order; failures skip that add-on. Shares
+    // applyPack's dispatch so the two install paths can't diverge;
+    // skips onInstall so restores don't re-record, and skips add-ons
+    // already installed while the chain was in flight.
+    restore(list: Importable[]) {
+      let p: Promise<void> = Promise.resolve();
+      for (const it of list) {
+        p = p.then(() => {
+          if (installed.has(it.inner)) return;
+          return fetchPack(it.url)
+            .then((rs) => { if (!installed.has(it.inner)) applyPack(it, rs); })
+            .catch((e) =>
+              console.warn(`add-on restore failed for ${it.inner}:`, e));
+        });
+      }
+    },
   };
 }
