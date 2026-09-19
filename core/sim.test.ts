@@ -230,4 +230,14 @@ describe("Sim", () => {
     expect(f.state).not.toBe("turn");
     expect(f.facing).toBe(-1);       // ends facing the food
   });
+
+  it("seeks without rolling when food is ahead", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 11);
+    const f = sim.addFish({ x: 50, y: 50, facing: 1, heading: 0,
+                            hunger: 0.9 });
+    sim.dropFood(200); // ahead of the fish
+    sim.tick();
+    expect(f.state).toBe("seek");
+    expect(f.turnFrom).toBe(1); // untouched — no roll began
+  });
 });

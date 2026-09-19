@@ -201,6 +201,7 @@ export class Sim {
       if (f.stateTicks > STARTLE_TICKS) {
         this.setState(f, "drift");
         this.decide(f);
+        this.maybeTurn(f);
       }
     } else if (f.state === "turn") {
       // Barrel roll through the pose ring: the fish drifts on its old
@@ -228,21 +229,24 @@ export class Sim {
       const food =
           (f.hunger > HUNGER_SEEK && this.waterQuality > QUALITY_SEEK)
             ? this.nearestFood(f) : null;
+      let turning = false;
       if (food) {
         this.setState(f, "seek");
         f.tx = food.x; f.ty = food.y;
-        this.maybeTurn(f);
+        turning = this.maybeTurn(f);
       }
       let dist = Math.hypot(f.tx - f.x, f.ty - f.y);
       if (!food && (f.phase >= MOVE_TICKS || dist < 4)) {
         this.decide(f);
         dist = Math.hypot(f.tx - f.x, f.ty - f.y);
-        this.maybeTurn(f);
+        turning = this.maybeTurn(f);
       }
 
       // Steer the continuous heading toward the destination; the fish
-      // curves instead of snapping around.
-      const want = Math.atan2(f.ty - f.y, f.tx - f.x);
+      // curves instead of snapping around. A fish that just entered a
+      // turn keeps its old heading untouched — the roll drifts on it.
+      const want = turning ? f.heading
+                           : Math.atan2(f.ty - f.y, f.tx - f.x);
       const turn = wrapAngle(want - f.heading);
       f.heading = wrapAngle(f.heading +
         Math.min(TURN_RATE, Math.max(-TURN_RATE, turn)));
@@ -330,15 +334,18 @@ export class Sim {
 
   /** A target behind the fish needs a reversal — the original plays
    * the roll-through-edge-on turn rather than steering through it.
-   * A dead-vertical target (cos≈0) just pitches over. */
-  private maybeTurn(f: Fish): void {
+   * A dead-vertical target (cos≈0) just pitches over.
+   * Returns whether the roll began. */
+  private maybeTurn(f: Fish): boolean {
     const want = Math.atan2(f.ty - f.y, f.tx - f.x);
     if (Math.cos(want) * f.facing < -1e-6) {
       this.setState(f, "turn");
       f.turnFrom = f.facing;
       // Both half-rings reach the opposite profile; pick randomly.
       f.turnDir = this.rand() < 0.5 ? 1 : -1;
+      return true;
     }
+    return false;
   }
 
   private setState(f: Fish, s: FishState): void {
