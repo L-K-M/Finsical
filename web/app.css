@@ -1,4 +1,8 @@
 html, body { margin: 0; height: 100%; background: #000; }
+/* Inside the native shell the tank window is transparent — the
+   machine bezel supplies the visible shape, so the page paints nothing
+   outside it. Dev browsers keep the dark backdrop. */
+.tankroot.native, .tankroot.native body.tankpage { background: transparent; }
 /* Add-on browser overlay. Interactive content stays below the top
    22px native drag strip — a full-height overlay would swallow it. */
 .ov {
@@ -85,8 +89,20 @@ html, body { margin: 0; height: 100%; background: #000; }
 }
 .ft a { color: #e06c6c; font-size: 11px; text-decoration: none; }
 .ft a:hover { text-decoration: underline; }
+/* Machine shell: the bezel SVG fills the window (letterboxed if the
+   aspect ever drifts), and #screen is positioned over the bezel's
+   screen opening by layoutMachine() in web/main.ts. Bezel-area
+   mousedowns drag the window; the screen div sits above the SVG so
+   canvas clicks still reach the tank. */
+#machine { position: fixed; inset: 0; }
+#shell {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  cursor: grab; user-select: none;
+}
+#shell:active { cursor: grabbing; }
+#screen { position: absolute; }
 canvas#tank {
-  display: block; width: 100vw; height: 100vh; object-fit: contain;
+  display: block; width: 100%; height: 100%; object-fit: contain;
   image-rendering: pixelated; /* keep the crunch */
   touch-action: none;
 }
@@ -95,8 +111,8 @@ canvas#tank {
    keeping pointer events; clicks still land on #tank through the
    pointer-events:none overlay. */
 canvas#crt {
-  display: none; position: fixed; inset: 0; z-index: 1;
-  width: 100vw; height: 100vh; pointer-events: none;
+  display: none; position: absolute; inset: 0; z-index: 1;
+  width: 100%; height: 100%; pointer-events: none;
 }
 body.crt canvas#crt { display: block; }
 body.crt canvas#tank { opacity: 0; }
@@ -174,6 +190,28 @@ body.crt canvas#tank { opacity: 0; }
   color: #d8b56b; font-size: 11px;
 }
 #pfcontrols { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px; }
+.pfsec {
+  color: #8fa5bd; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.2px;
+  margin: 10px 0 4px;
+}
+/* Machine picker: mini bezel previews rendered from the same SVG the
+   tank window draws. */
+#pfmachine {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  padding-bottom: 8px;
+}
+.pftile {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 4px; padding: 8px; font: inherit; text-align: center;
+  background: #0c1420; border: 1px solid #1c2938; border-radius: 8px;
+  color: #b8c7d8; cursor: pointer;
+}
+.pftile:hover { border-color: #3b567a; color: #fff; }
+.pftile.on { border-color: #2b6cb8; background: #12233a; }
+.pftile svg { width: 100%; height: 56px; display: block; }
+.pftiletitle { color: #e8eef6; font-size: 12px; font-weight: 600; }
+.pftileblurb { color: #6b7f96; font-size: 10.5px; line-height: 1.35; }
 .pfrow { padding: 10px 0; border-bottom: 1px solid #16202e; }
 .pfrow:last-child { border-bottom: 0; }
 .pfrowtop {
