@@ -51,6 +51,13 @@ const panel = mountImportPanel({
 
 panel.open();
 
+// Escape closes the window — the native shell intercepts this bus post
+// (a page can't close a window it didn't open); over BroadcastChannel
+// the tank page just sees an unknown op and ignores it.
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") bus.post({ op: "closePanel" });
+});
+
 // ---- tabs ------------------------------------------------------------------
 function showView(v: string): void {
   const b = document.querySelector<HTMLButtonElement>(
@@ -164,7 +171,7 @@ function renderOverview(): void {
     row.appendChild(el("span", "ometa", a.section));
     const rm = el("button", "orm", "Remove");
     rm.addEventListener("click", () =>
-      bus.post({ op: "removeAddon", inner: a.inner }));
+      bus.post({ op: "removeAddon", url: a.url }));
     row.appendChild(rm);
     overviewEl.appendChild(row);
   }

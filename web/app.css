@@ -90,6 +90,16 @@ canvas#tank {
   image-rendering: pixelated; /* keep the crunch */
   touch-action: none;
 }
+/* CRT pass: full-window WebGL canvas over the (kept-live) tank canvas.
+   The 2D canvas stays as the texture source — opacity 0 hides it while
+   keeping pointer events; clicks still land on #tank through the
+   pointer-events:none overlay. */
+canvas#crt {
+  display: none; position: fixed; inset: 0; z-index: 1;
+  width: 100vw; height: 100vh; pointer-events: none;
+}
+body.crt canvas#crt { display: block; }
+body.crt canvas#tank { opacity: 0; }
 
 /* Panel window (panel.html): the card is the page — no overlay chrome. */
 .panelpage {

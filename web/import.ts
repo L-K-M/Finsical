@@ -2,30 +2,69 @@
  * archive.org add-on import.
  *
  * The aquazonewithguppiesandaddons item packs each fish/gravel add-on as a
- * one-file zip inside a larger zip. archive.org serves inner entries at
- * /download/{item}/{outer}.zip/{inner} and lists them on {outer}.zip/'s
- * HTML page — all with Access-Control-Allow-Origin: *, so this runs in the
- * plain web shell with no native bridge.
+ * one-file zip inside a larger zip; aquazone-jpn-set holds the original
+ * release's item library as loose pack files inside one big zip.
+ * archive.org serves zip entries at /download/{item}/{outer}.zip/{inner}
+ * and lists them on {outer}.zip/'s HTML page — all with
+ * Access-Control-Allow-Origin: *, so this runs in the plain web shell
+ * with no native bridge. Add-on identity is the entry URL (`inner` is
+ * only a display name/species tag — basenames collide across folders).
  */
 import { zipEntries, zipRead } from "../core/data/zip.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
+import { decodeBmp, isBmp } from "../core/data/bmp.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
 
 const BASE = "https://archive.org/download";
 export const DEFAULT_ITEM = "aquazonewithguppiesandaddons";
-/** Outer zips in that item that hold importable add-on packs. A path with
- * "/" is a nested zip-of-packs (archive.org only serves one zip level), so
- * its entries are enumerated locally after fetching the collection zip. */
-export const COLLECTIONS: [section: string, outer: string][] = [
-  ["fish", "addon and modded fish.zip"],
-  ["gravel", "gravel.zip"],
-  ["plants", "mekasia.zip/mekplants.zip"],
-  ["accessories", "mekasia.zip/mekaccs.zip"],
+const JPN_ITEM = "aquazone-jpn-set";
+const JPN_ZIP = "AQUAZONE (JPN) SET.zip";
+const JPN_ROOT = "AQUAZONE (JPN) SET/AQUAZONE ITEM/";
+
+export interface Collection {
+  section: string;
+  /** Zip file inside the item. "a.zip/b.zip" is a nested zip-of-packs
+   * (archive.org only serves one zip level), so its entries are
+   * enumerated locally after fetching the collection zip. */
+  outer: string;
+  /** archive.org item — defaults to DEFAULT_ITEM. */
+  item?: string;
+  /** Loose-file mode: `outer` holds pack files (not inner zips) directly;
+   * only entries under this inner path are listed, and each entry URL
+   * serves the file itself. */
+  prefix?: string;
+  /** Loose-file mode: only entries matching this extension filter list —
+   * keeps tank-set subfolders' stray .plt/.acc out of the tanks section. */
+  exts?: RegExp;
+}
+
+/** Outer archives that hold importable add-on packs. The JPN SET item
+ * carries the original release's full item library as loose pack files
+ * under AQUAZONE ITEM/ — the folders are the game's own categories. */
+export const COLLECTIONS: Collection[] = [
+  { section: "fish", outer: "addon and modded fish.zip" },
+  { section: "gravel", outer: "gravel.zip" },
+  { section: "plants", outer: "mekasia.zip/mekplants.zip" },
+  { section: "accessories", outer: "mekasia.zip/mekaccs.zip" },
+  { section: "plants", item: JPN_ITEM, outer: JPN_ZIP,
+    prefix: JPN_ROOT + "水草/", exts: /\.plt$/i },
+  { section: "accessories", item: JPN_ITEM, outer: JPN_ZIP,
+    prefix: JPN_ROOT + "アクセサリー/", exts: /\.acc$/i },
+  { section: "gravel", item: JPN_ITEM, outer: JPN_ZIP,
+    prefix: JPN_ROOT + "底砂/", exts: /\.grv$/i },
+  { section: "backgrounds", item: JPN_ITEM, outer: JPN_ZIP,
+    prefix: JPN_ROOT + "背景/", exts: /\.bmp$/i },
+  { section: "tanks", item: JPN_ITEM, outer: JPN_ZIP,
+    prefix: JPN_ROOT + "水槽/", exts: /\.azn$/i },
+  { section: "fish", item: JPN_ITEM, outer: JPN_ZIP,
+    prefix: "AQUAZONE (JPN) SET/AQUAZONE 魚/", exts: /\.fsh$/i },
 ];
 
 const PACK_EXT = /\.(fsh|grv|plt|acc|azn|rez)$/i;
+/** Loose collection entries: packs plus bare images (background BMPs). */
+const DIRECT_EXT = /\.(fsh|grv|plt|acc|azn|rez|bmp)$/i;
 
 export interface Importable { section: string; inner: string; url: string }
 
@@ -45,9 +84,30 @@ function fetchZip(url: string): Promise<Uint8Array> {
   return p;
 }
 
-/** List inner .zip entries of an outer zip via its HTML listing page. */
-async function listCollection(item: string, outer: string):
-    Promise<Importable[]> {
+/** A collection zip's HTML listing page, memoized — several sections
+ * share one outer zip, and archive.org re-lists it identically. */
+const pageCache = new Map<string, Promise<string>>();
+function listPage(item: string, outer: string): Promise<string> {
+  const page = `${BASE}/${item}/${encodeURIComponent(outer)}/`;
+  let p = pageCache.get(page);
+  if (!p) {
+    p = fetch(page).then(async (r) => {
+      if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
+      return r.text();
+    });
+    pageCache.set(page, p);
+    p.catch(() => pageCache.delete(page));
+  }
+  return p;
+}
+
+/** List one collection's add-ons. Three outer layouts: a zip whose HTML
+ * page exposes inner pack zips; a nested zip-of-packs ("a.zip/b.zip",
+ * enumerated locally); or a zip holding loose pack files directly
+ * (`prefix` set — each entry is served raw by zip view). */
+async function listCollection(col: Collection): Promise<Importable[]> {
+  const item = col.item ?? DEFAULT_ITEM;
+  const { outer } = col;
   if (outer.includes("/")) {
     // Nested collection zip: no HTML listing exists, so enumerate its own
     // entries. Each pack entry is addressed as "{zip url}#{entry name}".
@@ -63,21 +123,40 @@ async function listCollection(item: string, outer: string):
     }
     return out;
   }
-  const page = `${BASE}/${item}/${encodeURIComponent(outer)}/`;
-  const r = await fetch(page);
-  if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
-  const html = await r.text();
-  const prefix = `/download/${item}/${encodeURIComponent(outer)}/`;
+  const html = await listPage(item, outer);
+  // Listing hrefs percent-encode the whole inner path (even its slashes
+  // land as %2F inside one segment) — compare decoded, keep the original
+  // href as the fetch URL.
+  const hrefPref = `/download/${item}/${outer}/`;
+  const seen = new Set<string>();
   const out: Importable[] = [];
-  for (const m of html.matchAll(/href="([^"]+\.zip)"/g)) {
-    const href = new URL(m[1]!, page).pathname; // absolute, root- or page-relative
-    if (!href.startsWith(prefix)) continue;
-    const inner = decodeURIComponent(href.slice(prefix.length));
-    if (!inner || inner.includes("/")) continue;
-    const name = inner.replace(/\.zip$/i, "");
-    if (!name || inner === outer) continue;
-    out.push({ section: "", inner: name,
-               url: `https://archive.org${href}` });
+  for (const m of html.matchAll(/href="([^"]+)"/g)) {
+    const u = new URL(m[1]!, BASE);
+    if (u.host !== "archive.org") continue;
+    let path: string;
+    try { path = decodeURIComponent(u.pathname); }
+    catch { continue; } // malformed escape — not an entry link
+    if (!path.startsWith(hrefPref)) continue;
+    const rel = path.slice(hrefPref.length);
+    const url = u.href;
+    if (col.prefix !== undefined) {
+      // Loose pack files inside the collection zip, listed at any depth.
+      // `inner` is the entry's basename (minus extension) for display.
+      if (!rel.startsWith(col.prefix) ||
+          !(col.exts ?? DIRECT_EXT).test(rel)) continue;
+      const inner = rel.slice(col.prefix.length)
+        .replace(/\.[^.]+$/, "").split("/").pop()!;
+      if (!inner || seen.has(url)) continue;
+      seen.add(url);
+      out.push({ section: "", inner, url });
+    } else {
+      // Inner pack zips, one level deep.
+      if (!/\.zip$/i.test(rel) || rel.includes("/")) continue;
+      const inner = rel.replace(/\.zip$/i, "");
+      if (!inner || rel === outer || seen.has(url)) continue;
+      seen.add(url);
+      out.push({ section: "", inner, url });
+    }
   }
   return out;
 }
@@ -89,6 +168,13 @@ async function fetchInnerPacks(url: string): Promise<Uint8Array[]> {
   const i = url.indexOf("#");
   const zipUrl = i === -1 ? url : url.slice(0, i);
   const entry = i === -1 ? undefined : url.slice(i + 1);
+  if (entry === undefined && !/\.zip$/i.test(zipUrl)) {
+    // Loose file inside a collection zip — the URL serves the pack or
+    // image itself; no container to open.
+    const r = await fetch(zipUrl);
+    if (!r.ok) throw new Error(`${zipUrl}: ${r.status}`);
+    return [new Uint8Array(await r.arrayBuffer())];
+  }
   const z = await fetchZip(zipUrl);
   const packs: Uint8Array[] = [];
   for (const e of zipEntries(z)) {
@@ -111,28 +197,40 @@ export interface PackResult {
  * one result per pack entry — multi-fish zips keep species separate so
  * the caller can pick each one's best sheet. */
 export async function importAddon(url: string): Promise<PackResult[]> {
-  const packs = await fetchInnerPacks(url);
-  return packs.map((p) => ({
-    sheets: fshToSheets(p),
-    images: packImages(p),
-  }));
+  const blobs = await fetchInnerPacks(url);
+  const out: PackResult[] = [];
+  for (const p of blobs) {
+    if (isPack(p)) {
+      out.push({ sheets: fshToSheets(p), images: packImages(p) });
+    } else if (isBmp(p)) {
+      const img = decodeBmp(p);
+      if (img) out.push({ sheets: new Map(), images: new Map([[url, img]]) });
+    }
+  }
+  return out;
 }
 
-/** Fetch the listing pages of all collections. Never rejects: a failed
- * section just comes back empty. */
-export async function listAddons(item = DEFAULT_ITEM):
-    Promise<{ section: string; inner: string; url: string }[]> {
-  const lists = await Promise.all(COLLECTIONS.map(async ([section, outer]) => {
+/** Fetch the listing pages of all collections, grouped by section in
+ * COLLECTIONS order. Never rejects: a failed section just comes back
+ * empty. */
+export async function listAddons(): Promise<Importable[]> {
+  // First collection index per section — items group under it.
+  const rank = new Map<string, number>();
+  COLLECTIONS.forEach((c, i) => {
+    if (!rank.has(c.section)) rank.set(c.section, i);
+  });
+  const lists = await Promise.all(COLLECTIONS.map(async (col) => {
     try {
-      const items = await listCollection(item, outer);
-      for (const it of items) it.section = section;
+      const items = await listCollection(col);
+      for (const it of items) it.section = col.section;
       return items;
     } catch (e) {
-      console.warn(`archive.org listing failed for ${outer}:`, e);
+      console.warn(`archive.org listing failed for ${col.outer}:`, e);
       return [];
     }
   }));
-  return lists.flat();
+  return lists.flat().sort((a, b) =>
+    (rank.get(a.section) ?? 0) - (rank.get(b.section) ?? 0));
 }
 
 // ---- import panel --------------------------------------------------------
@@ -189,11 +287,11 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       restore(list: Importable[]): Promise<void>;
       notify(m: BusMsg): void } {
   const remote = opts?.remote;
-  const installed = new Set<string>();
+  const installed = new Set<string>(); // add-on urls, not display names
   const thumbs = new Map<string, HTMLCanvasElement>();
   const fetchPack = fetchAddon;
   // Open detail view — remote install acks update its status line.
-  let detailRef: { inner: string; act: HTMLButtonElement;
+  let detailRef: { url: string; act: HTMLButtonElement;
                    status: HTMLElement } | null = null;
 
   const ov = opts?.host ? null : el("div", "ov");
@@ -241,22 +339,21 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     tile.insertBefore(copy, tile.firstChild);
   }
 
-  // Tile thumbs fetch lazily: when a tile scrolls into view its inner zip is
+  // Tile thumbs fetch lazily: when a tile scrolls into view its pack is
   // downloaded through the same memoized path as the detail view, decoded
   // via h.preview, and painted back. Bounded concurrency keeps the fetch
   // trickle polite to archive.org; failures leave a name-only tile.
-  const byInner = new Map<string, Importable>();
+  const byUrl = new Map<string, Importable>();
   const thumbQueued = new Set<string>();
   const thumbQueue: Importable[] = [];
   let thumbRunning = 0;
   const THUMB_PAR = 3;
 
   // Thumbnails persist across launches in localStorage so the browse grid
-  // doesn't re-download every inner zip each run. Best-effort: storage
+  // doesn't re-download every pack each run. Best-effort: storage
   // failures (private mode, quota) fall back to the fetch path.
   const THUMB_PREFIX = "finsical:thumb:";
-  const thumbKey = (it: Importable): string =>
-    THUMB_PREFIX + it.section + ":" + it.inner;
+  const thumbKey = (it: Importable): string => THUMB_PREFIX + it.url;
   function storeThumb(it: Importable, cv: HTMLCanvasElement): void {
     const data = cv.toDataURL("image/png");
     try {
@@ -275,22 +372,22 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     try { url = localStorage.getItem(thumbKey(it)); }
     catch { /* storage unavailable */ }
     if (!url) return false;
-    thumbQueued.add(it.inner);
+    thumbQueued.add(it.url);
     const img = new Image();
     img.onload = () => {
       const cv = document.createElement("canvas");
       cv.width = img.naturalWidth; cv.height = img.naturalHeight;
       cv.getContext("2d")!.drawImage(img, 0, 0);
-      thumbs.set(it.inner, cv);
-      thumbQueued.delete(it.inner);
+      thumbs.set(it.url, cv);
+      thumbQueued.delete(it.url);
       const t =
-        browse.querySelector(`[data-inner="${CSS.escape(it.inner)}"]`);
+        browse.querySelector(`[data-url="${CSS.escape(it.url)}"]`);
       if (t) paintThumb(t, cv);
     };
     img.onerror = () => {
       try { localStorage.removeItem(thumbKey(it)); } catch { /* ignore */ }
-      thumbQueued.delete(it.inner);
-      if (!thumbQueue.some((q) => q.inner === it.inner))
+      thumbQueued.delete(it.url);
+      if (!thumbQueue.some((q) => q.url === it.url))
         thumbQueue.push(it); // corrupt entry — fall through to a real fetch
       pumpThumbs();
     };
@@ -306,10 +403,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         const usable = rs.filter((r) => r.sheets.size || r.images.size);
         const pv = usable.length ? h.preview(usable) : null;
         if (!pv) return;
-        thumbs.set(it.inner, pv);
+        thumbs.set(it.url, pv);
         storeThumb(it, pv);
         const t =
-          browse.querySelector(`[data-inner="${CSS.escape(it.inner)}"]`);
+          browse.querySelector(`[data-url="${CSS.escape(it.url)}"]`);
         if (t) paintThumb(t, pv);
       }).catch((e) => {
         console.warn(`add-on thumb failed for ${it.inner}:`, e);
@@ -319,9 +416,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   }
 
   function wantThumb(it: Importable): void {
-    if (thumbs.has(it.inner) || thumbQueued.has(it.inner)) return;
+    if (thumbs.has(it.url) || thumbQueued.has(it.url)) return;
     if (loadStoredThumb(it)) return;
-    thumbQueued.add(it.inner);
+    thumbQueued.add(it.url);
     thumbQueue.push(it);
     pumpThumbs();
   }
@@ -333,7 +430,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
           if (!en.isIntersecting) continue;
           obs.unobserve(en.target);
           const it =
-            byInner.get((en.target as HTMLElement).dataset.inner ?? "");
+            byUrl.get((en.target as HTMLElement).dataset.url ?? "");
           if (it) wantThumb(it);
         }
       })
@@ -344,8 +441,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     detailRef = null;
     browse.style.display = "";
     // Detail fetches populate thumbs lazily — back-fill tiles on return.
-    for (const [inner, th] of thumbs) {
-      const t = browse.querySelector(`[data-inner="${CSS.escape(inner)}"]`);
+    for (const [url, th] of thumbs) {
+      const t = browse.querySelector(`[data-url="${CSS.escape(url)}"]`);
       if (t) paintThumb(t, th);
     }
   }
@@ -358,13 +455,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     if (!usable.length) throw new Error("no pack inside");
     for (const r of usable) {
       if (r.sheets.size) h.onSheets(r.sheets, it.inner, it.section, live);
-      if (r.images.size) h.onImages(r.images.values(), it.inner, it.section);
+      if (r.images.size) h.onImages(r.images.values(), it.url, it.section);
     }
-    installed.add(it.inner);
-    browse.querySelector(`[data-inner="${CSS.escape(it.inner)}"]`)
+    installed.add(it.url);
+    browse.querySelector(`[data-url="${CSS.escape(it.url)}"]`)
       ?.classList.add("done");
     const pv = h.preview(usable);
-    if (pv) { thumbs.set(it.inner, pv); storeThumb(it, pv); }
+    if (pv) { thumbs.set(it.url, pv); storeThumb(it, pv); }
   }
 
   function applyAddon(it: Importable, rs: PackResult[],
@@ -380,7 +477,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     }
     // A launch-time restore may have installed it while the detail fetch
     // was in flight — honor the label the user actually clicked.
-    if (!again && installed.has(it.inner)) return;
+    if (!again && installed.has(it.url)) return;
     applyPack(it, rs, true);
     h.onInstall?.(it);
   }
@@ -401,19 +498,19 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     const act = el("button", "dact");
     act.style.display = "none";
     detail.appendChild(act);
-    detailRef = { inner: it.inner, act, status };
+    detailRef = { url: it.url, act, status };
 
     void fetchPack(it.url).then((rs) => {
       const usable = rs.filter((r) => r.sheets.size || r.images.size);
       if (!usable.length) throw new Error("no pack inside");
       const pv = h.preview(usable);
-      if (pv) { pvBox.appendChild(pv); thumbs.set(it.inner, pv); }
+      if (pv) { pvBox.appendChild(pv); thumbs.set(it.url, pv); }
       const kinds = [...new Set(usable.map((r) =>
         r.sheets.size ? "fish" : "scenery"))].join(" + ");
       status.textContent =
         `${usable.length} pack${usable.length > 1 ? "s" : ""} · ${kinds}`;
       act.style.display = "";
-      let again = installed.has(it.inner);
+      let again = installed.has(it.url);
       act.textContent = again ? "Add again" : "Add to tank";
       act.addEventListener("click", () => {
         try {
@@ -448,7 +545,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
 
   function buildBrowse(items: Importable[]): void {
     browse.textContent = "";
-    byInner.clear();
+    byUrl.clear();
     // Drop still-pending items from the previous view; in-flight fetches
     // complete anyway and their results stay memoized in packCache.
     thumbQueue.length = 0;
@@ -457,7 +554,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     let section = "";
     let grid: HTMLElement | null = null;
     for (const it of items) {
-      byInner.set(it.inner, it);
+      byUrl.set(it.url, it);
       if (it.section !== section) {
         section = it.section;
         browse.appendChild(el("div", "sec",
@@ -466,9 +563,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         browse.appendChild(grid);
       }
       const t = el("button", "tile");
-      t.dataset.inner = it.inner;
-      if (installed.has(it.inner)) t.classList.add("done");
-      const th = thumbs.get(it.inner);
+      t.dataset.url = it.url;
+      if (installed.has(it.url)) t.classList.add("done");
+      const th = thumbs.get(it.url);
       if (th) paintThumb(t, th);
       t.appendChild(el("span", "tname", it.inner));
       t.appendChild(el("span", "tick", "✓"));
@@ -520,19 +617,19 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     get isOpen() { return ov ? ov.style.display !== "none" : true; },
     // Remote-mode replies from the tank page and state pushes land here.
     notify(m: BusMsg): void {
-      const inner = m.inner;
-      if (m.op === "installed" && typeof inner === "string") {
-        installed.add(inner);
-        browse.querySelector(`[data-inner="${CSS.escape(inner)}"]`)
+      const ackUrl = m.url;
+      if (m.op === "installed" && typeof ackUrl === "string") {
+        installed.add(ackUrl);
+        browse.querySelector(`[data-url="${CSS.escape(ackUrl)}"]`)
           ?.classList.add("done");
-        if (detailRef?.inner === inner) {
+        if (detailRef?.url === ackUrl) {
           delete detailRef.act.dataset.pending;
           detailRef.act.disabled = false;
           detailRef.act.textContent = "In tank ✓ — add again?";
           detailRef.status.textContent = "";
         }
-      } else if (m.op === "installFailed" && typeof inner === "string") {
-        if (detailRef?.inner === inner) {
+      } else if (m.op === "installFailed" && typeof ackUrl === "string") {
+        if (detailRef?.url === ackUrl) {
           delete detailRef.act.dataset.pending;
           detailRef.act.disabled = false;
           detailRef.act.textContent = "Retry";
@@ -542,19 +639,19 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         // Tank's add-on list — sync install badges (covers restores that
         // finished before this panel opened, and removals).
         const live = new Set(
-          (m.addons as { inner?: unknown }[])
-            .map((a) => a.inner)
+          (m.addons as { url?: unknown }[])
+            .map((a) => a.url)
             .filter((x): x is string => typeof x === "string"));
-        for (const inner of installed) {
-          if (live.has(inner)) continue;
-          installed.delete(inner);
-          browse.querySelector(`[data-inner="${CSS.escape(inner)}"]`)
+        for (const url of installed) {
+          if (live.has(url)) continue;
+          installed.delete(url);
+          browse.querySelector(`[data-url="${CSS.escape(url)}"]`)
             ?.classList.remove("done");
         }
-        for (const inner of live) {
-          if (installed.has(inner)) continue;
-          installed.add(inner);
-          browse.querySelector(`[data-inner="${CSS.escape(inner)}"]`)
+        for (const url of live) {
+          if (installed.has(url)) continue;
+          installed.add(url);
+          browse.querySelector(`[data-url="${CSS.escape(url)}"]`)
             ?.classList.add("done");
         }
       }
@@ -570,10 +667,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       let p: Promise<void> = Promise.resolve();
       for (const it of list) {
         p = p.then(() => {
-          if (installed.has(it.inner)) return;
+          if (installed.has(it.url)) return;
           return fetchPack(it.url)
             .then((rs) => {
-              if (!installed.has(it.inner)) applyPack(it, rs, false);
+              if (!installed.has(it.url)) applyPack(it, rs, false);
             })
             .catch((e) =>
               console.warn(`add-on restore failed for ${it.inner}:`, e));

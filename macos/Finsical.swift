@@ -47,6 +47,9 @@ final class WebHandler: NSObject, WKURLSchemeHandler {
 final class DragStrip: NSView {
     override func mouseDown(with event: NSEvent) {
         window?.performDrag(with: event)
+        // Dragging leaves first responder off the webview (bare keys
+        // like F/C would go dead) — hand it back to the page.
+        window?.makeFirstResponder(superview)
     }
 }
 
@@ -89,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             w.minSize = NSSize(width: 420, height: 360)
             w.contentView = pv
             w.isReleasedWhenClosed = false // reopen reuses the window
+            w.initialFirstResponder = pv
             w.center()
             panelWindow = w
             panelView = pv
@@ -119,6 +123,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     /// window.__bus (web/bus.ts registers it).
     func userContentController(_ ucc: WKUserContentController,
                                didReceive message: WKScriptMessage) {
+        // Panel-only intent handled natively — Escape in the panel asks
+        // to close it (JS can't close a window it didn't open).
+        if let body = message.body as? [String: Any],
+           body["op"] as? String == "closePanel",
+           message.webView === panelView {
+            panelWindow?.close()
+            return
+        }
         guard let data = try? JSONSerialization.data(
                   withJSONObject: message.body),
               let text = String(data: data, encoding: .utf8) else { return }
@@ -154,6 +166,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                  " : (() => { throw new Error('window.finsical.feedFish missing') })()"
         webView?.evaluateJavaScript(js) { _, error in
             if let error { NSLog("Finsical: feedFish JS failed: \(error.localizedDescription)") }
+        }
+    }
+
+    @objc func toggleCrt() {
+        let js = "window.finsical?.toggleCrt ? window.finsical.toggleCrt()" +
+                 " : (() => { throw new Error('window.finsical.toggleCrt missing') })()"
+        webView?.evaluateJavaScript(js) { _, error in
+            if let error { NSLog("Finsical: toggleCrt JS failed: \(error.localizedDescription)") }
         }
     }
 
@@ -211,6 +231,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         window.contentAspectRatio = NSSize(width: 320, height: 200)
         window.contentView = webView
         window.delegate = self
+        window.initialFirstResponder = webView // bare keys (F/C) hit the page
         // No traffic lights on the tank — the buttons are pointless for a
         // floating window, and everything lives in the menu. The behaviors
         // stay: ⌘M still minimizes, edges still resize, menu zoom works.
@@ -261,6 +282,9 @@ tankMenu.addItem(withTitle: "Import Add-ons…",
 tankMenu.addItem(withTitle: "Feed Fish",
                  action: #selector(AppDelegate.feedFish),
                  keyEquivalent: "f")
+tankMenu.addItem(withTitle: "Toggle CRT Effect",
+                 action: #selector(AppDelegate.toggleCrt),
+                 keyEquivalent: "r")
 tankMenu.addItem(.separator())
 tankMenu.addItem(withTitle: "Support the Internet Archive",
                  action: #selector(AppDelegate.supportArchive),
@@ -278,6 +302,11 @@ let windowItem = NSMenuItem()
 mainMenu.addItem(windowItem)
 let windowMenu = NSMenu(title: "Window")
 // nil target → responder chain → key window; covers tank and panel.
+// Closing the tank window quits the app (windowWillClose), so ⌘W there
+// is just the standard "close window" semantic.
+windowMenu.addItem(withTitle: "Close",
+                   action: #selector(NSWindow.performClose(_:)),
+                   keyEquivalent: "w")
 windowMenu.addItem(withTitle: "Minimize",
                    action: #selector(NSWindow.performMiniaturize(_:)),
                    keyEquivalent: "m")
