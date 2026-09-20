@@ -118,7 +118,10 @@ for (const spec of SPECS) {
   // Only value-changing keys latch — a stray keypress mustn't block
   // echo sync until blur.
   input.addEventListener("keydown", (e) => {
-    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
+    // Modifier-held arrows (⌘← line-nav muscle memory) don't step the
+    // value — don't let them latch the guard either.
+    if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey &&
+        ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
          "Home", "End", "PageUp", "PageDown"].includes(e.key))
       dragging.add(spec.key);
   });
