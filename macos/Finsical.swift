@@ -171,14 +171,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             return
         }
         // Keep the screen the same size across a case swap — scale the
-        // window by the viewBox ratio, pinned to the top edge.
-        let cw = window.contentLayoutRect.width
-        let nw = cw * (w / old)
-        let nh = nw * h / w
+        // window by the viewBox ratio, pinned to the top edge. The page
+        // is full-bleed (fullSizeContentView), so frame == content.
         let f = window.frame
-        let chrome = f.height - window.contentLayoutRect.height
-        window.setFrame(NSRect(x: f.minX, y: f.maxY - nh - chrome,
-                               width: nw, height: nh + chrome),
+        let nw = f.width * (w / old)
+        let nh = nw * h / w
+        window.setFrame(NSRect(x: f.minX, y: f.maxY - nh,
+                               width: nw, height: nh),
                         display: true, animate: true)
     }
 
