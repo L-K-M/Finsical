@@ -43,8 +43,10 @@ let greeted = false;
 const dragging = new Set<keyof CrtConfig>();
 // After a manual toggle, stale in-flight echoes of the master switch
 // are skipped until the echo reflecting it lands — but a rejection
-// (tank reports the effect can't run) must still apply.
+// (tank reports the effect can't run) must still apply, and the latch
+// times out so a dropped post can't wedge the checkbox.
 let onTouched = false;
+let onTouchTimer: ReturnType<typeof setTimeout> | undefined;
 // Slider drags fire input per step — coalesce to one bus post per
 // frame, carrying every trait touched since the last one.
 let pendingCfg: Partial<CrtConfig> | null = null;
@@ -66,9 +68,10 @@ const values = new Map<keyof CrtConfig, HTMLElement>();
 
 const bus = openBus((m) => {
   if (m.op !== "state") return;
+  const firstState = !greeted;
   greeted = true;
   const crt = (m.crt ?? {}) as CrtSnap;
-  if (!onTouched || crt.available === false ||
+  if (firstState || !onTouched || crt.available === false ||
       (crt.on === true) === onBox.checked) {
     onTouched = false;
     onBox.checked = crt.on === true;
@@ -134,6 +137,10 @@ syncControls();
 
 onBox.addEventListener("change", () => {
   onTouched = true;
+  clearTimeout(onTouchTimer);
+  // One round-trip is plenty — if no matching echo lands, let the next
+  // state push resync rather than staying optimistic forever.
+  onTouchTimer = setTimeout(() => { onTouched = false; }, 1500);
   bus.post({ op: "crtEnabled", on: onBox.checked });
 });
 
