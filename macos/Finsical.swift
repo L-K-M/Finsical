@@ -169,8 +169,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         guard let data = try? JSONSerialization.data(
                   withJSONObject: message.body),
               let text = String(data: data, encoding: .utf8) else { return }
+        // Closed windows keep their webview alive (reopen reuses it)
+        // but have no need for pushes — skip them until they're shown.
+        let clients = [panelView, prefsView].compactMap { $0 }
+            .filter { $0.window?.isVisible == true }
         let dests: [WKWebView] = message.webView === webView
-            ? [panelView, prefsView].compactMap { $0 }
+            ? clients
             : [webView]
         if dests.isEmpty { return } // no client windows open
         // __bus is only registered once the page's script ran — surface

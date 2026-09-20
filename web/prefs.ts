@@ -164,3 +164,14 @@ const greet = setInterval(() => {
   else bus.post({ op: "hello" });
 }, 500);
 bus.post({ op: "hello" });
+// Slow heartbeat after first contact: re-syncs if the tank page
+// reloads mid-session. Skipped while hidden — a closed window's
+// hellos would just be relayed and filtered anyway.
+setInterval(() => {
+  if (greeted && !document.hidden) bus.post({ op: "hello" });
+}, 10_000);
+// Snap to fresh state the moment the window is shown again — the
+// relay skips pushes to hidden windows, so a reopened one is stale.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && greeted) bus.post({ op: "hello" });
+});
