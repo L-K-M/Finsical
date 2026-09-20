@@ -231,6 +231,12 @@ function renderOverview(): void {
     overviewEl.appendChild(row);
   }
   paintThumbs();
+  // Rows were just rebuilt — drop thumb state for keys that died with
+  // them (removed fish, uninstalled add-ons) so the maps stay bounded.
+  const live = new Set(fish.map((f) => `f:${f.id}:${f.species}`));
+  for (const a of addons) live.add(`a:${a.url}`);
+  for (const k of thumbStore.keys()) if (!live.has(k)) thumbStore.delete(k);
+  for (const k of thumbRequested) if (!live.has(k)) thumbRequested.delete(k);
   if (need.size) bus.post({ op: "wantThumbs", keys: [...need] });
 }
 
