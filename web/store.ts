@@ -133,16 +133,26 @@ async function trimPacks(): Promise<void> {
 }
 
 export function packPut(url: string, data: Uint8Array): Promise<unknown> {
-  const put = rw("packs", "readwrite", (s) => s.put(data, url));
-  // Record size/age then enforce the budget — all fire-and-forget;
+  // Pack bytes and their trim stat commit in one transaction — a stat
+  // orphaned by mid-write teardown would leave the pack invisible to
+  // the budget and unevictable. Still fire-and-forget for callers:
   // caching must never block or fail a fetch path.
+  const put = openDb().then((d) => {
+    if (!d) return null;
+    return new Promise<unknown>((res) => {
+      try {
+        const tx = d.transaction(["packs", "meta"], "readwrite");
+        tx.objectStore("packs").put(data, url);
+        tx.objectStore("meta").put(
+          { bytes: data.byteLength, at: Date.now() }, STAT_PREFIX + url);
+        tx.oncomplete = () => res(true);
+        tx.onerror = tx.onabort = () => res(null);
+      } catch { res(null); }
+    });
+  });
   void put.then((ok) => {
-    if (ok == null) return; // put failed — don't log phantom bytes
-    void rw("meta", "readwrite", (s) =>
-      s.put({ bytes: data.byteLength, at: Date.now() },
-            STAT_PREFIX + url))
-      .then(() => trimPacks())
-      .catch(() => {});
+    if (ok == null) return; // put failed — nothing to trim
+    void trimPacks().catch(() => {});
   });
   return put;
 }

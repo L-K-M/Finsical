@@ -9,6 +9,15 @@ declare global {
   interface Window { __bus?: (m: BusMsg) => void }
 }
 
+/** Fish-thumbnail key shared by the tank (serveThumbs) and the panel
+ * (renderOverview) — single definition so producers and consumers
+ * can't drift. Pack-scoped: a mid-session rebind changes the key, so
+ * stale art is evicted and re-requested instead of lingering. */
+export function fishThumbKey(f: { id: number; species: string;
+                                  pack?: string }): string {
+  return `f:${f.id}:${f.pack ?? f.species}`;
+}
+
 /// True when the page runs inside the native WKWebView shell.
 export function inNativeShell(): boolean {
   return !!(window as { webkit?: { messageHandlers?: WkHandlers } })

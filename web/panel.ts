@@ -1,6 +1,6 @@
 import { mountImportPanel } from "./import.js";
 import { previewOf } from "./render.js";
-import { openBus } from "./bus.js";
+import { fishThumbKey, openBus } from "./bus.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
 
@@ -203,7 +203,7 @@ function renderOverview(): void {
       "No fish — add one from the Add-ons tab."));
   for (const f of fish) {
     const row = el("div", "orow");
-    row.appendChild(thumbBox(`f:${f.id}:${f.pack ?? f.species}`, need));
+    row.appendChild(thumbBox(fishThumbKey(f), need));
     row.appendChild(el("span", "oname", f.species || "Fish"));
     const meta = el("span", "ometa",
       `${f.state} · ${hungerLabel(f.hunger)}`);
@@ -233,7 +233,7 @@ function renderOverview(): void {
   paintThumbs();
   // Rows were just rebuilt — drop thumb state for keys that died with
   // them (removed fish, uninstalled add-ons) so the maps stay bounded.
-  const live = new Set(fish.map((f) => `f:${f.id}:${f.pack ?? f.species}`));
+  const live = new Set(fish.map(fishThumbKey));
   for (const a of addons) live.add(`a:${a.url}`);
   for (const k of thumbStore.keys()) if (!live.has(k)) thumbStore.delete(k);
   for (const k of thumbRequested) if (!live.has(k)) thumbRequested.delete(k);
