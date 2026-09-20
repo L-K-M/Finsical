@@ -137,7 +137,9 @@ export function packPut(url: string, data: Uint8Array): Promise<unknown> {
   // orphaned by mid-write teardown would leave the pack invisible to
   // the budget and unevictable. Still fire-and-forget for callers:
   // caching must never block or fail a fetch path.
-  const put = openDb().then((d) => {
+  // openDb resolves null on every failure path today — catch anyway so
+  // a future rejection can't break the never-fail contract.
+  const put = openDb().catch(() => null).then((d) => {
     if (!d) return null;
     return new Promise<unknown>((res) => {
       try {
