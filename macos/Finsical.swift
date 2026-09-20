@@ -274,6 +274,17 @@ editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquiv
 editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
 editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
 editItem.submenu = editMenu
+let windowItem = NSMenuItem()
+mainMenu.addItem(windowItem)
+let windowMenu = NSMenu(title: "Window")
+// nil target → responder chain → key window; covers tank and panel.
+windowMenu.addItem(withTitle: "Minimize",
+                   action: #selector(NSWindow.performMiniaturize(_:)),
+                   keyEquivalent: "m")
+windowMenu.addItem(withTitle: "Zoom",
+                   action: #selector(NSWindow.performZoom(_:)),
+                   keyEquivalent: "")
+windowItem.submenu = windowMenu
 app.mainMenu = mainMenu
 app.activate(ignoringOtherApps: true)
 app.run()
