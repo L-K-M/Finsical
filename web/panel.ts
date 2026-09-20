@@ -185,17 +185,17 @@ const greet = setInterval(() => {
   else bus.post({ op: "hello" });
 }, 500);
 bus.post({ op: "hello" });
-// Slow heartbeat after first contact: re-syncs the panel if the tank
-// page reloads mid-session (state replies only touch install badges).
-setInterval(() => { if (greeted) bus.post({ op: "hello" }); }, 10_000);
-// Hunger/state/water drift continuously — poll faster while the Tank
-// tab is visible so the overview reads live.
+// Poll while the window is visible — the overview reads live, Add-ons
+// install badges stay synced, and this is also the recovery path if
+// the tank page reloaded mid-session. (State replies only toggle
+// badges in place — cheap on any tab.) Skipped while hidden: the
+// relay filters pushes to closed windows anyway.
 setInterval(() => {
-  if (greeted && overviewEl.style.display !== "none" && !document.hidden)
-    bus.post({ op: "hello" });
+  if (greeted && !document.hidden) bus.post({ op: "hello" });
 }, 2000);
-// Snap to fresh state the moment the panel is shown again.
+// Snap to fresh state the moment the panel is shown again — covers
+// both the overview data and install badges on the Add-ons tab, and
+// resyncs after the relay's hidden-window filter skipped pushes.
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && greeted && overviewEl.style.display !== "none")
-    bus.post({ op: "hello" });
+  if (!document.hidden && greeted) bus.post({ op: "hello" });
 });

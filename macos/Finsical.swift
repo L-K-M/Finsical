@@ -60,6 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     private var webView: WKWebView!
     private var panelWindow: NSWindow?
     private var panelView: WKWebView?
+    private var prefsWindow: NSWindow?
+    private var prefsView: WKWebView?
 
     private func makeWebConfig() -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
@@ -119,39 +121,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         panelWindow?.makeKeyAndOrderFront(nil)
     }
 
-    /// Bus relay: a post from one page is delivered to the other page's
-    /// window.__bus (web/bus.ts registers it).
+    /// Preferences window — CRT effect controls (web/prefs.ts). Like
+    /// the panel it only ever talks to the tank page over the bus.
+    @objc func openPrefs() {
+        if prefsWindow == nil {
+            let pv = WKWebView(frame: .init(x: 0, y: 0, width: 440, height: 560),
+                               configuration: makeWebConfig())
+            pv.uiDelegate = self
+            pv.navigationDelegate = self
+            let w = NSWindow(
+                contentRect: pv.frame,
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered, defer: false)
+            w.title = "Finsical Preferences"
+            w.minSize = NSSize(width: 380, height: 420)
+            w.contentView = pv
+            w.isReleasedWhenClosed = false // reopen reuses the window
+            w.initialFirstResponder = pv
+            w.center()
+            prefsWindow = w
+            prefsView = pv
+            pv.load(URLRequest(
+                url: URL(string: "finsical://app/prefs.html")!))
+        }
+        prefsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Bus relay: posts from a client window (panel, prefs) go to the
+    /// tank page, which owns all state; the tank's posts fan out to
+    /// every open client window (web/bus.ts registers window.__bus).
     func userContentController(_ ucc: WKUserContentController,
                                didReceive message: WKScriptMessage) {
-        // Panel-only intent handled natively — Escape in the panel asks
-        // to close it (JS can't close a window it didn't open).
-        if let body = message.body as? [String: Any],
-           body["op"] as? String == "closePanel",
-           message.webView === panelView {
-            panelWindow?.close()
-            return
+        // Window-close intents are handled natively — JS can't close a
+        // window it didn't open. Each is honored only from its own view.
+        if let body = message.body as? [String: Any] {
+            if body["op"] as? String == "closePanel",
+               message.webView === panelView {
+                panelWindow?.close()
+                return
+            }
+            if body["op"] as? String == "closePrefs",
+               message.webView === prefsView {
+                prefsWindow?.close()
+                return
+            }
         }
         guard let data = try? JSONSerialization.data(
                   withJSONObject: message.body),
               let text = String(data: data, encoding: .utf8) else { return }
-        let dest = message.webView === panelView ? webView : panelView
-        if dest == nil {
-            NSLog("Finsical: bus relay dropped — destination webview missing: %@",
-                  String(text.prefix(160)))
-        }
+        // Closed windows keep their webview alive (reopen reuses it)
+        // but have no need for pushes — skip them until they're shown.
+        let clients = [panelView, prefsView].compactMap { $0 }
+            .filter { $0.window?.isVisible == true }
+        let dests: [WKWebView] = message.webView === webView
+            ? clients
+            : [webView]
+        if dests.isEmpty { return } // no client windows open
         // __bus is only registered once the page's script ran — surface
         // drops instead of silently losing the message.
         // U+2028/29 are legal raw inside JSON strings but terminate JS
         // source lines — escape them so the splice stays parseable.
         let js = text.replacingOccurrences(of: "\u{2028}", with: "\\u2028")
                      .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
-        dest?.evaluateJavaScript(
-            "window.__bus ? (window.__bus(\(js)), undefined) : 'dropped'") {
-            result, error in
-            if let error {
-                NSLog("Finsical: bus relay failed: \(error.localizedDescription)")
-            } else if result as? String == "dropped" {
-                NSLog("Finsical: bus relay dropped — destination page not ready")
+        for dest in dests {
+            let name = dest === webView ? "tank"
+                     : dest === panelView ? "panel" : "prefs"
+            dest.evaluateJavaScript(
+                "window.__bus ? (window.__bus(\(js)), undefined) : 'dropped'") {
+                result, error in
+                if let error {
+                    NSLog("Finsical: bus relay to \(name) failed: \(error.localizedDescription)")
+                } else if result as? String == "dropped" {
+                    NSLog("Finsical: bus relay to \(name) dropped — destination page not ready")
+                }
             }
         }
     }
@@ -266,6 +308,10 @@ let mainMenu = NSMenu()
 let appItem = NSMenuItem()
 mainMenu.addItem(appItem)
 let appMenu = NSMenu()
+appMenu.addItem(withTitle: "Preferences…",
+                action: #selector(AppDelegate.openPrefs),
+                keyEquivalent: ",")
+appMenu.addItem(.separator())
 appMenu.addItem(withTitle: "Quit Finsical",
                 action: #selector(NSApplication.terminate(_:)),
                 keyEquivalent: "q")

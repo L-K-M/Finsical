@@ -7,7 +7,8 @@ import { TankAudio } from "./audio.js";
 import { fetchAddon, mountImportPanel, COLLECTIONS } from "./import.js";
 import { imageCanvas, previewOf, swimCanvas } from "./render.js";
 import { openBus } from "./bus.js";
-import { initCrt } from "./crt.js";
+import { initCrt, sanitizeCrtConfig } from "./crt.js";
+import type { CrtConfig } from "./crt.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
 import type { Fish } from "../core/sim.js";
@@ -331,6 +332,14 @@ function postState(): void {
       ({ id, species, hunger, state })),
     waterQuality: sim.waterQuality,
     tickCount: sim.tickCount,
+    // Preferences window reads this — `on`/`available` reflect the
+    // live GL state (a lost context reports off/unavailable even if
+    // the stored preference says on).
+    crt: {
+      available: crt?.usable ?? false,
+      on: crt?.enabled ?? false,
+      cfg: crtCfg,
+    },
   });
 }
 
@@ -343,6 +352,10 @@ function onBusMessage(m: BusMsg): void {
   } else if (m.op === "removeAddon" &&
              typeof m.url === "string" && m.url !== "") {
     removeAddon(m.url);
+  } else if (m.op === "crtEnabled") {
+    setCrt(m.on === true);
+  } else if (m.op === "crtConfig") {
+    applyCrtConfig(m.cfg);
   }
 }
 
@@ -433,14 +446,39 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
 // Optional tube emulation (web/crt.ts): the 320×200 canvas becomes a
 // texture for a device-resolution shader. Off = untouched 2D path.
 const CRT_KEY = "finsical:crt";
+const CRT_CFG_KEY = "finsical:crt-cfg";
 const crt = initCrt(canvas);
 let crtOn = false;
+let crtCfg: CrtConfig;
+try {
+  crtCfg = sanitizeCrtConfig(
+    JSON.parse(localStorage.getItem(CRT_CFG_KEY) ?? "null"));
+} catch { crtCfg = sanitizeCrtConfig(null); /* storage — defaults */ }
+crt?.configure(crtCfg);
 function setCrt(on: boolean): void {
   crtOn = crt !== null && on;
   crt?.setEnabled(crtOn);
-  if (crt === null) return; // init failed — keep the stored preference
-  try { localStorage.setItem(CRT_KEY, crtOn ? "1" : "0"); }
+  if (crt !== null) {
+    try { localStorage.setItem(CRT_KEY, crtOn ? "1" : "0"); }
+    catch { /* storage unavailable */ }
+  }
+  // Report even when GL is missing — the prefs checkbox needs the
+  // "can't enable" answer either way.
+  postState();
+}
+/** Merge a partial config (prefs slider) onto the current one, clamp,
+ * persist — and apply to the shader when it exists. Works with GL
+ * unavailable so the settings still save for next launch. */
+function applyCrtConfig(raw: unknown): void {
+  const merged: Record<string, unknown> = { ...crtCfg };
+  if (raw && typeof raw === "object")
+    for (const [k, v] of Object.entries(raw))
+      if (v !== undefined) merged[k] = v;
+  crtCfg = sanitizeCrtConfig(merged);
+  crt?.configure(crtCfg);
+  try { localStorage.setItem(CRT_CFG_KEY, JSON.stringify(crtCfg)); }
   catch { /* storage unavailable */ }
+  postState();
 }
 try { setCrt(localStorage.getItem(CRT_KEY) === "1"); }
 catch { /* storage unavailable — default off */ }

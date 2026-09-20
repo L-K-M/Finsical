@@ -146,3 +146,46 @@ body.crt canvas#tank { opacity: 0; }
   padding: 4px 10px;
 }
 .orow .orm:hover { background: #2b1a1a; border-color: #6b3b3b; }
+
+/* Preferences window (prefs.html): header + footer stay put, the
+   control list scrolls between them. */
+.prefpage { color: #b8c7d8; }
+.pfhead { padding: 14px 16px 12px; border-bottom: 1px solid #1c2938; }
+.pfmaster {
+  display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
+}
+.pfmaster input { margin-top: 2px; accent-color: #2b6cb8; }
+.pftitle { display: block; color: #e8eef6; font-weight: 600; }
+.pfsub {
+  display: block; color: #6b7f96; font-size: 11px; margin-top: 2px;
+}
+.pfwarn {
+  margin-top: 10px; padding: 8px 10px; border-radius: 6px;
+  background: #241d10; border: 1px solid #4a3a1c;
+  color: #d8b56b; font-size: 11px;
+}
+#pfcontrols { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px; }
+.pfrow { padding: 10px 0; border-bottom: 1px solid #16202e; }
+.pfrow:last-child { border-bottom: 0; }
+.pfrowtop {
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.pfname { color: #e8eef6; font-weight: 600; font-size: 12px; }
+.pfval {
+  color: #6b7f96; font-size: 11px; font-variant-numeric: tabular-nums;
+}
+.pfrow input[type="range"] {
+  width: 100%; margin: 6px 0 4px; accent-color: #2b6cb8;
+}
+.pfblurb { color: #6b7f96; font-size: 11px; }
+.pffoot {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; border-top: 1px solid #1c2938;
+}
+#pfreset {
+  background: none; border: 1px solid #24344a; border-radius: 6px;
+  color: #b8c7d8; font: inherit; font-size: 12px; cursor: pointer;
+  padding: 5px 12px;
+}
+#pfreset:hover { border-color: #3b567a; color: #fff; }
+.pfhint { color: #54687e; font-size: 11px; }

@@ -24,6 +24,15 @@ uniform sampler2D uTex;
 uniform vec2 uTank;   // logical resolution (320x200)
 uniform vec4 uRect;   // letterboxed tank rect in buffer px, y-up
 uniform float uTime;
+uniform float uScan;  // gap darkness between rows (0 = off, 1 = black)
+uniform float uBeam;  // horizontal smear blend (0 = sharp pixels)
+uniform float uBloom; // bright bleed strength
+uniform float uOver;  // bright-color overdrive
+uniform float uGrill; // RGB mask strength (0 = invisible stripes)
+uniform float uCurve; // barrel warp
+uniform float uVig;   // edge/corner dimming
+uniform float uFlick; // brightness shimmer
+uniform float uGrain; // analog noise
 
 vec3 gamePx(vec2 lp) {
   vec2 t = clamp(lp, vec2(0.5), uTank - 0.5) / uTank;
@@ -39,7 +48,7 @@ void main() {
 
   // Barrel curve: sample positions bow outward like curved tube glass.
   vec2 cc = uv * 2.0 - 1.0;
-  uv = (cc * (1.0 + 0.045 * dot(cc, cc))) * 0.5 + 0.5;
+  uv = (cc * (1.0 + (0.10 * uCurve) * dot(cc, cc))) * 0.5 + 0.5;
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
     gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
     return;
@@ -49,21 +58,23 @@ void main() {
   vec2 lp = uv * uTank;
 
   // Horizontal beam smear — gaussian over ~2 game px along the scan.
-  vec3 c = gamePx(lp) * 0.40;
+  vec3 sharp = gamePx(lp);
+  vec3 c = sharp * 0.40;
   c += (gamePx(lp - vec2(0.7, 0.0)) + gamePx(lp + vec2(0.7, 0.0))) * 0.19;
   c += (gamePx(lp - vec2(1.6, 0.0)) + gamePx(lp + vec2(1.6, 0.0))) * 0.11;
+  c = mix(sharp, c, uBeam);
 
   // Phosphor bloom: bright areas bleed wider and overdrive.
   vec3 glow =
     (gamePx(lp - vec2(3.5, 0.0)) + gamePx(lp + vec2(3.5, 0.0))) * 0.5;
-  c += glow * max(glow.r, max(glow.g, glow.b)) * 0.30;
-  c *= 1.0 + 0.30 * smoothstep(0.5, 1.0, max(c.r, max(c.g, c.b)));
+  c += glow * max(glow.r, max(glow.g, glow.b)) * (0.60 * uBloom);
+  c *= 1.0 + (0.60 * uOver) * smoothstep(0.5, 1.0, max(c.r, max(c.g, c.b)));
 
   // Scanlines ride the logical-row phase: sin² dips at row boundaries.
   // (pow() is undefined for negative bases — square explicitly.)
   float scan = sin(3.14159265 * lp.y);
   scan *= scan;
-  c *= mix(0.60, 1.0, scan);
+  c *= mix(1.0 - uScan, 1.0, scan);
 
   // Aperture grille: one RGB channel per device-pixel column.
   float stripe = mod(floor(gl_FragCoord.x), 3.0);
@@ -71,20 +82,67 @@ void main() {
   if (stripe < 0.5) mask.r = 1.0;
   else if (stripe < 1.5) mask.g = 1.0;
   else mask.b = 1.0;
-  c *= mask * 1.18; // grille+scanline dimming compensation
+  c *= mix(vec3(1.0), mask * 1.18, uGrill); // 1.18 compensates dimming
 
   // Glass vignette, faint flicker, and grain.
-  c *= 1.0 - 0.14 * dot(cc, cc);
-  c *= 1.0 + 0.015 * sin(uTime * 61.0);
-  c += (hash(gl_FragCoord.xy + fract(uTime)) - 0.5) * 0.03;
+  c *= 1.0 - (0.40 * uVig) * dot(cc, cc);
+  c *= 1.0 + (0.05 * uFlick) * sin(uTime * 61.0);
+  c += (hash(gl_FragCoord.xy + fract(uTime)) - 0.5) * (0.10 * uGrain);
 
   gl_FragColor = vec4(c, 1.0);
 }
 `;
 
+/** Tunable CRT traits, all normalized 0–1. The shader multiplies each
+ * by a tuned ceiling, so 1.0 is "authentic" rather than "clipped". */
+export interface CrtConfig {
+  /** Darkness of the gaps between game-pixel rows. */
+  scanlines: number;
+  /** How much the beam smears color sideways along each scan. */
+  beam: number;
+  /** Bright colors bleeding into their neighbors. */
+  bloom: number;
+  /** Extra punch on already-bright colors. */
+  overdrive: number;
+  /** Visibility of the fine vertical RGB stripes. */
+  grille: number;
+  /** Bow of the image, like curved tube glass. */
+  curvature: number;
+  /** Dimming toward the screen edges and corners. */
+  vignette: number;
+  /** Faint brightness shimmer as the beam scans. */
+  flicker: number;
+  /** Subtle analog noise over the image. */
+  grain: number;
+}
+
+export const CRT_DEFAULTS: Readonly<CrtConfig> = Object.freeze<CrtConfig>({
+  scanlines: 0.40, beam: 1.0, bloom: 0.50, overdrive: 0.50,
+  grille: 1.0, curvature: 0.45, vignette: 0.35, flicker: 0.30,
+  grain: 0.30,
+});
+
+/** Merge an untrusted source (localStorage, bus message) onto the
+ * defaults: unknown keys drop, each value clamps into 0–1. */
+export function sanitizeCrtConfig(raw: unknown): CrtConfig {
+  const c = { ...CRT_DEFAULTS };
+  if (raw && typeof raw === "object")
+    for (const k of Object.keys(c) as (keyof CrtConfig)[]) {
+      const v = (raw as Record<string, unknown>)[k];
+      if (typeof v === "number" && Number.isFinite(v))
+        c[k] = Math.min(1, Math.max(0, v));
+    }
+  return c;
+}
+
 export interface CrtFilter {
   readonly enabled: boolean;
+  /** False once the GL context is lost — the effect can't re-enable. */
+  readonly usable: boolean;
   setEnabled(on: boolean): void;
+  /** Live-update shader params; `config` reflects the merged result. */
+  configure(cfg: Partial<CrtConfig>): void;
+  readonly config: CrtConfig;
   /** Upload the latest tank frame and re-run the shader (no-op off). */
   render(): void;
 }
@@ -157,6 +215,22 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   const uTime = gl.getUniformLocation(prog, "uTime");
   gl.uniform2f(uTank, src.width, src.height);
 
+  // Trait uniforms — config keys pair with shader names.
+  const TRAIT_UNIFORMS: Record<keyof CrtConfig, string> = {
+    scanlines: "uScan", beam: "uBeam", bloom: "uBloom", overdrive: "uOver",
+    grille: "uGrill", curvature: "uCurve", vignette: "uVig",
+    flicker: "uFlick", grain: "uGrain",
+  };
+  const traitLoc = {} as Record<keyof CrtConfig, WebGLUniformLocation | null>;
+  for (const k of Object.keys(TRAIT_UNIFORMS) as (keyof CrtConfig)[])
+    traitLoc[k] = gl.getUniformLocation(prog, TRAIT_UNIFORMS[k]);
+  let cfg = { ...CRT_DEFAULTS };
+  const upload = (): void => {
+    for (const k of Object.keys(traitLoc) as (keyof CrtConfig)[])
+      gl.uniform1f(traitLoc[k], cfg[k]);
+  };
+  upload();
+
   function resize(): void {
     // Buffer tracks the element's box at device-pixel pitch.
     const dpr = window.devicePixelRatio || 1;
@@ -170,11 +244,24 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
 
   return {
     get enabled() { return enabled; },
+    get usable() { return !lost; },
+    // A copy — the live cfg could otherwise be mutated without the
+    // shader ever seeing it, and goes stale once configure() swaps it.
+    get config(): CrtConfig { return { ...cfg }; },
     setEnabled(on: boolean): void {
       if (on && lost) return; // dead context — stay on the plain path
       enabled = on;
       document.body.classList.toggle("crt", on);
       if (on) resize();
+    },
+    configure(p: Partial<CrtConfig>): void {
+      // Merge onto the current config, then sanitize: unknown keys
+      // drop, values clamp to 0–1, undefined keeps the current value.
+      const merged: Record<string, unknown> = { ...cfg };
+      for (const [k, v] of Object.entries(p))
+        if (v !== undefined) merged[k] = v;
+      cfg = sanitizeCrtConfig(merged);
+      upload();
     },
     render(): void {
       if (!enabled) return;
