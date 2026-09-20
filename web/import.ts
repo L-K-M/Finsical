@@ -13,6 +13,7 @@
 import { zipEntries, zipRead } from "../core/data/zip.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
+import { metaGet, metaPut, packGet, packPut } from "./store.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
@@ -73,33 +74,55 @@ function pageUrl(item: string, outer: string): string {
 
 export interface Importable { section: string; inner: string; url: string }
 
-/** Raw zip bytes, memoized by URL — nested collections share one parent
- * download across all of their entry URLs. */
+/** Raw zip bytes, memoized by URL and persisted in IndexedDB — nested
+ * collections share one parent download across all of their entry
+ * URLs, and a cached zip survives restarts so restores and re-browses
+ * never touch archive.org twice (entries are immutable per URL). */
 const zipCache = new Map<string, Promise<Uint8Array>>();
 function fetchZip(url: string): Promise<Uint8Array> {
   let p = zipCache.get(url);
   if (!p) {
-    p = fetch(url).then(async (r) => {
+    p = (async () => {
+      const hit = await packGet(url);
+      if (hit) return hit;
+      const r = await fetch(url);
       if (!r.ok) throw new Error(`${url}: ${r.status}`);
-      return new Uint8Array(await r.arrayBuffer());
-    });
+      const d = new Uint8Array(await r.arrayBuffer());
+      void packPut(url, d);
+      return d;
+    })();
     zipCache.set(url, p);
     p.catch(() => zipCache.delete(url));
   }
   return p;
 }
 
-/** A collection zip's HTML listing page, memoized — several sections
- * share one outer zip, and archive.org re-lists it identically. */
+/** A collection zip's HTML listing page, memoized and persisted with a
+ * timestamp — several sections share one outer zip. Refetched once a
+ * day; on failure the stale copy still serves (browse works offline). */
 const pageCache = new Map<string, Promise<string>>();
+const PAGE_TTL_MS = 24 * 3600 * 1000;
+interface CachedPage { t: number; html: string }
 function listPage(item: string, outer: string): Promise<string> {
   const page = pageUrl(item, outer);
   let p = pageCache.get(page);
   if (!p) {
-    p = fetch(page).then(async (r) => {
-      if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
-      return r.text();
-    });
+    p = (async () => {
+      const hit = await metaGet<CachedPage>(page);
+      if (hit && typeof hit.html === "string" &&
+          Number.isFinite(hit.t) && Date.now() - hit.t < PAGE_TTL_MS)
+        return hit.html;
+      try {
+        const r = await fetch(page);
+        if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
+        const html = await r.text();
+        void metaPut(page, { t: Date.now(), html } satisfies CachedPage);
+        return html;
+      } catch (e) {
+        if (hit && typeof hit.html === "string") return hit.html;
+        throw e;
+      }
+    })();
     pageCache.set(page, p);
     p.catch(() => pageCache.delete(page));
   }
@@ -180,10 +203,14 @@ async function fetchInnerPacks(url: string): Promise<Uint8Array[]> {
   const entry = i === -1 ? undefined : url.slice(i + 1);
   if (entry === undefined && !/\.zip$/i.test(zipUrl)) {
     // Loose file inside a collection zip — the URL serves the pack or
-    // image itself; no container to open.
+    // image itself; no container to open. Persisted like zip bytes.
+    const hit = await packGet(zipUrl);
+    if (hit) return [hit];
     const r = await fetch(zipUrl);
     if (!r.ok) throw new Error(`${zipUrl}: ${r.status}`);
-    return [new Uint8Array(await r.arrayBuffer())];
+    const d = new Uint8Array(await r.arrayBuffer());
+    void packPut(zipUrl, d);
+    return [d];
   }
   const z = await fetchZip(zipUrl);
   const packs: Uint8Array[] = [];

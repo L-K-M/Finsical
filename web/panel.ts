@@ -12,6 +12,7 @@ import type { Importable } from "./import.js";
 
 interface FishSnap {
   id: number; species: string; hunger: number; state: string;
+  pack?: string;
 }
 interface TankState extends BusMsg {
   addons?: Importable[];
@@ -21,6 +22,10 @@ interface TankState extends BusMsg {
 }
 let tankState: TankState | null = null;
 let greeted = false;
+// Row thumbnails arrive on demand (wantThumbs → thumbs): the tank
+// renders them from live objects, so state pushes stay slim.
+const thumbStore = new Map<string, string>(); // key → dataURL
+const thumbRequested = new Set<string>();     // asked once per page
 
 function el(tag: string, cls = "", text = ""): HTMLElement {
   const e = document.createElement(tag);
@@ -32,11 +37,31 @@ function el(tag: string, cls = "", text = ""): HTMLElement {
 const overviewEl = document.getElementById("overview")!;
 const panelEl = document.getElementById("panel")!;
 
+// Fill any .othumbbox placeholders whose thumb has arrived.
+function paintThumbs(): void {
+  overviewEl.querySelectorAll<HTMLElement>(".othumbbox")
+    .forEach((box) => {
+      const d = thumbStore.get(box.dataset.thumb ?? "");
+      if (!d || box.querySelector("img")) return;
+      const img = document.createElement("img");
+      img.className = "othumb";
+      img.src = d;
+      img.alt = "";
+      box.appendChild(img);
+    });
+}
+
 const bus = openBus((m) => {
   if (m.op === "state") {
     greeted = true;
     tankState = m;
     renderOverview();
+  } else if (m.op === "thumbs" &&
+             m.thumbs && typeof m.thumbs === "object") {
+    for (const [k, d] of
+         Object.entries(m.thumbs as Record<string, unknown>))
+      if (typeof d === "string") thumbStore.set(k, d);
+    paintThumbs();
   }
   panel.notify(m);
 });
@@ -117,13 +142,31 @@ function statsLine(s: TankState, count: number): string {
     uptime(s.tickCount ?? 0);
 }
 
+// Thumbnail box for a row: fixed-size placeholder filled when the
+// tank's thumbs reply lands (or immediately if it's already stored).
+function thumbBox(key: string, need: Set<string>): HTMLElement {
+  const box = el("span", "othumbbox");
+  box.dataset.thumb = key;
+  if (!thumbStore.has(key) && !thumbRequested.has(key)) {
+    thumbRequested.add(key);
+    need.add(key);
+  }
+  return box;
+}
+
 function renderOverview(): void {
   const s = tankState;
   if (!s) return;
   const fish = s.fish ?? [];
-  const addons = s.addons ?? [];
+  // A fish add-on is represented by its fish — it only lists in
+  // Add-ons while no fish is bound to it (same bound test the tank
+  // uses: pack url, or species name for pre-pack rosters).
+  const addons = (s.addons ?? []).filter((a) =>
+    a.section !== "fish" ||
+    !fish.some((f) => f.pack === a.url ||
+      (f.pack === undefined && f.species === a.inner)));
   const structure = JSON.stringify([
-    fish.map((f) => [f.id, f.species]),
+    fish.map((f) => [f.id, f.species, f.pack]),
     addons.map((a) => [a.inner, a.section]),
   ]);
   if (structure === lastStructure) {
@@ -140,6 +183,7 @@ function renderOverview(): void {
   lastStructure = structure;
   fishMeta.clear();
   overviewEl.textContent = "";
+  const need = new Set<string>();
 
   statsEl = el("div", "ostats", statsLine(s, fish.length));
   overviewEl.appendChild(statsEl);
@@ -150,6 +194,7 @@ function renderOverview(): void {
       "No fish — add one from the Add-ons tab."));
   for (const f of fish) {
     const row = el("div", "orow");
+    row.appendChild(thumbBox(`f:${f.id}`, need));
     row.appendChild(el("span", "oname", f.species || "Fish"));
     const meta = el("span", "ometa",
       `${f.state} · ${hungerLabel(f.hunger)}`);
@@ -167,6 +212,7 @@ function renderOverview(): void {
     overviewEl.appendChild(el("div", "oempty", "Nothing installed yet."));
   for (const a of addons) {
     const row = el("div", "orow");
+    row.appendChild(thumbBox(`a:${a.url}`, need));
     row.appendChild(el("span", "oname", a.inner));
     row.appendChild(el("span", "ometa", a.section));
     const rm = el("button", "orm", "Remove");
@@ -175,6 +221,8 @@ function renderOverview(): void {
     row.appendChild(rm);
     overviewEl.appendChild(row);
   }
+  paintThumbs();
+  if (need.size) bus.post({ op: "wantThumbs", keys: [...need] });
 }
 
 // The tank page may still be loading when the panel opens — retry the

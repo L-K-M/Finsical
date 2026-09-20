@@ -328,8 +328,11 @@ function postState(): void {
   bus.post({
     op: "state",
     addons: installedAddons,
-    fish: sim.fish.map(({ id, species, hunger, state }) =>
-      ({ id, species, hunger, state })),
+    // `pack` lets the panel tell pack-bound fish from loose ones —
+    // a fish add-on with a living fish doesn't repeat in Add-ons.
+    fish: sim.fish.map(({ id, species, hunger, state, pack }) =>
+      ({ id, species, hunger, state,
+         ...(pack !== undefined ? { pack } : {}) })),
     waterQuality: sim.waterQuality,
     tickCount: sim.tickCount,
     // Preferences window reads this — `on`/`available` reflect the
@@ -343,6 +346,55 @@ function postState(): void {
   });
 }
 
+// ---- overview thumbnails --------------------------------------------------
+// The panel shows art next to names. Thumbs render from the live
+// objects on request (op:"wantThumbs" → op:"thumbs") so state pushes
+// stay slim — the panel only asks for keys it hasn't seen. Keys:
+// "f:{id}" for fish, the add-on url itself for packs.
+const THUMB_W = 38, THUMB_H = 28;
+const thumbMemo = new Map<string, string>();
+function scaledThumb(cv: HTMLCanvasElement): string | null {
+  const s = Math.min(1, THUMB_W / cv.width, THUMB_H / cv.height);
+  const out = document.createElement("canvas");
+  out.width = Math.max(1, Math.round(cv.width * s));
+  out.height = Math.max(1, Math.round(cv.height * s));
+  const c = out.getContext("2d")!;
+  c.imageSmoothingEnabled = false; // keep the crunch
+  c.drawImage(cv, 0, 0, out.width, out.height);
+  try { return out.toDataURL("image/png"); }
+  catch { return null; }
+}
+function fishThumb(f: Fish): string | null {
+  const key = `f:${f.id}`;
+  const hit = thumbMemo.get(key);
+  if (hit) return hit;
+  const sheet = sheetOf(f);
+  if (!sheet) return null; // placeholder fish — nothing to render
+  let url: string | null = null;
+  try {
+    const pose = fishPose(sheet, f);
+    url = scaledThumb(swimCanvas(sheet, 0, pose.mir, pose.g));
+  } catch { /* sheet can't render that pose */ }
+  if (url) thumbMemo.set(key, url);
+  return url;
+}
+function addonThumb(url: string): string | null {
+  const key = `a:${url}`;
+  const hit = thumbMemo.get(key);
+  if (hit) return hit;
+  let cv: HTMLCanvasElement | null = null;
+  const i = sheetByPack.get(url);
+  if (i !== undefined && fishSheets[i]) {
+    try { cv = swimCanvas(fishSheets[i]!, 0, 1); } catch { /* scenery below */ }
+  }
+  cv ??= gravelByPack.get(url) ?? backdropByPack.get(url)
+    ?? decors.find((d) => d.pack === url)?.cv ?? null;
+  if (!cv) return null;
+  const data = scaledThumb(cv);
+  if (data) thumbMemo.set(key, data);
+  return data;
+}
+
 function onBusMessage(m: BusMsg): void {
   if (m.op === "hello") postState();
   else if (m.op === "install")
@@ -352,6 +404,19 @@ function onBusMessage(m: BusMsg): void {
   } else if (m.op === "removeAddon" &&
              typeof m.url === "string" && m.url !== "") {
     removeAddon(m.url);
+  } else if (m.op === "wantThumbs" && Array.isArray(m.keys)) {
+    const thumbs: Record<string, string> = {};
+    for (const k of m.keys) {
+      if (typeof k !== "string") continue;
+      const data = k.startsWith("f:")
+        ? (() => {
+            const f = sim.fish.find((x) => `f:${x.id}` === k);
+            return f ? fishThumb(f) : null;
+          })()
+        : k.startsWith("a:") ? addonThumb(k.slice(2)) : null;
+      if (data) thumbs[k] = data;
+    }
+    if (Object.keys(thumbs).length) bus.post({ op: "thumbs", thumbs });
   } else if (m.op === "crtEnabled") {
     setCrt(m.on === true);
   } else if (m.op === "crtConfig") {
