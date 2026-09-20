@@ -9,6 +9,12 @@ declare global {
   interface Window { __bus?: (m: BusMsg) => void }
 }
 
+/// True when the page runs inside the native WKWebView shell.
+export function inNativeShell(): boolean {
+  return !!(window as { webkit?: { messageHandlers?: WkHandlers } })
+    .webkit?.messageHandlers?.finsical;
+}
+
 export function openBus(onMsg: (m: BusMsg) => void): Bus {
   const wk = (window as { webkit?: { messageHandlers?: WkHandlers } })
     .webkit?.messageHandlers?.finsical;

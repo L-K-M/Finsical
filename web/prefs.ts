@@ -1,11 +1,12 @@
 import { openBus } from "./bus.js";
 import { CRT_DEFAULTS, sanitizeCrtConfig } from "./crt.js";
+import { MACHINES } from "./machines.js";
 import type { CrtConfig } from "./crt.js";
 
-// Preferences window: CRT effect controls. The tank page owns the
-// shader and persistence — this page renders the state it pushes back
-// (op:"state" carries a `crt` snapshot) and posts intents: crtEnabled
-// toggles the effect, crtConfig carries one changed trait at a time.
+// Preferences window: machine case picker + CRT effect controls. The
+// tank page owns persistence and rendering — this page renders the
+// state it pushes back (op:"state" carries `crt` and `machine`
+// snapshots) and posts intents: crtEnabled, crtConfig, machine.
 
 const SPECS: { key: keyof CrtConfig; label: string; blurb: string }[] = [
   { key: "scanlines", label: "Scanlines",
@@ -62,6 +63,36 @@ function el(tag: string, cls = "", text = ""): HTMLElement {
 const onBox = document.getElementById("crt-on") as HTMLInputElement;
 const warnEl = document.getElementById("crt-warn")!;
 const controlsEl = document.getElementById("pfcontrols")!;
+const machineEl = document.getElementById("pfmachine")!;
+
+// Machine picker: one tile per case, mini bezel preview from the same
+// SVG markup the tank draws at full size. Selection is optimistic —
+// the tank echoes it back in the next state push.
+let machineSel = "";
+const machineTiles = new Map<string, HTMLElement>();
+for (const m of MACHINES) {
+  const tile = el("button", "pftile") as HTMLButtonElement;
+  tile.type = "button";
+  const pv = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  pv.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
+  pv.setAttribute("aria-hidden", "true");
+  pv.innerHTML = m.svg;
+  tile.appendChild(pv);
+  const tt = el("span", "pftiletitle", m.name);
+  tile.appendChild(tt);
+  tile.appendChild(el("span", "pftileblurb", m.blurb));
+  tile.addEventListener("click", () => {
+    machineSel = m.id;
+    syncMachineTiles();
+    bus.post({ op: "machine", id: m.id });
+  });
+  machineTiles.set(m.id, tile);
+  machineEl.appendChild(tile);
+}
+function syncMachineTiles(): void {
+  for (const [id, t] of machineTiles)
+    t.classList.toggle("on", id === machineSel);
+}
 
 const sliders = new Map<keyof CrtConfig, HTMLInputElement>();
 const values = new Map<keyof CrtConfig, HTMLElement>();
@@ -80,6 +111,11 @@ const bus = openBus((m) => {
   // a missing field just means an older page build.
   warnEl.hidden = crt.available !== false;
   if (crt.cfg !== undefined) cfg = sanitizeCrtConfig(crt.cfg);
+  const mc = m.machine as { id?: unknown } | undefined;
+  if (typeof mc?.id === "string" && machineTiles.has(mc.id)) {
+    machineSel = mc.id;
+    syncMachineTiles();
+  }
   syncControls();
 });
 

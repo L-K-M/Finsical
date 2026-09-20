@@ -1,13 +1,19 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="tankroot">
 <head>
   <meta charset="utf-8" />
   <title>Finsical</title>
   <link rel="stylesheet" href="app.css" />
 </head>
-<body>
-  <canvas id="tank" width="320" height="200"></canvas>
-  <canvas id="crt"></canvas>
+<body class="tankpage">
+  <div id="machine">
+    <svg id="shell" preserveAspectRatio="xMidYMid meet"
+         role="presentation"></svg>
+    <div id="screen">
+      <canvas id="tank" width="320" height="200"></canvas>
+      <canvas id="crt"></canvas>
+    </div>
+  </div>
   <script src="bundle.js"></script>
 </body>
 </html>

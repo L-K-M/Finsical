@@ -147,13 +147,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         prefsWindow?.makeKeyAndOrderFront(nil)
     }
 
+    /// The tank window's shape follows the selected machine case.
+    /// Applied only when the id changes — state pushes every ~2s.
+    private var machineId = ""
+    private var machineVbW: CGFloat = 0
+    private func applyMachine(id: String, w: CGFloat, h: CGFloat) {
+        guard id != machineId, w > 0, h > 0 else { return }
+        let old = machineVbW
+        machineId = id
+        machineVbW = w
+        window.contentAspectRatio = NSSize(width: w, height: h)
+        window.contentMinSize = NSSize(width: w * 0.45, height: h * 0.45)
+        // Keep the screen the same size across a case swap — scale the
+        // window by the viewBox ratio, pinned to the top edge.
+        guard old > 0 else { return }
+        let cw = window.contentLayoutRect.width
+        let nw = cw * (w / old)
+        let nh = nw * h / w
+        let f = window.frame
+        let chrome = f.height - window.contentLayoutRect.height
+        window.setFrame(NSRect(x: f.minX, y: f.maxY - nh - chrome,
+                               width: nw, height: nh + chrome),
+                        display: true, animate: true)
+    }
+
+    /// A bezel mousedown asks for a window drag — synthesize the
+    /// leftMouseDown performDrag expects, at the cursor's position.
+    private func dragTank() {
+        let w = window!
+        let loc = w.convertPoint(fromScreen: NSEvent.mouseLocation)
+        guard let ev = NSEvent.mouseEvent(with: .leftMouseDown,
+            location: loc, modifierFlags: [], timestamp: 0,
+            windowNumber: w.windowNumber, context: nil,
+            eventNumber: 0, clickCount: 1, pressure: 0)
+        else { return }
+        w.performDrag(with: ev)
+        // Same as DragStrip — hand first responder back to the page.
+        w.makeFirstResponder(webView)
+    }
+
     /// Bus relay: posts from a client window (panel, prefs) go to the
     /// tank page, which owns all state; the tank's posts fan out to
     /// every open client window (web/bus.ts registers window.__bus).
     func userContentController(_ ucc: WKUserContentController,
                                didReceive message: WKScriptMessage) {
-        // Window-close intents are handled natively — JS can't close a
-        // window it didn't open. Each is honored only from its own view.
+        // Window-close and window-drag intents are handled natively —
+        // JS can't perform either itself. Each is honored only from
+        // the view it's about.
         if let body = message.body as? [String: Any] {
             if body["op"] as? String == "closePanel",
                message.webView === panelView {
@@ -164,6 +204,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                message.webView === prefsView {
                 prefsWindow?.close()
                 return
+            }
+            if body["op"] as? String == "dragWindow",
+               message.webView === webView {
+                dragTank()
+                return
+            }
+            // Tank state carries the machine's viewBox aspect —
+            // retune the frame to the case outline. Falls through:
+            // clients still need the push.
+            if body["op"] as? String == "state",
+               message.webView === webView,
+               let mc = body["machine"] as? [String: Any],
+               let mid = mc["id"] as? String,
+               let mw = (mc["w"] as? NSNumber)?.doubleValue,
+               let mh = (mc["h"] as? NSNumber)?.doubleValue {
+                applyMachine(id: mid, w: CGFloat(mw), h: CGFloat(mh))
             }
         }
         guard let data = try? JSONSerialization.data(
@@ -259,6 +315,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                             configuration: makeWebConfig())
         webView.uiDelegate = self
         webView.navigationDelegate = self
+        // The webview paints nothing behind the page — with a
+        // transparent html background the machine case drawn in-page is
+        // the only visible surface. Private-but-longstanding KVC;
+        // respond-check guards the throw if the key ever vanishes.
+        if webView.responds(to: NSSelectorFromString("setDrawsBackground:")) {
+            webView.setValue(false, forKey: "drawsBackground")
+        }
 
         window = NSWindow(
             contentRect: webView.frame,
@@ -268,6 +331,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         window.title = "Finsical"
         window.titleVisibility = .hidden          // no title text
         window.titlebarAppearsTransparent = true  // no grey bar — tank fills it
+        // The visible frame is the machine bezel inside the page. A
+        // transparent, non-opaque window lets its rounded corners and
+        // silhouette float free; the shadow follows the painted shape.
+        window.isOpaque = false
+        window.backgroundColor = .clear
         window.level = .floating                    // always on top
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.contentAspectRatio = NSSize(width: 320, height: 200)

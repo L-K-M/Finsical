@@ -6,9 +6,11 @@ import { keyMask, pickDecorArt } from "../core/data/decor.js";
 import { TankAudio } from "./audio.js";
 import { fetchAddon, mountImportPanel, COLLECTIONS } from "./import.js";
 import { imageCanvas, previewOf, swimCanvas } from "./render.js";
-import { openBus } from "./bus.js";
+import { inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
+import { DEFAULT_MACHINE, machineById } from "./machines.js";
 import type { CrtConfig } from "./crt.js";
+import type { Machine } from "./machines.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
 import type { Fish } from "../core/sim.js";
@@ -340,6 +342,10 @@ const importPanel = mountImportPanel({
 // The add-on browser (and later the tank overview) can live in a second
 // native window. It sends intents here; replies and state pushes go back
 // over the same bus.
+// Transparent page background only inside the native shell — a dev
+// browser keeps the dark backdrop.
+if (inNativeShell()) document.documentElement.classList.add("native");
+
 const bus = openBus(onBusMessage);
 
 // Random per page-load — lets clients detect a tank restart (their
@@ -350,6 +356,9 @@ function postState(): void {
   bus.post({
     op: "state",
     boot,
+    // The native shell retunes the window's aspect to the machine's
+    // viewBox outline; prefs needs just the id.
+    machine: { id: machine.id, w: machine.vbW, h: machine.vbH },
     addons: installedAddons,
     // `pack` lets the panel tell pack-bound fish from loose ones —
     // a fish add-on with a living fish doesn't repeat in Add-ons.
@@ -474,6 +483,9 @@ function onBusMessage(m: BusMsg): void {
     setCrt(m.on === true);
   } else if (m.op === "crtConfig") {
     applyCrtConfig(m.cfg);
+  } else if (m.op === "machine" && typeof m.id === "string") {
+    const nm = machineById(m.id);
+    if (nm && nm.id !== machine.id) { applyMachine(nm); postState(); }
   }
 }
 
@@ -610,6 +622,54 @@ function applyCrtConfig(raw: unknown): void {
 }
 try { setCrt(localStorage.getItem(CRT_KEY) === "1"); }
 catch { /* storage unavailable — default off */ }
+
+// ---- machine case -----------------------------------------------------
+// The window has no native chrome — the "computer" around the tank is
+// an SVG bezel (web/machines.ts). The bezel is the drag surface (its
+// mousedowns become a native performDrag); the screen div sits above
+// the shell so canvas clicks still reach the tank.
+const MACHINE_KEY = "finsical:machine";
+const machineEl = document.getElementById("machine")!;
+const shellEl = document.getElementById("shell")!;
+const screenEl = document.getElementById("screen")!;
+let machine: Machine =
+  machineById(localStorage.getItem(MACHINE_KEY) ?? "")
+  ?? machineById(DEFAULT_MACHINE)!;
+
+function layoutMachine(): void {
+  const w = machineEl.clientWidth, h = machineEl.clientHeight;
+  if (!w || !h) return;
+  // preserveAspectRatio=meet letterboxes the shell — land the screen
+  // on the same scaled + offset rect as the bezel's opening. This is
+  // computed, not CSS-percentage'd, so browser dev (no native aspect
+  // enforcement) stays aligned too.
+  const s = Math.min(w / machine.vbW, h / machine.vbH);
+  const ox = (w - machine.vbW * s) / 2;
+  const oy = (h - machine.vbH * s) / 2;
+  screenEl.style.left = `${ox + machine.sx * s}px`;
+  screenEl.style.top = `${oy + machine.sy * s}px`;
+  screenEl.style.width = `${machine.sw * s}px`;
+  screenEl.style.height = `${machine.sh * s}px`;
+}
+
+function applyMachine(m: Machine): void {
+  machine = m;
+  shellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
+  shellEl.innerHTML = m.svg;
+  layoutMachine();
+  try { localStorage.setItem(MACHINE_KEY, m.id); }
+  catch { /* storage unavailable */ }
+}
+window.addEventListener("resize", layoutMachine);
+applyMachine(machine);
+shellEl.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  bus.post({ op: "dragWindow" }); // native shell → performDrag
+});
+// Seed clients + the native aspect before the first save/heartbeat —
+// a launch with no open windows otherwise waits for the 10s save.
+postState();
 
 // Native-menu / keyboard entry points (macos/Finsical.swift calls these).
 function feedFish(): void {
