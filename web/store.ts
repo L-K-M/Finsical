@@ -58,7 +58,15 @@ function rw<T>(store: string, mode: IDBTransactionMode,
 }
 
 export function packGet(url: string): Promise<Uint8Array | null> {
-  return rw<Uint8Array>("packs", "readonly", (s) => s.get(url));
+  const got = rw<Uint8Array>("packs", "readonly", (s) => s.get(url));
+  // Refresh the stat's age on hit so eviction is least-recently-used
+  // rather than first-in — also backfills entries that lack one.
+  void got.then((d) => {
+    if (!d) return;
+    void rw("meta", "readwrite", (s) =>
+      s.put({ bytes: d.byteLength, at: Date.now() }, STAT_PREFIX + url));
+  });
+  return got;
 }
 
 /** Rough ceiling for the byte cache — unbounded puts could push the
@@ -77,9 +85,12 @@ async function trimPacks(): Promise<void> {
       tx.oncomplete = tx.onerror = tx.onabort = () => res();
       const meta = tx.objectStore("meta");
       const packs = tx.objectStore("packs");
-      const vals = meta.getAll();
+      // Range-bound to stat keys — an unscoped getAll would
+      // deserialize every cached listing page on each pack save.
+      const range = IDBKeyRange.bound(STAT_PREFIX, STAT_PREFIX + "\uffff");
+      const vals = meta.getAll(range);
       vals.onsuccess = () => {
-        const keys = meta.getAllKeys();
+        const keys = meta.getAllKeys(range);
         keys.onsuccess = () => {
           // getAll/getAllKeys both return in key order — index-aligned.
           let total = 0;

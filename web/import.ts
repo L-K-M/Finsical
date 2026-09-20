@@ -90,7 +90,7 @@ function fetchZip(url: string): Promise<Uint8Array> {
   let p = zipCache.get(url);
   if (!p) {
     p = (async () => {
-      const hit = await packGet(url);
+      const hit = immutableHost(url) ? await packGet(url) : null;
       if (hit) return hit;
       const r = await fetch(url);
       if (!r.ok) throw new Error(`${url}: ${r.status}`);
@@ -117,7 +117,8 @@ async function listPage(item: string, outer: string): Promise<string> {
   const rec = await pageCache.get(page)?.catch(() => null);
   if (rec && Date.now() - rec.t < PAGE_TTL_MS) return rec.html;
   const p = (async (): Promise<CachedPage> => {
-    const hit = await metaGet<CachedPage>(page);
+    const hit = immutableHost(page) ? await metaGet<CachedPage>(page)
+                                    : null;
     if (hit && typeof hit.html === "string" &&
         Number.isFinite(hit.t) && Date.now() - hit.t < PAGE_TTL_MS)
       return hit;
@@ -125,7 +126,7 @@ async function listPage(item: string, outer: string): Promise<string> {
       const r = await fetch(page);
       if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
       const fresh = { t: Date.now(), html: await r.text() };
-      void metaPut(page, fresh satisfies CachedPage);
+      if (immutableHost(page)) void metaPut(page, fresh);
       return fresh;
     } catch (e) {
       // Stale serve keeps offline browsing working; t=0 marks it
@@ -215,7 +216,7 @@ async function fetchInnerPacks(url: string): Promise<Uint8Array[]> {
   if (entry === undefined && !/\.zip$/i.test(zipUrl)) {
     // Loose file inside a collection zip — the URL serves the pack or
     // image itself; no container to open. Persisted like zip bytes.
-    const hit = await packGet(zipUrl);
+    const hit = immutableHost(zipUrl) ? await packGet(zipUrl) : null;
     if (hit) return [hit];
     const r = await fetch(zipUrl);
     if (!r.ok) throw new Error(`${zipUrl}: ${r.status}`);
