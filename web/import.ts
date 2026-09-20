@@ -144,10 +144,12 @@ async function listPage(item: string, outer: string): Promise<string> {
         void metaPut(page, fresh).catch(() => {});
       return fresh;
     } catch (e) {
-      // Stale serve keeps offline browsing working; t=0 marks it
-      // expired so the next call retries the fetch and self-heals.
+      // Stale serve keeps offline browsing working. The memoized
+      // record counts as fresh for a short window so an offline client
+      // isn't refetching per section render — after that the TTL check
+      // retries the fetch and self-heals.
       if (hit && typeof hit.html === "string")
-        return { t: 0, html: hit.html };
+        return { t: Date.now() - PAGE_TTL_MS + 30_000, html: hit.html };
       throw e;
     }
   })();
