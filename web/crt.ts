@@ -245,7 +245,9 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   return {
     get enabled() { return enabled; },
     get usable() { return !lost; },
-    get config() { return cfg; },
+    // A copy — the live cfg could otherwise be mutated without the
+    // shader ever seeing it, and goes stale once configure() swaps it.
+    get config(): CrtConfig { return { ...cfg }; },
     setEnabled(on: boolean): void {
       if (on && lost) return; // dead context — stay on the plain path
       enabled = on;
