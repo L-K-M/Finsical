@@ -115,7 +115,13 @@ for (const spec of SPECS) {
   input.addEventListener("pointerdown", () => dragging.add(spec.key));
   // Arrow/Home/End tweaks latch like drags — otherwise an echo landing
   // mid-adjustment yanks the knob back. Both paths clear on blur.
-  input.addEventListener("keydown", () => dragging.add(spec.key));
+  // Only value-changing keys latch — a stray keypress mustn't block
+  // echo sync until blur.
+  input.addEventListener("keydown", (e) => {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
+         "Home", "End", "PageUp", "PageDown"].includes(e.key))
+      dragging.add(spec.key);
+  });
   input.addEventListener("blur", () => dragging.delete(spec.key));
   sliders.set(spec.key, input);
   values.set(spec.key, val);
