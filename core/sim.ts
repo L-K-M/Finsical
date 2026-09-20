@@ -12,6 +12,9 @@ export interface Fish {
   id: number;
   /** Add-on/pack this fish came from; "" for starter fish. */
   species: string;
+  /** Install URL of the add-on that spawned this fish — the precise
+   * identity when two packs share a species name. */
+  pack?: string;
   /** Renderer sheet index; undefined = round-robin assignment. */
   sheetIdx?: number;
   x: number;

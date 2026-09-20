@@ -7,6 +7,7 @@ import { TankAudio } from "./audio.js";
 import { fetchAddon, mountImportPanel, COLLECTIONS } from "./import.js";
 import { imageCanvas, previewOf, swimCanvas } from "./render.js";
 import { openBus } from "./bus.js";
+import { initCrt } from "./crt.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
 import type { Fish } from "../core/sim.js";
@@ -25,7 +26,9 @@ ctx.imageSmoothingEnabled = false;
 // each fish's saved sheetIdx still points at the right sprite sheet.
 const SAVE_KEY = "finsical:tank";
 interface SavedTank {
-  v: 1;
+  // v=1 predates fish spawning on install: its addons list can hold fish
+  // packs the roster never gained. v=2 rosters are authoritative.
+  v: 1 | 2;
   tickCount: number;
   waterQuality: number;
   fish: Partial<Fish>[];
@@ -36,13 +39,18 @@ function loadTank(): SavedTank | null {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as SavedTank;
-    if (s?.v !== 1 || !Array.isArray(s.fish) || !Array.isArray(s.addons))
+    if ((s?.v !== 1 && s?.v !== 2) ||
+        !Array.isArray(s.fish) || !Array.isArray(s.addons))
       return null;
     return s;
   } catch { return null; }
 }
 const saved = loadTank();
 const installedAddons: Importable[] = [...(saved?.addons ?? [])];
+// A v=1 save keeps writing v=1 until reconcileFish() has run once —
+// otherwise an offline first launch would stamp the roster "final"
+// before its fish packs could restore.
+let rosterComplete = saved?.v !== 1;
 
 const sim = new Sim(TANK, 0x9003);
 const audio = new TankAudio();
@@ -62,12 +70,14 @@ for (const f of roster?.length ? roster : DEFAULT_FISH) sim.addFish(f);
 function saveTank(): void {
   try {
     const s: SavedTank = {
-      v: 1, tickCount: sim.tickCount, waterQuality: sim.waterQuality,
+      v: rosterComplete ? 2 : 1,
+      tickCount: sim.tickCount, waterQuality: sim.waterQuality,
       fish: sim.fish.map((f) => ({
         id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
         heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
         bandY: f.bandY, hunger: f.hunger,
         ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
+        ...(f.pack !== undefined ? { pack: f.pack } : {}),
       })),
       addons: installedAddons,
     };
@@ -115,8 +125,9 @@ function usePack(pack: { sheets: Map<string, SpriteSheet>;
 }
 
 /** A newly installed fish pack adds one fish bound to its sheet —
- * "Add again" adds another of the same species. */
-function spawnFish(sheetIdx: number, species: string): void {
+ * "Add again" adds another of the same species. `pack` is the add-on's
+ * install URL: the precise identity when packs share a species name. */
+function spawnFish(sheetIdx: number, species: string, pack?: string): void {
   const facing = Math.random() < 0.5 ? 1 : -1;
   sim.addFish({
     x: 60 + Math.random() * (TANK.width - 120),
@@ -125,6 +136,7 @@ function spawnFish(sheetIdx: number, species: string): void {
     heading: facing > 0 ? 0 : Math.PI,
     cruise: 1.1 + Math.random() * 0.7,
     sheetIdx, species,
+    ...(pack !== undefined ? { pack } : {}),
   });
   saveTank();
 }
@@ -224,14 +236,18 @@ function sheetOf(f: Fish): SpriteSheet | null {
 // bind to sheets by position, which drifts if a pack fails to restore
 // or a drag-dropped pack isn't restorable — remap by species instead.
 const sheetBySpecies = new Map<string, number>();
+// Add-on URL → sheet slot: the precise binding when two packs share a
+// species name (basenames collide across collections).
+const sheetByPack = new Map<string, number>();
 function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
-                      section: string, live: boolean): void {
+                      url: string, section: string, live: boolean): void {
   const idx = usePack({ sheets });
   if (section === "fish" && idx >= 0) {
     sheetBySpecies.set(name, idx);
+    sheetByPack.set(url, idx);
     // A live fish-pack install adds a real fish; restores replay sheets
     // only — the saved roster already carries those fish.
-    if (live) spawnFish(idx, name);
+    if (live) spawnFish(idx, name, url);
   }
   console.info(`archive.org: imported ${section} ${name}`);
 }
@@ -241,22 +257,52 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
  * bundled pack registers its tag too) — only out-of-range ones drop. */
 function remapSheetIdx(): void {
   for (const f of sim.fish) {
-    if (!f.species) continue;
-    const idx = sheetBySpecies.get(f.species);
+    // Fish spawned by an add-on rebind by pack URL; older saves carry
+    // only a species name — fall back to it (collisions just share art).
+    const idx = f.pack !== undefined
+      ? sheetByPack.get(f.pack)
+      : f.species ? sheetBySpecies.get(f.species) : undefined;
     if (idx !== undefined) f.sheetIdx = idx;
     else if (f.sheetIdx !== undefined &&
              (f.sheetIdx < 0 || f.sheetIdx >= fishSheets.length))
       delete f.sheetIdx;
   }
 }
-function handleImages(images: Iterable<IndexedImage>, name: string,
+
+/** v=1 saves predate install-time spawning: their addons list can hold
+ * fish packs the roster never gained ("added many, still four fish").
+ * Spawn one fish per installed fish pack whose species is missing —
+ * "Add again" duplicates stay whatever the roster recorded. v=2
+ * rosters are authoritative: a fish the user removed stays removed. */
+function reconcileFish(): void {
+  if (saved?.v !== 1) return;
+  let pending = false;
+  for (const it of installedAddons) {
+    if (it.section !== "fish") continue;
+    // A fish counts as this add-on's when bound by pack URL (new saves)
+    // or carrying its species name — but only pre-pack roster entries
+    // use species, or a same-named pack's fish would satisfy this pack.
+    if (sim.fish.some((f) => f.pack === it.url ||
+        (f.pack === undefined && f.species === it.inner)))
+      continue;
+    const idx = sheetByPack.get(it.url) ?? sheetBySpecies.get(it.inner);
+    if (idx === undefined) { pending = true; continue; } // restore failed — retry next launch
+    spawnFish(idx, it.inner, it.url);
+  }
+  // spawnFish's own saves went out as v=1 — stamp the reconciled roster.
+  rosterComplete = !pending;
+  if (rosterComplete) saveTank();
+}
+function handleImages(images: Iterable<IndexedImage>, src: string,
                       section: string): void {
   // fish packs carry portraits too — only scenery sections touch the tank
-  if (section === "gravel") pickGravel(images, name);
+  if (section === "gravel") pickGravel(images, src);
   else if (section === "plants" || section === "accessories")
-    addDecor(images, name);
+    addDecor(images, src);
+  else if (section === "backgrounds" || section === "tanks")
+    pickBackdrop(images, src);
   else return;
-  console.info(`archive.org: imported scenery ${name}`);
+  console.info(`archive.org: imported scenery ${src}`);
 }
 function recordInstall(it: Importable): void {
   if (!installedAddons.some((a) => a.url === it.url))
@@ -295,8 +341,8 @@ function onBusMessage(m: BusMsg): void {
   else if (m.op === "removeFish" && typeof m.id === "number") {
     if (sim.removeFish(m.id)) saveTank();
   } else if (m.op === "removeAddon" &&
-             typeof m.inner === "string" && m.inner !== "") {
-    removeAddon(m.inner);
+             typeof m.url === "string" && m.url !== "") {
+    removeAddon(m.url);
   }
 }
 
@@ -304,44 +350,53 @@ function onBusMessage(m: BusMsg): void {
  * next launch) and clears this session's contributions — its fish, its
  * decor, and gravel/backdrop it supplied. Sprite sheets stay loaded so
  * other fish's sheetIdx bindings don't shift. */
-function removeAddon(inner: string): void {
-  // Unknown name — no teardown or persist, but push fresh state so a
+function removeAddon(url: string): void {
+  const gone = installedAddons.filter((a) => a.url === url);
+  // Unknown add-on — no teardown or persist, but push fresh state so a
   // stale panel resyncs now instead of waiting for the heartbeat.
-  if (!installedAddons.some((a) => a.inner === inner)) {
+  if (!gone.length) {
     postState();
     return;
   }
   for (let i = installedAddons.length - 1; i >= 0; i--)
-    if (installedAddons[i]!.inner === inner) installedAddons.splice(i, 1);
+    if (installedAddons[i]!.url === url) installedAddons.splice(i, 1);
+  // Species no remaining installed pack still provides — legacy fish
+  // (no pack url) only drop when theirs is truly orphaned.
+  const species = new Set(gone.map((a) => a.inner));
+  const orphaned = new Set([...species].filter((s) =>
+    !installedAddons.some((a) => a.section === "fish" && a.inner === s)));
   for (const f of [...sim.fish])
-    if (f.species === inner) sim.removeFish(f.id);
+    if (f.pack === url || (f.pack === undefined &&
+        f.species && orphaned.has(f.species)))
+      sim.removeFish(f.id);
   for (let i = decors.length - 1; i >= 0; i--)
-    if (decors[i]!.pack === inner) decors.splice(i, 1);
-  gravelByPack.delete(inner);
-  backdropByPack.delete(inner);
+    if (decors[i]!.pack === url) decors.splice(i, 1);
+  gravelByPack.delete(url);
+  backdropByPack.delete(url);
   // Fall back to the most recent remaining pack's art — Map order is
   // insertion order, so the last key is the newest survivor.
-  if (gravelSrc === inner) {
+  if (gravelSrc === url) {
     const prev = [...gravelByPack.keys()].pop();
     gravelCv = prev !== undefined ? gravelByPack.get(prev)! : null;
     gravelSrc = prev ?? "";
   }
-  if (backdropSrc === inner) {
+  if (backdropSrc === url) {
     const prev = [...backdropByPack.keys()].pop();
     backdropCv = prev !== undefined ? backdropByPack.get(prev)! : null;
     backdropSrc = prev ?? "";
   }
-  sheetBySpecies.delete(inner);
+  for (const s of orphaned) sheetBySpecies.delete(s);
+  sheetByPack.delete(url);
   saveTank(); // persists and pushes fresh state to the panel
-  bus.post({ op: "uninstalled", inner });
+  bus.post({ op: "uninstalled", url });
 }
 
 // Bus messages cross a page boundary — validate before trusting them.
-const KNOWN_SECTIONS = new Set(COLLECTIONS.map(([s]) => s));
+const KNOWN_SECTIONS = new Set(COLLECTIONS.map((c) => c.section));
 const installsInFlight = new Set<string>();
 async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   const fail = (error: string) =>
-    bus.post({ op: "installFailed", inner: it?.inner ?? "", error });
+    bus.post({ op: "installFailed", url: it?.url ?? "", error });
   if (!it?.url || typeof it.url !== "string" ||
       !it.url.startsWith("https://archive.org/") ||
       !KNOWN_SECTIONS.has(it.section)) {
@@ -354,7 +409,7 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   // A restore may have landed this add-on while the panel's detail fetch
   // was in flight — unless the user clicked "Add again", that's a dup.
   if (!again && installedAddons.some((a) => a.url === it.url)) {
-    bus.post({ op: "installed", inner: it.inner });
+    bus.post({ op: "installed", url: it.url });
     return;
   }
   installsInFlight.add(it.url);
@@ -363,15 +418,32 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     const usable = rs.filter((r) => r.sheets.size || r.images.size);
     if (!usable.length) throw new Error("no pack inside");
     for (const r of usable) {
-      if (r.sheets.size) handleSheets(r.sheets, it.inner, it.section, true);
-      if (r.images.size) handleImages(r.images.values(), it.inner, it.section);
+      if (r.sheets.size)
+        handleSheets(r.sheets, it.inner, it.url, it.section, true);
+      if (r.images.size) handleImages(r.images.values(), it.url, it.section);
     }
     recordInstall(it);
-    bus.post({ op: "installed", inner: it.inner });
+    bus.post({ op: "installed", url: it.url });
     postState();
   } catch (e) { fail(String(e)); }
   finally { installsInFlight.delete(it.url); }
 }
+
+// ---- CRT effect ------------------------------------------------------------
+// Optional tube emulation (web/crt.ts): the 320×200 canvas becomes a
+// texture for a device-resolution shader. Off = untouched 2D path.
+const CRT_KEY = "finsical:crt";
+const crt = initCrt(canvas);
+let crtOn = false;
+function setCrt(on: boolean): void {
+  crtOn = crt !== null && on;
+  crt?.setEnabled(crtOn);
+  if (crt === null) return; // init failed — keep the stored preference
+  try { localStorage.setItem(CRT_KEY, crtOn ? "1" : "0"); }
+  catch { /* storage unavailable */ }
+}
+try { setCrt(localStorage.getItem(CRT_KEY) === "1"); }
+catch { /* storage unavailable — default off */ }
 
 // Native-menu / keyboard entry points (macos/Finsical.swift calls these).
 function feedFish(): void {
@@ -379,7 +451,8 @@ function feedFish(): void {
   audio.feed();
 }
 (window as unknown as { finsical?: unknown }).finsical =
-  { openImport: () => importPanel.open(), feedFish };
+  { openImport: () => importPanel.open(), feedFish,
+    toggleCrt: () => setCrt(!crtOn) };
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
 // path. Touch fallback: hover-less devices have no keyboard or native menu.
@@ -403,6 +476,9 @@ window.addEventListener("keydown", (e) => {
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" &&
              !e.repeat && !importPanel.isOpen) {
     feedFish(); // bare F: Cmd-F is Find in browsers; the native menu owns ⌘F
+  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "c" &&
+             !e.repeat && !importPanel.isOpen) {
+    setCrt(!crtOn); // bare C: ⌘C is Copy via the Edit menu
   }
 });
 
@@ -425,9 +501,10 @@ void (async () => {
 })()
   .catch((e) => console.warn("azpack load failed; using placeholder fish:", e))
   // Saved add-ons re-import after the bundled pack; once they've landed,
-  // rebind saved fish to their species' actual sheet slot.
+  // rebind saved fish to their species' actual sheet slot and heal
+  // pre-spawning rosters that never gained their fish.
   .then(() => importPanel.restore([...installedAddons]))
-  .then(remapSheetIdx);
+  .then(() => { remapSheetIdx(); reconcileFish(); });
 
 // Drag an .azpack folder onto the window to import it.
 async function walkEntry(ent: FileSystemEntry, prefix: string,
@@ -641,6 +718,7 @@ function frame(now: number): void {
     acc -= step;
   }
   render();
+  if (crtOn) crt?.render();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
