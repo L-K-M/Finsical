@@ -625,8 +625,12 @@ function applyCrtConfig(raw: unknown): void {
 // let/TDZ read would throw (silently, inside that try) before a later
 // declaration ran.
 const MACHINE_KEY = "finsical:machine";
+// localStorage access itself can throw where storage is blocked — a
+// bare read here would abort module eval entirely.
 let machine: Machine =
-  machineById(localStorage.getItem(MACHINE_KEY) ?? "")
+  (() => { try {
+    return machineById(localStorage.getItem(MACHINE_KEY) ?? "");
+  } catch { return undefined; } })()
   ?? machineById(DEFAULT_MACHINE)!;
 
 try { setCrt(localStorage.getItem(CRT_KEY) === "1"); }
