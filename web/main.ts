@@ -6,7 +6,7 @@ import { keyMask, pickDecorArt } from "../core/data/decor.js";
 import { TankAudio } from "./audio.js";
 import { fetchAddon, mountImportPanel, COLLECTIONS } from "./import.js";
 import { imageCanvas, previewOf, swimCanvas } from "./render.js";
-import { openBus } from "./bus.js";
+import { fishThumbKey, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import type { CrtConfig } from "./crt.js";
 import type { BusMsg } from "./bus.js";
@@ -240,17 +240,26 @@ const sheetBySpecies = new Map<string, number>();
 // Add-on URL → sheet slot: the precise binding when two packs share a
 // species name (basenames collide across collections).
 const sheetByPack = new Map<string, number>();
+// Reverse of sheetByPack — which pack owns a slot, for migrating
+// species-bound fish onto the URL binding of the sheet they render.
+const packBySheet = new Map<number, string>();
 function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
                       url: string, section: string, live: boolean): void {
   const idx = usePack({ sheets });
   if (section === "fish" && idx >= 0) {
     sheetBySpecies.set(name, idx);
+    // A reinstall can rebind the url to a new slot — drop the old
+    // reverse entry so the two maps stay exact inverses.
+    const prior = sheetByPack.get(url);
+    if (prior !== undefined && prior !== idx) packBySheet.delete(prior);
     sheetByPack.set(url, idx);
+    packBySheet.set(idx, url);
     // A live fish-pack install adds a real fish; restores replay sheets
     // only — the saved roster already carries those fish.
     if (live) spawnFish(idx, name, url);
   }
   console.info(`archive.org: imported ${section} ${name}`);
+  if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
 }
 
 /** Rebind each saved fish's sheetIdx to where its species' pack actually
@@ -263,9 +272,17 @@ function remapSheetIdx(): void {
     const idx = f.pack !== undefined
       ? sheetByPack.get(f.pack)
       : f.species ? sheetBySpecies.get(f.species) : undefined;
-    if (idx !== undefined) f.sheetIdx = idx;
-    else if (f.sheetIdx !== undefined &&
-             (f.sheetIdx < 0 || f.sheetIdx >= fishSheets.length))
+    if (idx !== undefined) {
+      f.sheetIdx = idx;
+      // Migrate species-bound fish onto the URL binding of the pack
+      // whose sheet they actually render — precise when two packs
+      // share a species name, and it lets the panel dedupe by URL.
+      if (f.pack === undefined) {
+        const u = packBySheet.get(idx);
+        if (u !== undefined) f.pack = u;
+      }
+    } else if (f.sheetIdx !== undefined &&
+               (f.sheetIdx < 0 || f.sheetIdx >= fishSheets.length))
       delete f.sheetIdx;
   }
 }
@@ -304,6 +321,7 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
     pickBackdrop(images, src);
   else return;
   console.info(`archive.org: imported scenery ${src}`);
+  if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
 }
 function recordInstall(it: Importable): void {
   if (!installedAddons.some((a) => a.url === it.url))
@@ -324,12 +342,20 @@ const importPanel = mountImportPanel({
 // over the same bus.
 const bus = openBus(onBusMessage);
 
+// Random per page-load — lets clients detect a tank restart (their
+// in-flight wants died with the old page) and re-ask once.
+const boot = Math.random().toString(36).slice(2);
+
 function postState(): void {
   bus.post({
     op: "state",
+    boot,
     addons: installedAddons,
-    fish: sim.fish.map(({ id, species, hunger, state }) =>
-      ({ id, species, hunger, state })),
+    // `pack` lets the panel tell pack-bound fish from loose ones —
+    // a fish add-on with a living fish doesn't repeat in Add-ons.
+    fish: sim.fish.map(({ id, species, hunger, state, pack }) =>
+      ({ id, species, hunger, state,
+         ...(pack !== undefined ? { pack } : {}) })),
     waterQuality: sim.waterQuality,
     tickCount: sim.tickCount,
     // Preferences window reads this — `on`/`available` reflect the
@@ -343,15 +369,108 @@ function postState(): void {
   });
 }
 
+// ---- overview thumbnails --------------------------------------------------
+// The panel shows art next to names. Thumbs render from the live
+// objects on request (op:"wantThumbs" → op:"thumbs") so state pushes
+// stay slim — the panel only asks for keys it hasn't seen. Keys:
+// "f:{id}:{species}" for fish, "a:{url}" for add-ons. Species rides
+// along because ids can be reused for a different species after the
+// tank page reloads under a still-open panel.
+const THUMB_W = 38, THUMB_H = 28;
+const thumbMemo = new Map<string, string>();
+function scaledThumb(cv: HTMLCanvasElement): string | null {
+  const s = Math.min(1, THUMB_W / cv.width, THUMB_H / cv.height);
+  const out = document.createElement("canvas");
+  out.width = Math.max(1, Math.round(cv.width * s));
+  out.height = Math.max(1, Math.round(cv.height * s));
+  const c = out.getContext("2d")!;
+  c.imageSmoothingEnabled = false; // keep the crunch
+  c.drawImage(cv, 0, 0, out.width, out.height);
+  try { return out.toDataURL("image/png"); }
+  catch { return null; }
+}
+function fishThumb(f: Fish): string | null {
+  const key = fishThumbKey(f);
+  const hit = thumbMemo.get(key);
+  if (hit) return hit;
+  const sheet = sheetOf(f);
+  if (!sheet) return null; // placeholder fish — nothing to render
+  let url: string | null = null;
+  try {
+    const pose = fishPose(sheet, f);
+    url = scaledThumb(swimCanvas(sheet, 0, pose.mir, pose.g));
+  } catch { /* sheet can't render that pose */ }
+  if (url) thumbMemo.set(key, url);
+  return url;
+}
+function addonThumb(url: string): string | null {
+  const key = `a:${url}`;
+  const hit = thumbMemo.get(key);
+  if (hit) return hit;
+  let cv: HTMLCanvasElement | null = null;
+  const i = sheetByPack.get(url);
+  if (i !== undefined && fishSheets[i]) {
+    try { cv = swimCanvas(fishSheets[i]!, 0, 1); } catch { /* scenery below */ }
+  }
+  cv ??= gravelByPack.get(url) ?? backdropByPack.get(url)
+    ?? decors.find((d) => d.pack === url)?.cv ?? null;
+  if (!cv) return null;
+  const data = scaledThumb(cv);
+  if (data) thumbMemo.set(key, data);
+  return data;
+}
+
+// Keys the tank couldn't serve yet stay pending — a restore lists
+// add-ons in state before their packs finish decoding, so the panel's
+// first ask can land early. Retried whenever new assets arrive.
+const pendingThumbs = new Set<string>();
+function serveThumbs(keys: Iterable<unknown>): void {
+  const thumbs: Record<string, string> = {};
+  for (const k of keys) {
+    if (typeof k !== "string") continue;
+    const data = k.startsWith("f:")
+      ? (() => {
+          const f = sim.fish.find((x) => fishThumbKey(x) === k);
+          return f ? fishThumb(f) : null;
+        })()
+      : k.startsWith("a:") ? addonThumb(k.slice(2)) : null;
+    if (data) { thumbs[k] = data; pendingThumbs.delete(k); }
+    else {
+      // Keys that can never resolve or self-heal — a fish that's
+      // gone or an add-on no longer installed — drop. Alive fish
+      // with no sheet yet (placeholders) stay pending on purpose:
+      // a reinstall re-serves them on the next asset import.
+      const alive = k.startsWith("f:")
+        ? sim.fish.some((x) => fishThumbKey(x) === k)
+        : k.startsWith("a:") &&
+          installedAddons.some((a) => a.url === k.slice(2));
+      if (alive) pendingThumbs.add(k); else pendingThumbs.delete(k);
+    }
+  }
+  if (Object.keys(thumbs).length) bus.post({ op: "thumbs", thumbs });
+}
+
+// Thumb entries keyed to a fish that's gone can never be served
+// again — sweep them on any removal so the maps stay bounded.
+function sweepThumbs(): void {
+  const alive = (k: string) =>
+    !k.startsWith("f:") ||
+    sim.fish.some((x) => fishThumbKey(x) === k);
+  for (const k of [...thumbMemo.keys()]) if (!alive(k)) thumbMemo.delete(k);
+  for (const k of [...pendingThumbs]) if (!alive(k)) pendingThumbs.delete(k);
+}
+
 function onBusMessage(m: BusMsg): void {
   if (m.op === "hello") postState();
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
   else if (m.op === "removeFish" && typeof m.id === "number") {
-    if (sim.removeFish(m.id)) saveTank();
+    if (sim.removeFish(m.id)) { sweepThumbs(); saveTank(); }
   } else if (m.op === "removeAddon" &&
              typeof m.url === "string" && m.url !== "") {
     removeAddon(m.url);
+  } else if (m.op === "wantThumbs" && Array.isArray(m.keys)) {
+    serveThumbs(m.keys);
   } else if (m.op === "crtEnabled") {
     setCrt(m.on === true);
   } else if (m.op === "crtConfig") {
@@ -399,7 +518,17 @@ function removeAddon(url: string): void {
     backdropSrc = prev ?? "";
   }
   for (const s of orphaned) sheetBySpecies.delete(s);
+  const slot = sheetByPack.get(url);
+  // Only delete the reverse entry it still owns — a rebind may have
+  // handed the slot to a different pack since.
+  if (slot !== undefined && packBySheet.get(slot) === url)
+    packBySheet.delete(slot);
   sheetByPack.delete(url);
+  // Drop thumb state that can only rot: this pack's own memo and any
+  // queued ask, plus entries for fish that no longer exist anywhere.
+  thumbMemo.delete(`a:${url}`);
+  pendingThumbs.delete(`a:${url}`);
+  sweepThumbs();
   saveTank(); // persists and pushes fresh state to the panel
   bus.post({ op: "uninstalled", url });
 }

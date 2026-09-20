@@ -13,6 +13,7 @@
 import { zipEntries, zipRead } from "../core/data/zip.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
+import { metaGet, metaPut, packGet, packPut } from "./store.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
@@ -73,37 +74,88 @@ function pageUrl(item: string, outer: string): string {
 
 export interface Importable { section: string; inner: string; url: string }
 
-/** Raw zip bytes, memoized by URL — nested collections share one parent
- * download across all of their entry URLs. */
+/** Raw zip bytes, memoized by URL and persisted in IndexedDB — nested
+ * collections share one parent download across all of their entry
+ * URLs, and a cached zip survives restarts so restores and re-browses
+ * never touch archive.org twice. Items are treated as immutable; an
+ * uploader replacing a file serves stale bytes until LRU trims it —
+ * accepted, since the worst case is dated sprite art. */
 const zipCache = new Map<string, Promise<Uint8Array>>();
+/** Per-URL bytes on archive.org never change — safe to persist
+ * forever. Other hosts (a dev server, a mutable mirror) keep only
+ * their in-session memo so stale bytes can't wedge a dev loop. */
+function immutableHost(u: string): boolean {
+  try { return /(^|\.)archive\.org$/.test(new URL(u).hostname); }
+  catch { return false; }
+}
 function fetchZip(url: string): Promise<Uint8Array> {
   let p = zipCache.get(url);
   if (!p) {
-    p = fetch(url).then(async (r) => {
+    p = (async () => {
+      const hit = immutableHost(url) ? await packGet(url) : null;
+      if (hit) return hit;
+      const r = await fetch(url);
       if (!r.ok) throw new Error(`${url}: ${r.status}`);
-      return new Uint8Array(await r.arrayBuffer());
-    });
+      const d = new Uint8Array(await r.arrayBuffer());
+      if (immutableHost(url)) void packPut(url, d).catch(() => {});
+      return d;
+    })();
     zipCache.set(url, p);
     p.catch(() => zipCache.delete(url));
   }
   return p;
 }
 
-/** A collection zip's HTML listing page, memoized — several sections
- * share one outer zip, and archive.org re-lists it identically. */
-const pageCache = new Map<string, Promise<string>>();
-function listPage(item: string, outer: string): Promise<string> {
+/** A collection zip's HTML listing page, memoized and persisted with a
+ * timestamp — several sections share one outer zip. Refetched once a
+ * day; on failure the stale copy still serves (browse works offline). */
+const pageCache = new Map<string, Promise<CachedPage>>();
+const PAGE_TTL_MS = 24 * 3600 * 1000;
+interface CachedPage { t: number; html: string }
+async function listPage(item: string, outer: string): Promise<string> {
   const page = pageUrl(item, outer);
-  let p = pageCache.get(page);
-  if (!p) {
-    p = fetch(page).then(async (r) => {
-      if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
-      return r.text();
-    });
-    pageCache.set(page, p);
-    p.catch(() => pageCache.delete(page));
+  // Memoized records keep their timestamp so the TTL is checked per
+  // call — a long-lived session still refreshes listings once a day.
+  const prev = pageCache.get(page);
+  const rec = await prev?.catch(() => null) ?? null;
+  if (rec && Date.now() - rec.t < PAGE_TTL_MS) return rec.html;
+  // A same-tick caller may have swapped in its own refresh while we
+  // awaited — ride it instead of double-fetching. Keep re-checking
+  // after a rejecting sibling: another rider may have landed a
+  // replacement while we waited on the failed one.
+  for (let seen = prev; ;) {
+    const cur = pageCache.get(page);
+    if (!cur || cur === seen) break;
+    seen = cur;
+    const shared = await cur.catch(() => null);
+    if (shared) return shared.html;
   }
-  return p;
+  const p = (async (): Promise<CachedPage> => {
+    const hit = immutableHost(page) ? await metaGet<CachedPage>(page)
+                                    : null;
+    if (hit && typeof hit.html === "string" &&
+        Number.isFinite(hit.t) && Date.now() - hit.t < PAGE_TTL_MS)
+      return hit;
+    try {
+      const r = await fetch(page);
+      if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
+      const fresh = { t: Date.now(), html: await r.text() };
+      if (immutableHost(page))
+        void metaPut(page, fresh).catch(() => {});
+      return fresh;
+    } catch (e) {
+      // Stale serve keeps offline browsing working. The memoized
+      // record counts as fresh for a short window so an offline client
+      // isn't refetching per section render — after that the TTL check
+      // retries the fetch and self-heals.
+      if (hit && typeof hit.html === "string")
+        return { t: Date.now() - PAGE_TTL_MS + 30_000, html: hit.html };
+      throw e;
+    }
+  })();
+  pageCache.set(page, p);
+  p.catch(() => pageCache.delete(page));
+  return (await p).html;
 }
 
 /** List one collection's add-ons. Three outer layouts: a zip whose HTML
@@ -180,10 +232,9 @@ async function fetchInnerPacks(url: string): Promise<Uint8Array[]> {
   const entry = i === -1 ? undefined : url.slice(i + 1);
   if (entry === undefined && !/\.zip$/i.test(zipUrl)) {
     // Loose file inside a collection zip — the URL serves the pack or
-    // image itself; no container to open.
-    const r = await fetch(zipUrl);
-    if (!r.ok) throw new Error(`${zipUrl}: ${r.status}`);
-    return [new Uint8Array(await r.arrayBuffer())];
+    // image itself; no container to open. fetchZip already memoizes,
+    // dedupes concurrent calls, and persists bytes on immutable hosts.
+    return [await fetchZip(zipUrl)];
   }
   const z = await fetchZip(zipUrl);
   const packs: Uint8Array[] = [];
