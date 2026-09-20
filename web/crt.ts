@@ -60,7 +60,9 @@ void main() {
   c *= 1.0 + 0.30 * smoothstep(0.5, 1.0, max(c.r, max(c.g, c.b)));
 
   // Scanlines ride the logical-row phase: sin² dips at row boundaries.
-  float scan = pow(sin(3.14159265 * lp.y), 2.0);
+  // (pow() is undefined for negative bases — square explicitly.)
+  float scan = sin(3.14159265 * lp.y);
+  scan *= scan;
   c *= mix(0.60, 1.0, scan);
 
   // Aperture grille: one RGB channel per device-pixel column.
@@ -93,6 +95,13 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     { alpha: false, antialias: false, depth: false, stencil: false });
   if (!el || !ctx) return null;
   const out = el, gl = ctx;
+  // GPU reset → fall back to the plain pixelated path, not a black tank.
+  let enabled = false;
+  out.addEventListener("webglcontextlost", (e) => {
+    e.preventDefault();
+    enabled = false;
+    document.body.classList.remove("crt");
+  });
 
   const shader = (type: number, srcText: string): WebGLShader | null => {
     const s = gl.createShader(type)!;
@@ -135,13 +144,14 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1); // gl_FragCoord y is up
+  // Allocate storage once — render() updates it in place.
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA,
+    gl.UNSIGNED_BYTE, src);
 
   const uTank = gl.getUniformLocation(prog, "uTank");
   const uRect = gl.getUniformLocation(prog, "uRect");
   const uTime = gl.getUniformLocation(prog, "uTime");
   gl.uniform2f(uTank, src.width, src.height);
-
-  let enabled = false;
 
   function resize(): void {
     // Buffer tracks the element's box at device-pixel pitch.
@@ -169,8 +179,10 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       const w = src.width * s, h = src.height * s;
       gl.uniform4f(uRect,
         (out.width - w) / 2, (out.height - h) / 2, w, h);
-      gl.uniform1f(uTime, performance.now() / 1000);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA,
+      // Bound the clock: mediump floats lose sin() precision fast once
+      // uTime*61 grows — wrap every 100s (flicker is noise-like anyway).
+      gl.uniform1f(uTime, (performance.now() / 1000) % 100);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA,
         gl.UNSIGNED_BYTE, src);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     },

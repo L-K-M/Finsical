@@ -77,6 +77,7 @@ function saveTank(): void {
         heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
         bandY: f.bandY, hunger: f.hunger,
         ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
+        ...(f.pack !== undefined ? { pack: f.pack } : {}),
       })),
       addons: installedAddons,
     };
@@ -124,8 +125,9 @@ function usePack(pack: { sheets: Map<string, SpriteSheet>;
 }
 
 /** A newly installed fish pack adds one fish bound to its sheet —
- * "Add again" adds another of the same species. */
-function spawnFish(sheetIdx: number, species: string): void {
+ * "Add again" adds another of the same species. `pack` is the add-on's
+ * install URL: the precise identity when packs share a species name. */
+function spawnFish(sheetIdx: number, species: string, pack?: string): void {
   const facing = Math.random() < 0.5 ? 1 : -1;
   sim.addFish({
     x: 60 + Math.random() * (TANK.width - 120),
@@ -134,6 +136,7 @@ function spawnFish(sheetIdx: number, species: string): void {
     heading: facing > 0 ? 0 : Math.PI,
     cruise: 1.1 + Math.random() * 0.7,
     sheetIdx, species,
+    ...(pack !== undefined ? { pack } : {}),
   });
   saveTank();
 }
@@ -233,14 +236,18 @@ function sheetOf(f: Fish): SpriteSheet | null {
 // bind to sheets by position, which drifts if a pack fails to restore
 // or a drag-dropped pack isn't restorable — remap by species instead.
 const sheetBySpecies = new Map<string, number>();
+// Add-on URL → sheet slot: the precise binding when two packs share a
+// species name (basenames collide across collections).
+const sheetByPack = new Map<string, number>();
 function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
-                      section: string, live: boolean): void {
+                      url: string, section: string, live: boolean): void {
   const idx = usePack({ sheets });
   if (section === "fish" && idx >= 0) {
     sheetBySpecies.set(name, idx);
+    sheetByPack.set(url, idx);
     // A live fish-pack install adds a real fish; restores replay sheets
     // only — the saved roster already carries those fish.
-    if (live) spawnFish(idx, name);
+    if (live) spawnFish(idx, name, url);
   }
   console.info(`archive.org: imported ${section} ${name}`);
 }
@@ -250,8 +257,11 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
  * bundled pack registers its tag too) — only out-of-range ones drop. */
 function remapSheetIdx(): void {
   for (const f of sim.fish) {
-    if (!f.species) continue;
-    const idx = sheetBySpecies.get(f.species);
+    // Fish spawned by an add-on rebind by pack URL; older saves carry
+    // only a species name — fall back to it (collisions just share art).
+    const idx = f.pack !== undefined
+      ? sheetByPack.get(f.pack)
+      : f.species ? sheetBySpecies.get(f.species) : undefined;
     if (idx !== undefined) f.sheetIdx = idx;
     else if (f.sheetIdx !== undefined &&
              (f.sheetIdx < 0 || f.sheetIdx >= fishSheets.length))
@@ -266,14 +276,16 @@ function remapSheetIdx(): void {
  * rosters are authoritative: a fish the user removed stays removed. */
 function reconcileFish(): void {
   if (saved?.v !== 1) return;
-  const present = new Set(sim.fish.map((f) => f.species));
   let pending = false;
   for (const it of installedAddons) {
-    if (it.section !== "fish" || present.has(it.inner)) continue;
-    const idx = sheetBySpecies.get(it.inner);
+    if (it.section !== "fish") continue;
+    // A fish counts as this add-on's when bound by pack URL (new saves)
+    // or carrying its species name (roster entries predate pack keys).
+    if (sim.fish.some((f) => f.pack === it.url || f.species === it.inner))
+      continue;
+    const idx = sheetByPack.get(it.url) ?? sheetBySpecies.get(it.inner);
     if (idx === undefined) { pending = true; continue; } // restore failed — retry next launch
-    spawnFish(idx, it.inner);
-    present.add(it.inner);
+    spawnFish(idx, it.inner, it.url);
   }
   // spawnFish's own saves went out as v=1 — stamp the reconciled roster.
   rosterComplete = !pending;
@@ -346,9 +358,15 @@ function removeAddon(url: string): void {
   }
   for (let i = installedAddons.length - 1; i >= 0; i--)
     if (installedAddons[i]!.url === url) installedAddons.splice(i, 1);
+  // Species no remaining installed pack still provides — legacy fish
+  // (no pack url) only drop when theirs is truly orphaned.
   const species = new Set(gone.map((a) => a.inner));
+  const orphaned = new Set([...species].filter((s) =>
+    !installedAddons.some((a) => a.section === "fish" && a.inner === s)));
   for (const f of [...sim.fish])
-    if (f.species && species.has(f.species)) sim.removeFish(f.id);
+    if (f.pack === url || (f.pack === undefined &&
+        f.species && orphaned.has(f.species)))
+      sim.removeFish(f.id);
   for (let i = decors.length - 1; i >= 0; i--)
     if (decors[i]!.pack === url) decors.splice(i, 1);
   gravelByPack.delete(url);
@@ -365,7 +383,8 @@ function removeAddon(url: string): void {
     backdropCv = prev !== undefined ? backdropByPack.get(prev)! : null;
     backdropSrc = prev ?? "";
   }
-  for (const s of species) sheetBySpecies.delete(s);
+  for (const s of orphaned) sheetBySpecies.delete(s);
+  sheetByPack.delete(url);
   saveTank(); // persists and pushes fresh state to the panel
   bus.post({ op: "uninstalled", url });
 }
@@ -397,7 +416,8 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     const usable = rs.filter((r) => r.sheets.size || r.images.size);
     if (!usable.length) throw new Error("no pack inside");
     for (const r of usable) {
-      if (r.sheets.size) handleSheets(r.sheets, it.inner, it.section, true);
+      if (r.sheets.size)
+        handleSheets(r.sheets, it.inner, it.url, it.section, true);
       if (r.images.size) handleImages(r.images.values(), it.url, it.section);
     }
     recordInstall(it);
@@ -416,6 +436,7 @@ let crtOn = false;
 function setCrt(on: boolean): void {
   crtOn = crt !== null && on;
   crt?.setEnabled(crtOn);
+  if (crt === null) return; // init failed — keep the stored preference
   try { localStorage.setItem(CRT_KEY, crtOn ? "1" : "0"); }
   catch { /* storage unavailable */ }
 }
@@ -695,7 +716,7 @@ function frame(now: number): void {
     acc -= step;
   }
   render();
-  crt?.render();
+  if (crtOn) crt?.render();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

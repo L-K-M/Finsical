@@ -66,6 +66,11 @@ const PACK_EXT = /\.(fsh|grv|plt|acc|azn|rez)$/i;
 /** Loose collection entries: packs plus bare images (background BMPs). */
 const DIRECT_EXT = /\.(fsh|grv|plt|acc|azn|rez|bmp)$/i;
 
+/** A collection zip's HTML listing page URL. */
+function pageUrl(item: string, outer: string): string {
+  return `${BASE}/${item}/${encodeURIComponent(outer)}/`;
+}
+
 export interface Importable { section: string; inner: string; url: string }
 
 /** Raw zip bytes, memoized by URL — nested collections share one parent
@@ -88,7 +93,7 @@ function fetchZip(url: string): Promise<Uint8Array> {
  * share one outer zip, and archive.org re-lists it identically. */
 const pageCache = new Map<string, Promise<string>>();
 function listPage(item: string, outer: string): Promise<string> {
-  const page = `${BASE}/${item}/${encodeURIComponent(outer)}/`;
+  const page = pageUrl(item, outer);
   let p = pageCache.get(page);
   if (!p) {
     p = fetch(page).then(async (r) => {
@@ -131,8 +136,11 @@ async function listCollection(col: Collection): Promise<Importable[]> {
   const seen = new Set<string>();
   const out: Importable[] = [];
   for (const m of html.matchAll(/href="([^"]+)"/g)) {
-    const u = new URL(m[1]!, BASE);
-    if (u.host !== "archive.org") continue;
+    // Resolve against the page URL so page-relative hrefs still land.
+    const u = new URL(m[1]!, pageUrl(item, outer));
+    // Entry links live on archive.org or its node mirrors (iaNNNN…).
+    if (u.host !== "archive.org" && !u.host.endsWith(".archive.org"))
+      continue;
     let path: string;
     try { path = decodeURIComponent(u.pathname); }
     catch { continue; } // malformed escape — not an entry link
@@ -236,11 +244,12 @@ export async function listAddons(): Promise<Importable[]> {
 // ---- import panel --------------------------------------------------------
 
 export interface ImportHandlers {
-  /** `live` = user-initiated install; false on launch-time restore, which
+  /** `name` is the display/species label; `url` is the add-on identity.
+   * `live` = user-initiated install; false on launch-time restore, which
    * must not spawn fish (the saved roster already holds them). */
-  onSheets(sheets: Map<string, SpriteSheet>, name: string,
+  onSheets(sheets: Map<string, SpriteSheet>, name: string, url: string,
            section: string, live: boolean): void;
-  onImages(images: Iterable<IndexedImage>, name: string, section: string): void;
+  onImages(images: Iterable<IndexedImage>, src: string, section: string): void;
   /** Fired once per successful install — lets the caller record which
    * add-ons went into the tank so they can be restored later. */
   onInstall?(it: Importable): void;
@@ -354,6 +363,14 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   // failures (private mode, quota) fall back to the fetch path.
   const THUMB_PREFIX = "finsical:thumb:";
   const thumbKey = (it: Importable): string => THUMB_PREFIX + it.url;
+  // One-time sweep of pre-URL keys ("section:name" — no scheme in them).
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(THUMB_PREFIX) && !k.includes("://"))
+        localStorage.removeItem(k);
+    }
+  } catch { /* storage unavailable */ }
   function storeThumb(it: Importable, cv: HTMLCanvasElement): void {
     const data = cv.toDataURL("image/png");
     try {
@@ -454,7 +471,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     const usable = rs.filter((r) => r.sheets.size || r.images.size);
     if (!usable.length) throw new Error("no pack inside");
     for (const r of usable) {
-      if (r.sheets.size) h.onSheets(r.sheets, it.inner, it.section, live);
+      if (r.sheets.size)
+        h.onSheets(r.sheets, it.inner, it.url, it.section, live);
       if (r.images.size) h.onImages(r.images.values(), it.url, it.section);
     }
     installed.add(it.url);

@@ -55,7 +55,7 @@ panel.open();
 // (a page can't close a window it didn't open); over BroadcastChannel
 // the tank page just sees an unknown op and ignores it.
 window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") bus.post({ op: "closePanel" });
+  if (e.key === "Escape" && !e.repeat) bus.post({ op: "closePanel" });
 });
 
 // ---- tabs ------------------------------------------------------------------
