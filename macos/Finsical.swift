@@ -158,9 +158,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         machineVbW = w
         window.contentAspectRatio = NSSize(width: w, height: h)
         window.contentMinSize = NSSize(width: w * 0.45, height: h * 0.45)
+        if old <= 0 {
+            // First apply: the launch frame is 320×200-aspect but the
+            // machine's isn't — snap the frame to the case outline so
+            // the bezel doesn't letterbox inside dead glass until the
+            // user happens to resize.
+            let f = window.frame
+            let nw = f.height * w / h
+            window.setFrame(NSRect(x: f.midX - nw / 2, y: f.minY,
+                                   width: nw, height: f.height),
+                            display: true, animate: false)
+            return
+        }
         // Keep the screen the same size across a case swap — scale the
         // window by the viewBox ratio, pinned to the top edge.
-        guard old > 0 else { return }
         let cw = window.contentLayoutRect.width
         let nw = cw * (w / old)
         let nh = nw * h / w
