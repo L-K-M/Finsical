@@ -230,14 +230,9 @@ async function fetchInnerPacks(url: string): Promise<Uint8Array[]> {
   const entry = i === -1 ? undefined : url.slice(i + 1);
   if (entry === undefined && !/\.zip$/i.test(zipUrl)) {
     // Loose file inside a collection zip — the URL serves the pack or
-    // image itself; no container to open. Persisted like zip bytes.
-    const hit = immutableHost(zipUrl) ? await packGet(zipUrl) : null;
-    if (hit) return [hit];
-    const r = await fetch(zipUrl);
-    if (!r.ok) throw new Error(`${zipUrl}: ${r.status}`);
-    const d = new Uint8Array(await r.arrayBuffer());
-    if (immutableHost(zipUrl)) void packPut(zipUrl, d).catch(() => {});
-    return [d];
+    // image itself; no container to open. fetchZip already memoizes,
+    // dedupes concurrent calls, and persists bytes on immutable hosts.
+    return [await fetchZip(zipUrl)];
   }
   const z = await fetchZip(zipUrl);
   const packs: Uint8Array[] = [];

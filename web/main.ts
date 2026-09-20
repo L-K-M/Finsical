@@ -390,7 +390,7 @@ function scaledThumb(cv: HTMLCanvasElement): string | null {
   catch { return null; }
 }
 function fishThumb(f: Fish): string | null {
-  const key = `f:${f.id}:${f.species}`;
+  const key = `f:${f.id}:${f.pack ?? f.species}`;
   const hit = thumbMemo.get(key);
   if (hit) return hit;
   const sheet = sheetOf(f);
@@ -430,7 +430,7 @@ function serveThumbs(keys: Iterable<unknown>): void {
     if (typeof k !== "string") continue;
     const data = k.startsWith("f:")
       ? (() => {
-          const f = sim.fish.find((x) => `f:${x.id}:${x.species}` === k);
+          const f = sim.fish.find((x) => `f:${x.id}:${x.pack ?? x.species}` === k);
           return f ? fishThumb(f) : null;
         })()
       : k.startsWith("a:") ? addonThumb(k.slice(2)) : null;
@@ -440,7 +440,7 @@ function serveThumbs(keys: Iterable<unknown>): void {
       // add-on no longer installed — drop instead of retrying on
       // every later asset import.
       const alive = k.startsWith("f:")
-        ? sim.fish.some((x) => `f:${x.id}:${x.species}` === k)
+        ? sim.fish.some((x) => `f:${x.id}:${x.pack ?? x.species}` === k)
         : k.startsWith("a:") &&
           installedAddons.some((a) => a.url === k.slice(2));
       if (alive) pendingThumbs.add(k); else pendingThumbs.delete(k);
@@ -454,7 +454,7 @@ function serveThumbs(keys: Iterable<unknown>): void {
 function sweepThumbs(): void {
   const alive = (k: string) =>
     !k.startsWith("f:") ||
-    sim.fish.some((x) => `f:${x.id}:${x.species}` === k);
+    sim.fish.some((x) => `f:${x.id}:${x.pack ?? x.species}` === k);
   for (const k of [...thumbMemo.keys()]) if (!alive(k)) thumbMemo.delete(k);
   for (const k of [...pendingThumbs]) if (!alive(k)) pendingThumbs.delete(k);
 }
