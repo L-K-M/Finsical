@@ -49,7 +49,7 @@ function rw<T>(store: string, mode: IDBTransactionMode,
       try {
         const tx = d.transaction(store, mode);
         const rq = run(tx.objectStore(store));
-        rq.onsuccess = () => res(rq.result);
+        rq.onsuccess = () => res(rq.result ?? null); // get-miss → null
         rq.onerror = () => res(null);
         tx.onerror = () => res(null);
       } catch { res(null); }
