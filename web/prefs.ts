@@ -113,7 +113,9 @@ for (const spec of SPECS) {
     queueConfigPost(spec.key);
   });
   input.addEventListener("pointerdown", () => dragging.add(spec.key));
-  // Keyboard adjustments end on blur, not pointer events.
+  // Arrow/Home/End tweaks latch like drags — otherwise an echo landing
+  // mid-adjustment yanks the knob back. Both paths clear on blur.
+  input.addEventListener("keydown", () => dragging.add(spec.key));
   input.addEventListener("blur", () => dragging.delete(spec.key));
   sliders.set(spec.key, input);
   values.set(spec.key, val);
