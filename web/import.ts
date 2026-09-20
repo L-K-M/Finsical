@@ -122,7 +122,12 @@ async function listPage(item: string, outer: string): Promise<string> {
   // A same-tick caller may have swapped in its own refresh while we
   // awaited — ride that promise instead of double-fetching.
   const cur = pageCache.get(page);
-  if (cur && cur !== prev) return (await cur).html;
+  if (cur && cur !== prev) {
+    // A rejecting sibling promise must not throw here — fall through
+    // and start our own fetch instead.
+    const shared = await cur.catch(() => null);
+    if (shared) return shared.html;
+  }
   const p = (async (): Promise<CachedPage> => {
     const hit = immutableHost(page) ? await metaGet<CachedPage>(page)
                                     : null;

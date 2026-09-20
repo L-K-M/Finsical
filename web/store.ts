@@ -34,7 +34,9 @@ function openDb(): Promise<IDBDatabase | null> {
         catch { /* unsupported */ }
       };
       req.onerror = () => res(null);
-      req.onblocked = () => res(null);
+      // A blocking tab's older version can clear any moment — don't
+      // memoize this null or the cache stays off for the session.
+      req.onblocked = () => { dbPromise = null; res(null); };
     });
   }
   return dbPromise;
