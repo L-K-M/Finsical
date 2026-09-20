@@ -518,7 +518,10 @@ function removeAddon(url: string): void {
   }
   for (const s of orphaned) sheetBySpecies.delete(s);
   const slot = sheetByPack.get(url);
-  if (slot !== undefined) packBySheet.delete(slot);
+  // Only delete the reverse entry it still owns — a rebind may have
+  // handed the slot to a different pack since.
+  if (slot !== undefined && packBySheet.get(slot) === url)
+    packBySheet.delete(slot);
   sheetByPack.delete(url);
   // Drop thumb state that can only rot: this pack's own memo and any
   // queued ask, plus entries for fish that no longer exist anywhere.

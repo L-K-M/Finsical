@@ -58,9 +58,11 @@ function rw<T>(store: string, mode: IDBTransactionMode,
       try {
         const tx = d.transaction(store, mode);
         const rq = run(tx.objectStore(store));
-        rq.onsuccess = () => res(rq.result ?? null); // get-miss → null
+        // Settle on commit — a request "success" can still abort at
+        // commit time (quota), which must not read as a stored value.
+        tx.oncomplete = () => res(rq.result ?? null); // get-miss → null
         rq.onerror = () => res(null);
-        tx.onerror = () => res(null);
+        tx.onerror = tx.onabort = () => res(null);
       } catch { res(null); }
     });
   });
