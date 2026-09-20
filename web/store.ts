@@ -63,8 +63,9 @@ export function packGet(url: string): Promise<Uint8Array | null> {
   // rather than first-in — also backfills entries that lack one.
   void got.then((d) => {
     if (!d) return;
-    void rw("meta", "readwrite", (s) =>
-      s.put({ bytes: d.byteLength, at: Date.now() }, STAT_PREFIX + url));
+    rw("meta", "readwrite", (s) =>
+      s.put({ bytes: d.byteLength, at: Date.now() }, STAT_PREFIX + url))
+      .catch(() => {}); // cache touches never surface errors
   });
   return got;
 }
@@ -128,7 +129,9 @@ export function packPut(url: string, data: Uint8Array): Promise<unknown> {
     if (ok == null) return; // put failed — don't log phantom bytes
     void rw("meta", "readwrite", (s) =>
       s.put({ bytes: data.byteLength, at: Date.now() },
-            STAT_PREFIX + url)).then(() => trimPacks());
+            STAT_PREFIX + url))
+      .then(() => trimPacks())
+      .catch(() => {});
   });
   return put;
 }
