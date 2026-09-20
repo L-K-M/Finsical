@@ -137,7 +137,9 @@ async function listCollection(col: Collection): Promise<Importable[]> {
   const out: Importable[] = [];
   for (const m of html.matchAll(/href="([^"]+)"/g)) {
     // Resolve against the page URL so page-relative hrefs still land.
-    const u = new URL(m[1]!, pageUrl(item, outer));
+    let u: URL;
+    try { u = new URL(m[1]!, pageUrl(item, outer)); }
+    catch { continue; } // malformed href — not an entry link
     // Entry links live on archive.org or its node mirrors (iaNNNN…).
     if (u.host !== "archive.org" && !u.host.endsWith(".archive.org"))
       continue;

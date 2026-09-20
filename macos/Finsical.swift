@@ -302,12 +302,12 @@ let windowItem = NSMenuItem()
 mainMenu.addItem(windowItem)
 let windowMenu = NSMenu(title: "Window")
 // nil target → responder chain → key window; covers tank and panel.
-// close() is unconditional — performClose can no-op when the close
-// button is merely hidden (the tank's traffic lights are). Closing the
-// tank quits the app (windowWillClose), so ⌘W there is just the
-// standard "close window" semantic.
+// Both windows carry .closable in their styleMask — hiding the buttons
+// doesn't remove it — so performClose works and keeps the
+// windowShouldClose veto path for any future window that needs it.
+// Closing the tank quits the app (windowWillClose).
 windowMenu.addItem(withTitle: "Close",
-                   action: #selector(NSWindow.close),
+                   action: #selector(NSWindow.performClose(_:)),
                    keyEquivalent: "w")
 windowMenu.addItem(withTitle: "Minimize",
                    action: #selector(NSWindow.performMiniaturize(_:)),
