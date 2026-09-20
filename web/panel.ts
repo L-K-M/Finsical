@@ -51,9 +51,18 @@ function paintThumbs(): void {
     });
 }
 
+let tankBoot: string | undefined;
 const bus = openBus((m) => {
   if (m.op === "state") {
     greeted = true;
+    // A tank restart loses any in-flight wantThumbs — a new boot id
+    // resets ask state so missing thumbs are requested again (stored
+    // thumbs still serve; only empty boxes re-ask).
+    if (typeof m.boot === "string" && m.boot !== tankBoot) {
+      tankBoot = m.boot;
+      thumbRequested.clear();
+      lastStructure = "";
+    }
     tankState = m;
     renderOverview();
   } else if (m.op === "thumbs" &&

@@ -326,9 +326,14 @@ const importPanel = mountImportPanel({
 // over the same bus.
 const bus = openBus(onBusMessage);
 
+// Random per page-load — lets clients detect a tank restart (their
+// in-flight wants died with the old page) and re-ask once.
+const boot = Math.random().toString(36).slice(2);
+
 function postState(): void {
   bus.post({
     op: "state",
+    boot,
     addons: installedAddons,
     // `pack` lets the panel tell pack-bound fish from loose ones —
     // a fish add-on with a living fish doesn't repeat in Add-ons.

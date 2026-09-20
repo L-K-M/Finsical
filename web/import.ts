@@ -116,8 +116,13 @@ async function listPage(item: string, outer: string): Promise<string> {
   const page = pageUrl(item, outer);
   // Memoized records keep their timestamp so the TTL is checked per
   // call — a long-lived session still refreshes listings once a day.
-  const rec = await pageCache.get(page)?.catch(() => null);
+  const prev = pageCache.get(page);
+  const rec = await prev?.catch(() => null) ?? null;
   if (rec && Date.now() - rec.t < PAGE_TTL_MS) return rec.html;
+  // A same-tick caller may have swapped in its own refresh while we
+  // awaited — ride that promise instead of double-fetching.
+  const cur = pageCache.get(page);
+  if (cur && cur !== prev) return (await cur).html;
   const p = (async (): Promise<CachedPage> => {
     const hit = immutableHost(page) ? await metaGet<CachedPage>(page)
                                     : null;
