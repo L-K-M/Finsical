@@ -9,6 +9,15 @@ declare global {
   interface Window { __bus?: (m: BusMsg) => void }
 }
 
+/** Fish-thumbnail key shared by the tank (serveThumbs) and the panel
+ * (renderOverview) — single definition so producers and consumers
+ * can't drift. Pack-scoped: a mid-session rebind changes the key, so
+ * stale art is evicted and re-requested instead of lingering. */
+export function fishThumbKey(f: { id: number; species: string;
+                                  pack?: string }): string {
+  return `f:${f.id}:${f.pack ?? f.species}`;
+}
+
 export function openBus(onMsg: (m: BusMsg) => void): Bus {
   const wk = (window as { webkit?: { messageHandlers?: WkHandlers } })
     .webkit?.messageHandlers?.finsical;
