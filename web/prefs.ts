@@ -1,6 +1,5 @@
 import { openBus } from "./bus.js";
 import { CRT_DEFAULTS, sanitizeCrtConfig } from "./crt.js";
-import type { BusMsg } from "./bus.js";
 import type { CrtConfig } from "./crt.js";
 
 // Preferences window: CRT effect controls. The tank page owns the
@@ -42,6 +41,14 @@ let greeted = false;
 // Sliders being dragged ignore state echoes so a push can't tug the
 // knob out from under the pointer.
 const dragging = new Set<keyof CrtConfig>();
+// After a manual toggle, stale in-flight echoes of the master switch
+// are skipped until the echo reflecting it lands — but a rejection
+// (tank reports the effect can't run) must still apply.
+let onTouched = false;
+// Slider drags fire input per step — coalesce to one bus post per
+// frame, carrying every trait touched since the last one.
+let pendingCfg: Partial<CrtConfig> | null = null;
+let postScheduled = false;
 
 function el(tag: string, cls = "", text = ""): HTMLElement {
   const e = document.createElement(tag);
@@ -52,7 +59,7 @@ function el(tag: string, cls = "", text = ""): HTMLElement {
 
 const onBox = document.getElementById("crt-on") as HTMLInputElement;
 const warnEl = document.getElementById("crt-warn")!;
-const controlsEl = document.getElementById("controls")!;
+const controlsEl = document.getElementById("pfcontrols")!;
 
 const sliders = new Map<keyof CrtConfig, HTMLInputElement>();
 const values = new Map<keyof CrtConfig, HTMLElement>();
@@ -61,13 +68,29 @@ const bus = openBus((m) => {
   if (m.op !== "state") return;
   greeted = true;
   const crt = (m.crt ?? {}) as CrtSnap;
-  onBox.checked = crt.on === true;
+  if (!onTouched || crt.available === false ||
+      (crt.on === true) === onBox.checked) {
+    onTouched = false;
+    onBox.checked = crt.on === true;
+  }
   // Only warn when the tank explicitly reports the effect can't run —
   // a missing field just means an older page build.
   warnEl.hidden = crt.available !== false;
   if (crt.cfg !== undefined) cfg = sanitizeCrtConfig(crt.cfg);
   syncControls();
 });
+
+function queueConfigPost(key: keyof CrtConfig): void {
+  (pendingCfg ??= {})[key] = cfg[key];
+  if (postScheduled) return;
+  postScheduled = true;
+  requestAnimationFrame(() => {
+    postScheduled = false;
+    const p = pendingCfg;
+    pendingCfg = null;
+    if (p) bus.post({ op: "crtConfig", cfg: p });
+  });
+}
 
 for (const spec of SPECS) {
   const row = el("div", "pfrow");
@@ -84,11 +107,10 @@ for (const spec of SPECS) {
     const v = Number(input.value) / 100;
     cfg[spec.key] = v;
     val.textContent = `${input.value}%`;
-    bus.post({ op: "crtConfig", cfg: { [spec.key]: v } });
+    queueConfigPost(spec.key);
   });
   input.addEventListener("pointerdown", () => dragging.add(spec.key));
-  input.addEventListener("pointerup", () => dragging.delete(spec.key));
-  input.addEventListener("pointercancel", () => dragging.delete(spec.key));
+  // Keyboard adjustments end on blur, not pointer events.
   input.addEventListener("blur", () => dragging.delete(spec.key));
   sliders.set(spec.key, input);
   values.set(spec.key, val);
@@ -96,6 +118,10 @@ for (const spec of SPECS) {
   row.appendChild(el("div", "pfblurb", spec.blurb));
   controlsEl.appendChild(row);
 }
+// Pointer release can be routed off the input — clear drags at window
+// level so a missed pointerup can't wedge a slider out of echo sync.
+window.addEventListener("pointerup", () => dragging.clear());
+window.addEventListener("pointercancel", () => dragging.clear());
 
 function syncControls(): void {
   for (const [k, input] of sliders) {
@@ -106,8 +132,10 @@ function syncControls(): void {
 }
 syncControls();
 
-onBox.addEventListener("change", () =>
-  bus.post({ op: "crtEnabled", on: onBox.checked }));
+onBox.addEventListener("change", () => {
+  onTouched = true;
+  bus.post({ op: "crtEnabled", on: onBox.checked });
+});
 
 document.getElementById("pfreset")!.addEventListener("click", () => {
   cfg = { ...CRT_DEFAULTS };

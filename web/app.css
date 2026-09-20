@@ -164,7 +164,7 @@ body.crt canvas#tank { opacity: 0; }
   background: #241d10; border: 1px solid #4a3a1c;
   color: #d8b56b; font-size: 11px;
 }
-#controls { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px; }
+#pfcontrols { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px; }
 .pfrow { padding: 10px 0; border-bottom: 1px solid #16202e; }
 .pfrow:last-child { border-bottom: 0; }
 .pfrowtop {

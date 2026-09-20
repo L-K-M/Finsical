@@ -116,11 +116,11 @@ export interface CrtConfig {
   grain: number;
 }
 
-export const CRT_DEFAULTS: CrtConfig = {
+export const CRT_DEFAULTS: Readonly<CrtConfig> = Object.freeze<CrtConfig>({
   scanlines: 0.40, beam: 1.0, bloom: 0.50, overdrive: 0.50,
   grille: 1.0, curvature: 0.45, vignette: 0.35, flicker: 0.30,
   grain: 0.30,
-};
+});
 
 /** Merge an untrusted source (localStorage, bus message) onto the
  * defaults: unknown keys drop, each value clamps into 0–1. */
