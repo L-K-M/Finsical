@@ -149,11 +149,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         if note.object as? NSWindow === window { NSApp.terminate(nil) }
     }
 
-    /// The tank has no zoom affordance; keep menu/double-click zoom off too.
-    func windowShouldZoom(_ window: NSWindow, toFrame newFrame: NSRect) -> Bool {
-        window !== self.window
-    }
-
     @objc func feedFish() {
         let js = "window.finsical?.feedFish ? window.finsical.feedFish()" +
                  " : (() => { throw new Error('window.finsical.feedFish missing') })()"
@@ -216,12 +211,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         window.contentAspectRatio = NSSize(width: 320, height: 200)
         window.contentView = webView
         window.delegate = self
-        // No traffic lights: closing the tank alone is meaningless (the
-        // app quits on close anyway), and minimize/zoom do nothing for a
-        // floating tank. Quit lives in the menu; edges still resize.
+        // No traffic lights on the tank — the buttons are pointless for a
+        // floating window, and everything lives in the menu. The behaviors
+        // stay: ⌘M still minimizes, edges still resize, menu zoom works.
         window.standardWindowButton(.closeButton)?.isHidden = true
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.styleMask.remove(.miniaturizable) // also blocks ⌘M / performMiniaturize
         window.standardWindowButton(.zoomButton)?.isHidden = true
 
         let strip = DragStrip()
@@ -280,6 +274,22 @@ editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquiv
 editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
 editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
 editItem.submenu = editMenu
+let windowItem = NSMenuItem()
+mainMenu.addItem(windowItem)
+let windowMenu = NSMenu(title: "Window")
+// nil target → responder chain → key window; covers tank and panel.
+windowMenu.addItem(withTitle: "Minimize",
+                   action: #selector(NSWindow.performMiniaturize(_:)),
+                   keyEquivalent: "m")
+windowMenu.addItem(withTitle: "Zoom",
+                   action: #selector(NSWindow.performZoom(_:)),
+                   keyEquivalent: "")
+windowItem.submenu = windowMenu
+windowMenu.addItem(.separator())
+windowMenu.addItem(withTitle: "Bring All to Front",
+                   action: #selector(NSApplication.arrangeInFront(_:)),
+                   keyEquivalent: "")
+app.windowsMenu = windowMenu
 app.mainMenu = mainMenu
 app.activate(ignoringOtherApps: true)
 app.run()
