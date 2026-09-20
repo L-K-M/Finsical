@@ -36,7 +36,14 @@ function openDb(): Promise<IDBDatabase | null> {
       req.onerror = () => res(null);
       // A blocking tab's older version can clear any moment — don't
       // memoize this null or the cache stays off for the session.
-      req.onblocked = () => { dbPromise = null; res(null); };
+      req.onblocked = () => {
+        dbPromise = null; res(null);
+        // The promise already settled; if the blocker clears and this
+        // superseded request still succeeds, close — don't leak — it.
+        req.onsuccess = () => {
+          try { req.result.close(); } catch { /* already closed */ }
+        };
+      };
     });
   }
   return dbPromise;

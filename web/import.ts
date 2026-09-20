@@ -120,11 +120,13 @@ async function listPage(item: string, outer: string): Promise<string> {
   const rec = await prev?.catch(() => null) ?? null;
   if (rec && Date.now() - rec.t < PAGE_TTL_MS) return rec.html;
   // A same-tick caller may have swapped in its own refresh while we
-  // awaited — ride that promise instead of double-fetching.
-  const cur = pageCache.get(page);
-  if (cur && cur !== prev) {
-    // A rejecting sibling promise must not throw here — fall through
-    // and start our own fetch instead.
+  // awaited — ride it instead of double-fetching. Keep re-checking
+  // after a rejecting sibling: another rider may have landed a
+  // replacement while we waited on the failed one.
+  for (let seen = prev; ;) {
+    const cur = pageCache.get(page);
+    if (!cur || cur === seen) break;
+    seen = cur;
     const shared = await cur.catch(() => null);
     if (shared) return shared.html;
   }
