@@ -620,6 +620,15 @@ function applyCrtConfig(raw: unknown): void {
   catch { /* storage unavailable */ }
   postState();
 }
+// Machine selection is declared up here, not in the machine-case
+// section — setCrt below calls postState() during module eval, and a
+// let/TDZ read would throw (silently, inside that try) before a later
+// declaration ran.
+const MACHINE_KEY = "finsical:machine";
+let machine: Machine =
+  machineById(localStorage.getItem(MACHINE_KEY) ?? "")
+  ?? machineById(DEFAULT_MACHINE)!;
+
 try { setCrt(localStorage.getItem(CRT_KEY) === "1"); }
 catch { /* storage unavailable — default off */ }
 
@@ -628,13 +637,9 @@ catch { /* storage unavailable — default off */ }
 // an SVG bezel (web/machines.ts). The bezel is the drag surface (its
 // mousedowns become a native performDrag); the screen div sits above
 // the shell so canvas clicks still reach the tank.
-const MACHINE_KEY = "finsical:machine";
 const machineEl = document.getElementById("machine")!;
 const shellEl = document.getElementById("shell")!;
 const screenEl = document.getElementById("screen")!;
-let machine: Machine =
-  machineById(localStorage.getItem(MACHINE_KEY) ?? "")
-  ?? machineById(DEFAULT_MACHINE)!;
 
 function layoutMachine(): void {
   const w = machineEl.clientWidth, h = machineEl.clientHeight;
