@@ -79,6 +79,13 @@ export interface Importable { section: string; inner: string; url: string }
  * URLs, and a cached zip survives restarts so restores and re-browses
  * never touch archive.org twice (entries are immutable per URL). */
 const zipCache = new Map<string, Promise<Uint8Array>>();
+/** Per-URL bytes on archive.org never change — safe to persist
+ * forever. Other hosts (a dev server, a mutable mirror) keep only
+ * their in-session memo so stale bytes can't wedge a dev loop. */
+function immutableHost(u: string): boolean {
+  try { return /(^|\.)archive\.org$/.test(new URL(u).hostname); }
+  catch { return false; }
+}
 function fetchZip(url: string): Promise<Uint8Array> {
   let p = zipCache.get(url);
   if (!p) {
@@ -88,7 +95,7 @@ function fetchZip(url: string): Promise<Uint8Array> {
       const r = await fetch(url);
       if (!r.ok) throw new Error(`${url}: ${r.status}`);
       const d = new Uint8Array(await r.arrayBuffer());
-      void packPut(url, d);
+      if (immutableHost(url)) void packPut(url, d);
       return d;
     })();
     zipCache.set(url, p);
@@ -100,33 +107,37 @@ function fetchZip(url: string): Promise<Uint8Array> {
 /** A collection zip's HTML listing page, memoized and persisted with a
  * timestamp — several sections share one outer zip. Refetched once a
  * day; on failure the stale copy still serves (browse works offline). */
-const pageCache = new Map<string, Promise<string>>();
+const pageCache = new Map<string, Promise<CachedPage>>();
 const PAGE_TTL_MS = 24 * 3600 * 1000;
 interface CachedPage { t: number; html: string }
-function listPage(item: string, outer: string): Promise<string> {
+async function listPage(item: string, outer: string): Promise<string> {
   const page = pageUrl(item, outer);
-  let p = pageCache.get(page);
-  if (!p) {
-    p = (async () => {
-      const hit = await metaGet<CachedPage>(page);
-      if (hit && typeof hit.html === "string" &&
-          Number.isFinite(hit.t) && Date.now() - hit.t < PAGE_TTL_MS)
-        return hit.html;
-      try {
-        const r = await fetch(page);
-        if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
-        const html = await r.text();
-        void metaPut(page, { t: Date.now(), html } satisfies CachedPage);
-        return html;
-      } catch (e) {
-        if (hit && typeof hit.html === "string") return hit.html;
-        throw e;
-      }
-    })();
-    pageCache.set(page, p);
-    p.catch(() => pageCache.delete(page));
-  }
-  return p;
+  // Memoized records keep their timestamp so the TTL is checked per
+  // call — a long-lived session still refreshes listings once a day.
+  const rec = await pageCache.get(page)?.catch(() => null);
+  if (rec && Date.now() - rec.t < PAGE_TTL_MS) return rec.html;
+  const p = (async (): Promise<CachedPage> => {
+    const hit = await metaGet<CachedPage>(page);
+    if (hit && typeof hit.html === "string" &&
+        Number.isFinite(hit.t) && Date.now() - hit.t < PAGE_TTL_MS)
+      return hit;
+    try {
+      const r = await fetch(page);
+      if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
+      const fresh = { t: Date.now(), html: await r.text() };
+      void metaPut(page, fresh satisfies CachedPage);
+      return fresh;
+    } catch (e) {
+      // Stale serve keeps offline browsing working; t=0 marks it
+      // expired so the next call retries the fetch and self-heals.
+      if (hit && typeof hit.html === "string")
+        return { t: 0, html: hit.html };
+      throw e;
+    }
+  })();
+  pageCache.set(page, p);
+  p.catch(() => pageCache.delete(page));
+  return (await p).html;
 }
 
 /** List one collection's add-ons. Three outer layouts: a zip whose HTML
@@ -209,7 +220,7 @@ async function fetchInnerPacks(url: string): Promise<Uint8Array[]> {
     const r = await fetch(zipUrl);
     if (!r.ok) throw new Error(`${zipUrl}: ${r.status}`);
     const d = new Uint8Array(await r.arrayBuffer());
-    void packPut(zipUrl, d);
+    if (immutableHost(zipUrl)) void packPut(zipUrl, d);
     return [d];
   }
   const z = await fetchZip(zipUrl);

@@ -251,6 +251,7 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
     if (live) spawnFish(idx, name, url);
   }
   console.info(`archive.org: imported ${section} ${name}`);
+  if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
 }
 
 /** Rebind each saved fish's sheetIdx to where its species' pack actually
@@ -304,6 +305,7 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
     pickBackdrop(images, src);
   else return;
   console.info(`archive.org: imported scenery ${src}`);
+  if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
 }
 function recordInstall(it: Importable): void {
   if (!installedAddons.some((a) => a.url === it.url))
@@ -350,7 +352,9 @@ function postState(): void {
 // The panel shows art next to names. Thumbs render from the live
 // objects on request (op:"wantThumbs" → op:"thumbs") so state pushes
 // stay slim — the panel only asks for keys it hasn't seen. Keys:
-// "f:{id}" for fish, the add-on url itself for packs.
+// "f:{id}:{species}" for fish, "a:{url}" for add-ons. Species rides
+// along because ids can be reused for a different species after the
+// tank page reloads under a still-open panel.
 const THUMB_W = 38, THUMB_H = 28;
 const thumbMemo = new Map<string, string>();
 function scaledThumb(cv: HTMLCanvasElement): string | null {
@@ -365,7 +369,7 @@ function scaledThumb(cv: HTMLCanvasElement): string | null {
   catch { return null; }
 }
 function fishThumb(f: Fish): string | null {
-  const key = `f:${f.id}`;
+  const key = `f:${f.id}:${f.species}`;
   const hit = thumbMemo.get(key);
   if (hit) return hit;
   const sheet = sheetOf(f);
@@ -395,6 +399,26 @@ function addonThumb(url: string): string | null {
   return data;
 }
 
+// Keys the tank couldn't serve yet stay pending — a restore lists
+// add-ons in state before their packs finish decoding, so the panel's
+// first ask can land early. Retried whenever new assets arrive.
+const pendingThumbs = new Set<string>();
+function serveThumbs(keys: Iterable<unknown>): void {
+  const thumbs: Record<string, string> = {};
+  for (const k of keys) {
+    if (typeof k !== "string") continue;
+    const data = k.startsWith("f:")
+      ? (() => {
+          const f = sim.fish.find((x) => `f:${x.id}:${x.species}` === k);
+          return f ? fishThumb(f) : null;
+        })()
+      : k.startsWith("a:") ? addonThumb(k.slice(2)) : null;
+    if (data) { thumbs[k] = data; pendingThumbs.delete(k); }
+    else pendingThumbs.add(k);
+  }
+  if (Object.keys(thumbs).length) bus.post({ op: "thumbs", thumbs });
+}
+
 function onBusMessage(m: BusMsg): void {
   if (m.op === "hello") postState();
   else if (m.op === "install")
@@ -405,18 +429,7 @@ function onBusMessage(m: BusMsg): void {
              typeof m.url === "string" && m.url !== "") {
     removeAddon(m.url);
   } else if (m.op === "wantThumbs" && Array.isArray(m.keys)) {
-    const thumbs: Record<string, string> = {};
-    for (const k of m.keys) {
-      if (typeof k !== "string") continue;
-      const data = k.startsWith("f:")
-        ? (() => {
-            const f = sim.fish.find((x) => `f:${x.id}` === k);
-            return f ? fishThumb(f) : null;
-          })()
-        : k.startsWith("a:") ? addonThumb(k.slice(2)) : null;
-      if (data) thumbs[k] = data;
-    }
-    if (Object.keys(thumbs).length) bus.post({ op: "thumbs", thumbs });
+    serveThumbs(m.keys);
   } else if (m.op === "crtEnabled") {
     setCrt(m.on === true);
   } else if (m.op === "crtConfig") {

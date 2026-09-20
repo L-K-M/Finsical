@@ -194,7 +194,7 @@ function renderOverview(): void {
       "No fish — add one from the Add-ons tab."));
   for (const f of fish) {
     const row = el("div", "orow");
-    row.appendChild(thumbBox(`f:${f.id}`, need));
+    row.appendChild(thumbBox(`f:${f.id}:${f.species}`, need));
     row.appendChild(el("span", "oname", f.species || "Fish"));
     const meta = el("span", "ometa",
       `${f.state} · ${hungerLabel(f.hunger)}`);
