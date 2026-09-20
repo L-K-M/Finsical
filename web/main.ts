@@ -436,9 +436,10 @@ function serveThumbs(keys: Iterable<unknown>): void {
       : k.startsWith("a:") ? addonThumb(k.slice(2)) : null;
     if (data) { thumbs[k] = data; pendingThumbs.delete(k); }
     else {
-      // Keys that can never resolve — a fish that's gone or an
-      // add-on no longer installed — drop instead of retrying on
-      // every later asset import.
+      // Keys that can never resolve or self-heal — a fish that's
+      // gone or an add-on no longer installed — drop. Alive fish
+      // with no sheet yet (placeholders) stay pending on purpose:
+      // a reinstall re-serves them on the next asset import.
       const alive = k.startsWith("f:")
         ? sim.fish.some((x) => fishThumbKey(x) === k)
         : k.startsWith("a:") &&
