@@ -248,6 +248,10 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
   const idx = usePack({ sheets });
   if (section === "fish" && idx >= 0) {
     sheetBySpecies.set(name, idx);
+    // A reinstall can rebind the url to a new slot — drop the old
+    // reverse entry so the two maps stay exact inverses.
+    const prior = sheetByPack.get(url);
+    if (prior !== undefined && prior !== idx) packBySheet.delete(prior);
     sheetByPack.set(url, idx);
     packBySheet.set(idx, url);
     // A live fish-pack install adds a real fish; restores replay sheets
@@ -513,6 +517,8 @@ function removeAddon(url: string): void {
     backdropSrc = prev ?? "";
   }
   for (const s of orphaned) sheetBySpecies.delete(s);
+  const slot = sheetByPack.get(url);
+  if (slot !== undefined) packBySheet.delete(slot);
   sheetByPack.delete(url);
   // Drop thumb state that can only rot: this pack's own memo and any
   // queued ask, plus entries for fish that no longer exist anywhere.
