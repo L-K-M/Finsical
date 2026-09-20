@@ -8,8 +8,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "esbuild web/main.ts --bundle --format=iife --outfile=dist/bundle.js && esbuild web/panel.ts --bundle --format=iife --outfile=dist/panel.js && node -e \"const f=require('fs');f.mkdirSync('dist',{recursive:true});for(const s of['index.html','panel.html','app.css'])f.copyFileSync('web/'+s,'dist/'+s)\"",
-    "dev": "trap 'kill 0' INT TERM; esbuild web/panel.ts --bundle --format=iife --outfile=web/panel.js --watch & esbuild web/main.ts --bundle --format=iife --outfile=web/bundle.js --servedir=web --serve=8080 --watch & wait"
+    "build": "esbuild web/main.ts --bundle --format=iife --outfile=dist/bundle.js && esbuild web/panel.ts --bundle --format=iife --outfile=dist/panel.js && esbuild web/prefs.ts --bundle --format=iife --outfile=dist/prefs.js && node -e \"const f=require('fs');f.mkdirSync('dist',{recursive:true});for(const s of['index.html','panel.html','prefs.html','app.css'])f.copyFileSync('web/'+s,'dist/'+s)\"",
+    "dev": "trap 'kill 0' INT TERM; esbuild web/panel.ts --bundle --format=iife --outfile=web/panel.js --watch & esbuild web/prefs.ts --bundle --format=iife --outfile=web/prefs.js --watch & esbuild web/main.ts --bundle --format=iife --outfile=web/bundle.js --servedir=web --serve=8080 --watch & wait"
   },
   "devDependencies": {
     "esbuild": "0.24.2",

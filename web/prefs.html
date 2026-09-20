@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Preferences</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body class="panelpage prefpage">
+  <div class="pfhead">
+    <label class="pfmaster">
+      <input type="checkbox" id="crt-on" />
+      <span>
+        <span class="pftitle">CRT monitor effect</span>
+        <span class="pfsub">Re-draw the tank the way a 1990s tube monitor
+          showed it: scanlines, glow, curved glass. Off renders crisp
+          pixels on modern displays.</span>
+      </span>
+    </label>
+    <div class="pfwarn" id="crt-warn" hidden>
+      This system can't run the effect (WebGL unavailable or the GPU
+      context was lost) — the settings below still save for later.
+    </div>
+  </div>
+  <div id="controls"></div>
+  <div class="pffoot">
+    <button id="pfreset">Reset to defaults</button>
+    <span class="pfhint">Changes apply to the tank instantly.</span>
+  </div>
+  <script src="prefs.js"></script>
+</body>
+</html>
