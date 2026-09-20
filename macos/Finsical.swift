@@ -285,11 +285,11 @@ windowMenu.addItem(withTitle: "Zoom",
                    action: #selector(NSWindow.performZoom(_:)),
                    keyEquivalent: "")
 windowItem.submenu = windowMenu
-app.windowsMenu = windowMenu
 windowMenu.addItem(.separator())
 windowMenu.addItem(withTitle: "Bring All to Front",
                    action: #selector(NSApplication.arrangeInFront(_:)),
                    keyEquivalent: "")
+app.windowsMenu = windowMenu
 app.mainMenu = mainMenu
 app.activate(ignoringOtherApps: true)
 app.run()
