@@ -240,12 +240,16 @@ const sheetBySpecies = new Map<string, number>();
 // Add-on URL → sheet slot: the precise binding when two packs share a
 // species name (basenames collide across collections).
 const sheetByPack = new Map<string, number>();
+// Reverse of sheetByPack — which pack owns a slot, for migrating
+// species-bound fish onto the URL binding of the sheet they render.
+const packBySheet = new Map<number, string>();
 function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
                       url: string, section: string, live: boolean): void {
   const idx = usePack({ sheets });
   if (section === "fish" && idx >= 0) {
     sheetBySpecies.set(name, idx);
     sheetByPack.set(url, idx);
+    packBySheet.set(idx, url);
     // A live fish-pack install adds a real fish; restores replay sheets
     // only — the saved roster already carries those fish.
     if (live) spawnFish(idx, name, url);
@@ -264,9 +268,17 @@ function remapSheetIdx(): void {
     const idx = f.pack !== undefined
       ? sheetByPack.get(f.pack)
       : f.species ? sheetBySpecies.get(f.species) : undefined;
-    if (idx !== undefined) f.sheetIdx = idx;
-    else if (f.sheetIdx !== undefined &&
-             (f.sheetIdx < 0 || f.sheetIdx >= fishSheets.length))
+    if (idx !== undefined) {
+      f.sheetIdx = idx;
+      // Migrate species-bound fish onto the URL binding of the pack
+      // whose sheet they actually render — precise when two packs
+      // share a species name, and it lets the panel dedupe by URL.
+      if (f.pack === undefined) {
+        const u = packBySheet.get(idx);
+        if (u !== undefined) f.pack = u;
+      }
+    } else if (f.sheetIdx !== undefined &&
+               (f.sheetIdx < 0 || f.sheetIdx >= fishSheets.length))
       delete f.sheetIdx;
   }
 }
@@ -419,9 +431,28 @@ function serveThumbs(keys: Iterable<unknown>): void {
         })()
       : k.startsWith("a:") ? addonThumb(k.slice(2)) : null;
     if (data) { thumbs[k] = data; pendingThumbs.delete(k); }
-    else pendingThumbs.add(k);
+    else {
+      // Keys that can never resolve — a fish that's gone or an
+      // add-on no longer installed — drop instead of retrying on
+      // every later asset import.
+      const alive = k.startsWith("f:")
+        ? sim.fish.some((x) => `f:${x.id}:${x.species}` === k)
+        : k.startsWith("a:") &&
+          installedAddons.some((a) => a.url === k.slice(2));
+      if (alive) pendingThumbs.add(k); else pendingThumbs.delete(k);
+    }
   }
   if (Object.keys(thumbs).length) bus.post({ op: "thumbs", thumbs });
+}
+
+// Thumb entries keyed to a fish that's gone can never be served
+// again — sweep them on any removal so the maps stay bounded.
+function sweepThumbs(): void {
+  const alive = (k: string) =>
+    !k.startsWith("f:") ||
+    sim.fish.some((x) => `f:${x.id}:${x.species}` === k);
+  for (const k of [...thumbMemo.keys()]) if (!alive(k)) thumbMemo.delete(k);
+  for (const k of [...pendingThumbs]) if (!alive(k)) pendingThumbs.delete(k);
 }
 
 function onBusMessage(m: BusMsg): void {
@@ -429,7 +460,7 @@ function onBusMessage(m: BusMsg): void {
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
   else if (m.op === "removeFish" && typeof m.id === "number") {
-    if (sim.removeFish(m.id)) saveTank();
+    if (sim.removeFish(m.id)) { sweepThumbs(); saveTank(); }
   } else if (m.op === "removeAddon" &&
              typeof m.url === "string" && m.url !== "") {
     removeAddon(m.url);
@@ -483,6 +514,11 @@ function removeAddon(url: string): void {
   }
   for (const s of orphaned) sheetBySpecies.delete(s);
   sheetByPack.delete(url);
+  // Drop thumb state that can only rot: this pack's own memo and any
+  // queued ask, plus entries for fish that no longer exist anywhere.
+  thumbMemo.delete(`a:${url}`);
+  pendingThumbs.delete(`a:${url}`);
+  sweepThumbs();
   saveTank(); // persists and pushes fresh state to the panel
   bus.post({ op: "uninstalled", url });
 }
