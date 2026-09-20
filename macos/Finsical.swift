@@ -302,10 +302,12 @@ let windowItem = NSMenuItem()
 mainMenu.addItem(windowItem)
 let windowMenu = NSMenu(title: "Window")
 // nil target → responder chain → key window; covers tank and panel.
-// Closing the tank window quits the app (windowWillClose), so ⌘W there
-// is just the standard "close window" semantic.
+// close() is unconditional — performClose can no-op when the close
+// button is merely hidden (the tank's traffic lights are). Closing the
+// tank quits the app (windowWillClose), so ⌘W there is just the
+// standard "close window" semantic.
 windowMenu.addItem(withTitle: "Close",
-                   action: #selector(NSWindow.performClose(_:)),
+                   action: #selector(NSWindow.close),
                    keyEquivalent: "w")
 windowMenu.addItem(withTitle: "Minimize",
                    action: #selector(NSWindow.performMiniaturize(_:)),
