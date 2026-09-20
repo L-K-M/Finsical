@@ -96,9 +96,13 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   if (!el || !ctx) return null;
   const out = el, gl = ctx;
   // GPU reset → fall back to the plain pixelated path, not a black tank.
+  // `lost` also refuses re-enable — re-adding body.crt on a dead context
+  // would just hide the tank again. (Reload the page to retry.)
   let enabled = false;
+  let lost = false;
   out.addEventListener("webglcontextlost", (e) => {
     e.preventDefault();
+    lost = true;
     enabled = false;
     document.body.classList.remove("crt");
   });
@@ -167,6 +171,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   return {
     get enabled() { return enabled; },
     setEnabled(on: boolean): void {
+      if (on && lost) return; // dead context — stay on the plain path
       enabled = on;
       document.body.classList.toggle("crt", on);
       if (on) resize();

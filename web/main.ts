@@ -280,8 +280,10 @@ function reconcileFish(): void {
   for (const it of installedAddons) {
     if (it.section !== "fish") continue;
     // A fish counts as this add-on's when bound by pack URL (new saves)
-    // or carrying its species name (roster entries predate pack keys).
-    if (sim.fish.some((f) => f.pack === it.url || f.species === it.inner))
+    // or carrying its species name — but only pre-pack roster entries
+    // use species, or a same-named pack's fish would satisfy this pack.
+    if (sim.fish.some((f) => f.pack === it.url ||
+        (f.pack === undefined && f.species === it.inner)))
       continue;
     const idx = sheetByPack.get(it.url) ?? sheetBySpecies.get(it.inner);
     if (idx === undefined) { pending = true; continue; } // restore failed — retry next launch
