@@ -77,7 +77,9 @@ export interface Importable { section: string; inner: string; url: string }
 /** Raw zip bytes, memoized by URL and persisted in IndexedDB — nested
  * collections share one parent download across all of their entry
  * URLs, and a cached zip survives restarts so restores and re-browses
- * never touch archive.org twice (entries are immutable per URL). */
+ * never touch archive.org twice. Items are treated as immutable; an
+ * uploader replacing a file serves stale bytes until LRU trims it —
+ * accepted, since the worst case is dated sprite art. */
 const zipCache = new Map<string, Promise<Uint8Array>>();
 /** Per-URL bytes on archive.org never change — safe to persist
  * forever. Other hosts (a dev server, a mutable mirror) keep only
@@ -95,7 +97,7 @@ function fetchZip(url: string): Promise<Uint8Array> {
       const r = await fetch(url);
       if (!r.ok) throw new Error(`${url}: ${r.status}`);
       const d = new Uint8Array(await r.arrayBuffer());
-      if (immutableHost(url)) void packPut(url, d);
+      if (immutableHost(url)) void packPut(url, d).catch(() => {});
       return d;
     })();
     zipCache.set(url, p);
@@ -126,7 +128,8 @@ async function listPage(item: string, outer: string): Promise<string> {
       const r = await fetch(page);
       if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
       const fresh = { t: Date.now(), html: await r.text() };
-      if (immutableHost(page)) void metaPut(page, fresh);
+      if (immutableHost(page))
+        void metaPut(page, fresh).catch(() => {});
       return fresh;
     } catch (e) {
       // Stale serve keeps offline browsing working; t=0 marks it
@@ -221,7 +224,7 @@ async function fetchInnerPacks(url: string): Promise<Uint8Array[]> {
     const r = await fetch(zipUrl);
     if (!r.ok) throw new Error(`${zipUrl}: ${r.status}`);
     const d = new Uint8Array(await r.arrayBuffer());
-    if (immutableHost(zipUrl)) void packPut(zipUrl, d);
+    if (immutableHost(zipUrl)) void packPut(zipUrl, d).catch(() => {});
     return [d];
   }
   const z = await fetchZip(zipUrl);
