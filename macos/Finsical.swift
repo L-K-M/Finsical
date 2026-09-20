@@ -184,13 +184,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         let js = text.replacingOccurrences(of: "\u{2028}", with: "\\u2028")
                      .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
         for dest in dests {
+            let name = dest === webView ? "tank"
+                     : dest === panelView ? "panel" : "prefs"
             dest.evaluateJavaScript(
                 "window.__bus ? (window.__bus(\(js)), undefined) : 'dropped'") {
                 result, error in
                 if let error {
-                    NSLog("Finsical: bus relay failed: \(error.localizedDescription)")
+                    NSLog("Finsical: bus relay to \(name) failed: \(error.localizedDescription)")
                 } else if result as? String == "dropped" {
-                    NSLog("Finsical: bus relay dropped — destination page not ready")
+                    NSLog("Finsical: bus relay to \(name) dropped — destination page not ready")
                 }
             }
         }

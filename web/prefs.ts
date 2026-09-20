@@ -156,6 +156,9 @@ onBox.addEventListener("change", () => {
 });
 
 document.getElementById("pfreset")!.addEventListener("click", () => {
+  // Drop a coalesced slider change still awaiting its rAF post — it
+  // carries pre-reset values that would undo part of the reset.
+  pendingCfg = null;
   cfg = { ...CRT_DEFAULTS };
   bus.post({ op: "crtConfig", cfg });
   syncControls();
@@ -183,6 +186,9 @@ setInterval(() => {
 }, 10_000);
 // Snap to fresh state the moment the window is shown again — the
 // relay skips pushes to hidden windows, so a reopened one is stale.
+// No `greeted` guard: if the greet loop gave up (tank still loading),
+// refocusing retries contact — the relay drops it harmlessly if the
+// tank isn't there yet.
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && greeted) bus.post({ op: "hello" });
+  if (!document.hidden) bus.post({ op: "hello" });
 });
