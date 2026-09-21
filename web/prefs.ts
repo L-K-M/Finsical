@@ -8,7 +8,21 @@ import type { CrtConfig } from "./crt.js";
 // state it pushes back (op:"state" carries `crt` and `machine`
 // snapshots) and posts intents: crtEnabled, crtConfig, machine.
 
-const SPECS: { key: keyof CrtConfig; label: string; blurb: string }[] = [
+interface SliderSpec {
+  key: keyof CrtConfig;
+  label: string;
+  blurb: string;
+  /** Value label — defaults to a plain percentage. Mid-centered
+   * controls (brightness, trims) show a signed offset instead. */
+  fmt?: (v: number) => string;
+}
+const pct = (v: number): string => `${Math.round(v * 100)}%`;
+const offset = (v: number): string => {
+  const d = Math.round((v - 0.5) * 200);
+  return d === 0 ? "0" : `${d > 0 ? "+" : ""}${d}`;
+};
+
+const SPECS: SliderSpec[] = [
   { key: "scanlines", label: "Scanlines",
     blurb: "Dark gaps between the picture's rows — the most " +
       "recognizable CRT trait. The lines stay locked to the game's " +
@@ -40,6 +54,29 @@ const SPECS: { key: keyof CrtConfig; label: string; blurb: string }[] = [
     blurb: "Subtle analog grain over the whole image." },
 ];
 
+// Monitor front-panel controls — adjustments a real tube offered,
+// applied after all the tube traits.
+const PIC_SPECS: SliderSpec[] = [
+  { key: "brightness", label: "Brightness", fmt: offset,
+    blurb: "The master drive level — how hard the beam pushes the " +
+      "phosphors. Pushed too far it washes out the scanlines." },
+  { key: "contrast", label: "Contrast", fmt: offset,
+    blurb: "Separates bright from dark around the picture's middle. " +
+      "Higher contrast deepens the water and heats the highlights." },
+  { key: "zoom", label: "Overscan",
+    blurb: "Real sets run the raster a little past the glass — this " +
+      "zooms in, cropping the outermost pixels like the bezel did." },
+  { key: "red", label: "Red gain", fmt: offset,
+    blurb: "Trims the red gun, like a service-menu adjustment. " +
+      "Lower it to cool the picture, raise it to warm." },
+  { key: "green", label: "Green gain", fmt: offset,
+    blurb: "Trims the green gun — the brightest of the three on a " +
+      "tube, so small moves go far." },
+  { key: "blue", label: "Blue gain", fmt: offset,
+    blurb: "Trims the blue gun. Aging tubes drift blue-weak — a " +
+      "nudge restores the water's depth." },
+];
+
 interface CrtSnap { available?: boolean; on?: boolean; cfg?: unknown }
 let cfg: CrtConfig = { ...CRT_DEFAULTS };
 let greeted = false;
@@ -66,7 +103,8 @@ function el(tag: string, cls = "", text = ""): HTMLElement {
 
 const onBox = document.getElementById("crt-on") as HTMLInputElement;
 const warnEl = document.getElementById("crt-warn")!;
-const controlsEl = document.getElementById("pfcontrols")!;
+const traitsEl = document.getElementById("pftraits")!;
+const picEl = document.getElementById("pfpicture")!;
 const machineEl = document.getElementById("pfmachine")!;
 
 // Machine picker: one tile per case, mini bezel preview from the same
@@ -135,53 +173,58 @@ function queueConfigPost(key: keyof CrtConfig): void {
   });
 }
 
-for (const spec of SPECS) {
-  const row = el("div", "pfrow");
-  const top = el("div", "pfrowtop");
-  top.appendChild(el("span", "pfname", spec.label));
-  const val = el("span", "pfval");
-  top.appendChild(val);
-  row.appendChild(top);
-  const input = document.createElement("input");
-  input.type = "range";
-  input.min = "0"; input.max = "100"; input.step = "1";
-  input.setAttribute("aria-label", spec.label);
-  input.addEventListener("input", () => {
-    const v = Number(input.value) / 100;
-    cfg[spec.key] = v;
-    val.textContent = `${input.value}%`;
-    queueConfigPost(spec.key);
-  });
-  input.addEventListener("pointerdown", () => dragging.add(spec.key));
-  // Arrow/Home/End tweaks latch like drags — otherwise an echo landing
-  // mid-adjustment yanks the knob back. Both paths clear on blur.
-  // Only value-changing keys latch — a stray keypress mustn't block
-  // echo sync until blur.
-  input.addEventListener("keydown", (e) => {
-    // Modifier-held arrows (⌘← line-nav muscle memory) don't step the
-    // value — don't let them latch the guard either.
-    if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey &&
-        ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
-         "Home", "End", "PageUp", "PageDown"].includes(e.key))
-      dragging.add(spec.key);
-  });
-  input.addEventListener("blur", () => dragging.delete(spec.key));
-  sliders.set(spec.key, input);
-  values.set(spec.key, val);
-  row.appendChild(input);
-  row.appendChild(el("div", "pfblurb", spec.blurb));
-  controlsEl.appendChild(row);
+function addSliders(specs: SliderSpec[], host: HTMLElement): void {
+  for (const spec of specs) {
+    const row = el("div", "pfrow");
+    const top = el("div", "pfrowtop");
+    top.appendChild(el("span", "pfname", spec.label));
+    const val = el("span", "pfval");
+    top.appendChild(val);
+    row.appendChild(top);
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = "0"; input.max = "100"; input.step = "1";
+    input.setAttribute("aria-label", spec.label);
+    input.addEventListener("input", () => {
+      const v = Number(input.value) / 100;
+      cfg[spec.key] = v;
+      val.textContent = (spec.fmt ?? pct)(v);
+      queueConfigPost(spec.key);
+    });
+    input.addEventListener("pointerdown", () => dragging.add(spec.key));
+    // Arrow/Home/End tweaks latch like drags — otherwise an echo
+    // landing mid-adjustment yanks the knob back. Both paths clear on
+    // blur. Only value-changing keys latch — a stray keypress mustn't
+    // block echo sync until blur.
+    input.addEventListener("keydown", (e) => {
+      // Modifier-held arrows (⌘← line-nav muscle memory) don't step
+      // the value — don't let them latch the guard either.
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey &&
+          ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
+           "Home", "End", "PageUp", "PageDown"].includes(e.key))
+        dragging.add(spec.key);
+    });
+    input.addEventListener("blur", () => dragging.delete(spec.key));
+    sliders.set(spec.key, input);
+    values.set(spec.key, val);
+    row.appendChild(input);
+    row.appendChild(el("div", "pfblurb", spec.blurb));
+    host.appendChild(row);
+  }
 }
+addSliders(SPECS, traitsEl);
+addSliders(PIC_SPECS, picEl);
 // Pointer release can be routed off the input — clear drags at window
 // level so a missed pointerup can't wedge a slider out of echo sync.
 window.addEventListener("pointerup", () => dragging.clear());
 window.addEventListener("pointercancel", () => dragging.clear());
 
 function syncControls(): void {
-  for (const [k, input] of sliders) {
-    if (dragging.has(k)) continue;
-    input.value = String(Math.round(cfg[k] * 100));
-    values.get(k)!.textContent = `${input.value}%`;
+  for (const spec of [...SPECS, ...PIC_SPECS]) {
+    const input = sliders.get(spec.key);
+    if (!input || dragging.has(spec.key)) continue;
+    input.value = String(Math.round(cfg[spec.key] * 100));
+    values.get(spec.key)!.textContent = (spec.fmt ?? pct)(cfg[spec.key]);
   }
 }
 syncControls();

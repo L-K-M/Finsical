@@ -151,15 +151,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     /// Applied only when the id changes — state pushes every ~2s.
     private var machineId = ""
     private var machineVbW: CGFloat = 0
-    private var machineRx: CGFloat = 0
+    private var machineVbH: CGFloat = 0
+    private var machineShape: [(rect: CGRect, radius: CGFloat)] = []
     private func applyMachine(id: String, w: CGFloat, h: CGFloat,
-                              rx: CGFloat) {
+                              shape: [(CGRect, CGFloat)]) {
         guard id != machineId, w > 0, h > 0 else { return }
         let old = machineVbW
         machineId = id
         machineVbW = w
-        machineRx = rx
-        syncCornerRadius()
+        machineVbH = h
+        machineShape = shape
+        syncMask()
         window.contentAspectRatio = NSSize(width: w, height: h)
         window.contentMinSize = NSSize(width: w * 0.45, height: h * 0.45)
         if old <= 0 {
@@ -185,19 +187,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                         display: true, animate: true)
     }
 
-    /// Clip the window's content to the case's rounded silhouette —
-    /// the webview's layer is masked, so even if its background ever
-    /// paints (drawsBackground not honored), only the bezel shape can
-    /// show. Radius scales with the viewBox like the SVG art does.
-    private func syncCornerRadius() {
-        guard machineVbW > 0 else { return }
-        webView.layer?.cornerRadius =
-            machineRx * (webView.frame.width / machineVbW)
-        webView.layer?.masksToBounds = true
+    /// Clip the window's content to the case silhouette — a union of
+    /// rounded rects in viewBox units, applied as a CAShapeLayer mask
+    /// on the webview's layer. Unlike cornerRadius this handles
+    /// irregular cases (stepped bases, protruding chins), and even if
+    /// the webview's background ever paints (drawsBackground not
+    /// honored), only the bezel shape can show. Scales with the
+    /// viewBox like the SVG art does.
+    private func syncMask() {
+        guard machineVbW > 0, let layer = webView.layer else { return }
+        let s = webView.frame.width / machineVbW
+        guard s > 0, !machineShape.isEmpty else {
+            layer.mask = nil
+            return
+        }
+        // Shape coords are top-down (SVG viewBox); a layer's space
+        // follows the view's isFlipped, which AppKit mirrors into
+        // geometryFlipped for layer-backed views.
+        let flipped = layer.geometryFlipped
+        let path = CGMutablePath()
+        for (rect, r) in machineShape {
+            let ly = flipped ? rect.minY : machineVbH - rect.maxY
+            path.addRoundedRect(
+                in: CGRect(x: rect.minX * s, y: ly * s,
+                           width: rect.width * s,
+                           height: rect.height * s),
+                cornerWidth: r * s, cornerHeight: r * s)
+        }
+        let mask = CAShapeLayer()
+        mask.frame = CGRect(origin: .zero, size: layer.bounds.size)
+        mask.path = path
+        layer.mask = mask
     }
 
     func windowDidResize(_ note: Notification) {
-        if note.object as? NSWindow === window { syncCornerRadius() }
+        if note.object as? NSWindow === window { syncMask() }
     }
 
     /// A bezel mousedown asks for a window drag — synthesize the
@@ -248,9 +272,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                let mid = mc["id"] as? String,
                let mw = (mc["w"] as? NSNumber)?.doubleValue,
                let mh = (mc["h"] as? NSNumber)?.doubleValue {
-                let mrx = (mc["rx"] as? NSNumber)?.doubleValue ?? 0
+                var shape: [(CGRect, CGFloat)] = []
+                if let raw = mc["shape"] as? [[String: Any]] {
+                    shape = raw.compactMap { e in
+                        guard let x = (e["x"] as? NSNumber)?.doubleValue,
+                              let y = (e["y"] as? NSNumber)?.doubleValue,
+                              let w = (e["w"] as? NSNumber)?.doubleValue,
+                              let h = (e["h"] as? NSNumber)?.doubleValue
+                        else { return nil }
+                        let r = (e["r"] as? NSNumber)?.doubleValue ?? 0
+                        return (CGRect(x: x, y: y, width: w, height: h),
+                                CGFloat(r))
+                    }
+                }
                 applyMachine(id: mid, w: CGFloat(mw), h: CGFloat(mh),
-                             rx: CGFloat(mrx))
+                             shape: shape)
             }
         }
         guard let data = try? JSONSerialization.data(
