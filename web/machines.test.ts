@@ -92,6 +92,22 @@ describe("machine silhouettes", () => {
     }
   });
 
+  it("image machines: hole inset clears the backplate pad", () => {
+    // layoutMachine pads #screenback 32 viewBox units past `hole` so a
+    // few px of translucent glass rim past the measured aperture still
+    // has black behind it. The pad must land on opaque art — every
+    // machine also keeps the hole >= 46px from the nearest see-through
+    // pixel, and at minimum it must stay inside the image bounds.
+    for (const m of MACHINES) {
+      const hole = m.hole;
+      if (!hole) continue;
+      expect(hole.x, m.id).toBeGreaterThanOrEqual(40);
+      expect(hole.y, m.id).toBeGreaterThanOrEqual(40);
+      expect(m.vbW - (hole.x + hole.w), m.id).toBeGreaterThanOrEqual(40);
+      expect(m.vbH - (hole.y + hole.h), m.id).toBeGreaterThanOrEqual(40);
+    }
+  });
+
   it("screens stay inside the silhouette", () => {
     for (const m of MACHINES) {
       // Screen rect is in viewBox units — 320×200 only where the

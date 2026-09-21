@@ -674,10 +674,15 @@ function layoutMachine(): void {
     const hole = machine.hole;
     backEl.style.display = hole ? "block" : "none";
     if (hole) {
-      backEl.style.left = `${ox + hole.x * s}px`;
-      backEl.style.top = `${oy + hole.y * s}px`;
-      backEl.style.width = `${hole.w * s}px`;
-      backEl.style.height = `${hole.h * s}px`;
+      // Pad past the measured aperture: the art's translucent glass rim
+      // can run a few px outside it and would otherwise leak the
+      // desktop. The overshoot hides behind the opaque bezel — every
+      // machine keeps >= 46px of opaque art around its hole.
+      const pad = 32;
+      backEl.style.left = `${ox + (hole.x - pad) * s}px`;
+      backEl.style.top = `${oy + (hole.y - pad) * s}px`;
+      backEl.style.width = `${(hole.w + pad * 2) * s}px`;
+      backEl.style.height = `${(hole.h + pad * 2) * s}px`;
     }
   }
 }
