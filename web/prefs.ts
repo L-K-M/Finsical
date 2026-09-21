@@ -188,7 +188,9 @@ function addSliders(specs: SliderSpec[], host: HTMLElement): void {
     input.addEventListener("input", () => {
       const v = Number(input.value) / 100;
       cfg[spec.key] = v;
-      val.textContent = (spec.fmt ?? pct)(v);
+      const label = (spec.fmt ?? pct)(v);
+      val.textContent = label;
+      input.setAttribute("aria-valuetext", label);
       queueConfigPost(spec.key);
     });
     input.addEventListener("pointerdown", () => dragging.add(spec.key));
@@ -224,7 +226,9 @@ function syncControls(): void {
     const input = sliders.get(spec.key);
     if (!input || dragging.has(spec.key)) continue;
     input.value = String(Math.round(cfg[spec.key] * 100));
-    values.get(spec.key)!.textContent = (spec.fmt ?? pct)(cfg[spec.key]);
+    const label = (spec.fmt ?? pct)(cfg[spec.key]);
+    values.get(spec.key)!.textContent = label;
+    input.setAttribute("aria-valuetext", label);
   }
 }
 syncControls();

@@ -227,6 +227,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         if note.object as? NSWindow === window { syncMask() }
     }
 
+    // Moving to a display with a different density changes the backing
+    // scale without a resize — the rasterized mask would stay soft.
+    func windowDidChangeScreen(_ note: Notification) {
+        if note.object as? NSWindow === window { syncMask() }
+    }
+
     /// A bezel mousedown asks for a window drag — synthesize the
     /// leftMouseDown performDrag expects, at the cursor's position.
     private func dragTank() {
