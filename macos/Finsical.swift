@@ -227,9 +227,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         if note.object as? NSWindow === window { syncMask() }
     }
 
-    // Moving to a display with a different density changes the backing
-    // scale without a resize — the rasterized mask would stay soft.
-    func windowDidChangeScreen(_ note: Notification) {
+    // Any backing-scale change — a move between displays (committed
+    // after the screen-change notification) or a same-display density
+    // change — fires this, not always a resize. Re-rasterize the mask.
+    func windowDidChangeBackingProperties(_ note: Notification) {
         if note.object as? NSWindow === window { syncMask() }
     }
 
