@@ -40,6 +40,23 @@ def snd_fmt1_mace(frames: bytes, nframes: int,
     return head + hdr + frames
 
 
+def snd_fmt2_extsh(pcm: bytes, nframes: int | None = None,
+                   rate: float = 11127.2727, size: int = 8) -> bytes:
+    """Format-2 'snd ' with an extSH (encode=0xff) header: u32 channels
+    at +4, u32 numFrames at +22, u16 sampleSize at +48; data after the
+    64-byte header. Matches the option-installer embedded resources."""
+    if nframes is None:
+        nframes = len(pcm) // (size // 8)
+    hdr = struct.pack(">II I I I BB I", 0, 1, int(rate * 65536),
+                      0, 0, 0xFF, 60, nframes)
+    hdr += b"\x40\x0c\xad\xdd\x17\x46\x00\x00\x00\x00"  # AIFF ext80 rate
+    hdr += b"\x00" * 12                                # chunks
+    hdr += struct.pack(">H", size) + b"\x00" * 14      # size + futureUse
+    assert len(hdr) == 64
+    body = struct.pack(">HHHHHI", 2, 0, 1, 0x8050, 0, 14)
+    return body + hdr + pcm
+
+
 class TestParse(unittest.TestCase):
     def test_fmt1_u8(self):
         pcm = bytes(range(200))
@@ -105,6 +122,45 @@ class TestParse(unittest.TestCase):
                          "39205b11a9f1c4636aa66013b7f36ee6"
                          "87e6ac5993d325ecab0835b6e91a016f")
 
+    def test_extsh_u8(self):
+        # encode 0xff / sampleSize 8: raw unsigned u8 behind 64-byte hdr.
+        pcm = bytes(range(200))
+        rate, out, width = parse_snd(snd_fmt2_extsh(pcm))
+        self.assertEqual(out, pcm)
+        self.assertEqual(width, 1)
+        self.assertEqual(rate, 11127)
+
+    def test_extsh_s16_byteswapped(self):
+        # encode 0xff / sampleSize 16: Mac big-endian s16 -> WAV LE.
+        be = b"\x12\x34\xff\x00\x80\x00\x7f\xff"
+        rate, out, width = parse_snd(snd_fmt2_extsh(be, size=16))
+        self.assertEqual(width, 2)
+        self.assertEqual(out, b"\x34\x12\x00\xff\x00\x80\xff\x7f")
+        self.assertEqual(rate, 11127)
+
+    def test_extsh_truncated(self):
+        # numFrames claims 4 frames but only 2 bytes follow.
+        with self.assertRaisesRegex(SndError, "truncated"):
+            parse_snd(snd_fmt2_extsh(b"\x80\x80", nframes=4))
+
+    def test_extsh_truncated_header(self):
+        # The fmt2 builder puts the header at hoff=14; cut inside it.
+        blob = snd_fmt2_extsh(b"\x80" * 8)
+        with self.assertRaisesRegex(SndError, "truncated extSH header"):
+            parse_snd(blob[:14 + 63])
+
+    def test_extsh_bad_size(self):
+        blob = bytearray(snd_fmt2_extsh(b"\x80" * 8))
+        blob[14 + 48:14 + 50] = struct.pack(">H", 24)
+        with self.assertRaisesRegex(SndError, "unsupported sample size"):
+            parse_snd(bytes(blob))
+
+    def test_extsh_stereo_rejected(self):
+        blob = bytearray(snd_fmt2_extsh(b"\x80" * 16))
+        blob[14 + 4:14 + 8] = struct.pack(">I", 2)
+        with self.assertRaisesRegex(SndError, "channel count"):
+            parse_snd(bytes(blob))
+
     def test_mace_table_hash(self):
         # Table corruption fails loudly instead of silently altering output.
         import hashlib, os
@@ -129,6 +185,16 @@ class TestParse(unittest.TestCase):
         self.assertEqual(w.getsampwidth(), 1)
         self.assertEqual(w.getframerate(), 11025)
         self.assertEqual(w.readframes(64), bytes(range(64)))
+
+    def test_wav_matches_browser_decoder(self):
+        # Cross-implementation pin: core/data/snd.test.ts asserts the
+        # same digest for wavBytes(parseSnd) on this exact fixture —
+        # guards against the two WAV emitters drifting.
+        import hashlib
+        wav = snd_to_wav(snd_fmt1_u8(bytes(range(32))))
+        self.assertEqual(hashlib.sha256(wav).hexdigest(),
+                         "01ddc79b9d927f99301a6861d7840c14813b12"
+                         "7ad37feebe0bcc6f59eb7de008")
 
 
 class TestEmitSounds(unittest.TestCase):

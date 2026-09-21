@@ -6,6 +6,9 @@ Formats handled:
     (silence), so bytes pass through unmodified — no sign flip.
   - encode 0xfe (cmpSH) with compID 3: MACE 3:1 -> 16-bit WAV
     (decoder: tools/az/mace.py, ported from FFmpeg libavcodec/mace.c)
+  - encode 0xff (extSH): uncompressed 8/16-bit samples behind the
+    64-byte extended header — seen in VISE installer catalogs and
+    later game builds (the 1.7.9 fork itself is all 0x00/0xFE).
 """
 import struct
 import wave
@@ -81,6 +84,38 @@ def parse_snd(blob: bytes):
                     f"truncated samples: need {npackets * 2} bytes "
                     f"for {npackets} packets, got {len(data)}")
             return rate // 65536, mace3_decode(data, npackets), 2
+        if enc == 0xFF:
+            # extSH: u32 numChannels at +4, u32 numFrames at +22,
+            # u16 sampleSize at +48; data follows the 64-byte header.
+            # Verified on the option-installer embedded resources:
+            # frames * channels * (size/8) == bytes after the header.
+            if len(blob) < hoff + 64:
+                raise SndError("truncated extSH header")
+            nch, = struct.unpack_from(">I", blob, hoff + 4)
+            if nch != 1:
+                raise SndError(f"unsupported channel count {nch}")
+            rate, = struct.unpack_from(">I", blob, hoff + 8)
+            nframes, = struct.unpack_from(">I", blob, hoff + 22)
+            size, = struct.unpack_from(">H", blob, hoff + 48)
+            if size == 8:
+                data = blob[hoff + 64:hoff + 64 + nframes]
+                if len(data) < nframes:
+                    raise SndError(
+                        f"truncated samples: need {nframes} bytes, "
+                        f"got {len(data)}")
+                return rate // 65536, data, 1
+            if size == 16:
+                want = nframes * 2
+                data = blob[hoff + 64:hoff + 64 + want]
+                if len(data) < want:
+                    raise SndError(
+                        f"truncated samples: need {want} bytes, "
+                        f"got {len(data)}")
+                # Mac stores s16 big-endian; WAV needs little-endian.
+                pcm = bytearray(len(data))
+                pcm[0::2], pcm[1::2] = data[1::2], data[0::2]
+                return rate // 65536, bytes(pcm), 2
+            raise SndError(f"unsupported sample size {size}")
     except (struct.error, IndexError) as e:
         raise SndError(f"malformed snd data: {e}") from e
     raise SndError(f"unsupported encode {enc:#x}")

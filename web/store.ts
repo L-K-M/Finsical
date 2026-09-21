@@ -3,7 +3,9 @@
  *  - "packs": raw add-on/zip bytes keyed by fetch URL. archive.org
  *    entries are immutable per URL, so entries never expire.
  *  - "meta": small JSON records (listing pages), timestamped — callers
- *    decide freshness and stale fallback.
+ *    decide freshness and stale fallback. Also holds user-supplied data
+ *    (imported 'snd ' WAVs) that must NOT be LRU-evicted like the
+ *    packs cache.
  * Both app webviews share one origin, so a pack fetched for the
  * panel's preview is already local when the tank page installs it —
  * and launch-time restores of installed add-ons go fully offline.
@@ -179,4 +181,50 @@ export function metaGet<T>(key: string): Promise<T | null> {
 }
 export function metaPut(key: string, val: unknown): Promise<unknown> {
   return rw("meta", "readwrite", (s) => s.put(val, key));
+}
+
+// User-imported 'snd ' sets, WAV-wrapped, keyed under one record.
+// Stored as structured-cloned bytes — no base64 overhead — and merged
+// by resource name so a second dropped fork extends rather than
+// replaces. Not part of the pack LRU: this is user data, not cache.
+const SNDS_KEY = "snds";
+// Generous ceiling — a full 25-sound original set is ~2MB. Without a
+// cap, repeated drops of large forks pin unbounded permanent storage.
+const SNDS_CAP = 64 * 1024 * 1024;
+export interface StoredSnd { name: string; wav: Uint8Array }
+export function sndsGet(): Promise<StoredSnd[] | null> {
+  return metaGet<StoredSnd[]>(SNDS_KEY);
+}
+// Merge stored records with incoming ones under the byte cap. Incoming
+// records are budgeted first so a fresh drop isn't evicted by stale
+// stored ones; an incoming record always replaces its stored namesake.
+export function capSnds(cur: StoredSnd[] | null, records: StoredSnd[],
+                        cap = SNDS_CAP): { out: StoredSnd[];
+                                           dropped: number } {
+  const m = new Map((cur ?? []).map((r) => [r.name, r]));
+  for (const r of records) m.set(r.name, r);
+  let used = 0;
+  const fresh = new Map(records.map((r) => [r.name, r]));
+  const out = [...fresh.values()]
+    .concat([...m.values()].filter((r) => !fresh.has(r.name)))
+    // Only budget what's kept — an oversized record is skipped, not
+    // allowed to starve smaller records behind it.
+    .filter((r) => used + r.wav.byteLength <= cap &&
+                  (used += r.wav.byteLength, true));
+  return { out, dropped: m.size - out.length };
+}
+
+// Serialize merges: read-modify-write means two overlapping calls can
+// lose records when both read the same baseline before either writes.
+let sndsChain: Promise<unknown> = Promise.resolve();
+export function sndsMerge(records: StoredSnd[]): Promise<unknown> {
+  const run = sndsChain.then(() => sndsGet().then((cur) => {
+    const { out, dropped } = capSnds(cur, records);
+    if (dropped)
+      console.warn(`snd store over ${SNDS_CAP >> 20}MB cap; dropped`,
+                   dropped, "records");
+    return metaPut(SNDS_KEY, out);
+  }));
+  sndsChain = run.catch(() => {}); // a failed merge mustn't poison the chain
+  return run;
 }

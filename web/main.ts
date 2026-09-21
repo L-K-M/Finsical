@@ -5,6 +5,8 @@ import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
 import { TankAudio } from "./audio.js";
 import { fetchAddon, mountImportPanel, COLLECTIONS } from "./import.js";
+import { soundsFromRsrc, wavBytes } from "../core/data/snd.js";
+import { sndsGet, sndsMerge } from "./store.js";
 import { imageCanvas, previewOf, swimCanvas } from "./render.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
@@ -259,7 +261,7 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
     packBySheet.set(idx, url);
     // A live fish-pack install adds a real fish; restores replay sheets
     // only — the saved roster already carries those fish.
-    if (live) spawnFish(idx, name, url);
+    if (live) { spawnFish(idx, name, url); audio.splash(); }
   }
   console.info(`archive.org: imported ${section} ${name}`);
   if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
@@ -788,6 +790,14 @@ void (async () => {
   // rebind saved fish to their species' actual sheet slot and heal
   // pre-spawning rosters that never gained their fish.
   .then(() => importPanel.restore([...installedAddons]))
+  // Imported 'snd ' sets persist — restore them so dropped sounds
+  // survive relaunch even when no pack in use carries audio. Best
+  // effort: a restore failure must not skip the fish roster healing.
+  .then(() => sndsGet().catch((e) => {
+    console.warn("snd restore failed:", e); return null;
+  }))
+  .then((recs) => recs?.length ? audio.addWavs(recs).catch((e) =>
+    console.warn("snd decode failed:", e)) : undefined)
   .then(() => { remapSheetIdx(); reconcileFish(); });
 
 // Drag an .azpack folder onto the window to import it.
@@ -836,7 +846,7 @@ window.addEventListener("drop", (e) => {
     if (flat.has("manifest.json")) {
       const pack = await loadAzpack(readFile);
       const idx = usePack(pack, readFile);
-      if (idx >= 0) spawnFish(idx, pack.manifest.tag);
+      if (idx >= 0) { spawnFish(idx, pack.manifest.tag); audio.splash(); }
       const imgs: IndexedImage[] = [];
       for (const c of pack.manifest.chunks) {
         if (!c.image) continue;
@@ -847,6 +857,28 @@ window.addEventListener("drop", (e) => {
       console.info(`azpack imported: ${flat.size} files`);
       return;
     }
+    // Resource forks carry 'snd ' — a dropped AQUAZONE .rsrc (or its
+    // .bin/.hqx/AppleDouble wrapping) decodes in-app and persists.
+    // Classic forks cap at ~16MB, but .bin/.hqx wrappers inflate that
+    // (BinHex text is ~4/3), so allow up to 32MB before skipping.
+    const recs: { name: string; wav: Uint8Array }[] = [];
+    for (const [name, file] of flat) {
+      if (file.size > 32 * 1024 * 1024) continue;
+      // A pack file belongs to the pass below — don't buffer it twice.
+      const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());
+      if (isPack(head)) continue;
+      const snds = soundsFromRsrc(new Uint8Array(await file.arrayBuffer()));
+      if (!snds.length) continue;
+      for (const s of snds) recs.push({ name: s.name, wav: wavBytes(s) });
+      console.info(`${name}: ${snds.length} sounds imported`);
+    }
+    if (recs.length) {
+      await audio.addWavs(recs);
+      // Persist best-effort — a quota failure logs, never breaks import.
+      void sndsMerge(recs).catch((e) =>
+        console.warn("snd persist failed:", e));
+      audio.startAmbient();
+    }
     // Not an .azpack folder — try each dropped file as a raw .fsh/.REZ pack.
     for (const [name, file] of flat) {
       const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());
@@ -855,14 +887,15 @@ window.addEventListener("drop", (e) => {
       const sheets = fshToSheets(data);
       if (!sheets.size) continue;
       const idx = usePack({ sheets });
-      if (idx >= 0) spawnFish(idx, name.replace(/\.[^.]*$/, ""));
+      if (idx >= 0) { spawnFish(idx, name.replace(/\.[^.]*$/, "")); audio.splash(); }
       pickBackdrop(packImages(data).values());
       if (fishSheets.length) {
         console.info(`${name}: pack imported`);
         return;
       }
     }
-    console.warn("drop: no manifest.json or pack file found");
+    if (!recs.length)
+      console.warn("drop: no manifest.json, pack file, or 'snd ' found");
   })().catch((e) => console.warn("azpack import failed:", e));
 });
 

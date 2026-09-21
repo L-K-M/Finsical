@@ -1,6 +1,12 @@
-"""Classic Mac resource fork reader. Handles raw resource forks and
-AppleDouble (.rsrc sidecar) files. Stdlib only."""
+"""Classic Mac resource fork reader. Handles raw resource forks,
+AppleDouble (.rsrc sidecar) files, MacBinary .bin, and BinHex 4 .hqx —
+resource forks can't survive a modern filesystem or download unwrapped,
+so the transfer encodings are peeled off here. Stdlib only."""
 import struct
+
+_BINHEX_ALPHABET = (
+    b'!"#$%&\'()*+,-012345689@ABCDEFGHIJKLMNPQRSTUVXYZ[`abcdefhijklmpqr')
+_BINHEX_LUT = {c: i for i, c in enumerate(_BINHEX_ALPHABET)}
 
 
 def unwrap_appledouble(d):
@@ -17,6 +23,118 @@ def unwrap_appledouble(d):
     return rsrc if rsrc is not None else d
 
 
+def unwrap_macbinary(d):
+    """If d looks like a MacBinary file, return its resource fork.
+
+    Detection: the 128-byte header's fixed-zero fields, a sane name
+    length, and fork sizes that fit the file — a raw resource fork
+    (which starts with its data offset, usually 0x00000100) fails the
+    name-length check, so this can't misfire on a bare fork.
+    """
+    if len(d) < 128 or d[0] != 0 or d[74] != 0:
+        return d
+    nlen = d[1]
+    if not 1 <= nlen <= 63:
+        return d
+    dlen, rlen = struct.unpack_from('>II', d, 83)
+    if not rlen:
+        return d
+    roff = 128 + (dlen + 127) // 128 * 128
+    if roff + rlen > len(d):
+        return d
+    return d[roff:roff + rlen]
+
+
+def _binhex_decode(raw):
+    """Decode BinHex 4 text to the raw header+forks blob, or None.
+
+    Layout after de-RLE: u8 nameLen, name, u8 zero, type u32, creator
+    u32, flags u16, dataLen u32, rsrcLen u32, header CRC u16, then data
+    fork + u16 CRC, then resource fork + u16 CRC. CRCs are skipped —
+    the structural checks in unwrap_binhex are the gate.
+    """
+    start = raw.find(b':')
+    if start < 0:
+        return None
+    vals = bytearray()
+    for ch in raw[start + 1:]:
+        v = _BINHEX_LUT.get(ch)
+        if v is not None:
+            vals.append(v)
+        elif ch == 0x3A and len(vals) > 64:  # closing ':' marks the end
+            break
+    out = bytearray()
+    i = 0
+    while i + 4 <= len(vals):
+        acc = (vals[i] << 18 | vals[i + 1] << 12
+               | vals[i + 2] << 6 | vals[i + 3])
+        out += bytes([(acc >> 16) & 0xFF, (acc >> 8) & 0xFF, acc & 0xFF])
+        i += 4
+    tail = len(vals) - i
+    if tail:
+        acc = 0
+        for j in range(tail):
+            acc |= vals[i + j] << (18 - j * 6)
+        out += bytes([(acc >> 16) & 0xFF, (acc >> 8) & 0xFF][:tail - 1])
+    # RLE pass: 0x90 0x00 = literal 0x90; 0x90 n = prior byte × n total.
+    d = bytearray()
+    i = 0
+    while i < len(out):
+        b = out[i]
+        if b == 0x90 and i + 1 < len(out):
+            n = out[i + 1]
+            if n == 0:
+                d.append(0x90)
+                i += 2
+                continue
+            if not d:
+                return None
+            d += bytes([d[-1]]) * (n - 1)
+            i += 2
+            continue
+        d.append(b)
+        i += 1
+    return d
+
+
+def unwrap_binhex(d):
+    """If d is BinHex 4 text, return the resource fork of its file."""
+    if not d.lstrip()[:1] in (b':',) and \
+            b'This file must be converted with BinHex' not in d[:8192]:
+        return d
+    dec = _binhex_decode(d)
+    if dec is None or len(dec) < 22:
+        return d
+    nlen = dec[0]
+    if not 1 <= nlen <= 63 or len(dec) < nlen + 22 or dec[1 + nlen] != 0:
+        return d
+    off = 1 + nlen + 1 + 18  # name + pad + type/creator/flags/dlens
+    if off + 2 > len(dec):
+        return d
+    dlen, rlen = struct.unpack_from('>II', dec, off - 8)
+    off += 2  # header CRC
+    if off + dlen + 2 + rlen > len(dec):
+        return d
+    rsrc = dec[off + dlen + 2:off + dlen + 2 + rlen]
+    return rsrc if rlen else d
+
+
+def unwrap_container(d):
+    """Peel transfer encodings off a file, returning resource-fork bytes.
+
+    Peels can expose another container (a .bin holding an AppleDouble
+    file), so loop until a full pass changes nothing — each function
+    returns its input object unchanged when it can't peel, which makes
+    `is` identity the stable-point test.
+    """
+    for _ in range(4):  # no legit nesting is deeper than this
+        out = unwrap_binhex(unwrap_macbinary(unwrap_appledouble(d)))
+        if out is d:
+            return out
+        d = out
+    return d
+
+
 class ResFile:
     def __init__(self, path):
         with open(path, 'rb') as f:
@@ -29,7 +147,7 @@ class ResFile:
         return self
 
     def _init(self, d):
-        self.data = unwrap_appledouble(d)
+        self.data = unwrap_container(d)
         r = self.data
         self.do, self.mo, self.dl, self.ml = struct.unpack_from('>4I', r, 0)
         tlo, nlo = struct.unpack_from('>HH', r, self.mo + 24)
@@ -61,10 +179,17 @@ class ResFile:
                 sz = struct.unpack_from('>I', self.data, self.do + dd)[0]
                 blob = self.data[self.do + dd + 4:self.do + dd + 4 + sz]
                 name = None
-                if noff != -1:
+                # Only -1 is the nameless sentinel; other negatives would
+                # index backwards into the name list (or worse).
+                if noff >= 0:
                     p = self.nbase + noff
-                    ln = self.data[p]
-                    name = self.data[p + 1:p + 1 + ln].decode('mac_roman', 'replace')
+                    # Full Pascal name must fit — matches the TS sibling,
+                    # which treats an overflowing length as nameless.
+                    if (p < len(self.data) and
+                            p + 1 + self.data[p] <= len(self.data)):
+                        ln = self.data[p]
+                        name = self.data[p + 1:p + 1 + ln] \
+                            .decode('mac_roman', 'replace')
                 yield rid, name, attr, blob
 
     def summary(self):

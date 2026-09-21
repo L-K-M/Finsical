@@ -208,3 +208,54 @@ def wrap_appledouble(rsrc: bytes) -> bytes:
     hdr = struct.pack(">II", 0x00051607, 0x00020000) + b"\0" * 16
     hdr += struct.pack(">H", 1) + struct.pack(">III", 2, entry_off, len(rsrc))
     return hdr + rsrc
+
+
+def wrap_macbinary(rsrc: bytes, data: bytes = b"",
+                   name: bytes = b"file") -> bytes:
+    """Wrap a resource fork in a MacBinary container (128-byte header,
+    data fork padded to 128, then the resource fork)."""
+    hdr = bytearray(128)
+    hdr[1] = len(name)
+    hdr[2:2 + len(name)] = name
+    hdr[65:69] = b"APPL"
+    hdr[69:73] = b"9003"
+    struct.pack_into(">II", hdr, 83, len(data), len(rsrc))
+    return bytes(hdr) + data + b"\0" * (-len(data) % 128) + rsrc
+
+
+_BINHEX_ALPHABET = (
+    b'!"#$%&\'()*+,-012345689@ABCDEFGHIJKLMNPQRSTUVXYZ[`abcdefhijklmpqr')
+
+
+def wrap_binhex(rsrc: bytes, data: bytes = b"",
+                name: bytes = b"file") -> bytes:
+    """Wrap a resource fork in BinHex 4 text: header + forks, RLE-coded
+    (0x90 literals and 4+ byte runs), then 6-bit packed between ':'."""
+    body = (bytes([len(name)]) + name + b"\0" + b"APPL9003"
+            + struct.pack(">HII", 0, len(data), len(rsrc)) + b"\0\0"
+            + data + b"\0\0" + rsrc + b"\0\0")
+    rle = bytearray()
+    i = 0
+    while i < len(body):
+        b = body[i]
+        run = 1
+        while i + run < len(body) and body[i + run] == b and run < 255:
+            run += 1
+        if b == 0x90:
+            rle += b"\x90\x00"  # literal marker byte
+            i += 1
+        elif run >= 4:
+            rle += bytes([b, 0x90, run])
+            i += run
+        else:
+            rle += bytes([b]) * run
+            i += run
+    enc = bytearray()
+    for i in range(0, len(rle), 3):
+        chunk = rle[i:i + 3]
+        acc = int.from_bytes(chunk.ljust(3, b"\0"), "big")
+        n = 4 if len(chunk) == 3 else len(chunk) + 1
+        enc += bytes(_BINHEX_ALPHABET[(acc >> s) & 63]
+                     for s in (18, 12, 6, 0)[:n])
+    return (b"(This file must be converted with BinHex 4.0)\r\n:"
+            + bytes(enc) + b":")

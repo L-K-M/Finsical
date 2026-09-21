@@ -30,7 +30,8 @@ scripts, `EggI`/`EGPC`/`EGDP` breeding data, `FdHd` food, `Grvl`, `Watr`,
 ```
 tools/     Python (stdlib only) asset pipeline
   sit/     StuffIt archives (via bundled unar)
-  rsrc.py  AppleDouble + classic Mac resource fork
+  rsrc.py  resource fork reader (raw, AppleDouble, MacBinary, BinHex)
+  snd.py   'snd ' resources -> WAV (raw u8/s16, MACE 3:1, extSH)
   pict.py  PICT v2 -> PNG (PackBits, clut, 1/4/8/16/32bpp)
   pack.py  9003inc container (.fsh/.acc/.plt/.azn/.REZ) -> chunks
   emit.py  -> .azpack (JSON manifest + PNG atlases + params)
@@ -51,7 +52,8 @@ aquarium is reproducible and unit-testable.
 - Feeding: drop food, fish seek and eat
 - Bubbles + a tap-on-the-glass scare
 - Day/night lighting
-- Pack importer: local `.fsh`/`.azpack` drop first, archive.org fetch next
+- Pack importer: local `.fsh`/`.azpack` drop first, archive.org fetch next;
+  `.rsrc`/`.bin`/`.hqx` drops decode 'snd ' resources in-app and persist them
 - Floating always-on-top window on macOS
 
 Out of scope for v1: breeding/genetics, water chemistry, the shop/economy —
