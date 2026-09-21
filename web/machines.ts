@@ -17,7 +17,7 @@ export interface Machine {
   blurb: string;
   vbW: number; vbH: number;
   sx: number; sy: number;   // screen rect origin in viewBox units
-  sw: number; sh: number;   // screen rect size — 320×200 everywhere
+  sw: number; sh: number;   // screen rect size — always a 1.6 aspect
   shape: ShapeRect[];       // window silhouette — must cover the art's
                             // outer edge exactly. For image machines
                             // it's only a fallback: the image's own
@@ -29,11 +29,14 @@ export interface Machine {
 }
 
 /** The shell svg's inner markup — vector art, or the raster image
- * stretched to the viewBox. */
+ * stretched to the viewBox. preserveAspectRatio="none" matters: the
+ * native mask stretches the same image to the window, so both must
+ * use identical (stretch) semantics or silhouette and art misalign. */
 export function shellMarkup(m: Machine): string {
   if (m.image)
     return `<image href="${m.image}" x="0" y="0" ` +
-      `width="${m.vbW}" height="${m.vbH}"/>`;
+      `width="${m.vbW}" height="${m.vbH}" ` +
+      `preserveAspectRatio="none"/>`;
   return m.svg;
 }
 

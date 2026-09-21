@@ -201,7 +201,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 .appendingPathComponent("web"),
               let img = NSImage(
                 contentsOf: root.appendingPathComponent(rel))
-        else { return nil }
+        else {
+            // Otherwise a missing asset degrades to a silent plain
+            // rectangle — say so.
+            if let rel { NSLog("mask image failed to load: \(rel)") }
+            return nil
+        }
         return img.cgImage(forProposedRect: nil, context: nil,
                            hints: nil)
     }
@@ -225,7 +230,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             mask.isGeometryFlipped = flipped
             mask.contents = img
             mask.contentsGravity = .resize
-            mask.contentsScale = window.backingScaleFactor
             layer.mask = mask
             return
         }
