@@ -358,7 +358,8 @@ function postState(): void {
     boot,
     // The native shell retunes the window's aspect to the machine's
     // viewBox outline; prefs needs just the id.
-    machine: { id: machine.id, w: machine.vbW, h: machine.vbH },
+    machine: { id: machine.id, w: machine.vbW, h: machine.vbH,
+               rx: machine.rx },
     addons: installedAddons,
     // `pack` lets the panel tell pack-bound fish from loose ones —
     // a fish add-on with a living fish doesn't repeat in Add-ons.

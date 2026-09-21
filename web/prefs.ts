@@ -22,6 +22,10 @@ const SPECS: { key: keyof CrtConfig; label: string; blurb: string }[] = [
   { key: "overdrive", label: "Bright-color boost",
     blurb: "Phosphors overdrive on bright input — vivid colors glow " +
       "hotter than a flat panel shows them." },
+  { key: "misconvergence", label: "Misconvergence",
+    blurb: "Real tubes never converge perfectly — the red and blue " +
+      "beams drift apart toward the screen edges, leaving faint color " +
+      "fringes on bright shapes." },
   { key: "grille", label: "Shadow grille",
     blurb: "Fine vertical red/green/blue stripes, like the mask inside " +
       "an aperture-grille tube — much finer than the game's pixels." },

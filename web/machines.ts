@@ -10,6 +10,8 @@ export interface Machine {
   vbW: number; vbH: number;
   sx: number; sy: number;   // screen rect origin in viewBox units
   sw: number; sh: number;   // screen rect size — 320×200 everywhere
+  rx: number;               // outer corner radius — the native shell
+                            // clips the window to the same silhouette
   svg: string;              // inner markup for the shell <svg>
 }
 
@@ -18,7 +20,7 @@ const S = { sw: 320, sh: 200 };
 const cathode: Machine = {
   id: "cathode", name: "Cathode",
   blurb: "A dark tube monitor — the tank floats in a charcoal bezel.",
-  vbW: 376, vbH: 264, sx: 28, sy: 24, ...S,
+  vbW: 376, vbH: 264, sx: 28, sy: 24, rx: 30, ...S,
   // Gradient ids are namespaced per machine — the preferences page
   // renders several of these SVGs into one document, and bare ids
   // would collide (url(#x) resolves document-wide).
@@ -39,7 +41,7 @@ const se: Machine = {
   id: "se", name: "Compact",
   blurb: "An all-in-one platinum box in the spirit of a Macintosh SE — "
     + "vents up top, floppy slot and brightness knob on the chin.",
-  vbW: 388, vbH: 332, sx: 34, sy: 40, ...S,
+  vbW: 388, vbH: 332, sx: 34, sy: 40, rx: 22, ...S,
   svg: `<defs>
 <linearGradient id="se-body" x1="0" y1="0" x2="0" y2="1">
 <stop offset="0" stop-color="#e2ddd2"/><stop offset="1" stop-color="#b6afa0"/></linearGradient>
@@ -64,7 +66,7 @@ const studio: Machine = {
   id: "studio", name: "Studio CRT",
   blurb: "A beige LC-era desktop monitor — deep bezel, domed face, "
     + "power bar under the screen.",
-  vbW: 400, vbH: 298, sx: 40, sy: 32, ...S,
+  vbW: 400, vbH: 298, sx: 40, sy: 32, rx: 24, ...S,
   svg: `<defs>
 <radialGradient id="stu-face" cx=".5" cy=".38" r=".8">
 <stop offset="0" stop-color="#e8e3d8"/><stop offset=".7" stop-color="#cfc8b8"/>
@@ -90,7 +92,7 @@ const imac: Machine = {
   id: "imac", name: "iMac",
   blurb: "The Bondi-blue bubble — translucent teal shell, speaker "
     + "grille and CD tray on the chin.",
-  vbW: 408, vbH: 356, sx: 44, sy: 40, ...S,
+  vbW: 408, vbH: 356, sx: 44, sy: 40, rx: 58, ...S,
   svg: `<defs>
 <linearGradient id="imac-body" x1="0" y1="0" x2="0" y2="1">
 <stop offset="0" stop-color="#55bab1"/><stop offset=".55" stop-color="#37968e"/>
@@ -107,7 +109,7 @@ const imac: Machine = {
 const bare: Machine = {
   id: "bare", name: "Bare tank",
   blurb: "No case — just the water, edge to edge.",
-  vbW: 320, vbH: 200, sx: 0, sy: 0, ...S,
+  vbW: 320, vbH: 200, sx: 0, sy: 0, rx: 0, ...S,
   svg: "",
 };
 
