@@ -30,15 +30,20 @@ final class WebHandler: NSObject, WKURLSchemeHandler {
             let ext = file.pathExtension.lowercased()
             let mime = WebHandler.mime[ext] ?? "application/octet-stream"
             // Bundled files change between builds — no-store so a cached
-            // response can't resurrect an old page after a rebuild.
-            let res: URLResponse = HTTPURLResponse(
+            // response can't resurrect an old page after a rebuild. The
+            // charset keeps the utf-8 declaration the plain URLResponse
+            // used to carry.
+            let text = mime.hasPrefix("text/") || mime == "image/svg+xml"
+                || mime == "application/json"
+            let type = text ? mime + "; charset=utf-8" : mime
+            guard let res = HTTPURLResponse(
                 url: url, statusCode: 200, httpVersion: "HTTP/1.1",
-                headerFields: ["Content-Type": mime,
+                headerFields: ["Content-Type": type,
                                "Content-Length": String(data.count),
-                               "Cache-Control": "no-store"])
-                ?? URLResponse(url: url, mimeType: mime,
-                               expectedContentLength: data.count,
-                               textEncodingName: "utf-8")
+                               "Cache-Control": "no-store"]) else {
+                task.didFailWithError(URLError(.badServerResponse))
+                return
+            }
             task.didReceive(res)
             task.didReceive(data)
             task.didFinish()
