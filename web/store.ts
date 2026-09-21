@@ -3,7 +3,9 @@
  *  - "packs": raw add-on/zip bytes keyed by fetch URL. archive.org
  *    entries are immutable per URL, so entries never expire.
  *  - "meta": small JSON records (listing pages), timestamped — callers
- *    decide freshness and stale fallback.
+ *    decide freshness and stale fallback. Also holds user-supplied data
+ *    (imported 'snd ' WAVs) that must NOT be LRU-evicted like the
+ *    packs cache.
  * Both app webviews share one origin, so a pack fetched for the
  * panel's preview is already local when the tank page installs it —
  * and launch-time restores of installed add-ons go fully offline.
@@ -163,4 +165,21 @@ export function metaGet<T>(key: string): Promise<T | null> {
 }
 export function metaPut(key: string, val: unknown): Promise<unknown> {
   return rw("meta", "readwrite", (s) => s.put(val, key));
+}
+
+// User-imported 'snd ' sets, WAV-wrapped, keyed under one record.
+// Stored as structured-cloned bytes — no base64 overhead — and merged
+// by resource name so a second dropped fork extends rather than
+// replaces. Not part of the pack LRU: this is user data, not cache.
+const SNDS_KEY = "snds";
+export interface StoredSnd { name: string; wav: Uint8Array }
+export function sndsGet(): Promise<StoredSnd[] | null> {
+  return metaGet<StoredSnd[]>(SNDS_KEY);
+}
+export function sndsMerge(records: StoredSnd[]): Promise<unknown> {
+  return sndsGet().then((cur) => {
+    const m = new Map((cur ?? []).map((r) => [r.name, r]));
+    for (const r of records) m.set(r.name, r);
+    return metaPut(SNDS_KEY, [...m.values()]);
+  });
 }

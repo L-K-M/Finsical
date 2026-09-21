@@ -6,6 +6,9 @@ import type { AzpackManifest } from "../core/data/azpack.js";
 export class TankAudio {
   private ctx: AudioContext | null = null;
   private buffers = new Map<string, AudioBuffer>();
+  // Dropped/imported 'snd ' sets persist across pack loads — load()
+  // only swaps manifest sounds, never user-supplied ones.
+  private imported = new Map<string, AudioBuffer>();
   private ambientSrc: AudioBufferSourceNode | null = null;
   private ambientWanted = false;
 
@@ -31,6 +34,25 @@ export class TankAudio {
     }
   }
 
+  /** Merge decoded WAVs (e.g. from a dropped .rsrc) under their resource
+   * names; same-name entries replace. Keeps manifest sounds loaded. */
+  async addWavs(records: { name: string; wav: Uint8Array }[]): Promise<void> {
+    for (const r of records) {
+      try {
+        const ac = this.ctx ?? new AudioContext();
+        this.ctx = ac;
+        const raw = r.wav;
+        const buf = raw.buffer.slice(raw.byteOffset,
+                                     raw.byteOffset + raw.byteLength);
+        this.imported.set(r.name, await ac.decodeAudioData(buf));
+      } catch {
+        // undecodable entry — keep the rest
+      }
+    }
+    // An earlier startAmbient may have found no "aqua" — retry now.
+    if (this.ambientWanted && !this.ambientSrc) this.startAmbient();
+  }
+
   /** Browsers gate audio behind a user gesture; call from pointerdown. */
   unlock(): void {
     if (!this.ctx) return;
@@ -38,8 +60,11 @@ export class TankAudio {
   }
 
   private find(...subs: string[]): AudioBuffer | null {
-    for (const [name, buf] of this.buffers)
-      if (subs.some((s) => name.toLowerCase().includes(s))) return buf;
+    // Imported (user-dropped) sounds outrank bundled manifest sounds —
+    // the drop is the more deliberate, more recent act.
+    for (const map of [this.imported, this.buffers])
+      for (const [name, buf] of map)
+        if (subs.some((s) => name.toLowerCase().includes(s))) return buf;
     return null;
   }
 
@@ -50,7 +75,9 @@ export class TankAudio {
       const ac = this.ctx;
       void ac.resume()
         .then(() => {
-          if (loop && !this.ambientWanted) return; // superseded by load()
+          // Superseded by load(), or a second ambient call raced in and
+          // started the loop while this resume was pending.
+          if (loop && (!this.ambientWanted || this.ambientSrc)) return;
           const n = this.play(buf, gain, loop, false);
           if (n && loop) this.ambientSrc = n; // keep the loop stoppable
         })
@@ -72,6 +99,11 @@ export class TankAudio {
     this.play(this.find("drop", "intowater"), 0.7);
   }
 
+  /** Fish entering the tank — the original's water-entry sound. */
+  splash(): void {
+    this.play(this.find("intowater", "drop"), 0.7);
+  }
+
   /** Tap sounds are positional in the original app. */
   tap(x: number, y: number, w: number, h: number): void {
     const dx = Math.min(x, w - x), dy = Math.min(y, h - y);
@@ -86,7 +118,7 @@ export class TankAudio {
   }
 
   startAmbient(): void {
-    if (this.ambientWanted) return;
+    if (this.ambientSrc) return; // loop already live
     this.ambientWanted = true;
     this.ambientSrc = this.play(this.find("aqua"), 0.12, true);
   }

@@ -34,7 +34,7 @@ META = "https://archive.org/metadata/{ident}"
 DOWNLOAD = "https://archive.org/download/{ident}/{name}"
 DEFAULT_IDENT = "aquazonewithguppiesandaddons"
 IMPORTABLE = (".fsh", ".acc", ".plt", ".azn", ".rez", ".rsrc",
-            ".grv", ".fod", ".med")
+            ".grv", ".fod", ".med", ".bin", ".hqx")
 _EMITTED: set[str] = set()  # paths written this run (re-runs replace)
 _MAX_ARCHIVE_BYTES = 1 << 30  # cap for a single in-memory download
 _MAX_ISO_BYTES = 4 << 30    # ISOs stream to disk; cap is anti-abuse
