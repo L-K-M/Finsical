@@ -160,6 +160,22 @@ export function packPut(url: string, data: Uint8Array): Promise<unknown> {
   });
   return put;
 }
+export function packDelete(url: string): Promise<unknown> {
+  // Drop the bytes and their trim stat together — a lone stat would
+  // make trimPacks() count bytes that no longer exist.
+  return openDb().catch(() => null).then((d) => {
+    if (!d) return null;
+    return new Promise<unknown>((res) => {
+      try {
+        const tx = d.transaction(["packs", "meta"], "readwrite");
+        tx.objectStore("packs").delete(url);
+        tx.objectStore("meta").delete(STAT_PREFIX + url);
+        tx.oncomplete = () => res(true);
+        tx.onerror = tx.onabort = () => res(null);
+      } catch { res(null); }
+    });
+  });
+}
 export function metaGet<T>(key: string): Promise<T | null> {
   return rw<T>("meta", "readonly", (s) => s.get(key));
 }
