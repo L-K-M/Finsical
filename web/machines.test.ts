@@ -1,13 +1,6 @@
+/// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
 import { MACHINES } from "./machines.js";
-
-// vitest compiles through vite, which provides import.meta.glob at
-// runtime; the project's tsconfig doesn't include vite/client types.
-declare global {
-  interface ImportMeta {
-    glob(p: string): Record<string, () => Promise<unknown>>;
-  }
-}
 
 // Each machine's `shape` is hand-synced to the outer <rect> geometry
 // of its svg — the native shell unions it into the window's layer

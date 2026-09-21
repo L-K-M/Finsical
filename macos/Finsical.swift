@@ -204,7 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         else {
             // Otherwise a missing asset degrades to a silent plain
             // rectangle — say so.
-            if let rel { NSLog("mask image failed to load: \(rel)") }
+            if let rel { NSLog("mask image failed to load: %@", rel) }
             return nil
         }
         return img.cgImage(forProposedRect: nil, context: nil,
