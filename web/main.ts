@@ -652,8 +652,8 @@ catch { /* storage unavailable — default off */ }
 const machineEl = document.getElementById("machine")!;
 const shellEl = document.getElementById("shell")!;
 const screenEl = document.getElementById("screen")!;
-// Cosmetic layer — recreate it rather than assert it, so a stale
-// index.html self-heals instead of silently dropping the backplate.
+// Cosmetic layer — recreate #screenback and enforce sibling order when
+// stale markup is detected (#machine/#shell/#screen must still exist).
 let backEl = document.getElementById("screenback");
 if (!backEl) {
   backEl = document.createElement("div");
@@ -663,6 +663,8 @@ if (!backEl) {
 // paints UNDER the tank (and #machine's pointer-events:none swallows
 // tank clicks). Enforce backplate → screen → machine regardless.
 if (!backEl.isConnected ||
+    !(backEl.compareDocumentPosition(screenEl) &
+      Node.DOCUMENT_POSITION_FOLLOWING) ||
     !(screenEl.compareDocumentPosition(machineEl) &
       Node.DOCUMENT_POSITION_FOLLOWING))
   machineEl.before(backEl, screenEl);
