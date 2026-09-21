@@ -64,10 +64,19 @@ describe("machine silhouettes", () => {
     for (const m of MACHINES) {
       expect(m.sw).toBe(320);
       expect(m.sh).toBe(200);
-      expect(m.sx).toBeGreaterThanOrEqual(0);
-      expect(m.sy).toBeGreaterThanOrEqual(0);
-      expect(m.sx + m.sw).toBeLessThanOrEqual(m.vbW);
-      expect(m.sy + m.sh).toBeLessThanOrEqual(m.vbH);
+      const inShape = (px: number, py: number) =>
+        m.shape.some((s) => px >= s.x && px <= s.x + s.w &&
+                            py >= s.y && py <= s.y + s.h);
+      // Corners and center must land inside some shape rect — fitting
+      // the viewBox alone means nothing once the mask steps inward.
+      const points: [number, number][] = [
+        [m.sx, m.sy], [m.sx + m.sw, m.sy],
+        [m.sx, m.sy + m.sh], [m.sx + m.sw, m.sy + m.sh],
+        [m.sx + m.sw / 2, m.sy + m.sh / 2],
+      ];
+      for (const [px, py] of points)
+        expect(inShape(px, py), `${m.id} screen point ${px},${py}`)
+          .toBe(true);
     }
   });
 });
