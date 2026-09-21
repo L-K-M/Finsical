@@ -435,7 +435,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       }
       let bytes: Uint8Array | null = null;
       try {
-        const bin = atob(v.slice(22));
+        const bin = atob(v.slice(v.indexOf(",") + 1));
         bytes = new Uint8Array(bin.length);
         for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
       } catch { /* decode failure is deterministic */ }
