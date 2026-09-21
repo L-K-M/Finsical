@@ -260,6 +260,11 @@ describe("parseSnd", () => {
     expect(() => parseSnd(blob)).toThrow(/unsupported snd format/);
   });
 
+  it("rejects too-short blobs with SndError, not RangeError", () => {
+    expect(() => parseSnd(Uint8Array.of(0, 1))).toThrow(/too short/);
+    expect(() => parseSnd(Uint8Array.of(0, 1, 0))).toThrow(/too short/);
+  });
+
   it("rejects overlong command lists with SndError, not RangeError", () => {
     const blob = sndFmt2U8(new Uint8Array(8).fill(0x80));
     blob[4] = 0xFF; blob[5] = 0xFF; // ncmds = 65535
