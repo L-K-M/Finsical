@@ -14,7 +14,10 @@ function svgRects(svg: string): { x: number; y: number; w: number; h: number; r:
   while ((m = re.exec(svg))) {
     const attrs = m[1] ?? "";
     const num = (name: string): number | undefined => {
-      const a = new RegExp(`${name}="([\\d.]+)"`).exec(attrs);
+      // Anchor on a word boundary — bare `x=` would also match inside
+      // `rx="9"`, `width=` inside `stroke-width=`, `y=` inside
+      // `opacity=`.
+      const a = new RegExp(`(?:^|\\s)${name}="([\\d.]+)"`).exec(attrs);
       return a ? Number(a[1]) : undefined;
     };
     const x = num("x"), y = num("y"), w = num("width"), h = num("height");
@@ -40,6 +43,21 @@ describe("machine silhouettes", () => {
     expect(bare.shape).toEqual([
       { x: 0, y: 0, w: bare.vbW, h: bare.vbH, r: 0 },
     ]);
+  });
+
+  it("silhouette bounds cover every svg rect", () => {
+    // The other direction: an svg rect that grows past the shape union
+    // would be clipped by the window mask. Bounding boxes must match.
+    const box = (rs: { x: number; y: number; w: number; h: number }[]) => [
+      Math.min(...rs.map((r) => r.x)),
+      Math.min(...rs.map((r) => r.y)),
+      Math.max(...rs.map((r) => r.x + r.w)),
+      Math.max(...rs.map((r) => r.y + r.h)),
+    ];
+    for (const m of MACHINES) {
+      if (!m.svg) continue;
+      expect(box(svgRects(m.svg)), m.id).toEqual(box(m.shape));
+    }
   });
 
   it("screens stay inside the silhouette", () => {
