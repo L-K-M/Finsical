@@ -211,18 +211,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             return nil
         }
         guard let base = img.cgImage(forProposedRect: nil, context: nil,
-                                     hints: nil),
-              let hole,
+                                     hints: nil) else { return nil }
+        guard let hole,
               let ctx = CGContext(
                 data: nil, width: base.width, height: base.height,
                 bitsPerComponent: 8, bytesPerRow: 0,
                 space: CGColorSpaceCreateDeviceRGB(),
                 bitmapInfo:
                   CGImageAlphaInfo.premultipliedLast.rawValue)
-        else {
-            return img.cgImage(forProposedRect: nil, context: nil,
-                               hints: nil)
-        }
+        else { return base }
         // Bake the fill into the mask once, at image resolution —
         // cheaper than re-sublayering on every resize. CG image space
         // is y-up; hole arrives top-down.

@@ -103,6 +103,7 @@ html, body { margin: 0; height: 100%; background: #000; }
 }
 #screenback { position: fixed; background: #050505; display: none; }
 body.tankpage { cursor: grab; }
+body.tankpage:active { cursor: grabbing; }
 #screen { position: absolute; cursor: default; }
 canvas#tank {
   display: block; width: 100%; height: 100%; object-fit: contain;

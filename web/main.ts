@@ -361,6 +361,8 @@ function postState(): void {
     // viewBox outline; prefs needs just the id.
     machine: { id: machine.id, w: machine.vbW, h: machine.vbH,
                shape: machine.shape, mask: machine.image ?? null,
+               // hole is in viewBox units like sx..sh — the mask must
+               // scale it identically or backplate and mask drift.
                hole: machine.hole ?? null },
     addons: installedAddons,
     // `pack` lets the panel tell pack-bound fish from loose ones —
@@ -650,7 +652,9 @@ catch { /* storage unavailable — default off */ }
 const machineEl = document.getElementById("machine")!;
 const shellEl = document.getElementById("shell")!;
 const screenEl = document.getElementById("screen")!;
-const backEl = document.getElementById("screenback")!;
+// Cosmetic layer — guard the lookup rather than assert it, so a stale
+// index.html degrades to "no backplate" instead of a startup crash.
+const backEl = document.getElementById("screenback");
 
 function layoutMachine(): void {
   const w = machineEl.clientWidth, h = machineEl.clientHeight;
@@ -666,13 +670,15 @@ function layoutMachine(): void {
   screenEl.style.top = `${oy + machine.sy * s}px`;
   screenEl.style.width = `${machine.sw * s}px`;
   screenEl.style.height = `${machine.sh * s}px`;
-  const hole = machine.hole;
-  backEl.style.display = hole ? "block" : "none";
-  if (hole) {
-    backEl.style.left = `${ox + hole.x * s}px`;
-    backEl.style.top = `${oy + hole.y * s}px`;
-    backEl.style.width = `${hole.w * s}px`;
-    backEl.style.height = `${hole.h * s}px`;
+  const hole = backEl ? machine.hole : undefined;
+  if (backEl) {
+    backEl.style.display = hole ? "block" : "none";
+    if (hole) {
+      backEl.style.left = `${ox + hole.x * s}px`;
+      backEl.style.top = `${oy + hole.y * s}px`;
+      backEl.style.width = `${hole.w * s}px`;
+      backEl.style.height = `${hole.h * s}px`;
+    }
   }
 }
 
@@ -686,12 +692,13 @@ function applyMachine(m: Machine): void {
 }
 window.addEventListener("resize", layoutMachine);
 applyMachine(machine);
-// The machine art is pointer-events:none — a mousedown anywhere that
+// The machine art is pointer-events:none — a press anywhere that
 // isn't the tank or real UI means a grab on the case → window drag.
-document.addEventListener("mousedown", (e) => {
+document.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
-  if ((e.target as Element | null)?.closest(
-      "#screen, .ov, #opentrigger, button, a, input, textarea, select"))
+  if (!(e.target instanceof Element) || e.target.closest(
+      "#screen, .ov, #opentrigger, button, a, input, textarea, select,"
+      + " label, [contenteditable]"))
     return;
   e.preventDefault();
   bus.post({ op: "dragWindow" }); // native shell → performDrag

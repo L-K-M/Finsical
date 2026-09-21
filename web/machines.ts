@@ -29,7 +29,9 @@ export interface Machine {
                             // it's only a fallback: the image's own
                             // alpha becomes the window mask
   hole?: ShapeRect;         // screen glass aperture — backplate + the
-                            // part of the silhouette the mask refills
+                            // part of the silhouette the mask refills.
+                            // `r` is unused — the refill is a sharp
+                            // rect on both platforms.
   image?: string;           // raster shell asset under web/ — when set,
                             // its alpha IS the silhouette
   svg: string;              // inner markup for the shell <svg>
