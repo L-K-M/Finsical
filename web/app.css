@@ -96,15 +96,18 @@ html, body { margin: 0; height: 100%; background: #000; }
    screen aperture — layoutMachine() in web/main.ts positions both.
    #machine is pointer-events:none: clicks fall through to the tank
    canvas, or to the page body — a window drag — everywhere else. */
-#machine { position: fixed; inset: 0; pointer-events: none; }
+/* z-index pins the paint order — DOM order alone can be reordered once
+   canvases get their own compositing layers. Overlays (.ov z10,
+   #opentrigger z5) stay above all three. */
+#screenback { position: fixed; z-index: 0; background: #050505; display: none; }
+#screen { position: absolute; z-index: 1; cursor: default; }
+#machine { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
 #shell {
   position: absolute; inset: 0; width: 100%; height: 100%;
   user-select: none;
 }
-#screenback { position: fixed; background: #050505; display: none; }
 body.tankpage { cursor: grab; }
 body.tankpage:active { cursor: grabbing; }
-#screen { position: absolute; cursor: default; }
 canvas#tank {
   display: block; width: 100%; height: 100%; object-fit: contain;
   image-rendering: pixelated; /* keep the crunch */

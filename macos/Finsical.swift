@@ -28,9 +28,17 @@ final class WebHandler: NSObject, WKURLSchemeHandler {
         do {
             let data = try Data(contentsOf: file)
             let ext = file.pathExtension.lowercased()
-            let res = URLResponse(url: url, mimeType: WebHandler.mime[ext] ?? "application/octet-stream",
-                                  expectedContentLength: data.count,
-                                  textEncodingName: "utf-8")
+            let mime = WebHandler.mime[ext] ?? "application/octet-stream"
+            // Bundled files change between builds — no-store so a cached
+            // response can't resurrect an old page after a rebuild.
+            let res: URLResponse = HTTPURLResponse(
+                url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": mime,
+                               "Content-Length": String(data.count),
+                               "Cache-Control": "no-store"])
+                ?? URLResponse(url: url, mimeType: mime,
+                               expectedContentLength: data.count,
+                               textEncodingName: "utf-8")
             task.didReceive(res)
             task.didReceive(data)
             task.didFinish()
