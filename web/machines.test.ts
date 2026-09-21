@@ -73,6 +73,25 @@ describe("machine silhouettes", () => {
     }
   });
 
+  it("image machines: tank sits inside the glass aperture", () => {
+    // `hole` is the screen glass — it backs the mask fill and the
+    // black backplate, and the letterboxed tank must live inside it.
+    for (const m of MACHINES) {
+      if (!m.image) continue;
+      const hole = m.hole;
+      expect(hole, `${m.id}: image machine needs a hole`).toBeTruthy();
+      if (!hole) continue;
+      expect(hole.x).toBeGreaterThanOrEqual(0);
+      expect(hole.y).toBeGreaterThanOrEqual(0);
+      expect(hole.x + hole.w).toBeLessThanOrEqual(m.vbW);
+      expect(hole.y + hole.h).toBeLessThanOrEqual(m.vbH);
+      expect(m.sx, m.id).toBeGreaterThanOrEqual(hole.x);
+      expect(m.sy, m.id).toBeGreaterThanOrEqual(hole.y);
+      expect(m.sx + m.sw, m.id).toBeLessThanOrEqual(hole.x + hole.w);
+      expect(m.sy + m.sh, m.id).toBeLessThanOrEqual(hole.y + hole.h);
+    }
+  });
+
   it("screens stay inside the silhouette", () => {
     for (const m of MACHINES) {
       // Screen rect is in viewBox units — 320×200 only where the

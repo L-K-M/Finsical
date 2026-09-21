@@ -156,7 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     private var machineMaskImage: CGImage?
     private func applyMachine(id: String, w: CGFloat, h: CGFloat,
                               shape: [(CGRect, CGFloat)],
-                              maskPath: String?) {
+                              maskPath: String?, hole: CGRect?) {
         guard id != machineId, w > 0, h > 0 else { return }
         let old = machineVbW
         machineId = id
@@ -165,7 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         machineShape = shape
         // Image cases: the art's own alpha is the silhouette — pixel-
         // exact, including anti-aliased edges. Shape stays as fallback.
-        machineMaskImage = loadMaskImage(maskPath)
+        machineMaskImage = loadMaskImage(maskPath, hole: hole)
         webView.layer?.mask = nil  // drop a stale mask's layer type
         syncMask()
         window.contentAspectRatio = NSSize(width: w, height: h)
@@ -195,7 +195,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
 
     /// Load a mask image shipped under Resources/web/ — the raster
     /// case art. Returns nil for vector machines or missing assets.
-    private func loadMaskImage(_ rel: String?) -> CGImage? {
+    /// `hole` is the screen aperture in viewBox units: the art cuts it
+    /// out transparent, which as a mask would punch a real hole in the
+    /// window — the aquarium lives there, so it gets filled back in.
+    private func loadMaskImage(_ rel: String?, hole: CGRect?) -> CGImage? {
         guard let rel, !rel.isEmpty, !rel.contains(".."),
               let root = Bundle.main.resourceURL?
                 .appendingPathComponent("web"),
@@ -207,8 +210,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             if let rel { NSLog("mask image failed to load: %@", rel) }
             return nil
         }
-        return img.cgImage(forProposedRect: nil, context: nil,
-                           hints: nil)
+        guard let base = img.cgImage(forProposedRect: nil, context: nil,
+                                     hints: nil),
+              let hole,
+              let ctx = CGContext(
+                data: nil, width: base.width, height: base.height,
+                bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo:
+                  CGImageAlphaInfo.premultipliedLast.rawValue)
+        else {
+            return img.cgImage(forProposedRect: nil, context: nil,
+                               hints: nil)
+        }
+        // Bake the fill into the mask once, at image resolution —
+        // cheaper than re-sublayering on every resize. CG image space
+        // is y-up; hole arrives top-down.
+        let iw = CGFloat(base.width), ih = CGFloat(base.height)
+        let kx = iw / machineVbW, ky = ih / machineVbH
+        ctx.draw(base, in: CGRect(x: 0, y: 0, width: iw, height: ih))
+        ctx.setFillColor(NSColor.black.cgColor) // alpha 1 = masked in
+        ctx.fill(CGRect(x: hole.minX * kx,
+                        y: ih - hole.maxY * ky,
+                        width: hole.width * kx,
+                        height: hole.height * ky))
+        return ctx.makeImage() ?? base
     }
 
     /// Clip the window's content to the case silhouette: the raster
@@ -223,7 +249,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         // mirrors into isGeometryFlipped for layer-backed views.
         let flipped = layer.isGeometryFlipped
         if let img = machineMaskImage {
-            // Raster silhouette: the image's alpha channel is the mask.
+            // Raster silhouette: the image's alpha channel is the mask
+            // (loadMaskImage already baked the screen aperture back in).
             let mask = layer.mask is CAShapeLayer || layer.mask == nil
                 ? CALayer() : layer.mask!
             mask.frame = CGRect(origin: .zero, size: layer.bounds.size)
@@ -329,9 +356,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                                 CGFloat(r))
                     }
                 }
+                var hole: CGRect?
+                if let hd = mc["hole"] as? [String: Any],
+                   let hx = (hd["x"] as? NSNumber)?.doubleValue,
+                   let hy = (hd["y"] as? NSNumber)?.doubleValue,
+                   let hw = (hd["w"] as? NSNumber)?.doubleValue,
+                   let hh = (hd["h"] as? NSNumber)?.doubleValue {
+                    hole = CGRect(x: hx, y: hy,
+                                  width: hw, height: hh)
+                }
                 applyMachine(id: mid, w: CGFloat(mw), h: CGFloat(mh),
                              shape: shape,
-                             maskPath: mc["mask"] as? String)
+                             maskPath: mc["mask"] as? String, hole: hole)
             }
         }
         guard let data = try? JSONSerialization.data(

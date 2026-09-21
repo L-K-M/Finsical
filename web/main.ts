@@ -360,7 +360,8 @@ function postState(): void {
     // The native shell retunes the window's aspect to the machine's
     // viewBox outline; prefs needs just the id.
     machine: { id: machine.id, w: machine.vbW, h: machine.vbH,
-               shape: machine.shape, mask: machine.image ?? null },
+               shape: machine.shape, mask: machine.image ?? null,
+               hole: machine.hole ?? null },
     addons: installedAddons,
     // `pack` lets the panel tell pack-bound fish from loose ones —
     // a fish add-on with a living fish doesn't repeat in Add-ons.
@@ -641,20 +642,23 @@ catch { /* storage unavailable — default off */ }
 
 // ---- machine case -----------------------------------------------------
 // The window has no native chrome — the "computer" around the tank is
-// an SVG bezel (web/machines.ts). The bezel is the drag surface (its
-// mousedowns become a native performDrag); the screen div sits above
-// the shell so canvas clicks still reach the tank.
+// a rendered image (web/machines.ts) layered OVER the aquarium so its
+// transparent glass and baked reflections stay on top of the water.
+// #screenback paints unlit-glass black into the aperture behind the
+// tank; the native mask refills the same aperture so the window keeps
+// a screen-shaped silhouette instead of a see-through hole.
 const machineEl = document.getElementById("machine")!;
 const shellEl = document.getElementById("shell")!;
 const screenEl = document.getElementById("screen")!;
+const backEl = document.getElementById("screenback")!;
 
 function layoutMachine(): void {
   const w = machineEl.clientWidth, h = machineEl.clientHeight;
   if (!w || !h) return;
   // preserveAspectRatio=meet letterboxes the shell — land the screen
-  // on the same scaled + offset rect as the bezel's opening. This is
-  // computed, not CSS-percentage'd, so browser dev (no native aspect
-  // enforcement) stays aligned too.
+  // and its backplate on the same scaled + offset rects as the art's
+  // glass. Computed, not CSS-percentage'd, so browser dev (no native
+  // aspect enforcement) stays aligned too.
   const s = Math.min(w / machine.vbW, h / machine.vbH);
   const ox = (w - machine.vbW * s) / 2;
   const oy = (h - machine.vbH * s) / 2;
@@ -662,6 +666,14 @@ function layoutMachine(): void {
   screenEl.style.top = `${oy + machine.sy * s}px`;
   screenEl.style.width = `${machine.sw * s}px`;
   screenEl.style.height = `${machine.sh * s}px`;
+  const hole = machine.hole;
+  backEl.style.display = hole ? "block" : "none";
+  if (hole) {
+    backEl.style.left = `${ox + hole.x * s}px`;
+    backEl.style.top = `${oy + hole.y * s}px`;
+    backEl.style.width = `${hole.w * s}px`;
+    backEl.style.height = `${hole.h * s}px`;
+  }
 }
 
 function applyMachine(m: Machine): void {
@@ -674,8 +686,13 @@ function applyMachine(m: Machine): void {
 }
 window.addEventListener("resize", layoutMachine);
 applyMachine(machine);
-shellEl.addEventListener("mousedown", (e) => {
+// The machine art is pointer-events:none — a mousedown anywhere that
+// isn't the tank or real UI means a grab on the case → window drag.
+document.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
+  if ((e.target as Element | null)?.closest(
+      "#screen, .ov, #opentrigger, button, a, input, textarea, select"))
+    return;
   e.preventDefault();
   bus.post({ op: "dragWindow" }); // native shell → performDrag
 });
