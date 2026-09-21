@@ -1,4 +1,5 @@
 import os
+import struct
 import tempfile
 import unittest
 
@@ -57,6 +58,16 @@ class TestRsrc(unittest.TestCase):
         self.assertEqual(unwrap_binhex(bh), inner)
         res = list(ResFile.from_bytes(bh).resources(b"snd "))
         self.assertEqual(res[0][3], b"\x90\x90\xff" + b"\x80" * 9)
+
+    def test_negative_name_offset_treated_as_nameless(self):
+        # A corrupt ref entry (nameOffset 0x8000) must not index
+        # backwards into the name list — decodes nameless like -1.
+        fork = bytearray(build_rsrc({b"snd ": [(1, "tap", 0, b"d")]}))
+        map_off = struct.unpack_from(">I", fork, 4)[0]
+        struct.pack_into(">h", fork, map_off + 28 + 2 + 8 + 2, -32768)
+        res = list(ResFile.from_bytes(bytes(fork)).resources(b"snd "))
+        self.assertEqual(res[0][1], None)
+        self.assertEqual(res[0][3], b"d")
 
     def test_nested_containers(self):
         # A .bin holding an AppleDouble holding the fork — real files

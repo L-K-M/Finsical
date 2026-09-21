@@ -175,7 +175,9 @@ function sndResources(d: Uint8Array): SndRes[] {
       const sz = u32be(v, doff);
       if (doff + 4 + sz > r.length) continue;
       let name: string | null = null;
-      if (noff !== -1) {
+      // Only -1 is the nameless sentinel; other negatives would index
+      // before the name list and throw out of the per-resource catch.
+      if (noff >= 0) {
         const p = nbase + noff;
         if (p + 1 <= r.length && p + 1 + v.getUint8(p) <= r.length)
           name = macDec.decode(r.subarray(p + 1, p + 1 + v.getUint8(p)));

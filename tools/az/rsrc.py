@@ -179,10 +179,14 @@ class ResFile:
                 sz = struct.unpack_from('>I', self.data, self.do + dd)[0]
                 blob = self.data[self.do + dd + 4:self.do + dd + 4 + sz]
                 name = None
-                if noff != -1:
+                # Only -1 is the nameless sentinel; other negatives would
+                # index backwards into the name list (or worse).
+                if noff >= 0:
                     p = self.nbase + noff
-                    ln = self.data[p]
-                    name = self.data[p + 1:p + 1 + ln].decode('mac_roman', 'replace')
+                    if p < len(self.data):
+                        ln = self.data[p]
+                        name = self.data[p + 1:p + 1 + ln] \
+                            .decode('mac_roman', 'replace')
                 yield rid, name, attr, blob
 
     def summary(self):

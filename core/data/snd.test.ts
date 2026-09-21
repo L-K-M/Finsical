@@ -373,6 +373,18 @@ describe("soundsFromRsrc", () => {
     expect(soundsFromRsrc(fork)[0]!.name).toBe("snd_4660");
   });
 
+  it("treats corrupt negative name offsets as nameless", () => {
+    // nameOffset 0x8000 must decode nameless — not index before the
+    // name list and throw RangeError out of the whole fork's walk.
+    const fork = buildRsrc(new Map([["snd ", [[1, "tap", 0, snd]]]]));
+    const dv = new DataView(fork.buffer, fork.byteOffset, fork.byteLength);
+    const noffPos = dv.getUint32(4) + 28 + 2 + 8 + 2; // ref entry + noff
+    dv.setInt16(noffPos, -32768);
+    const out = soundsFromRsrc(fork);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.name).toBe("snd_1");
+  });
+
   it("hasSounds gates on 'snd ' presence", () => {
     expect(hasSounds(buildRsrc(new Map([["snd ", [[1, null, 0, snd]]]]))))
       .toBe(true);
