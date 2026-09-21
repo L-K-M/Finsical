@@ -64,9 +64,22 @@ describe("machine silhouettes", () => {
     for (const m of MACHINES) {
       expect(m.sw).toBe(320);
       expect(m.sh).toBe(200);
+      // The SVG viewport crops at the viewBox no matter what the mask
+      // allows — keep both checks.
+      expect(m.sx).toBeGreaterThanOrEqual(0);
+      expect(m.sy).toBeGreaterThanOrEqual(0);
+      expect(m.sx + m.sw).toBeLessThanOrEqual(m.vbW);
+      expect(m.sy + m.sh).toBeLessThanOrEqual(m.vbH);
       const inShape = (px: number, py: number) =>
-        m.shape.some((s) => px >= s.x && px <= s.x + s.w &&
-                            py >= s.y && py <= s.y + s.h);
+        m.shape.some((s) => {
+          if (px < s.x || px > s.x + s.w || py < s.y || py > s.y + s.h)
+            return false;
+          // The native mask rounds each rect's corners with s.r —
+          // clamp to the inner rect and test against the corner arc.
+          const cx = Math.min(Math.max(px, s.x + s.r), s.x + s.w - s.r);
+          const cy = Math.min(Math.max(py, s.y + s.r), s.y + s.h - s.r);
+          return Math.hypot(px - cx, py - cy) <= s.r;
+        });
       // Corners and center must land inside some shape rect — fitting
       // the viewBox alone means nothing once the mask steps inward.
       const points: [number, number][] = [
