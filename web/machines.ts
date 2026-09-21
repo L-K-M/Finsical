@@ -18,6 +18,12 @@ export interface ShapeRect {
   x: number; y: number; w: number; h: number; r: number;
 }
 
+/** How far #screenback extends past `hole`, in viewBox units — covers
+ * a few px of translucent glass rim that can outrun the measured
+ * aperture. Must stay under every machine's clearance to the nearest
+ * see-through pixel (>= 46px as of the current art). */
+export const SCREENBACK_HOLE_PAD = 32;
+
 export interface Machine {
   id: string;
   name: string;

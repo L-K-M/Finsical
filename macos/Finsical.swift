@@ -198,6 +198,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     /// `hole` is the screen aperture in viewBox units: the art cuts it
     /// out transparent, which as a mask would punch a real hole in the
     /// window — the aquarium lives there, so it gets filled back in.
+    /// The flood fill below backs the rect up: the measured aperture can
+    /// lag the art's translucent rim by a few px, and anything that
+    /// can't reach the image edge through clear pixels is interior.
     private func loadMaskImage(_ rel: String?, hole: CGRect?) -> CGImage? {
         guard let rel, !rel.isEmpty, !rel.contains(".."),
               let root = Bundle.main.resourceURL?
@@ -212,8 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         }
         guard let base = img.cgImage(forProposedRect: nil, context: nil,
                                      hints: nil) else { return nil }
-        guard let hole,
-              let ctx = CGContext(
+        guard let ctx = CGContext(
                 data: nil, width: base.width, height: base.height,
                 bitsPerComponent: 8, bytesPerRow: 0,
                 space: CGColorSpaceCreateDeviceRGB(),
@@ -227,10 +229,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         let kx = iw / machineVbW, ky = ih / machineVbH
         ctx.draw(base, in: CGRect(x: 0, y: 0, width: iw, height: ih))
         ctx.setFillColor(NSColor.black.cgColor) // alpha 1 = masked in
-        ctx.fill(CGRect(x: hole.minX * kx,
-                        y: ih - hole.maxY * ky,
-                        width: hole.width * kx,
-                        height: hole.height * ky))
+        if let hole {
+            ctx.fill(CGRect(x: hole.minX * kx,
+                            y: ih - hole.maxY * ky,
+                            width: hole.width * kx,
+                            height: hole.height * ky))
+        }
+        // The measured rect can lag the art's real glass rim by a few px,
+        // leaving a sliver of see-through window inside the bezel. Back it
+        // up: every pixel that cannot reach the image edge through clearly
+        // transparent (alpha < 250) pixels is interior — glass, translucent
+        // rim, enclosed gaps — and gets masked in. Edge-connected gaps
+        // (handle recess, space between feet) stay transparent.
+        if let raw = ctx.data {
+            let w = base.width, h = base.height, bpr = ctx.bytesPerRow
+            let buf = raw.assumingMemoryBound(to: UInt8.self)
+            // Alpha sits last in the 32-bit pixel for premultipliedLast
+            // at default order and premultipliedFirst at little-endian;
+            // the crossed combinations put it first.
+            let info = ctx.bitmapInfo.rawValue
+            let alphaInfo = CGImageAlphaInfo(
+                rawValue: info & CGBitmapInfo.alphaInfoMask.rawValue)
+            let first = alphaInfo == .premultipliedFirst
+                || alphaInfo == .first
+            let little = info & CGBitmapInfo.byteOrderMask.rawValue
+                == CGBitmapInfo.byteOrder32Little.rawValue
+            let alphaOff = first == little ? 3 : 0
+            var seen = [Bool](repeating: false, count: w * h)
+            var stack: [Int] = []
+            func seed(_ x: Int, _ y: Int) {
+                let i = y * w + x
+                guard !seen[i],
+                      buf[y * bpr + x * 4 + alphaOff] < 250 else { return }
+                seen[i] = true
+                stack.append(i)
+            }
+            for x in 0 ..< w { seed(x, 0); seed(x, h - 1) }
+            for y in 0 ..< h { seed(0, y); seed(w - 1, y) }
+            while let i = stack.popLast() {
+                let x = i % w, y = i / w
+                if x > 0 { seed(x - 1, y) }
+                if x < w - 1 { seed(x + 1, y) }
+                if y > 0 { seed(x, y - 1) }
+                if y < h - 1 { seed(x, y + 1) }
+            }
+            for i in 0 ..< w * h where !seen[i] {
+                buf[(i / w) * bpr + (i % w) * 4 + alphaOff] = 255
+            }
+        }
         return ctx.makeImage() ?? base
     }
 
