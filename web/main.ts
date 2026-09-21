@@ -663,6 +663,7 @@ if (!backEl) {
 // paints UNDER the tank (and #machine's pointer-events:none swallows
 // tank clicks). Enforce backplate → screen → machine regardless.
 if (!backEl.isConnected ||
+    backEl.parentElement !== machineEl.parentElement ||
     !(backEl.compareDocumentPosition(screenEl) &
       Node.DOCUMENT_POSITION_FOLLOWING) ||
     !(screenEl.compareDocumentPosition(machineEl) &
