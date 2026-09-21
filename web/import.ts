@@ -433,16 +433,21 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         localStorage.removeItem(k); // non-migratable legacy entry
         continue;
       }
+      let bytes: Uint8Array | null = null;
       try {
         const bin = atob(v.slice(22));
-        const bytes = new Uint8Array(bin.length);
+        bytes = new Uint8Array(bin.length);
         for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
-        // Remove only after the IDB write lands — a quota failure keeps
-        // the entry so migration retries on next mount.
-        void packPut(THUMB_PREFIX + k.slice(15), bytes)
-          .then(() => localStorage.removeItem(k))
-          .catch(() => {});
-      } catch { /* leave unmigrated */ }
+      } catch { /* decode failure is deterministic */ }
+      if (!bytes) {
+        localStorage.removeItem(k); // corrupt entry can never migrate
+        continue;
+      }
+      // Remove only after the IDB write lands — a quota failure keeps
+      // the entry so migration retries on next mount.
+      void packPut(THUMB_PREFIX + k.slice(15), bytes)
+        .then(() => localStorage.removeItem(k))
+        .catch(() => {});
     }
   } catch { /* storage unavailable */ }
   // Stored thumbs only ever feed <=96px tiles — cap them so thumb churn
