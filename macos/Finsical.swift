@@ -248,8 +248,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             // at default order and premultipliedFirst at little-endian;
             // the crossed combinations put it first.
             let info = ctx.bitmapInfo.rawValue
-            let first = info & CGBitmapInfo.alphaInfoMask.rawValue
-                == CGImageAlphaInfo.premultipliedFirst.rawValue
+            let alphaInfo = CGImageAlphaInfo(
+                rawValue: info & CGBitmapInfo.alphaInfoMask.rawValue)
+            let first = alphaInfo == .premultipliedFirst
+                || alphaInfo == .first
             let little = info & CGBitmapInfo.byteOrderMask.rawValue
                 == CGBitmapInfo.byteOrder32Little.rawValue
             let alphaOff = first == little ? 3 : 0
