@@ -214,7 +214,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                            height: rect.height * s),
                 cornerWidth: r * s, cornerHeight: r * s)
         }
-        let mask = CAShapeLayer()
+        // Reuse the mask layer — syncMask runs every resize tick.
+        let mask = layer.mask as? CAShapeLayer ?? CAShapeLayer()
         mask.frame = CGRect(origin: .zero, size: layer.bounds.size)
         // A shape-layer path rasterizes — without this it renders at
         // 1x and jaggies on Retina.

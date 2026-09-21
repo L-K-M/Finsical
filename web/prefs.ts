@@ -221,8 +221,9 @@ addSliders(PIC_SPECS, picEl);
 window.addEventListener("pointerup", () => dragging.clear());
 window.addEventListener("pointercancel", () => dragging.clear());
 
+const ALL_SPECS: SliderSpec[] = [...SPECS, ...PIC_SPECS];
 function syncControls(): void {
-  for (const spec of [...SPECS, ...PIC_SPECS]) {
+  for (const spec of ALL_SPECS) {
     const input = sliders.get(spec.key);
     if (!input || dragging.has(spec.key)) continue;
     input.value = String(Math.round(cfg[spec.key] * 100));
