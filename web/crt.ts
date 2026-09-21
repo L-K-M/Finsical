@@ -6,10 +6,13 @@
  *  - scanlines locked to logical game rows (they follow the warped,
  *    letterboxed image, not fixed screen stripes)
  *  - horizontal beam smear (CRTs blur along the scan, not across lines)
- *  - phosphor bloom that over-emphasizes bright colors
+ *  - phosphor bloom that over-emphasizes bright colors, plus wider
+ *    glass halation
+ *  - R/B misconvergence that grows toward the screen edges
  *  - RGB grille stripes at device-pixel pitch, so the mask is far finer
  *    than the game pixels
- *  - gentle barrel curvature, corner vignette, faint flicker/grain
+ *  - gentle barrel curvature, corner vignette, flicker + rolling band,
+ *    faint grain
  * WebGL setup failure returns null and the plain pixelated path stays.
  */
 
@@ -28,6 +31,7 @@ uniform float uScan;  // gap darkness between rows (0 = off, 1 = black)
 uniform float uBeam;  // horizontal smear blend (0 = sharp pixels)
 uniform float uBloom; // bright bleed strength
 uniform float uOver;  // bright-color overdrive
+uniform float uConv;  // R/B misconvergence, edge-weighted
 uniform float uGrill; // RGB mask strength (0 = invisible stripes)
 uniform float uCurve; // barrel warp
 uniform float uVig;   // edge/corner dimming
@@ -64,10 +68,25 @@ void main() {
   c += (gamePx(lp - vec2(1.6, 0.0)) + gamePx(lp + vec2(1.6, 0.0))) * 0.11;
   c = mix(sharp, c, uBeam);
 
+  // Misconvergence: the outer electron guns never land perfectly —
+  // red drifts left and blue right, growing from zero at the center
+  // toward the edges. Green stays as the reference beam.
+  float conv = (1.2 * uConv) * length(cc);
+  if (conv > 0.001) {
+    c.r = gamePx(lp - vec2(conv, 0.0)).r;
+    c.b = gamePx(lp + vec2(conv, 0.0)).b;
+  }
+
   // Phosphor bloom: bright areas bleed wider and overdrive.
   vec3 glow =
     (gamePx(lp - vec2(3.5, 0.0)) + gamePx(lp + vec2(3.5, 0.0))) * 0.5;
   c += glow * max(glow.r, max(glow.g, glow.b)) * (0.60 * uBloom);
+  // Halation: light scattered inside the faceplate glass reaches
+  // further than the phosphor bloom — a wider, fainter halo.
+  vec3 halo =
+    (gamePx(lp - vec2(7.0, 0.0)) + gamePx(lp + vec2(7.0, 0.0)) +
+     gamePx(lp - vec2(0.0, 5.0)) + gamePx(lp + vec2(0.0, 5.0))) * 0.25;
+  c += halo * (0.10 * uBloom);
   c *= 1.0 + (0.60 * uOver) * smoothstep(0.5, 1.0, max(c.r, max(c.g, c.b)));
 
   // Scanlines ride the logical-row phase: sin² dips at row boundaries.
@@ -84,9 +103,11 @@ void main() {
   else mask.b = 1.0;
   c *= mix(vec3(1.0), mask * 1.18, uGrill); // 1.18 compensates dimming
 
-  // Glass vignette, faint flicker, and grain.
+  // Glass vignette, faint flicker (plus a slow rolling brightness
+  // band — the beam never sits perfectly in sync), and grain.
   c *= 1.0 - (0.40 * uVig) * dot(cc, cc);
-  c *= 1.0 + (0.05 * uFlick) * sin(uTime * 61.0);
+  c *= 1.0 + (0.05 * uFlick) * sin(uTime * 61.0)
+           + (0.03 * uFlick) * sin(uv.y * 3.0 - uTime * 4.0);
   c += (hash(gl_FragCoord.xy + fract(uTime)) - 0.5) * (0.10 * uGrain);
 
   gl_FragColor = vec4(c, 1.0);
@@ -104,6 +125,8 @@ export interface CrtConfig {
   bloom: number;
   /** Extra punch on already-bright colors. */
   overdrive: number;
+  /** Red/blue fringing that grows toward the screen edges. */
+  misconvergence: number;
   /** Visibility of the fine vertical RGB stripes. */
   grille: number;
   /** Bow of the image, like curved tube glass. */
@@ -118,8 +141,8 @@ export interface CrtConfig {
 
 export const CRT_DEFAULTS: Readonly<CrtConfig> = Object.freeze<CrtConfig>({
   scanlines: 0.40, beam: 1.0, bloom: 0.50, overdrive: 0.50,
-  grille: 1.0, curvature: 0.45, vignette: 0.35, flicker: 0.30,
-  grain: 0.30,
+  misconvergence: 0.35, grille: 1.0, curvature: 0.45, vignette: 0.35,
+  flicker: 0.30, grain: 0.30,
 });
 
 /** Merge an untrusted source (localStorage, bus message) onto the
@@ -218,8 +241,8 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   // Trait uniforms — config keys pair with shader names.
   const TRAIT_UNIFORMS: Record<keyof CrtConfig, string> = {
     scanlines: "uScan", beam: "uBeam", bloom: "uBloom", overdrive: "uOver",
-    grille: "uGrill", curvature: "uCurve", vignette: "uVig",
-    flicker: "uFlick", grain: "uGrain",
+    misconvergence: "uConv", grille: "uGrill", curvature: "uCurve",
+    vignette: "uVig", flicker: "uFlick", grain: "uGrain",
   };
   const traitLoc = {} as Record<keyof CrtConfig, WebGLUniformLocation | null>;
   for (const k of Object.keys(TRAIT_UNIFORMS) as (keyof CrtConfig)[])

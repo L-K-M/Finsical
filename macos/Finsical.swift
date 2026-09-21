@@ -151,11 +151,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     /// Applied only when the id changes — state pushes every ~2s.
     private var machineId = ""
     private var machineVbW: CGFloat = 0
-    private func applyMachine(id: String, w: CGFloat, h: CGFloat) {
+    private var machineRx: CGFloat = 0
+    private func applyMachine(id: String, w: CGFloat, h: CGFloat,
+                              rx: CGFloat) {
         guard id != machineId, w > 0, h > 0 else { return }
         let old = machineVbW
         machineId = id
         machineVbW = w
+        machineRx = rx
+        syncCornerRadius()
         window.contentAspectRatio = NSSize(width: w, height: h)
         window.contentMinSize = NSSize(width: w * 0.45, height: h * 0.45)
         if old <= 0 {
@@ -179,6 +183,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         window.setFrame(NSRect(x: f.minX, y: f.maxY - nh,
                                width: nw, height: nh),
                         display: true, animate: true)
+    }
+
+    /// Clip the window's content to the case's rounded silhouette —
+    /// the webview's layer is masked, so even if its background ever
+    /// paints (drawsBackground not honored), only the bezel shape can
+    /// show. Radius scales with the viewBox like the SVG art does.
+    private func syncCornerRadius() {
+        guard machineVbW > 0 else { return }
+        webView.layer?.cornerRadius =
+            machineRx * (window.frame.width / machineVbW)
+        webView.layer?.masksToBounds = true
+    }
+
+    func windowDidResize(_ note: Notification) {
+        if note.object as? NSWindow === window { syncCornerRadius() }
     }
 
     /// A bezel mousedown asks for a window drag — synthesize the
@@ -229,7 +248,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                let mid = mc["id"] as? String,
                let mw = (mc["w"] as? NSNumber)?.doubleValue,
                let mh = (mc["h"] as? NSNumber)?.doubleValue {
-                applyMachine(id: mid, w: CGFloat(mw), h: CGFloat(mh))
+                let mrx = (mc["rx"] as? NSNumber)?.doubleValue ?? 0
+                applyMachine(id: mid, w: CGFloat(mw), h: CGFloat(mh),
+                             rx: CGFloat(mrx))
             }
         }
         guard let data = try? JSONSerialization.data(
@@ -325,13 +346,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                             configuration: makeWebConfig())
         webView.uiDelegate = self
         webView.navigationDelegate = self
-        // The webview paints nothing behind the page — with a
-        // transparent html background the machine case drawn in-page is
-        // the only visible surface. Private-but-longstanding KVC;
-        // respond-check guards the throw if the key ever vanishes.
+        // The webview must not paint behind the page — a transparent
+        // html background means the machine case drawn in-page is the
+        // only visible surface. Two levers: underPageBackgroundColor is
+        // the public API (WKWebView fills transparent page regions with
+        // it — defaults white, which is exactly the corner artifact);
+        // drawsBackground is the longstanding SPI that stops any
+        // backing paint entirely. Apply both; the respond-check guards
+        // the KVC throw if the key ever vanishes.
+        webView.underPageBackgroundColor = .clear
         if webView.responds(to: NSSelectorFromString("setDrawsBackground:")) {
             webView.setValue(false, forKey: "drawsBackground")
         }
+        // Layer-backed so syncCornerRadius can clip the case silhouette.
+        webView.wantsLayer = true
 
         window = NSWindow(
             contentRect: webView.frame,
