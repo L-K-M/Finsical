@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
 import { MACHINES } from "./machines.js";
 
@@ -37,6 +38,18 @@ describe("machine silhouettes", () => {
     });
   }
 
+  it("image machines: the asset exists under web/", () => {
+    // A missing png renders an empty shell and a rectangular window —
+    // silent at runtime, so pin it here. import.meta.glob runs
+    // through vite — no node typings needed.
+    const assets = import.meta.glob("./assets/*");
+    for (const m of MACHINES) {
+      if (!m.image) continue;
+      expect(`./${m.image}` in assets, `${m.id}: ${m.image}`)
+        .toBe(true);
+    }
+  });
+
   it("bare: shape is the full viewBox", () => {
     const bare = MACHINES.find((m) => m.id === "bare")!;
     expect(bare.svg).toBe("");
@@ -62,8 +75,9 @@ describe("machine silhouettes", () => {
 
   it("screens stay inside the silhouette", () => {
     for (const m of MACHINES) {
-      expect(m.sw).toBe(320);
-      expect(m.sh).toBe(200);
+      // Screen rect is in viewBox units — 320×200 only where the
+      // viewBox is game-scaled; what matters is the 1.6 tank aspect.
+      expect(m.sw / m.sh).toBeCloseTo(1.6, 2);
       // The SVG viewport crops at the viewBox no matter what the mask
       // allows — keep both checks.
       expect(m.sx).toBeGreaterThanOrEqual(0);

@@ -17,10 +17,27 @@ export interface Machine {
   blurb: string;
   vbW: number; vbH: number;
   sx: number; sy: number;   // screen rect origin in viewBox units
-  sw: number; sh: number;   // screen rect size — 320×200 everywhere
+  sw: number; sh: number;   // screen rect size — always a 1.6 aspect
   shape: ShapeRect[];       // window silhouette — must cover the art's
-                            // outer edge exactly
+                            // outer edge exactly. For image machines
+                            // it's only a fallback: the image's own
+                            // alpha becomes the window mask.
+  image?: string;           // raster shell asset under web/ — when set,
+                            // its alpha IS the silhouette
   svg: string;              // inner markup for the shell <svg>
+                            // (empty for image machines)
+}
+
+/** The shell svg's inner markup — vector art, or the raster image
+ * stretched to the viewBox. preserveAspectRatio="none" matters: the
+ * native mask stretches the same image to the window, so both must
+ * use identical (stretch) semantics or silhouette and art misalign. */
+export function shellMarkup(m: Machine): string {
+  if (m.image)
+    return `<image href="${m.image}" x="0" y="0" ` +
+      `width="${m.vbW}" height="${m.vbH}" ` +
+      `preserveAspectRatio="none"/>`;
+  return m.svg;
 }
 
 const S = { sw: 320, sh: 200 };
@@ -144,6 +161,19 @@ const imac: Machine = {
 <rect x="158" y="332" width="92" height="2.5" rx="1.25" fill="#0d2f2c"/>`,
 };
 
+// The Plus render: user-supplied art, cropped to its alpha bounds.
+const plus: Machine = {
+  id: "plus", name: "Macintosh Plus",
+  blurb: "The classic platinum compact, rendered from the reference " +
+    "photo — its own silhouette shapes the window.",
+  // Glass is 615×433 at (100,135) — the 1.6 tank letterboxes inside
+  // it, inset enough that its square corners stay on the dark glass.
+  vbW: 816, vbH: 1053, sx: 110, sy: 166, sw: 595, sh: 372,
+  image: "assets/macplus.png",
+  shape: [{ x: 0, y: 0, w: 816, h: 1053, r: 0 }],  // fallback only
+  svg: "",
+};
+
 const bare: Machine = {
   id: "bare", name: "Bare tank",
   blurb: "No case — just the water, edge to edge.",
@@ -152,7 +182,8 @@ const bare: Machine = {
   svg: "",
 };
 
-export const MACHINES: readonly Machine[] = [cathode, se, studio, imac, bare];
+export const MACHINES: readonly Machine[] =
+  [cathode, se, plus, studio, imac, bare];
 export const DEFAULT_MACHINE = "cathode";
 export function machineById(id: string): Machine | undefined {
   return MACHINES.find((m) => m.id === id);
