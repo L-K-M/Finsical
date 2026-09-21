@@ -421,16 +421,39 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   // failures (private mode, quota) fall back to the fetch path.
   const THUMB_PREFIX = "thumb:";
   const thumbKey = (it: Importable): string => THUMB_PREFIX + it.url;
-  // One-time sweep of the retired localStorage thumbs ("finsical:thumb:*").
+  // One-time migration of the retired localStorage thumbs: URL-keyed
+  // PNG data-URLs decode straight into the IDB cache. Keys without a
+  // scheme were pre-URL "section:name" entries — delete those.
   try {
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const k = localStorage.key(i);
-      if (k?.startsWith("finsical:thumb:")) localStorage.removeItem(k);
+      if (!k?.startsWith("finsical:thumb:")) continue;
+      const v = localStorage.getItem(k);
+      localStorage.removeItem(k);
+      try {
+        if (!k.includes("://") || !v?.startsWith("data:image/png;base64,"))
+          continue;
+        const bin = atob(v.slice(22));
+        const bytes = new Uint8Array(bin.length);
+        for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
+        void packPut(THUMB_PREFIX + k.slice(15), bytes).catch(() => {});
+      } catch { /* leave unmigrated */ }
     }
   } catch { /* storage unavailable */ }
+  // Stored thumbs only ever feed <=96px tiles — cap them so thumb churn
+  // in the shared LRU budget can't crowd out installed pack bytes.
+  const THUMB_MAX = 256;
   function storeThumb(it: Importable, cv: HTMLCanvasElement): void {
     if (!immutableHost(it.url)) return; // mutable source — never cache
-    cv.toBlob((b) => {
+    let src = cv;
+    const s = Math.min(1, THUMB_MAX / Math.max(cv.width, cv.height));
+    if (s < 1) {
+      src = document.createElement("canvas");
+      src.width = Math.max(1, Math.round(cv.width * s));
+      src.height = Math.max(1, Math.round(cv.height * s));
+      src.getContext("2d")!.drawImage(cv, 0, 0, src.width, src.height);
+    }
+    src.toBlob((b) => {
       if (!b) return;
       void b.arrayBuffer()
         .then((ab) => packPut(thumbKey(it), new Uint8Array(ab)))
@@ -444,7 +467,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   }
   // Starts an async cache read; true when a fetch can be skipped for now.
   function loadStoredThumb(it: Importable): boolean {
-    if (immutableHost(it.url) === false) return false;
+    if (!immutableHost(it.url)) return false;
     thumbQueued.add(it.url);
     void packGet(thumbKey(it)).then((bytes) => {
       if (!bytes) {
@@ -465,7 +488,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       };
       if (typeof createImageBitmap === "function") {
         createImageBitmap(blob).then(
-          (bmp) => done(bmp, bmp.width, bmp.height),
+          (bmp) => { done(bmp, bmp.width, bmp.height); bmp.close(); },
           () => decodeViaImage(blob));
       } else decodeViaImage(blob);
       function decodeViaImage(b: Blob): void {
