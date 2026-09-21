@@ -429,14 +429,19 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       const k = localStorage.key(i);
       if (!k?.startsWith("finsical:thumb:")) continue;
       const v = localStorage.getItem(k);
-      localStorage.removeItem(k);
+      if (!k.includes("://") || !v?.startsWith("data:image/png;base64,")) {
+        localStorage.removeItem(k); // non-migratable legacy entry
+        continue;
+      }
       try {
-        if (!k.includes("://") || !v?.startsWith("data:image/png;base64,"))
-          continue;
         const bin = atob(v.slice(22));
         const bytes = new Uint8Array(bin.length);
         for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
-        void packPut(THUMB_PREFIX + k.slice(15), bytes).catch(() => {});
+        // Remove only after the IDB write lands — a quota failure keeps
+        // the entry so migration retries on next mount.
+        void packPut(THUMB_PREFIX + k.slice(15), bytes)
+          .then(() => localStorage.removeItem(k))
+          .catch(() => {});
       } catch { /* leave unmigrated */ }
     }
   } catch { /* storage unavailable */ }
