@@ -13,7 +13,8 @@
 import { zipEntries, zipRead } from "../core/data/zip.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
-import { metaGet, metaPut, packGet, packPut } from "./store.js";
+import { metaGet, metaPut, packDelete, packGet, packPut }
+  from "./store.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
@@ -411,57 +412,85 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   let thumbRunning = 0;
   const THUMB_PAR = 3;
 
-  // Thumbnails persist across launches in localStorage so the browse grid
-  // doesn't re-download every pack each run. Best-effort: storage
+  // Thumbnails persist across launches as PNG bytes in the IndexedDB
+  // pack cache so the browse grid doesn't re-download every pack each
+  // run. The "thumb:{url}" keys ride the same LRU budget as pack bytes
+  // (they're derived data — eviction just re-fetches). Kept out of
+  // localStorage deliberately: that quota also holds the tank save,
+  // and a full thumb set could starve it. Best-effort: storage
   // failures (private mode, quota) fall back to the fetch path.
-  const THUMB_PREFIX = "finsical:thumb:";
+  const THUMB_PREFIX = "thumb:";
   const thumbKey = (it: Importable): string => THUMB_PREFIX + it.url;
-  // One-time sweep of pre-URL keys ("section:name" — no scheme in them).
+  // One-time sweep of the retired localStorage thumbs ("finsical:thumb:*").
   try {
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const k = localStorage.key(i);
-      if (k?.startsWith(THUMB_PREFIX) && !k.includes("://"))
-        localStorage.removeItem(k);
+      if (k?.startsWith("finsical:thumb:")) localStorage.removeItem(k);
     }
   } catch { /* storage unavailable */ }
   function storeThumb(it: Importable, cv: HTMLCanvasElement): void {
-    const data = cv.toDataURL("image/png");
-    try {
-      localStorage.setItem(thumbKey(it), data);
-    } catch {
-      try {
-        for (const k of Object.keys(localStorage))
-          if (k.startsWith(THUMB_PREFIX)) localStorage.removeItem(k);
-        localStorage.setItem(thumbKey(it), data);
-      } catch { /* cache skipped */ }
-    }
+    if (!immutableHost(it.url)) return; // mutable source — never cache
+    cv.toBlob((b) => {
+      if (!b) return;
+      void b.arrayBuffer()
+        .then((ab) => packPut(thumbKey(it), new Uint8Array(ab)))
+        .catch(() => { /* cache skipped */ });
+    }, "image/png");
   }
-  // Returns true when a stored thumb was found (paint happens async).
+  function storedThumbPainted(it: Importable): void {
+    const t = browse.querySelector(`[data-url="${CSS.escape(it.url)}"]`);
+    const th = thumbs.get(it.url);
+    if (t && th) paintThumb(t, th);
+  }
+  // Starts an async cache read; true when a fetch can be skipped for now.
   function loadStoredThumb(it: Importable): boolean {
-    let url: string | null = null;
-    try { url = localStorage.getItem(thumbKey(it)); }
-    catch { /* storage unavailable */ }
-    if (!url) return false;
+    if (immutableHost(it.url) === false) return false;
     thumbQueued.add(it.url);
-    const img = new Image();
-    img.onload = () => {
-      const cv = document.createElement("canvas");
-      cv.width = img.naturalWidth; cv.height = img.naturalHeight;
-      cv.getContext("2d")!.drawImage(img, 0, 0);
-      thumbs.set(it.url, cv);
+    void packGet(thumbKey(it)).then((bytes) => {
+      if (!bytes) {
+        thumbQueued.delete(it.url);
+        if (!thumbQueue.some((q) => q.url === it.url))
+          thumbQueue.push(it);
+        pumpThumbs();
+        return;
+      }
+      const blob = new Blob([bytes], { type: "image/png" });
+      const done = (bmp: CanvasImageSource, w: number, h: number) => {
+        const cv = document.createElement("canvas");
+        cv.width = w; cv.height = h;
+        cv.getContext("2d")!.drawImage(bmp, 0, 0);
+        thumbs.set(it.url, cv);
+        thumbQueued.delete(it.url);
+        storedThumbPainted(it);
+      };
+      if (typeof createImageBitmap === "function") {
+        createImageBitmap(blob).then(
+          (bmp) => done(bmp, bmp.width, bmp.height),
+          () => decodeViaImage(blob));
+      } else decodeViaImage(blob);
+      function decodeViaImage(b: Blob): void {
+        const obj = URL.createObjectURL(b);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(obj);
+          done(img, img.naturalWidth, img.naturalHeight);
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(obj);
+          thumbQueued.delete(it.url);
+          // Corrupt entry — evict it, then fall through to a real fetch.
+          void packDelete(thumbKey(it)).catch(() => {});
+          if (!thumbQueue.some((q) => q.url === it.url))
+            thumbQueue.push(it);
+          pumpThumbs();
+        };
+        img.src = obj;
+      }
+    }).catch(() => {
       thumbQueued.delete(it.url);
-      const t =
-        browse.querySelector(`[data-url="${CSS.escape(it.url)}"]`);
-      if (t) paintThumb(t, cv);
-    };
-    img.onerror = () => {
-      try { localStorage.removeItem(thumbKey(it)); } catch { /* ignore */ }
-      thumbQueued.delete(it.url);
-      if (!thumbQueue.some((q) => q.url === it.url))
-        thumbQueue.push(it); // corrupt entry — fall through to a real fetch
+      if (!thumbQueue.some((q) => q.url === it.url)) thumbQueue.push(it);
       pumpThumbs();
-    };
-    img.src = url;
+    });
     return true;
   }
 
@@ -539,9 +568,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
                       again: boolean): void {
     // Remote mode (panel window): the tank page owns the sim — send the
     // request there and flip the UI when its ack comes back via notify().
-    // Note: the tank page re-fetches the pack itself — this page's
-    // preview download lives in a separate JS context and can't be
-    // shared (WKWebView's URL cache usually covers the second fetch).
+    // Note: the tank page re-reads the pack in its own JS context —
+    // decoded objects can't cross the bus, but both webviews share the
+    // IndexedDB pack cache so the second read stays local.
     if (remote) {
       remote.post({ op: "install", item: it, again });
       return;
@@ -575,7 +604,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       const usable = rs.filter((r) => r.sheets.size || r.images.size);
       if (!usable.length) throw new Error("no pack inside");
       const pv = h.preview(usable);
-      if (pv) { pvBox.appendChild(pv); thumbs.set(it.url, pv); }
+      if (pv) { pvBox.appendChild(pv); thumbs.set(it.url, pv);
+                storeThumb(it, pv); }
       const kinds = [...new Set(usable.map((r) =>
         r.sheets.size ? "fish" : "scenery"))].join(" + ");
       status.textContent =
