@@ -183,7 +183,10 @@ class ResFile:
                 # index backwards into the name list (or worse).
                 if noff >= 0:
                     p = self.nbase + noff
-                    if p < len(self.data):
+                    # Full Pascal name must fit — matches the TS sibling,
+                    # which treats an overflowing length as nameless.
+                    if (p < len(self.data) and
+                            p + 1 + self.data[p] <= len(self.data)):
                         ln = self.data[p]
                         name = self.data[p + 1:p + 1 + ln] \
                             .decode('mac_roman', 'replace')

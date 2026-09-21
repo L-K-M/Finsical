@@ -791,9 +791,13 @@ void (async () => {
   // pre-spawning rosters that never gained their fish.
   .then(() => importPanel.restore([...installedAddons]))
   // Imported 'snd ' sets persist — restore them so dropped sounds
-  // survive relaunch even when no pack in use carries audio.
-  .then(() => sndsGet())
-  .then((recs) => recs?.length ? audio.addWavs(recs) : undefined)
+  // survive relaunch even when no pack in use carries audio. Best
+  // effort: a restore failure must not skip the fish roster healing.
+  .then(() => sndsGet().catch((e) => {
+    console.warn("snd restore failed:", e); return null;
+  }))
+  .then((recs) => recs?.length ? audio.addWavs(recs).catch((e) =>
+    console.warn("snd decode failed:", e)) : undefined)
   .then(() => { remapSheetIdx(); reconcileFish(); });
 
 // Drag an .azpack folder onto the window to import it.

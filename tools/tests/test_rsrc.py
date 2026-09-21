@@ -69,6 +69,15 @@ class TestRsrc(unittest.TestCase):
         self.assertEqual(res[0][1], None)
         self.assertEqual(res[0][3], b"d")
 
+    def test_overlong_name_length_treated_as_nameless(self):
+        # A length byte claiming more than remains must yield nameless
+        # (matching the TS sibling), not a silently truncated name.
+        fork = bytearray(build_rsrc({b"snd ": [(1, "tap", 0, b"d")]}))
+        map_off = struct.unpack_from(">I", fork, 4)[0]
+        fork[map_off + 28 + 22] = 0xFF  # the single name's length byte
+        res = list(ResFile.from_bytes(bytes(fork)).resources(b"snd "))
+        self.assertEqual(res[0][1], None)
+
     def test_nested_containers(self):
         # A .bin holding an AppleDouble holding the fork — real files
         # stack encodings, so unwrap_container loops until stable.
