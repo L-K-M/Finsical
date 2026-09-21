@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
-import { MACHINES } from "./machines.js";
+import { MACHINES, SCREENBACK_HOLE_PAD } from "./machines.js";
 
 // Each machine's `shape` is hand-synced to the outer <rect> geometry
 // of its svg — the native shell unions it into the window's layer
@@ -92,19 +92,22 @@ describe("machine silhouettes", () => {
     }
   });
 
-  it("image machines: hole inset clears the backplate pad", () => {
-    // layoutMachine pads #screenback 32 viewBox units past `hole` so a
-    // few px of translucent glass rim past the measured aperture still
-    // has black behind it. The pad must land on opaque art — every
-    // machine also keeps the hole >= 46px from the nearest see-through
-    // pixel, and at minimum it must stay inside the image bounds.
+  it("machines with holes: hole inset clears the backplate pad", () => {
+    // layoutMachine pads #screenback past the hole so a few px of
+    // translucent glass rim past the measured aperture still has black
+    // behind it. The pad must land on opaque art; per the art audit
+    // every hole keeps >= 46px to the nearest see-through pixel. This
+    // test can't measure that, so it pins the weaker invariant: the
+    // hole stays pad + 8 slack inside the viewBox.
     for (const m of MACHINES) {
       const hole = m.hole;
       if (!hole) continue;
-      expect(hole.x, m.id).toBeGreaterThanOrEqual(40);
-      expect(hole.y, m.id).toBeGreaterThanOrEqual(40);
-      expect(m.vbW - (hole.x + hole.w), m.id).toBeGreaterThanOrEqual(40);
-      expect(m.vbH - (hole.y + hole.h), m.id).toBeGreaterThanOrEqual(40);
+      expect(hole.x, m.id).toBeGreaterThanOrEqual(SCREENBACK_HOLE_PAD + 8);
+      expect(hole.y, m.id).toBeGreaterThanOrEqual(SCREENBACK_HOLE_PAD + 8);
+      expect(m.vbW - (hole.x + hole.w), m.id)
+        .toBeGreaterThanOrEqual(SCREENBACK_HOLE_PAD + 8);
+      expect(m.vbH - (hole.y + hole.h), m.id)
+        .toBeGreaterThanOrEqual(SCREENBACK_HOLE_PAD + 8);
     }
   });
 

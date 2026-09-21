@@ -244,11 +244,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         if let raw = ctx.data {
             let w = base.width, h = base.height, bpr = ctx.bytesPerRow
             let buf = raw.assumingMemoryBound(to: UInt8.self)
+            // Alpha sits last in the 32-bit pixel for premultipliedLast
+            // at default order and premultipliedFirst at little-endian;
+            // the crossed combinations put it first.
+            let info = ctx.bitmapInfo.rawValue
+            let first = info & CGBitmapInfo.alphaInfoMask.rawValue
+                == CGImageAlphaInfo.premultipliedFirst.rawValue
+            let little = info & CGBitmapInfo.byteOrderMask.rawValue
+                == CGBitmapInfo.byteOrder32Little.rawValue
+            let alphaOff = first == little ? 3 : 0
             var seen = [Bool](repeating: false, count: w * h)
             var stack: [Int] = []
             func seed(_ x: Int, _ y: Int) {
                 let i = y * w + x
-                guard !seen[i], buf[y * bpr + x * 4 + 3] < 250 else { return }
+                guard !seen[i],
+                      buf[y * bpr + x * 4 + alphaOff] < 250 else { return }
                 seen[i] = true
                 stack.append(i)
             }
@@ -262,7 +272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 if y < h - 1 { seed(x, y + 1) }
             }
             for i in 0 ..< w * h where !seen[i] {
-                buf[(i / w) * bpr + (i % w) * 4 + 3] = 255
+                buf[(i / w) * bpr + (i % w) * 4 + alphaOff] = 255
             }
         }
         return ctx.makeImage() ?? base
