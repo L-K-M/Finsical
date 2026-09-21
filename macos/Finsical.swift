@@ -216,6 +216,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         }
         let mask = CAShapeLayer()
         mask.frame = CGRect(origin: .zero, size: layer.bounds.size)
+        // A shape-layer path rasterizes — without this it renders at
+        // 1x and jaggies on Retina.
+        mask.contentsScale = window.backingScaleFactor
         mask.path = path
         layer.mask = mask
     }
