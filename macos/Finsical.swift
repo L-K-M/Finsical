@@ -192,7 +192,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     private func syncCornerRadius() {
         guard machineVbW > 0 else { return }
         webView.layer?.cornerRadius =
-            machineRx * (window.frame.width / machineVbW)
+            machineRx * (webView.frame.width / machineVbW)
         webView.layer?.masksToBounds = true
     }
 

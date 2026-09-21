@@ -73,8 +73,11 @@ void main() {
   // toward the edges. Green stays as the reference beam.
   float conv = (1.2 * uConv) * length(cc);
   if (conv > 0.001) {
-    c.r = gamePx(lp - vec2(conv, 0.0)).r;
-    c.b = gamePx(lp + vec2(conv, 0.0)).b;
+    // Blend, don't overwrite — a hard swap would strip the beam smear
+    // from r/b and leave them crisper than green.
+    float k = clamp(conv * 2.5, 0.0, 1.0);
+    c.r = mix(c.r, gamePx(lp - vec2(conv, 0.0)).r, k);
+    c.b = mix(c.b, gamePx(lp + vec2(conv, 0.0)).b, k);
   }
 
   // Phosphor bloom: bright areas bleed wider and overdrive.
