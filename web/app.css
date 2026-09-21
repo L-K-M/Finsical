@@ -6,7 +6,7 @@ html, body { margin: 0; height: 100%; background: #000; }
 /* Add-on browser overlay. Interactive content stays below the top
    22px native drag strip — a full-height overlay would swallow it. */
 .ov {
-  position: fixed; inset: 0; z-index: 10;
+  position: fixed; inset: 0; z-index: 10; cursor: default;
   display: flex; align-items: center; justify-content: center;
   padding: 30px 12px 12px; box-sizing: border-box;
   background: rgba(3, 7, 13, .72);
@@ -89,18 +89,22 @@ html, body { margin: 0; height: 100%; background: #000; }
 }
 .ft a { color: #e06c6c; font-size: 11px; text-decoration: none; }
 .ft a:hover { text-decoration: underline; }
-/* Machine shell: the bezel SVG fills the window (letterboxed if the
-   aspect ever drifts), and #screen is positioned over the bezel's
-   screen opening by layoutMachine() in web/main.ts. Bezel-area
-   mousedowns drag the window; the screen div sits above the SVG so
-   canvas clicks still reach the tank. */
-#machine { position: fixed; inset: 0; }
+/* Machine shell: the machine art SVG fills the window (letterboxed if
+   the aspect ever drifts) and paints ON TOP of the tank, so its
+   transparent glass and baked reflections overlay the water. Behind
+   the tank, #screenback paints the unlit-glass black into the art's
+   screen aperture — layoutMachine() in web/main.ts positions both.
+   #machine is pointer-events:none: clicks fall through to the tank
+   canvas, or to the page body — a window drag — everywhere else. */
+#machine { position: fixed; inset: 0; pointer-events: none; }
 #shell {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  cursor: grab; user-select: none;
+  user-select: none;
 }
-#shell:active { cursor: grabbing; }
-#screen { position: absolute; }
+#screenback { position: fixed; background: #050505; display: none; }
+body.tankpage { cursor: grab; }
+body.tankpage:active { cursor: grabbing; }
+#screen { position: absolute; cursor: default; }
 canvas#tank {
   display: block; width: 100%; height: 100%; object-fit: contain;
   image-rendering: pixelated; /* keep the crunch */

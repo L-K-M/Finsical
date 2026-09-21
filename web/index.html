@@ -6,13 +6,18 @@
   <link rel="stylesheet" href="app.css" />
 </head>
 <body class="tankpage">
+  <!-- Three layers: the dark screen backplate under the aquarium, then
+       the machine art on top so its glass and reflections overlay the
+       water. #machine is pointer-events:none — clicks fall through to
+       the tank, or to the page body (a window drag) elsewhere. -->
+  <div id="screenback"></div>
+  <div id="screen">
+    <canvas id="tank" width="320" height="200"></canvas>
+    <canvas id="crt"></canvas>
+  </div>
   <div id="machine">
     <svg id="shell" preserveAspectRatio="xMidYMid meet"
          role="presentation"></svg>
-    <div id="screen">
-      <canvas id="tank" width="320" height="200"></canvas>
-      <canvas id="crt"></canvas>
-    </div>
   </div>
   <script src="bundle.js"></script>
 </body>
