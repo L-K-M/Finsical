@@ -670,8 +670,8 @@ function layoutMachine(): void {
   screenEl.style.top = `${oy + machine.sy * s}px`;
   screenEl.style.width = `${machine.sw * s}px`;
   screenEl.style.height = `${machine.sh * s}px`;
-  const hole = backEl ? machine.hole : undefined;
   if (backEl) {
+    const hole = machine.hole;
     backEl.style.display = hole ? "block" : "none";
     if (hole) {
       backEl.style.left = `${ox + hole.x * s}px`;
@@ -695,7 +695,9 @@ applyMachine(machine);
 // The machine art is pointer-events:none — a press anywhere that
 // isn't the tank or real UI means a grab on the case → window drag.
 document.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0) return;
+  // Native performDrag loops on real mouse state — a synthesized
+  // leftMouseDown from a touch tap has none and could hang it.
+  if (e.button !== 0 || e.pointerType !== "mouse") return;
   if (!(e.target instanceof Element) || e.target.closest(
       "#screen, .ov, #opentrigger, button, a, input, textarea, select,"
       + " label, [contenteditable]"))
