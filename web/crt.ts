@@ -37,6 +37,12 @@ uniform float uCurve; // barrel warp
 uniform float uVig;   // edge/corner dimming
 uniform float uFlick; // brightness shimmer
 uniform float uGrain; // analog noise
+uniform float uBright;// picture brightness gain (0.5 = neutral)
+uniform float uContr; // picture contrast around mid level
+uniform float uZoom;  // overscan crop (0 = full raster)
+uniform float uRed;   // per-channel gain trims
+uniform float uGreen;
+uniform float uBlue;
 
 vec3 gamePx(vec2 lp) {
   vec2 t = clamp(lp, vec2(0.5), uTank - 0.5) / uTank;
@@ -50,6 +56,13 @@ float hash(vec2 p) {
 void main() {
   vec2 uv = (gl_FragCoord.xy - uRect.xy) / uRect.zw;
 
+  // gc is the position on the glass — vignette and misconvergence
+  // follow the tube, not the raster.
+  vec2 gc = uv * 2.0 - 1.0;
+  // Overscan: real sets run the raster slightly past the glass, so a
+  // little crop is authentic. Crop in raster space, BEFORE the warp —
+  // the crop stays uniform and the curved black corners survive.
+  uv = (uv - 0.5) / (1.0 + 0.12 * uZoom) + 0.5;
   // Barrel curve: sample positions bow outward like curved tube glass.
   vec2 cc = uv * 2.0 - 1.0;
   uv = (cc * (1.0 + (0.10 * uCurve) * dot(cc, cc))) * 0.5 + 0.5;
@@ -71,7 +84,7 @@ void main() {
   // Misconvergence: the outer electron guns never land perfectly —
   // red drifts left and blue right, growing from zero at the center
   // toward the edges. Green stays as the reference beam.
-  float conv = (1.2 * uConv) * length(cc);
+  float conv = (1.2 * uConv) * length(gc);
   if (conv > 0.001) {
     // Blend, don't overwrite — a hard swap would strip the beam smear
     // from r/b and leave them crisper than green.
@@ -108,12 +121,19 @@ void main() {
 
   // Glass vignette, faint flicker (plus a slow rolling brightness
   // band — the beam never sits perfectly in sync), and grain.
-  c *= 1.0 - (0.40 * uVig) * dot(cc, cc);
+  c *= 1.0 - (0.40 * uVig) * dot(gc, gc);
   c *= 1.0 + (0.05 * uFlick) * sin(uTime * 61.0)
            + (0.03 * uFlick) * sin(uv.y * 3.0 - uTime * 4.0);
   c += (hash(gl_FragCoord.xy + fract(uTime)) - 0.5) * (0.10 * uGrain);
 
-  gl_FragColor = vec4(c, 1.0);
+  // Front-panel picture controls, last: contrast pivots around the
+  // picture's mid level, brightness is a master gain, and each channel
+  // gets an independent trim like a service-menu gun adjustment.
+  c = (c - 0.40) * (0.55 + 0.90 * uContr) + 0.40;
+  c *= 0.5 + uBright;
+  c *= vec3(0.6 + 0.8 * uRed, 0.6 + 0.8 * uGreen, 0.6 + 0.8 * uBlue);
+
+  gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
 }
 `;
 
@@ -140,12 +160,24 @@ export interface CrtConfig {
   flicker: number;
   /** Subtle analog noise over the image. */
   grain: number;
+  /** Master picture gain — 0.5 is neutral. */
+  brightness: number;
+  /** Bright/dark separation — 0.5 is neutral. */
+  contrast: number;
+  /** Edge crop like real overscan — 0 shows the full raster. */
+  zoom: number;
+  /** Per-channel trims — 0.5 is neutral on each. */
+  red: number;
+  green: number;
+  blue: number;
 }
 
 export const CRT_DEFAULTS: Readonly<CrtConfig> = Object.freeze<CrtConfig>({
   scanlines: 0.40, beam: 1.0, bloom: 0.50, overdrive: 0.50,
   misconvergence: 0.35, grille: 1.0, curvature: 0.45, vignette: 0.35,
   flicker: 0.30, grain: 0.30,
+  brightness: 0.50, contrast: 0.50, zoom: 0.0,
+  red: 0.50, green: 0.50, blue: 0.50,
 });
 
 /** Merge an untrusted source (localStorage, bus message) onto the
@@ -246,6 +278,8 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     scanlines: "uScan", beam: "uBeam", bloom: "uBloom", overdrive: "uOver",
     misconvergence: "uConv", grille: "uGrill", curvature: "uCurve",
     vignette: "uVig", flicker: "uFlick", grain: "uGrain",
+    brightness: "uBright", contrast: "uContr", zoom: "uZoom",
+    red: "uRed", green: "uGreen", blue: "uBlue",
   };
   const traitLoc = {} as Record<keyof CrtConfig, WebGLUniformLocation | null>;
   for (const k of Object.keys(TRAIT_UNIFORMS) as (keyof CrtConfig)[])
