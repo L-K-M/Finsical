@@ -203,8 +203,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         }
         // Shape coords are top-down (SVG viewBox); a layer's space
         // follows the view's isFlipped, which AppKit mirrors into
-        // geometryFlipped for layer-backed views.
-        let flipped = layer.geometryFlipped
+        // isGeometryFlipped for layer-backed views.
+        let flipped = layer.isGeometryFlipped
         let path = CGMutablePath()
         for (rect, r) in machineShape {
             let ly = flipped ? rect.minY : machineVbH - rect.maxY
