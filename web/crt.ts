@@ -56,12 +56,16 @@ float hash(vec2 p) {
 void main() {
   vec2 uv = (gl_FragCoord.xy - uRect.xy) / uRect.zw;
 
+  // gc is the position on the glass — vignette and misconvergence
+  // follow the tube, not the raster.
+  vec2 gc = uv * 2.0 - 1.0;
+  // Overscan: real sets run the raster slightly past the glass, so a
+  // little crop is authentic. Crop in raster space, BEFORE the warp —
+  // the crop stays uniform and the curved black corners survive.
+  uv = (uv - 0.5) / (1.0 + 0.12 * uZoom) + 0.5;
   // Barrel curve: sample positions bow outward like curved tube glass.
   vec2 cc = uv * 2.0 - 1.0;
   uv = (cc * (1.0 + (0.10 * uCurve) * dot(cc, cc))) * 0.5 + 0.5;
-  // Overscan: real sets run the raster slightly past the glass, so a
-  // little crop is authentic — and hides the outermost game pixels.
-  uv = (uv - 0.5) / (1.0 + 0.12 * uZoom) + 0.5;
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
     gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
     return;
@@ -80,7 +84,7 @@ void main() {
   // Misconvergence: the outer electron guns never land perfectly —
   // red drifts left and blue right, growing from zero at the center
   // toward the edges. Green stays as the reference beam.
-  float conv = (1.2 * uConv) * length(cc);
+  float conv = (1.2 * uConv) * length(gc);
   if (conv > 0.001) {
     // Blend, don't overwrite — a hard swap would strip the beam smear
     // from r/b and leave them crisper than green.
@@ -117,7 +121,7 @@ void main() {
 
   // Glass vignette, faint flicker (plus a slow rolling brightness
   // band — the beam never sits perfectly in sync), and grain.
-  c *= 1.0 - (0.40 * uVig) * dot(cc, cc);
+  c *= 1.0 - (0.40 * uVig) * dot(gc, gc);
   c *= 1.0 + (0.05 * uFlick) * sin(uTime * 61.0)
            + (0.03 * uFlick) * sin(uv.y * 3.0 - uTime * 4.0);
   c += (hash(gl_FragCoord.xy + fract(uTime)) - 0.5) * (0.10 * uGrain);
