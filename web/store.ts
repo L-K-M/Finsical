@@ -188,14 +188,28 @@ export function metaPut(key: string, val: unknown): Promise<unknown> {
 // by resource name so a second dropped fork extends rather than
 // replaces. Not part of the pack LRU: this is user data, not cache.
 const SNDS_KEY = "snds";
+// Generous ceiling — a full 25-sound original set is ~2MB. Without a
+// cap, repeated drops of large forks pin unbounded permanent storage.
+const SNDS_CAP = 64 * 1024 * 1024;
 export interface StoredSnd { name: string; wav: Uint8Array }
 export function sndsGet(): Promise<StoredSnd[] | null> {
   return metaGet<StoredSnd[]>(SNDS_KEY);
 }
+// Serialize merges: read-modify-write means two overlapping calls can
+// lose records when both read the same baseline before either writes.
+let sndsChain: Promise<unknown> = Promise.resolve();
 export function sndsMerge(records: StoredSnd[]): Promise<unknown> {
-  return sndsGet().then((cur) => {
+  const run = sndsChain.then(() => sndsGet().then((cur) => {
     const m = new Map((cur ?? []).map((r) => [r.name, r]));
     for (const r of records) m.set(r.name, r);
-    return metaPut(SNDS_KEY, [...m.values()]);
-  });
+    let used = 0;
+    const out = [...m.values()].filter((r) =>
+      (used += r.wav.byteLength) <= SNDS_CAP);
+    if (out.length < m.size)
+      console.warn(`snd store over ${SNDS_CAP >> 20}MB cap; dropped`,
+                   m.size - out.length, "records");
+    return metaPut(SNDS_KEY, out);
+  }));
+  sndsChain = run.catch(() => {}); // a failed merge mustn't poison the chain
+  return run;
 }

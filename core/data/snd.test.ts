@@ -114,8 +114,9 @@ function buildRsrc(types: Map<string, [number, string | null, number, Uint8Array
         noff = nameOffsets.get(name) ?? -1;
         if (noff === -1) {
           noff = nameList.length;
-          nameList.push(name.length);
-          for (const b of macEnc.encode(name)) nameList.push(b);
+          const enc = macEnc.encode(name);
+          nameList.push(enc.length);
+          for (const b of enc) nameList.push(b);
           nameOffsets.set(name, noff);
         }
       }
@@ -258,6 +259,15 @@ describe("parseSnd", () => {
     blob[0] = 0; blob[1] = 7;
     expect(() => parseSnd(blob)).toThrow(/unsupported snd format/);
   });
+
+  it("rejects overlong command lists with SndError, not RangeError", () => {
+    const blob = sndFmt2U8(new Uint8Array(8).fill(0x80));
+    blob[4] = 0xFF; blob[5] = 0xFF; // ncmds = 65535
+    expect(() => parseSnd(blob)).toThrow(/truncated command list/);
+    const tiny = sndFmt1U8(new Uint8Array(4));
+    tiny[2] = 0xFF; tiny[3] = 0xFF; // numDataTypes pushes p past EOF
+    expect(() => parseSnd(tiny)).toThrow(/truncated snd header/);
+  });
 });
 
 describe("mace3Decode", () => {
@@ -278,7 +288,7 @@ describe("mace3Decode", () => {
 describe("wavBytes", () => {
   it("wraps pcm in a canonical PCM WAV header", () => {
     const pcm = Uint8Array.from({ length: 100 }, (_, i) => i);
-    const w = wavBytes({ name: "x", rateHz: 22254, pcm, width: 1 });
+    const w = wavBytes({ rateHz: 22254, pcm, width: 1 });
     const v = new DataView(w.buffer);
     expect(w).toHaveLength(44 + 100);
     expect(String.fromCharCode(...w.subarray(0, 4))).toBe("RIFF");
@@ -295,12 +305,22 @@ describe("wavBytes", () => {
   });
 
   it("scales byte rate and block align for s16", () => {
-    const w = wavBytes({ name: "x", rateHz: 11127,
+    const w = wavBytes({ rateHz: 11127,
                          pcm: new Uint8Array(40), width: 2 });
     const v = new DataView(w.buffer);
     expect(v.getUint32(28, true)).toBe(11127 * 2);
     expect(v.getUint16(32, true)).toBe(2);
     expect(v.getUint16(34, true)).toBe(16);
+  });
+
+  it("matches tools/az/snd.py WAV output byte-for-byte", async () => {
+    // Cross-implementation pin: this exact fixture run through
+    // snd_to_wav hashes to the value below — the Python side asserts
+    // the same digest in tools/tests/test_snd.py.
+    const blob = sndFmt1U8(Uint8Array.from({ length: 32 }, (_, i) => i));
+    const w = wavBytes(parseSnd(blob));
+    expect(await sha256(w)).toBe(
+      "01ddc79b9d927f99301a6861d7840c14813b127ad37feebe0bcc6f59eb7de008");
   });
 });
 
@@ -354,5 +374,15 @@ describe("soundsFromRsrc", () => {
     expect(hasSounds(buildRsrc(new Map([["PICT", [[1, null, 0, snd]]]]))))
       .toBe(false);
     expect(hasSounds(new Uint8Array([1, 2, 3]))).toBe(false);
+  });
+
+  it("rejects truncated binhex headers without throwing", () => {
+    // A long name pushes the header tail past what a truncated stream
+    // decoded — bounds-guarded, not an index crash.
+    const fork = buildRsrc(new Map([["snd ", [[1, "x", 0, snd]]]]));
+    const hqx = wrapBinhex(fork, new Uint8Array(0), "x".repeat(30));
+    const cut = hqx.subarray(0, 60);
+    expect(() => unwrapContainer(cut)).not.toThrow();
+    expect(unwrapContainer(cut)).toEqual(cut);
   });
 });

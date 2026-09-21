@@ -186,6 +186,16 @@ class TestParse(unittest.TestCase):
         self.assertEqual(w.getframerate(), 11025)
         self.assertEqual(w.readframes(64), bytes(range(64)))
 
+    def test_wav_matches_browser_decoder(self):
+        # Cross-implementation pin: core/data/snd.test.ts asserts the
+        # same digest for wavBytes(parseSnd) on this exact fixture —
+        # guards against the two WAV emitters drifting.
+        import hashlib
+        wav = snd_to_wav(snd_fmt1_u8(bytes(range(32))))
+        self.assertEqual(hashlib.sha256(wav).hexdigest(),
+                         "01ddc79b9d927f99301a6861d7840c14813b12"
+                         "7ad37feebe0bcc6f59eb7de008")
+
 
 class TestEmitSounds(unittest.TestCase):
     def test_sanitized_name_collisions_deduped(self):

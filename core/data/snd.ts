@@ -112,9 +112,11 @@ function unwrapBinhex(d: Uint8Array): Uint8Array {
   const dec = binhexDecode(d);
   if (!dec || dec.length < 22) return d;
   const nlen = dec[0]!;
-  if (nlen < 1 || nlen > 63 || dec[1 + nlen] !== 0) return d;
+  // nlen + version byte + 20-byte header tail must fit before reads.
+  if (nlen < 1 || nlen > 63 || dec.length < nlen + 22 ||
+      dec[1 + nlen] !== 0) return d;
   const v = new DataView(dec.buffer, dec.byteOffset, dec.byteLength);
-  // name + pad + type(4) + creator(4) + flags(2) + dlen(4) + rlen(4)
+  // name + version + type(4) + creator(4) + flags(2) + dlen(4) + rlen(4)
   const dlen = u32be(v, 1 + nlen + 1 + 10), rlen = u32be(v, 1 + nlen + 1 + 14);
   const off = 1 + nlen + 1 + 18 + 2; // + header CRC
   if (off + dlen + 2 + rlen > dec.length) return d;
@@ -253,7 +255,10 @@ export function parseSnd(blob: Uint8Array):
   if (fmt === 1) p = 4 + u16be(v, 2) * 6;
   else if (fmt === 2) p = 4;
   else throw new SndError(`unsupported snd format ${fmt}`);
+  if (p + 2 > blob.length) throw new SndError("truncated snd header");
   const ncmd = u16be(v, p);
+  if (p + 2 + ncmd * 8 > blob.length)
+    throw new SndError("truncated command list");
   p += 2;
   let hoff = -1;
   for (let i = 0; i < ncmd; i++) {
@@ -327,7 +332,8 @@ export function parseSnd(blob: Uint8Array):
 
 /** Wrap decoded PCM in a canonical 44-byte WAV — the same bytes
  * tools/az/snd.py's wave.open emits, so browser and CLI outputs match. */
-export function wavBytes(s: DecodedSnd): Uint8Array {
+export function wavBytes(s: { rateHz: number; pcm: Uint8Array;
+                              width: 1 | 2 }): Uint8Array {
   const n = s.pcm.length;
   const out = new Uint8Array(44 + n);
   const v = new DataView(out.buffer);

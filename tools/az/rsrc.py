@@ -106,7 +106,7 @@ def unwrap_binhex(d):
     if dec is None or len(dec) < 22:
         return d
     nlen = dec[0]
-    if not 1 <= nlen <= 63 or dec[1 + nlen] != 0:
+    if not 1 <= nlen <= 63 or len(dec) < nlen + 22 or dec[1 + nlen] != 0:
         return d
     off = 1 + nlen + 1 + 18  # name + pad + type/creator/flags/dlens
     if off + 2 > len(dec):

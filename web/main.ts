@@ -855,7 +855,8 @@ window.addEventListener("drop", (e) => {
     }
     // Resource forks carry 'snd ' — a dropped AQUAZONE .rsrc (or its
     // .bin/.hqx/AppleDouble wrapping) decodes in-app and persists.
-    // Classic forks cap at ~16MB, so anything bigger isn't one.
+    // Classic forks cap at ~16MB, but .bin/.hqx wrappers inflate that
+    // (BinHex text is ~4/3), so allow up to 32MB before skipping.
     const recs: { name: string; wav: Uint8Array }[] = [];
     for (const [name, file] of flat) {
       if (file.size > 32 * 1024 * 1024) continue;
@@ -869,7 +870,9 @@ window.addEventListener("drop", (e) => {
     }
     if (recs.length) {
       await audio.addWavs(recs);
-      void sndsMerge(recs); // persist — best-effort, never blocks import
+      // Persist best-effort — a quota failure logs, never breaks import.
+      void sndsMerge(recs).catch((e) =>
+        console.warn("snd persist failed:", e));
       audio.startAmbient();
     }
     // Not an .azpack folder — try each dropped file as a raw .fsh/.REZ pack.

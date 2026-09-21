@@ -10,7 +10,11 @@ export class TankAudio {
   // only swaps manifest sounds, never user-supplied ones.
   private imported = new Map<string, AudioBuffer>();
   private ambientSrc: AudioBufferSourceNode | null = null;
+  private ambientBuf: AudioBuffer | null = null;
   private ambientWanted = false;
+  // Bumped by each startAmbient so a stale pending resume() retry can
+  // tell it lost the race instead of starting a second loop.
+  private ambientGen = 0;
 
   async load(read: (path: string) => Promise<Uint8Array>,
              manifest: AzpackManifest): Promise<void> {
@@ -18,6 +22,7 @@ export class TankAudio {
       try { this.ambientSrc.stop(); } catch { /* already ended */ }
       this.ambientSrc = null;
     }
+    this.ambientBuf = null;
     this.ambientWanted = false;
     this.buffers.clear();
     for (const s of manifest.sounds ?? []) {
@@ -49,8 +54,17 @@ export class TankAudio {
         // undecodable entry — keep the rest
       }
     }
-    // An earlier startAmbient may have found no "aqua" — retry now.
-    if (this.ambientWanted && !this.ambientSrc) this.startAmbient();
+    // A dropped "aqua" can outrank what's looping (or supply the ambient
+    // an earlier startAmbient found missing) — restart when the buffer
+    // that would play now differs from the one currently selected.
+    const now = this.find("aqua");
+    if (this.ambientWanted && now !== null && now !== this.ambientBuf) {
+      if (this.ambientSrc) {
+        try { this.ambientSrc.stop(); } catch { /* already ended */ }
+        this.ambientSrc = null;
+      }
+      this.startAmbient();
+    }
   }
 
   /** Browsers gate audio behind a user gesture; call from pointerdown. */
@@ -73,11 +87,13 @@ export class TankAudio {
     if (!buf || !this.ctx) return null;
     if (this.ctx.state === "suspended" && retry) {
       const ac = this.ctx;
+      const gen = this.ambientGen;
       void ac.resume()
         .then(() => {
-          // Superseded by load(), or a second ambient call raced in and
-          // started the loop while this resume was pending.
-          if (loop && (!this.ambientWanted || this.ambientSrc)) return;
+          // Superseded by load(), a newer ambient call, or a second
+          // ambient call that raced in while resume was pending.
+          if (loop && (gen !== this.ambientGen || !this.ambientWanted ||
+                       this.ambientSrc)) return;
           const n = this.play(buf, gain, loop, false);
           if (n && loop) this.ambientSrc = n; // keep the loop stoppable
         })
@@ -120,6 +136,8 @@ export class TankAudio {
   startAmbient(): void {
     if (this.ambientSrc) return; // loop already live
     this.ambientWanted = true;
-    this.ambientSrc = this.play(this.find("aqua"), 0.12, true);
+    this.ambientBuf = this.find("aqua");
+    this.ambientGen++; // stale pending starts abort in play()
+    this.ambientSrc = this.play(this.ambientBuf, 0.12, true);
   }
 }

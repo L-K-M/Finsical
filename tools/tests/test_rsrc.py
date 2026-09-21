@@ -70,6 +70,15 @@ class TestRsrc(unittest.TestCase):
         raw = b"\x00\x01\x02\x03binary"
         self.assertIs(unwrap_binhex(raw), raw)
 
+    def test_binhex_truncated_header_no_raise(self):
+        # Cut the stream so decode yields a name byte (30) whose header
+        # tail is missing — bounds-guarded passthrough, not IndexError.
+        inner = build_rsrc({b"snd ": [(1, "x", 0, b"d")]})
+        bh = wrap_binhex(inner, name=b"x" * 30)
+        cut = bh[:60]
+        self.assertIs(unwrap_binhex(cut), cut)
+        self.assertIs(unwrap_container(cut), cut)
+
     def test_macbinary_rejects_raw_fork(self):
         # A raw fork starts with its data offset (0x00000100): byte 1
         # is zero, failing MacBinary's 1..63 name-length check.
