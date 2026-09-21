@@ -652,9 +652,20 @@ catch { /* storage unavailable — default off */ }
 const machineEl = document.getElementById("machine")!;
 const shellEl = document.getElementById("shell")!;
 const screenEl = document.getElementById("screen")!;
-// Cosmetic layer — guard the lookup rather than assert it, so a stale
-// index.html degrades to "no backplate" instead of a startup crash.
-const backEl = document.getElementById("screenback");
+// Cosmetic layer — recreate it rather than assert it, so a stale
+// index.html self-heals instead of silently dropping the backplate.
+let backEl = document.getElementById("screenback");
+if (!backEl) {
+  backEl = document.createElement("div");
+  backEl.id = "screenback";
+}
+// A stale index.html nests #screen inside #machine — the art then
+// paints UNDER the tank (and #machine's pointer-events:none swallows
+// tank clicks). Enforce backplate → screen → machine regardless.
+if (!backEl.isConnected ||
+    !(screenEl.compareDocumentPosition(machineEl) &
+      Node.DOCUMENT_POSITION_FOLLOWING))
+  machineEl.before(backEl, screenEl);
 
 function layoutMachine(): void {
   const w = machineEl.clientWidth, h = machineEl.clientHeight;
