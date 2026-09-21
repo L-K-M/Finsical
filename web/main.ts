@@ -8,7 +8,8 @@ import { fetchAddon, mountImportPanel, COLLECTIONS } from "./import.js";
 import { imageCanvas, previewOf, swimCanvas } from "./render.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
-import { DEFAULT_MACHINE, machineById } from "./machines.js";
+import { DEFAULT_MACHINE, machineById, shellMarkup }
+  from "./machines.js";
 import type { CrtConfig } from "./crt.js";
 import type { Machine } from "./machines.js";
 import type { BusMsg } from "./bus.js";
@@ -359,7 +360,7 @@ function postState(): void {
     // The native shell retunes the window's aspect to the machine's
     // viewBox outline; prefs needs just the id.
     machine: { id: machine.id, w: machine.vbW, h: machine.vbH,
-               shape: machine.shape },
+               shape: machine.shape, mask: machine.image ?? null },
     addons: installedAddons,
     // `pack` lets the panel tell pack-bound fish from loose ones —
     // a fish add-on with a living fish doesn't repeat in Add-ons.
@@ -666,7 +667,7 @@ function layoutMachine(): void {
 function applyMachine(m: Machine): void {
   machine = m;
   shellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
-  shellEl.innerHTML = m.svg;
+  shellEl.innerHTML = shellMarkup(m);
   layoutMachine();
   try { localStorage.setItem(MACHINE_KEY, m.id); }
   catch { /* storage unavailable */ }

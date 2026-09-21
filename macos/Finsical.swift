@@ -153,14 +153,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     private var machineVbW: CGFloat = 0
     private var machineVbH: CGFloat = 0
     private var machineShape: [(rect: CGRect, radius: CGFloat)] = []
+    private var machineMaskImage: CGImage?
     private func applyMachine(id: String, w: CGFloat, h: CGFloat,
-                              shape: [(CGRect, CGFloat)]) {
+                              shape: [(CGRect, CGFloat)],
+                              maskPath: String?) {
         guard id != machineId, w > 0, h > 0 else { return }
         let old = machineVbW
         machineId = id
         machineVbW = w
         machineVbH = h
         machineShape = shape
+        // Image cases: the art's own alpha is the silhouette — pixel-
+        // exact, including anti-aliased edges. Shape stays as fallback.
+        machineMaskImage = loadMaskImage(maskPath)
+        webView.layer?.mask = nil  // drop a stale mask's layer type
         syncMask()
         window.contentAspectRatio = NSSize(width: w, height: h)
         window.contentMinSize = NSSize(width: w * 0.45, height: h * 0.45)
@@ -187,24 +193,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                         display: true, animate: true)
     }
 
-    /// Clip the window's content to the case silhouette — a union of
-    /// rounded rects in viewBox units, applied as a CAShapeLayer mask
-    /// on the webview's layer. Unlike cornerRadius this handles
-    /// irregular cases (stepped bases, protruding chins), and even if
-    /// the webview's background ever paints (drawsBackground not
-    /// honored), only the bezel shape can show. Scales with the
-    /// viewBox like the SVG art does.
+    /// Load a mask image shipped under Resources/web/ — the raster
+    /// case art. Returns nil for vector machines or missing assets.
+    private func loadMaskImage(_ rel: String?) -> CGImage? {
+        guard let rel, !rel.isEmpty, !rel.contains(".."),
+              let root = Bundle.main.resourceURL?
+                .appendingPathComponent("web"),
+              let img = NSImage(
+                contentsOf: root.appendingPathComponent(rel))
+        else { return nil }
+        return img.cgImage(forProposedRect: nil, context: nil,
+                           hints: nil)
+    }
+
+    /// Clip the window's content to the case silhouette: the raster
+    /// case's own alpha when an image mask is set, else a union of
+    /// rounded rects in viewBox units as a CAShapeLayer mask on the
+    /// webview's layer. Either way, even if the webview's background
+    /// ever paints (drawsBackground not honored), only the bezel shape
+    /// can show. Scales with the viewBox like the art does.
     private func syncMask() {
         guard machineVbW > 0, let layer = webView.layer else { return }
+        // A layer's space follows the view's isFlipped, which AppKit
+        // mirrors into isGeometryFlipped for layer-backed views.
+        let flipped = layer.isGeometryFlipped
+        if let img = machineMaskImage {
+            // Raster silhouette: the image's alpha channel is the mask.
+            let mask = layer.mask is CAShapeLayer || layer.mask == nil
+                ? CALayer() : layer.mask!
+            mask.frame = CGRect(origin: .zero, size: layer.bounds.size)
+            mask.isGeometryFlipped = flipped
+            mask.contents = img
+            mask.contentsGravity = .resize
+            mask.contentsScale = window.backingScaleFactor
+            layer.mask = mask
+            return
+        }
         let s = webView.frame.width / machineVbW
         guard s > 0, !machineShape.isEmpty else {
             layer.mask = nil
             return
         }
-        // Shape coords are top-down (SVG viewBox); a layer's space
-        // follows the view's isFlipped, which AppKit mirrors into
-        // isGeometryFlipped for layer-backed views.
-        let flipped = layer.isGeometryFlipped
         let path = CGMutablePath()
         for (rect, r) in machineShape {
             let ly = flipped ? rect.minY : machineVbH - rect.maxY
@@ -297,7 +326,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                     }
                 }
                 applyMachine(id: mid, w: CGFloat(mw), h: CGFloat(mh),
-                             shape: shape)
+                             shape: shape,
+                             maskPath: mc["mask"] as? String)
             }
         }
         guard let data = try? JSONSerialization.data(

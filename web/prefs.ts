@@ -1,6 +1,6 @@
 import { openBus } from "./bus.js";
 import { CRT_DEFAULTS, sanitizeCrtConfig } from "./crt.js";
-import { MACHINES } from "./machines.js";
+import { MACHINES, shellMarkup } from "./machines.js";
 import type { CrtConfig } from "./crt.js";
 
 // Preferences window: machine case picker + CRT effect controls. The
@@ -118,7 +118,7 @@ for (const m of MACHINES) {
   const pv = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   pv.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
   pv.setAttribute("aria-hidden", "true");
-  pv.innerHTML = m.svg;
+  pv.innerHTML = shellMarkup(m);
   tile.appendChild(pv);
   const tt = el("span", "pftiletitle", m.name);
   tile.appendChild(tt);

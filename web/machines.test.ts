@@ -62,8 +62,9 @@ describe("machine silhouettes", () => {
 
   it("screens stay inside the silhouette", () => {
     for (const m of MACHINES) {
-      expect(m.sw).toBe(320);
-      expect(m.sh).toBe(200);
+      // Screen rect is in viewBox units — 320×200 only where the
+      // viewBox is game-scaled; what matters is the 1.6 tank aspect.
+      expect(m.sw / m.sh).toBeCloseTo(1.6, 1);
       // The SVG viewport crops at the viewBox no matter what the mask
       // allows — keep both checks.
       expect(m.sx).toBeGreaterThanOrEqual(0);
