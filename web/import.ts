@@ -745,8 +745,11 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       // the fetch was in flight; only pane mutation is gated below.
       if (pv) { thumbs.set(it.url, pv); storeThumb(it, pv); }
       // A stale resolve must not create a Blob URL (it would orphan on
-      // the next assignment) or touch the detached pane's nodes.
-      if (detailRef?.url !== it.url) return;
+      // the next assignment) or touch the detached pane's nodes. The
+      // captured status element identifies this build — reopening the
+      // same URL mid-fetch replaces it, rejecting the older callback.
+      if (!detailRef || detailRef.url !== it.url ||
+          detailRef.status !== status) return;
       if (pv) pvBox.appendChild(pv);
       const snds = usable.flatMap((r) => r.sounds);
       if (snds.length) {
