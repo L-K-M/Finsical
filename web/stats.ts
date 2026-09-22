@@ -134,6 +134,9 @@ const greet = setInterval(() => {
   else bus.post({ op: "hello" });
 }, 500);
 bus.post({ op: "hello" });
+// A reload resets this page's `shaded` flag — force the native window
+// back in sync (a no-op when it isn't shaded; ignored in-browser).
+bus.post({ op: "statsShade", on: false });
 // Ungated on `greeted`: if the tank tab opens after the greet retries
 // gave up, this heartbeat is the revival path — one cheap message, and
 // an unanswered hello costs nothing when no tank is listening.
