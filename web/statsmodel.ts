@@ -123,7 +123,8 @@ export function hungerLabel(h: number): string {
  * the dead zone reads as steady. */
 export function trend(prev: number | null, cur: number,
                       deadZone = 0.02): string {
-  if (prev === null || !Number.isFinite(prev)) return "→";
+  if (prev === null || !Number.isFinite(prev) ||
+      !Number.isFinite(cur)) return "→";
   const d = cur - prev;
   if (Math.abs(d) < deadZone) return "→";
   return d > 0 ? "↑" : "↓";

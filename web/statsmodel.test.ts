@@ -113,5 +113,6 @@ describe("labels", () => {
     expect(trend(0.5, 0.51)).toBe("→"); // dead zone
     expect(trend(0.5, 0.6)).toBe("↑");
     expect(trend(0.5, 0.4)).toBe("↓");
+    expect(trend(0.5, NaN)).toBe("→"); // malformed sample reads steady
   });
 });
