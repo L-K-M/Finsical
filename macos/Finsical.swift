@@ -473,7 +473,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             }
             if body["op"] as? String == "closeStats",
                message.webView === statsView {
-                statsUserFrame = nil // fresh zoom cycle on reopen
                 statsWindow?.close()
                 return
             }
