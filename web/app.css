@@ -271,6 +271,7 @@ body.statspage {
     inset 1px 1px 0 #f2f2f2,
     inset -1px -1px 0 #8a8a8a;
   border-radius: 3px 3px 0 0; /* top corners round off slightly */
+  overflow: hidden; /* #stitle's square corners would paint past the curve */
   box-sizing: border-box;
 }
 #stitle {
