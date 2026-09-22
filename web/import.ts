@@ -847,7 +847,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       if (installed.has(it.url)) t.classList.add("done");
       // Audio packs have no sprite art to thumb — a note glyph keeps
       // the tile from reading as an empty/broken card.
-      if (it.section === "sounds")
+      if (it.section === "sounds" && !thumbs.get(it.url))
         t.appendChild(el("span", "tnote", "♪"));
       const th = thumbs.get(it.url);
       if (th) paintThumb(t, th);

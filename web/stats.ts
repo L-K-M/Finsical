@@ -151,9 +151,11 @@ document.getElementById("sgrow")!.addEventListener("pointerdown", (e) => {
   const up = () => {
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
+    window.removeEventListener("pointercancel", up);
   };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
+  window.addEventListener("pointercancel", up);
 });
 // Dragging the titlebar moves the window (native shell performs it).
 document.getElementById("stitle")!.addEventListener("pointerdown", (e) => {
