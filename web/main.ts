@@ -343,7 +343,11 @@ async function handleSounds(
     live = true): Promise<void> {
   if (!recs.length) return;
   qualifySoundNames(recs); // same-stem files in one batch mustn't alias
-  await audio.addWavs(recs);
+  // addWavs already skips undecodable records individually; the catch
+  // keeps a wholesale failure (e.g. AudioContext unavailable) from
+  // blocking persistence.
+  await audio.addWavs(recs)
+    .catch((e) => console.warn("sound decode skipped:", e));
   // Persist best-effort — a quota failure logs, never breaks import.
   void sndsMerge(recs).catch((e) =>
     console.warn("snd persist failed:", e));
@@ -612,19 +616,17 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     const usable = rs.filter(
       (r) => r.sheets.size || r.images.size || r.sounds.length);
     if (!usable.length) throw new Error("no pack inside");
-    let sndFeedback = true; // play once per install, not per resource
     for (const r of usable) {
       if (r.sheets.size)
         handleSheets(r.sheets, it.inner, it.url, it.section, true);
       if (r.images.size) handleImages(r.images.values(), it.url, it.section);
-      if (r.sounds.length) {
-        // Encoded audio reaches decodeAudioData unvalidated — a bad
-        // entry mustn't fail the whole install after sheets landed.
-        await handleSounds(r.sounds, sndFeedback)
-          .catch((e) => console.warn("sound install skipped:", e));
-        sndFeedback = false;
-      }
     }
+    // One batch across resources: dedupes names globally, plays the
+    // feedback once, and a decode failure can't fail the install.
+    const sounds = usable.flatMap((r) => r.sounds);
+    if (sounds.length)
+      await handleSounds(sounds)
+        .catch((e) => console.warn("sound install skipped:", e));
     recordInstall(it);
     bus.post({ op: "installed", url: it.url });
     postState();
