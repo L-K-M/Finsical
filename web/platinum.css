@@ -13,6 +13,7 @@
   --pt-dialog: #dddddd;     /* dialog/info content face */
   --pt-font-system: 12px/16px "Platinum Charcoal", Charcoal, sans-serif;
   --pt-font-small: 10px/13px "Platinum Geneva", Geneva, sans-serif;
+  --pt-font-caption: 9px/12px "Platinum Geneva 9", Geneva, sans-serif;
   /* Frame bevel: white top/left, 99 bottom/right, face at the two
      corners where they meet. */
   --pt-bevel:
@@ -132,10 +133,12 @@
 .pt-inactive .pt-box, .pt-inactive .pt-stripes { visibility: hidden; }
 .pt-inactive .pt-title { color: #666; }
 .pt-inactive .pt-grow { background-image: var(--pt-sprite-grow-inactive); }
-/* Controls in an inactive window dim: dialog text goes 66, the progress
-   bar loses its rim and shading (55 edge, flat 9999ff fill, flat cc
-   track). Separators stay as they are. */
-.pt-inactive .pt-content { color: #666; }
+/* Controls in an inactive window dim: the progress bar loses its rim
+   and shading (55 edge, flat 9999ff fill, flat cc track). Separators
+   stay as they are. Finder information windows (Get Info, the Tank
+   Stats window) dim their text to 66 as well; control panels keep
+   static text black. */
+.pt-inactive.pt-info .pt-content { color: #666; }
 .pt-inactive .pt-progress { background: none; }
 .pt-inactive .pt-progress-track { border-color: #555; background: #ccc; }
 .pt-inactive .pt-progress-fill { background: #9999ff; box-shadow: 1px 0 0 #555; }
@@ -150,6 +153,7 @@
 /* ---- text ------------------------------------------------------------ */
 .pt-system { font: var(--pt-font-system); }
 .pt-small { font: var(--pt-font-small); }
+.pt-caption { font: var(--pt-font-caption); }
 .pt-label { font-weight: 700; }
 
 /* Label/value pairs, Get Info style: bold labels right-aligned on a
@@ -217,4 +221,384 @@
   /* Divider, then the empty track's own 55 and 88 left columns: the
      sunken shading starts where the fill stops. */
   box-shadow: 1px 0 0 #000, 2px 0 0 #555, 3px 0 0 #888;
+}
+
+/* ---- push buttons ---------------------------------------------------- */
+/* 20px tall, drawn from a 9-slice (4px ends, stretched middle). The
+   title is Charcoal 12 with its baseline on row 13; controls.ts
+   centers it the Control Manager way, floor((width - title) / 2), so
+   the glyphs never straddle a pixel. The content box is exactly one
+   line tall: <button> centers its content vertically, and any slack
+   would shift the title by a fraction. Pressed: dark face, white
+   title. */
+.pt-button {
+  position: relative;
+  box-sizing: border-box;
+  height: 20px; min-width: 59px;
+  margin: 0; padding: 2px 0;
+  border: solid transparent; border-width: 0 4px;
+  border-image: var(--pt-sprite-button) 0 4 fill / 0 4px;
+  background: none;
+  color: #000; font: var(--pt-font-system);
+  text-align: center; white-space: nowrap;
+  appearance: none; -webkit-appearance: none;
+  outline: none;
+  cursor: default;
+}
+.pt-button.pt-pressed {
+  border-image-source: var(--pt-sprite-button-pressed);
+  color: #fff;
+}
+.pt-button:disabled, .pt-inactive .pt-button {
+  border-image-source: var(--pt-sprite-button-disabled);
+  color: #888;
+}
+/* Default button: the same button inside a 3px ring, 26px overall. */
+.pt-button.pt-default {
+  height: 26px; min-width: 65px; padding-top: 5px; padding-bottom: 5px;
+  border-width: 0 7px;
+  border-image: var(--pt-sprite-button-default) 0 7 fill / 0 7px;
+}
+.pt-button.pt-default.pt-pressed {
+  border-image-source: var(--pt-sprite-button-default-pressed);
+}
+.pt-button.pt-default:disabled, .pt-inactive .pt-button.pt-default {
+  border-image-source: var(--pt-sprite-button-default-disabled);
+}
+
+/* ---- checkboxes ------------------------------------------------------ */
+/* <label class="pt-checkbox"><input type="checkbox"> Title</label>:
+   the 12px box's top row is 9 rows above the title's baseline row;
+   the title starts 16px after the box. */
+.pt-checkbox {
+  display: inline-flex; align-items: flex-start;
+  font: var(--pt-font-system);
+  cursor: default;
+}
+.pt-checkbox input {
+  flex: none;
+  width: 14px; height: 12px;
+  margin: 2px 2px 0 0;
+  background: var(--pt-sprite-checkbox);
+  appearance: none; -webkit-appearance: none;
+  outline: none;
+}
+.pt-checkbox input:checked { background-image: var(--pt-sprite-checkbox-on); }
+.pt-checkbox.pt-pressed input {
+  background-image: var(--pt-sprite-checkbox-pressed);
+}
+.pt-checkbox.pt-pressed input:checked {
+  background-image: var(--pt-sprite-checkbox-on-pressed);
+}
+.pt-checkbox input:disabled, .pt-inactive .pt-checkbox input {
+  background-image: var(--pt-sprite-checkbox-dimmed);
+}
+.pt-checkbox input:disabled:checked,
+.pt-inactive .pt-checkbox input:checked {
+  background-image: var(--pt-sprite-checkbox-on-dimmed);
+}
+.pt-checkbox:has(input:disabled) { color: #888; }
+
+/* ---- sliders --------------------------------------------------------- */
+/* <div class="pt-slider"><input type="range" min="0" max="100"></div>:
+   a 100-step horizontal slider, 125 x 24. The thumb travels exactly
+   one pixel per step, so it always lands on whole pixels, and points
+   at five tick marks (0, 25, 50, 75, 100). */
+.pt-slider {
+  position: relative;
+  width: 125px; height: 24px;
+}
+.pt-slider::before {
+  content: ""; position: absolute; left: 0; top: 3px;
+  box-sizing: border-box; width: 125px; height: 7px;
+  border: solid transparent; border-width: 0 5px 0 3px;
+  border-image: var(--pt-sprite-slider-track) 0 5 0 3 fill / 0 5px 0 3px;
+}
+.pt-slider::after {
+  content: ""; position: absolute; left: 11px; top: 16px;
+  width: 103px; height: 8px;
+  background: var(--pt-sprite-slider-ticks) 0 0 / 25px 8px repeat-x;
+}
+.pt-slider input {
+  position: absolute; left: 5px; top: 0; z-index: 1;
+  width: 115px; height: 16px;
+  margin: 0; padding: 0; background: none;
+  appearance: none; -webkit-appearance: none;
+  outline: none;
+}
+.pt-slider input::-webkit-slider-runnable-track { height: 16px; background: none; }
+.pt-slider input::-moz-range-track { height: 16px; background: none; }
+.pt-slider input::-webkit-slider-thumb {
+  width: 15px; height: 16px; border: 0;
+  background: var(--pt-sprite-slider-thumb);
+  appearance: none; -webkit-appearance: none;
+}
+.pt-slider input::-moz-range-thumb {
+  width: 15px; height: 16px; border: 0; border-radius: 0;
+  background: var(--pt-sprite-slider-thumb);
+}
+.pt-slider input:active::-webkit-slider-thumb {
+  background-image: var(--pt-sprite-slider-thumb-pressed);
+}
+.pt-slider input:active::-moz-range-thumb {
+  background-image: var(--pt-sprite-slider-thumb-pressed);
+}
+.pt-inactive .pt-slider::before, .pt-slider:has(input:disabled)::before {
+  border-image-source: var(--pt-sprite-slider-track-dimmed);
+}
+.pt-inactive .pt-slider input::-webkit-slider-thumb,
+.pt-slider input:disabled::-webkit-slider-thumb {
+  background-image: var(--pt-sprite-slider-thumb-dimmed);
+}
+.pt-inactive .pt-slider input::-moz-range-thumb,
+.pt-slider input:disabled::-moz-range-thumb {
+  background-image: var(--pt-sprite-slider-thumb-dimmed);
+}
+
+/* ---- group boxes ----------------------------------------------------- */
+/* An engraved frame (88 over white, the white one pixel down-right)
+   with its Charcoal title on the top line: pen 12px in, the line
+   parting 3px either side of the title. */
+.pt-group {
+  position: relative;
+  border: 1px solid #888;
+  box-shadow: inset 1px 1px 0 #fff, 1px 1px 0 #fff;
+}
+.pt-group-title {
+  position: absolute; left: 8px; top: -12px;
+  padding: 0 3px;
+  background: var(--pt-dialog);
+  font: var(--pt-font-system);
+  white-space: nowrap;
+}
+
+/* ---- bevel buttons --------------------------------------------------- */
+/* 40 x 40 with a 32 x 32 icon (--pt-icon); selected is pushed in. The
+   Geneva 9 caption goes right below it. */
+.pt-bevel {
+  box-sizing: border-box;
+  width: 40px; height: 40px;
+  margin: 0; padding: 0;
+  border: 3px solid transparent;
+  border-image: var(--pt-sprite-bevel) 3 fill / 3px;
+  background: var(--pt-icon, none) 1px 1px / 32px 32px no-repeat;
+  appearance: none; -webkit-appearance: none;
+  outline: none;
+  cursor: default;
+}
+.pt-bevel.pt-selected, .pt-bevel.pt-pressed {
+  border-image-source: var(--pt-sprite-bevel-selected);
+}
+.pt-bevel-caption {
+  display: block;
+  font: var(--pt-font-caption);
+  text-align: center; white-space: nowrap;
+}
+
+/* ---- pop-up buttons and menus ---------------------------------------- */
+/* 19px tall: text part, then the 22px arrow section. The current item
+   starts 8px in, its baseline on row 12. */
+.pt-popup {
+  box-sizing: border-box;
+  height: 19px; min-width: 60px;
+  margin: 0; padding: 1px 2px 2px 4px;
+  border: solid transparent; border-width: 0 22px 0 4px;
+  border-image: var(--pt-sprite-popup) 0 22 0 4 fill / 0 22px 0 4px;
+  background: none;
+  color: #000; font: var(--pt-font-system);
+  text-align: left; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
+  appearance: none; -webkit-appearance: none;
+  outline: none;
+  cursor: default;
+}
+.pt-popup.pt-pressed { border-image-source: var(--pt-sprite-popup-pressed); }
+.pt-popup:disabled, .pt-inactive .pt-popup {
+  border-image-source: var(--pt-sprite-popup-disabled);
+  color: #888;
+}
+/* A pop-up's menu: black outline, white/99 bevel on the dd face, a 22
+   drop shadow (one pixel, starting two in), 16px items with the title
+   19px in (from the outline) and the check mark 4px in. The highlight is the accent:
+   6666cc and 000088 edges around 333399, white text. */
+.pt-menu {
+  position: fixed; z-index: 1000;
+  box-sizing: border-box;
+  margin: 0; padding: 0;
+  border: 1px solid #000;
+  background:
+    linear-gradient(#fff, #fff) 0 0 / calc(100% - 1px) 1px no-repeat,
+    linear-gradient(#fff, #fff) 0 0 / 1px calc(100% - 1px) no-repeat,
+    linear-gradient(#999, #999) right 0 top 1px / 1px calc(100% - 1px)
+      no-repeat,
+    linear-gradient(#999, #999) left 1px bottom 0 / calc(100% - 1px) 1px
+      no-repeat,
+    #ddd;
+  color: #000; font: var(--pt-font-system);
+  list-style: none;
+  cursor: default;
+  user-select: none; -webkit-user-select: none;
+  font-synthesis: none; -webkit-font-smoothing: none;
+}
+.pt-menu::before, .pt-menu::after {
+  content: ""; position: absolute; background: #222;
+}
+.pt-menu::before { top: 1px; right: -2px; bottom: -2px; width: 1px; }
+.pt-menu::after { left: 1px; right: -2px; bottom: -2px; height: 1px; }
+.pt-menu-item {
+  position: relative;
+  height: 16px; padding: 0 12px 0 18px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.pt-menu-item[aria-selected="true"]::before {
+  content: "\2713"; position: absolute; left: 3px;
+}
+.pt-menu-item.pt-highlight {
+  background:
+    linear-gradient(#6666cc, #6666cc) 0 0 / 1px 100% no-repeat,
+    linear-gradient(#000088, #000088) right 0 top 0 / 1px 100% no-repeat,
+    #333399;
+  color: #fff;
+}
+.pt-menu-item[aria-disabled="true"] { color: #888; }
+
+/* ---- scroll bars ----------------------------------------------------- */
+/* A 16px vertical bar (controls.ts): arrows at both ends, the fixed
+   thumb between. Its black edges overlap the edge of whatever it
+   scrolls. Dimmed when there's nothing to scroll; blank (55 edge, ee
+   face) in an inactive window. */
+.pt-scrollbar {
+  position: absolute; top: -1px; right: -1px; bottom: -1px;
+  width: 16px;
+  background:
+    var(--pt-sprite-scroll-track-top) 0 16px / 16px 2px no-repeat,
+    var(--pt-sprite-scroll-track) 0 0 / 16px 1px repeat-y;
+  touch-action: none;
+}
+.pt-sb-up, .pt-sb-down {
+  position: absolute; left: 0; width: 16px; height: 16px; z-index: 2;
+}
+.pt-sb-up { top: 0; background: var(--pt-sprite-scroll-up); }
+.pt-sb-down { bottom: 0; background: var(--pt-sprite-scroll-down); }
+.pt-sb-up.pt-pressed { background-image: var(--pt-sprite-scroll-up-pressed); }
+.pt-sb-down.pt-pressed {
+  background-image: var(--pt-sprite-scroll-down-pressed);
+}
+/* The thumb's top line; the two track rows under it shade the track
+   again below the thumb. */
+.pt-sb-thumb {
+  position: absolute; left: 0; top: 15px; z-index: 1;
+  width: 16px; height: 19px;
+  background:
+    var(--pt-sprite-scroll-thumb) 0 0 / 16px 17px no-repeat,
+    var(--pt-sprite-scroll-track-top) 0 17px / 16px 2px no-repeat;
+}
+.pt-sb-thumb.pt-pressed {
+  background-image: var(--pt-sprite-scroll-thumb-pressed),
+                    var(--pt-sprite-scroll-track-top);
+}
+.pt-scrollbar.pt-sb-off {
+  background: #eee;
+  box-shadow: inset 1px 0 #000, inset -1px 0 #000;
+}
+.pt-sb-off .pt-sb-thumb { display: none; }
+.pt-sb-off .pt-sb-up { background-image: var(--pt-sprite-scroll-up-dimmed); }
+.pt-sb-off .pt-sb-down {
+  background-image: var(--pt-sprite-scroll-down-dimmed);
+}
+.pt-inactive .pt-scrollbar {
+  background: #eee;
+  box-shadow: inset 0 0 0 1px #555;
+}
+.pt-inactive .pt-scrollbar > * { visibility: hidden; }
+
+/* ---- lists ----------------------------------------------------------- */
+/* List box: white, black edge, Black & White highlight (the default
+   Mac OS 8 highlight color). Rows scroll inside .pt-list-view; with a
+   scroll bar the view leaves it 15px (the bar overlaps the edge). */
+.pt-list {
+  position: relative;
+  box-sizing: border-box;
+  border: 1px solid #000;
+  background: #fff;
+  outline: none;
+}
+.pt-list-view {
+  position: absolute; inset: 0;
+  overflow-x: hidden; overflow-y: auto;
+  scrollbar-width: none;
+}
+.pt-list-view::-webkit-scrollbar { display: none; }
+.pt-list.pt-has-scrollbar .pt-list-view { right: 15px; }
+.pt-row { position: relative; white-space: nowrap; overflow: hidden; }
+.pt-list-empty {
+  padding: 24px 12px; color: #888;
+  font: var(--pt-font-small); text-align: center; white-space: normal;
+}
+.pt-row.pt-selected { background: #000; color: #fff; }
+
+/* A pixel well: black edge around white (previews, info areas). */
+.pt-well { box-sizing: border-box; border: 1px solid #000; background: #fff; }
+
+/* Finder window header: "N items" centered on a raised dd strip. */
+.pt-placard {
+  box-sizing: border-box;
+  height: 21px; padding-top: 4px;
+  background:
+    linear-gradient(#fff, #fff) 0 0 / 100% 1px no-repeat,
+    linear-gradient(#fff, #fff) 0 0 / 1px calc(100% - 1px) no-repeat,
+    linear-gradient(#aaa, #aaa) 0 100% / 100% 1px no-repeat,
+    linear-gradient(#aaa, #aaa) 100% 0 / 1px 100% no-repeat,
+    #ddd;
+  font: var(--pt-font-small); line-height: 13px;
+  text-align: center; white-space: nowrap; overflow: hidden;
+}
+
+/* Finder list-view column headers, 21px: raised cc cells; the sorted
+   column's cell is sunk (88 face), and its cells shade dd while the
+   others stay ee, with a white rule under every row. */
+.pt-colheads { display: flex; height: 21px; }
+.pt-colhead {
+  position: relative;
+  box-sizing: border-box;
+  height: 21px; padding: 4px 0 0 4px;
+  background:
+    linear-gradient(#555, #555) 0 100% / 1px 1px no-repeat,
+    linear-gradient(#666, #666) 0 0 / 100% 1px no-repeat,
+    linear-gradient(#666, #666) 0 0 / 1px 100% no-repeat,
+    linear-gradient(#fff, #fff) 1px 1px / 100% 1px no-repeat,
+    linear-gradient(#fff, #fff) 1px 1px / 1px calc(100% - 3px) no-repeat,
+    linear-gradient(#333, #333) 0 100% / 100% 1px no-repeat,
+    linear-gradient(#888, #888) 2px calc(100% - 1px) / 100% 1px no-repeat,
+    #ccc;
+  font: var(--pt-font-small); line-height: 13px;
+  white-space: nowrap; overflow: hidden;
+  cursor: default;
+}
+.pt-colhead.pt-sorted {
+  background:
+    linear-gradient(#222, #222) 100% 0 / 1px 1px no-repeat,
+    linear-gradient(#222, #222) 0 100% / 1px 1px no-repeat,
+    linear-gradient(#777, #777) calc(100% - 1px) 1px / 1px 1px no-repeat,
+    linear-gradient(#777, #777) 1px calc(100% - 1px) / 1px 1px no-repeat,
+    linear-gradient(#111, #111) 0 0 / 100% 1px no-repeat,
+    linear-gradient(#111, #111) 0 0 / 1px calc(100% - 1px) no-repeat,
+    linear-gradient(#555, #555) 1px 1px / calc(100% - 2px) 1px no-repeat,
+    linear-gradient(#555, #555) 1px 1px / 1px calc(100% - 3px) no-repeat,
+    linear-gradient(#444, #444) 0 100% / 100% 1px no-repeat,
+    linear-gradient(#444, #444) 100% 0 / 1px 100% no-repeat,
+    linear-gradient(#aaa, #aaa) 2px calc(100% - 1px) / calc(100% - 3px) 1px
+      no-repeat,
+    linear-gradient(#aaa, #aaa) calc(100% - 1px) 2px / 1px calc(100% - 3px)
+      no-repeat,
+    #888;
+}
+
+/* Keyboard focus, only when navigating by keyboard (Mac OS 8 draws no
+   focus on buttons; this keeps them reachable without the mouse). */
+.pt-button:focus-visible, .pt-popup:focus-visible, .pt-bevel:focus-visible,
+.pt-checkbox input:focus-visible, .pt-slider input:focus-visible,
+.pt-list:focus-visible, .pt-colhead:focus-visible {
+  outline: 2px solid #6666cc; outline-offset: 1px;
 }

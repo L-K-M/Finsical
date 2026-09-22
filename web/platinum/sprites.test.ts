@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SPRITES, spriteCss, spriteSvg } from "./sprites.js";
+import { SPRITES, allSprites, spriteCss, spriteSvg } from "./sprites.js";
 import { titleLeft } from "./window.js";
 
 // Box pixels as Mac OS 8.0 draws them, gray level per hex digit: the
@@ -23,7 +23,7 @@ const ZOOM_PRESSED_TOP = [
 
 describe("sprites", () => {
   it("are rectangular grids of known palette keys", () => {
-    for (const [name, rows] of Object.entries(SPRITES)) {
+    for (const [name, rows] of allSprites()) {
       expect(rows.length, name).toBeGreaterThan(0);
       expect(new Set(rows.map((r) => r.length)).size, name).toBe(1);
       expect(() => spriteSvg(rows), name).not.toThrow();
@@ -46,7 +46,9 @@ describe("sprites", () => {
 
   it("expose every sprite as a custom property", () => {
     const css = spriteCss();
-    for (const name of ["close-pressed", "grow-inactive", "fill-right"])
+    for (const name of ["close-pressed", "grow-inactive", "fill-right",
+                        "button-default-pressed", "scroll-thumb",
+                        "icon-machine"])
       expect(css).toContain(`--pt-sprite-${name}: url("data:image/svg+xml,`);
   });
 });
