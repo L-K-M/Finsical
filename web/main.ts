@@ -793,9 +793,15 @@ window.addEventListener("keydown", (e) => {
         window.open("stats.html", "finsical-stats");
       }
     } catch {
-      // The named tab was navigated cross-origin — the location read
-      // throws SecurityError. Reopen ours over the same name.
-      window.open("stats.html", "finsical-stats");
+      // The named tab went cross-origin — reading location throws
+      // SecurityError, but writing href is allowed. Steer the tab
+      // home instead of a second window.open (blocked in Safari).
+      if (existing) {
+        existing.location.href = new URL("stats.html", location.href).href;
+        existing.focus();
+      } else {
+        window.open("stats.html", "finsical-stats");
+      }
     }
   }
 });
