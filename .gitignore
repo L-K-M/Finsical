@@ -8,7 +8,8 @@ macos/Finsical.iconset/
 az-data/
 web/pack/
 web/bundle.js
-web/panel.js
+web/overview.js
+web/addons.js
 az-src/
 /packs/
 __pycache__/

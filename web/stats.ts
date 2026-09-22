@@ -1,5 +1,5 @@
-import { inNativeShell, openBus } from "./bus.js";
-import { mountWindow } from "./platinum/window.js";
+import { openBus } from "./bus.js";
+import { hostWindow } from "./winhost.js";
 import { deriveStats, hungerLabel, trend, uptime } from "./statsmodel.js";
 import type { BusMsg } from "./bus.js";
 import type { StatsInput, TankStats } from "./statsmodel.js";
@@ -9,11 +9,8 @@ import type { StatsInput, TankStats } from "./statsmodel.js";
 // window: bold labels on a shared right edge, values after them,
 // Platinum progress bars for the two levels, care hints below.
 // The tank page owns the sim; this page renders the `state` payloads
-// it pushes (same contract as panel.ts/prefs.ts) and posts window
-// intents the native shell handles: closeStats, statsShade, statsZoom,
-// statsGrow, dragWindow. In a plain browser the chrome posts are
-// ignored — the window body still renders live state over
-// BroadcastChannel.
+// it pushes (same contract as the other client windows). The window
+// chrome goes through winhost.ts.
 
 const win = document.getElementById("swin")!;
 const rowsEl = document.getElementById("srows")!;
@@ -110,74 +107,12 @@ const bus = openBus((m: BusMsg) => {
 });
 
 // ---- window chrome -------------------------------------------------------
-// In the native shell these land on the relay (Finsical.swift), which
-// closes/shades/drags the real window. Over BroadcastChannel they no-op.
-function closeWindow(): void {
-  bus.post({ op: "closeStats" });
-  window.close(); // browser-tab fallback; no-ops where not script-opened
-}
-// Zoom box: toggles user ↔ standard size (native shell performs it;
-// the browser fallback can only resize script-opened windows).
-let savedSize: { w: number; h: number } | null = null;
-function zoom(): void {
-  // Native ignores statsZoom while shaded — match it so the fallback
-  // toggle can't advance its saved state on an ignored click.
-  if (shaded) return;
-  if (inNativeShell()) { bus.post({ op: "statsZoom" }); return; }
-  if (savedSize) {
-    window.resizeTo(savedSize.w, savedSize.h);
-    savedSize = null;
-  } else {
-    savedSize = { w: window.outerWidth, h: window.outerHeight };
-    window.resizeTo(400, 360);
-  }
-}
-let shaded = false;
-function toggleShade(): void {
-  shaded = !shaded;
-  platinum.setShaded(shaded);
-  bus.post({ op: "statsShade", on: shaded });
-}
-// Grow box: bottom-right drag resizes — the native shell runs a modal
-// tracking loop; the fallback resizes the CSS window in place (height
-// locked while shaded, matching the native collapsed minSize).
-function grow(e: PointerEvent): void {
-  e.preventDefault();
-  if (inNativeShell()) { bus.post({ op: "statsGrow" }); return; }
-  const r = win.getBoundingClientRect();
-  const x0 = e.clientX, y0 = e.clientY, w0 = r.width, h0 = r.height;
-  win.style.left = `${r.left}px`; win.style.top = `${r.top}px`;
-  win.style.right = "auto"; win.style.bottom = "auto";
-  const move = (ev: PointerEvent) => {
-    if (ev.pointerId !== e.pointerId) return;
-    win.style.width = `${Math.max(300, w0 + ev.clientX - x0)}px`;
-    if (!shaded)
-      win.style.height = `${Math.max(60, h0 + ev.clientY - y0)}px`;
-  };
-  const up = (ev: PointerEvent) => {
-    if (ev.pointerId !== e.pointerId) return;
-    window.removeEventListener("pointermove", move);
-    window.removeEventListener("pointerup", up);
-    window.removeEventListener("pointercancel", up);
-  };
-  window.addEventListener("pointermove", move);
-  window.addEventListener("pointerup", up);
-  window.addEventListener("pointercancel", up);
-}
-const platinum = mountWindow(win, {
+// Zoom toggles to the standard size; the grow box keeps every field
+// and two care hints visible (the window clips rather than scrolls).
+hostWindow(win, bus, {
   title: "Tank Stats",
-  onClose: closeWindow,
-  onZoom: zoom,
-  onCollapse: toggleShade,
-  onGrow: grow,
-  // Dragging the titlebar moves the window (native shell performs it).
-  onDrag: (e) => {
-    e.preventDefault();
-    bus.post({ op: "dragWindow" });
-  },
-});
-window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !e.repeat) closeWindow();
+  zoom: { standard: { w: 400, h: 360 } },
+  grow: { min: { w: 300, h: 60 } },
 });
 
 // The tank page may still be loading when the window opens — retry the
@@ -189,9 +124,7 @@ const greet = setInterval(() => {
   else bus.post({ op: "hello" });
 }, 500);
 bus.post({ op: "hello" });
-// A reload resets this page's `shaded` flag — force the native window
-// back in sync (a no-op when it isn't shaded; ignored in-browser).
-bus.post({ op: "statsShade", on: false });
+
 // Ungated on `greeted`: if the tank tab opens after the greet retries
 // gave up, this heartbeat is the revival path — one cheap message, and
 // an unanswered hello costs nothing when no tank is listening.
@@ -200,22 +133,4 @@ setInterval(() => {
 }, 2000);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) bus.post({ op: "hello" });
-});
-// The shell expands a close-while-shaded window natively on reopen —
-// a small→large viewport transition is the only signal that
-// distinguishes reopen from tab-switch/minimize (which must leave the
-// shade folded). In a browser tab the fold is CSS-only, so the
-// viewport never drops below the threshold and nothing unshades.
-// Must stay comfortably above the native shell's shaded (titlebar-only)
-// window height (~24px) and below its minimum expanded height — drift
-// here silently breaks reopen-unshade.
-const SHADED_MAX_H = 60;
-let lastInnerH = window.innerHeight;
-window.addEventListener("resize", () => {
-  const h = window.innerHeight;
-  if (shaded && lastInnerH <= SHADED_MAX_H && h > SHADED_MAX_H) {
-    shaded = false;
-    platinum.setShaded(false);
-  }
-  lastInnerH = h;
 });

@@ -294,7 +294,9 @@ export function mountPopup(btn: HTMLButtonElement,
     btn.setAttribute("aria-expanded", "true");
     btn.setAttribute("aria-controls", menu.id);
     highlight(byKey ? selected : -1);
-    if (byKey) menu.focus();
+    // The menu takes the keyboard however it opened, so Escape closes
+    // the menu rather than reaching the window.
+    menu.focus({ preventScroll: true });
     menu.addEventListener("keydown", onMenuKey);
     menu.addEventListener("pointermove", (e) =>
       highlight(itemAt(e.clientX, e.clientY)));

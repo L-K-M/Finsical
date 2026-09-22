@@ -2,15 +2,22 @@ import { openBus } from "./bus.js";
 import { CRT_DEFAULTS, sanitizeCrtConfig } from "./crt.js";
 import { MACHINES, shellMarkup } from "./machines.js";
 import type { CrtConfig } from "./crt.js";
+import { centerText, mountList, pushButton, trackHighlight, trackPress }
+  from "./platinum/controls.js";
+import { hostWindow } from "./winhost.js";
 
-// Preferences window: machine case picker + CRT effect controls. The
-// tank page owns persistence and rendering — this page renders the
-// state it pushes back (op:"state" carries `crt` and `machine`
-// snapshots) and posts intents: crtEnabled, crtConfig, machine.
+// Preferences window: a Mac OS 8 control panel with three panes —
+// the machine case, the CRT tube effect, and the monitor's picture
+// controls. The tank page owns persistence and rendering: this page
+// renders the state it pushes back (op:"state" carries `crt` and
+// `machine` snapshots) and posts intents: crtEnabled, crtConfig,
+// machine.
 
 interface SliderSpec {
   key: keyof CrtConfig;
   label: string;
+  /** Captions under the slider's two ends. */
+  ends: readonly [string, string];
   blurb: string;
   /** Value label — defaults to a plain percentage. Mid-centered
    * controls (brightness, trims) show a signed offset instead. */
@@ -23,65 +30,101 @@ const offset = (v: number): string => {
 };
 
 const SPECS: SliderSpec[] = [
-  { key: "scanlines", label: "Scanlines",
+  { key: "scanlines", label: "Scanlines", ends: ["Off", "Deep"],
     blurb: "Dark gaps between the picture's rows — the most " +
       "recognizable CRT trait. The lines stay locked to the game's " +
       "own pixel rows at any window size." },
-  { key: "beam", label: "Horizontal softening",
+  { key: "beam", label: "Softening", ends: ["Sharp", "Soft"],
     blurb: "A tube's beam smears color along each scan, never between " +
       "rows — horizontal edges soften while the scanlines stay crisp." },
-  { key: "bloom", label: "Bloom",
-    blurb: "Phosphors bleed light, so bright colors spill a little " +
-      "into neighboring pixels." },
-  { key: "overdrive", label: "Bright-color boost",
-    blurb: "Phosphors overdrive on bright input — vivid colors glow " +
-      "hotter than a flat panel shows them." },
   { key: "misconvergence", label: "Misconvergence",
+    ends: ["Aligned", "Drifting"],
     blurb: "Real tubes never converge perfectly — the red and blue " +
       "beams drift apart toward the screen edges, leaving faint color " +
       "fringes on bright shapes." },
-  { key: "grille", label: "Shadow grille",
+  { key: "bloom", label: "Bloom", ends: ["Off", "Glowing"],
+    blurb: "Phosphors bleed light, so bright colors spill a little " +
+      "into neighboring pixels." },
+  { key: "overdrive", label: "Bright-color boost", ends: ["Off", "Hot"],
+    blurb: "Phosphors overdrive on bright input — vivid colors glow " +
+      "hotter than a flat panel shows them." },
+  { key: "grille", label: "Shadow grille", ends: ["Off", "Visible"],
     blurb: "Fine vertical red/green/blue stripes, like the mask inside " +
       "an aperture-grille tube — much finer than the game's pixels." },
-  { key: "curvature", label: "Screen curvature",
+  { key: "curvature", label: "Screen curvature", ends: ["Flat", "Bulging"],
     blurb: "Bows the picture outward, like curved tube glass." },
-  { key: "vignette", label: "Vignette",
+  { key: "vignette", label: "Vignette", ends: ["Off", "Dark"],
     blurb: "Dims the edges and corners, where real tubes lose " +
       "brightness." },
-  { key: "flicker", label: "Flicker",
+  { key: "flicker", label: "Flicker", ends: ["Steady", "Shimmer"],
     blurb: "A faint brightness shimmer as the beam sweeps the screen." },
-  { key: "grain", label: "Noise",
+  { key: "grain", label: "Noise", ends: ["Clean", "Grainy"],
     blurb: "Subtle analog grain over the whole image." },
 ];
 
 // Monitor front-panel controls — adjustments a real tube offered,
 // applied after all the tube traits.
 const PIC_SPECS: SliderSpec[] = [
-  { key: "brightness", label: "Brightness", fmt: offset,
+  { key: "brightness", label: "Brightness", ends: ["Dim", "Bright"],
+    fmt: offset,
     blurb: "The master drive level — how hard the beam pushes the " +
       "phosphors. Pushed too far it washes out the scanlines." },
-  { key: "contrast", label: "Contrast", fmt: offset,
+  { key: "contrast", label: "Contrast", ends: ["Low", "High"], fmt: offset,
     blurb: "Separates bright from dark around the picture's middle. " +
       "Higher contrast deepens the water and heats the highlights." },
-  { key: "zoom", label: "Overscan",
+  { key: "zoom", label: "Overscan", ends: ["None", "Tight"],
     blurb: "Real sets run the raster a little past the glass — this " +
       "zooms in, cropping the outermost pixels like the bezel did." },
-  { key: "hsize", label: "Horizontal size", fmt: offset,
+  { key: "hsize", label: "Width", ends: ["Narrow", "Wide"], fmt: offset,
     blurb: "The width pot from the service menu — stretches or " +
       "squeezes the raster sideways inside the glass." },
-  { key: "vsize", label: "Vertical size", fmt: offset,
+  { key: "vsize", label: "Height", ends: ["Short", "Tall"], fmt: offset,
     blurb: "The height pot — tubes drifted tall or squat as they " +
       "warmed up, and owners dialed it back by hand." },
-  { key: "red", label: "Red gain", fmt: offset,
+  { key: "red", label: "Red gain", ends: ["Less", "More"], fmt: offset,
     blurb: "Trims the red gun, like a service-menu adjustment. " +
       "Lower it to cool the picture, raise it to warm." },
-  { key: "green", label: "Green gain", fmt: offset,
+  { key: "green", label: "Green gain", ends: ["Less", "More"], fmt: offset,
     blurb: "Trims the green gun — the brightest of the three on a " +
       "tube, so small moves go far." },
-  { key: "blue", label: "Blue gain", fmt: offset,
+  { key: "blue", label: "Blue gain", ends: ["Less", "More"], fmt: offset,
     blurb: "Trims the blue gun. Aging tubes drift blue-weak — a " +
       "nudge restores the water's depth." },
 ];
+const ALL_SPECS: SliderSpec[] = [...SPECS, ...PIC_SPECS];
+const specOf = (k: keyof CrtConfig): SliderSpec =>
+  ALL_SPECS.find((s) => s.key === k)!;
+
+/** Group boxes and the slider rows inside them (three per row). */
+interface Group { title: string; rows: (keyof CrtConfig)[][] }
+const MONITOR_GROUPS: Group[] = [
+  { title: "Beam & Phosphor",
+    rows: [["scanlines", "beam", "misconvergence"],
+           ["bloom", "overdrive", "grille"]] },
+  { title: "Glass & Signal",
+    rows: [["curvature", "vignette"], ["flicker", "grain"]] },
+];
+const PICTURE_GROUPS: Group[] = [
+  { title: "Picture", rows: [["brightness", "contrast", "zoom"]] },
+  { title: "Geometry", rows: [["hsize", "vsize"]] },
+  { title: "Color", rows: [["red", "green", "blue"]] },
+];
+
+type PaneId = "machine" | "monitor" | "picture";
+const PANES: { id: PaneId; label: string; icon: string; hint: string;
+               keys: (keyof CrtConfig)[] }[] = [
+  { id: "machine", label: "Machine", icon: "icon-machine",
+    hint: "Choose the computer the tank runs in.", keys: [] },
+  { id: "monitor", label: "Monitor", icon: "icon-monitor",
+    hint: "How the picture tube draws the tank. Point at a slider " +
+      "to see what it does.",
+    keys: SPECS.map((s) => s.key) },
+  { id: "picture", label: "Picture", icon: "icon-picture",
+    hint: "The monitor's front-panel controls, applied after the " +
+      "tube. Point at a slider to see what it does.",
+    keys: PIC_SPECS.map((s) => s.key) },
+];
+const PANE_KEY = "finsical:prefsPane";
 
 interface CrtSnap { available?: boolean; on?: boolean; cfg?: unknown }
 let cfg: CrtConfig = { ...CRT_DEFAULTS };
@@ -109,41 +152,8 @@ function el(tag: string, cls = "", text = ""): HTMLElement {
 
 const onBox = document.getElementById("crt-on") as HTMLInputElement;
 const warnEl = document.getElementById("crt-warn")!;
-const traitsEl = document.getElementById("pftraits")!;
-const picEl = document.getElementById("pfpicture")!;
-const machineEl = document.getElementById("pfmachine")!;
-
-// Machine picker: one tile per case, mini bezel preview from the same
-// SVG markup the tank draws at full size. Selection is optimistic —
-// the tank echoes it back in the next state push.
-let machineSel = "";
-const machineTiles = new Map<string, HTMLElement>();
-for (const m of MACHINES) {
-  const tile = el("button", "pftile") as HTMLButtonElement;
-  tile.type = "button";
-  const pv = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  pv.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
-  pv.setAttribute("aria-hidden", "true");
-  pv.innerHTML = shellMarkup(m);
-  tile.appendChild(pv);
-  const tt = el("span", "pftiletitle", m.name);
-  tile.appendChild(tt);
-  tile.appendChild(el("span", "pftileblurb", m.blurb));
-  tile.addEventListener("click", () => {
-    machineSel = m.id;
-    syncMachineTiles();
-    bus.post({ op: "machine", id: m.id });
-  });
-  machineTiles.set(m.id, tile);
-  machineEl.appendChild(tile);
-}
-function syncMachineTiles(): void {
-  for (const [id, t] of machineTiles)
-    t.classList.toggle("on", id === machineSel);
-}
-
-const sliders = new Map<keyof CrtConfig, HTMLInputElement>();
-const values = new Map<keyof CrtConfig, HTMLElement>();
+const descEl = document.getElementById("pfdesc")!;
+const defaultsBtn = document.getElementById("pfdefaults") as HTMLButtonElement;
 
 const bus = openBus((m) => {
   if (m.op !== "state") return;
@@ -160,12 +170,127 @@ const bus = openBus((m) => {
   warnEl.hidden = crt.available !== false;
   if (crt.cfg !== undefined) cfg = sanitizeCrtConfig(crt.cfg);
   const mc = m.machine as { id?: unknown } | undefined;
-  if (typeof mc?.id === "string" && machineTiles.has(mc.id)) {
-    machineSel = mc.id;
-    syncMachineTiles();
-  }
+  if (typeof mc?.id === "string") showMachine(mc.id);
   syncControls();
 });
+
+hostWindow(document.getElementById("pwin")!, bus, { title: "Preferences" });
+
+// ---- the caption area -------------------------------------------------
+// Explains whatever the pointer (or keyboard focus) is on, the way
+// Balloon Help would, and falls back to the pane's own hint.
+let pane: PaneId = "machine";
+let described: SliderSpec | null = null;
+function describe(spec: SliderSpec | null): void {
+  described = spec;
+  descEl.textContent = "";
+  if (pane === "machine") {
+    const m = MACHINES.find((x) => x.id === machineSel);
+    if (m) {
+      descEl.append(el("span", "pt-label", m.name), ` — ${m.blurb}`);
+      return;
+    }
+  }
+  if (!spec) {
+    descEl.textContent = PANES.find((p) => p.id === pane)!.hint;
+    return;
+  }
+  descEl.append(el("span", "pt-label",
+                   `${spec.label}: ${(spec.fmt ?? pct)(cfg[spec.key])}`),
+                ` — ${spec.blurb}`);
+}
+
+// ---- pane buttons -------------------------------------------------------
+const strip = document.getElementById("pfstrip")!;
+const paneTabs = new Map<PaneId, HTMLButtonElement>();
+function showPane(id: PaneId, focus = false): void {
+  pane = id;
+  for (const p of PANES) {
+    const tab = paneTabs.get(p.id)!;
+    const on = p.id === id;
+    tab.classList.toggle("pt-selected", on);
+    tab.setAttribute("aria-selected", String(on));
+    tab.tabIndex = on ? 0 : -1;
+    document.getElementById(`pane-${p.id}`)!.hidden = !on;
+  }
+  if (focus) paneTabs.get(id)!.focus();
+  defaultsBtn.hidden = id === "machine";
+  describe(null);
+  try { localStorage.setItem(PANE_KEY, id); } catch { /* unavailable */ }
+}
+for (const p of PANES) {
+  const item = el("div", "pfpanebtn");
+  const tab = el("button", "pt-bevel") as HTMLButtonElement;
+  tab.type = "button";
+  tab.id = `tab-${p.id}`;
+  tab.setAttribute("role", "tab");
+  tab.setAttribute("aria-controls", `pane-${p.id}`);
+  tab.style.setProperty("--pt-icon", `var(--pt-sprite-${p.icon})`);
+  const cap = el("span", "pt-bevel-caption", p.label);
+  cap.id = `tabcap-${p.id}`;
+  tab.setAttribute("aria-labelledby", cap.id);
+  item.append(tab, cap);
+  strip.appendChild(item);
+  centerText(cap, true);
+  document.getElementById(`pane-${p.id}`)!
+    .setAttribute("aria-labelledby", tab.id);
+  // Pane buttons select on press, like radio buttons.
+  trackPress(tab, () => showPane(p.id));
+  paneTabs.set(p.id, tab);
+}
+// Arrow keys move between the pane buttons (a vertical tab list).
+strip.addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  e.preventDefault();
+  const i = PANES.findIndex((p) => p.id === pane);
+  const n = (i + (e.key === "ArrowDown" ? 1 : PANES.length - 1)) % PANES.length;
+  showPane(PANES[n]!.id, true);
+});
+
+// ---- machine pane ---------------------------------------------------------
+// The cases in a list box, the selected one's art in a preview well.
+// Selection is optimistic — the tank echoes it back in the next state
+// push.
+let machineSel = "";
+const preview = document.getElementById("pfpreview")!;
+const machineList = mountList(document.getElementById("pfmachines")!, {
+  rowHeight: 16,
+  label: "Machine",
+  onSelect(i) {
+    const m = MACHINES[i];
+    if (!m || m.id === machineSel) return;
+    machineSel = m.id;
+    paintPreview();
+    if (pane === "machine") describe(null);
+    bus.post({ op: "machine", id: m.id });
+  },
+});
+machineList.setRows(MACHINES.map((m) => {
+  const row = el("div", "", m.name);
+  row.dataset.name = m.name;
+  return row;
+}));
+function paintPreview(): void {
+  const m = MACHINES.find((x) => x.id === machineSel);
+  preview.textContent = "";
+  if (!m) return;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
+  svg.innerHTML = shellMarkup(m);
+  preview.appendChild(svg);
+}
+function showMachine(id: string): void {
+  const i = MACHINES.findIndex((m) => m.id === id);
+  if (i < 0 || id === machineSel) return;
+  machineSel = id;
+  machineList.select(i, false);
+  paintPreview();
+  if (pane === "machine") describe(null);
+}
+
+// ---- sliders ------------------------------------------------------------
+const sliders = new Map<keyof CrtConfig, HTMLInputElement>();
 
 function queueConfigPost(key: keyof CrtConfig): void {
   (pendingCfg ??= {})[key] = cfg[key];
@@ -179,67 +304,98 @@ function queueConfigPost(key: keyof CrtConfig): void {
   });
 }
 
-function addSliders(specs: SliderSpec[], host: HTMLElement): void {
-  for (const spec of specs) {
-    const row = el("div", "pfrow");
-    const top = el("div", "pfrowtop");
-    top.appendChild(el("span", "pfname", spec.label));
-    const val = el("span", "pfval");
-    top.appendChild(val);
-    row.appendChild(top);
-    const input = document.createElement("input");
-    input.type = "range";
-    input.min = "0"; input.max = "100"; input.step = "1";
-    input.setAttribute("aria-label", spec.label);
-    input.addEventListener("input", () => {
-      const v = Number(input.value) / 100;
-      cfg[spec.key] = v;
-      const label = (spec.fmt ?? pct)(v);
-      val.textContent = label;
-      input.setAttribute("aria-valuetext", label);
-      queueConfigPost(spec.key);
-    });
-    input.addEventListener("pointerdown", () => dragging.add(spec.key));
-    // Arrow/Home/End tweaks latch like drags — otherwise an echo
-    // landing mid-adjustment yanks the knob back. Both paths clear on
-    // blur. Only value-changing keys latch — a stray keypress mustn't
-    // block echo sync until blur.
-    input.addEventListener("keydown", (e) => {
-      // Modifier-held arrows (⌘← line-nav muscle memory) don't step
-      // the value — don't let them latch the guard either.
-      if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey &&
-          ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
-           "Home", "End", "PageUp", "PageDown"].includes(e.key))
-        dragging.add(spec.key);
-    });
-    input.addEventListener("blur", () => dragging.delete(spec.key));
-    sliders.set(spec.key, input);
-    values.set(spec.key, val);
-    row.appendChild(input);
-    row.appendChild(el("div", "pfblurb", spec.blurb));
-    host.appendChild(row);
+/** One Keyboard-style slider: caption above, tick marks under the
+ * track, end captions below. */
+function slider(spec: SliderSpec): HTMLElement {
+  const unit = el("div", "pfslider");
+  const id = `sl-${spec.key}`;
+  const label = el("label", "pt-caption pflabel", spec.label);
+  label.setAttribute("for", id);
+  const track = el("div", "pt-slider");
+  const input = document.createElement("input");
+  input.type = "range";
+  input.id = id;
+  input.min = "0"; input.max = "100"; input.step = "1";
+  track.appendChild(input);
+  const ends = el("div", "pt-caption pfends");
+  ends.setAttribute("aria-hidden", "true");
+  ends.append(el("span", "", spec.ends[0]), el("span", "", spec.ends[1]));
+  unit.append(label, track, ends);
+
+  input.addEventListener("input", () => {
+    const v = Number(input.value) / 100;
+    cfg[spec.key] = v;
+    input.setAttribute("aria-valuetext", (spec.fmt ?? pct)(v));
+    if (described === spec) describe(spec);
+    queueConfigPost(spec.key);
+  });
+  input.addEventListener("pointerdown", () => dragging.add(spec.key));
+  // Arrow/Home/End tweaks latch like drags — otherwise an echo
+  // landing mid-adjustment yanks the knob back. Both paths clear on
+  // blur. Only value-changing keys latch — a stray keypress mustn't
+  // block echo sync until blur.
+  input.addEventListener("keydown", (e) => {
+    // Modifier-held arrows (⌘← line-nav muscle memory) don't step
+    // the value — don't let them latch the guard either.
+    if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey &&
+        ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
+         "Home", "End", "PageUp", "PageDown"].includes(e.key))
+      dragging.add(spec.key);
+  });
+  input.addEventListener("focus", () => describe(spec));
+  input.addEventListener("blur", () => {
+    dragging.delete(spec.key);
+    if (described === spec) describe(null);
+  });
+  unit.addEventListener("pointerenter", () => describe(spec));
+  unit.addEventListener("pointerleave", () => {
+    // A drag keeps its caption until the pointer is released.
+    if (described === spec && !dragging.has(spec.key) &&
+        document.activeElement !== input) describe(null);
+  });
+  sliders.set(spec.key, input);
+  return unit;
+}
+
+function addGroups(groups: Group[], host: HTMLElement): void {
+  for (const g of groups) {
+    const box = el("div", "pt-group pfgroup");
+    box.appendChild(el("div", "pt-group-title", g.title));
+    box.setAttribute("role", "group");
+    box.setAttribute("aria-label", g.title);
+    for (const row of g.rows) {
+      const r = el("div", "pfrow");
+      for (const k of row) r.appendChild(slider(specOf(k)));
+      box.appendChild(r);
+    }
+    host.appendChild(box);
   }
 }
-addSliders(SPECS, traitsEl);
-addSliders(PIC_SPECS, picEl);
+addGroups(MONITOR_GROUPS, document.getElementById("pftraits")!);
+addGroups(PICTURE_GROUPS, document.getElementById("pfpicture")!);
 // Pointer release can be routed off the input — clear drags at window
 // level so a missed pointerup can't wedge a slider out of echo sync.
-window.addEventListener("pointerup", () => dragging.clear());
-window.addEventListener("pointercancel", () => dragging.clear());
+const endDrags = () => {
+  dragging.clear();
+  if (described && document.activeElement !== sliders.get(described.key))
+    describe(null);
+};
+window.addEventListener("pointerup", endDrags);
+window.addEventListener("pointercancel", endDrags);
 
-const ALL_SPECS: SliderSpec[] = [...SPECS, ...PIC_SPECS];
 function syncControls(): void {
   for (const spec of ALL_SPECS) {
     const input = sliders.get(spec.key);
     if (!input || dragging.has(spec.key)) continue;
     input.value = String(Math.round(cfg[spec.key] * 100));
-    const label = (spec.fmt ?? pct)(cfg[spec.key]);
-    values.get(spec.key)!.textContent = label;
-    input.setAttribute("aria-valuetext", label);
+    input.setAttribute("aria-valuetext", (spec.fmt ?? pct)(cfg[spec.key]));
   }
+  if (described) describe(described);
 }
 syncControls();
 
+// ---- the CRT switch ---------------------------------------------------
+trackHighlight(document.getElementById("pfcrt")!);
 onBox.addEventListener("change", () => {
   onTouched = true;
   clearTimeout(onTouchTimer);
@@ -249,20 +405,29 @@ onBox.addEventListener("change", () => {
   bus.post({ op: "crtEnabled", on: onBox.checked });
 });
 
-document.getElementById("pfreset")!.addEventListener("click", () => {
-  // Drop a coalesced slider change still awaiting its rAF post — it
-  // carries pre-reset values that would undo part of the reset.
-  pendingCfg = null;
-  cfg = { ...CRT_DEFAULTS };
-  bus.post({ op: "crtConfig", cfg });
+// Defaults restores the visible pane's sliders only — the other pane's
+// settings are out of sight and stay as they are.
+pushButton(defaultsBtn, () => {
+  const keys = PANES.find((p) => p.id === pane)!.keys;
+  if (!keys.length) return;
+  // Drop coalesced slider changes still awaiting their rAF post for
+  // these keys — they carry pre-reset values.
+  const reset: Partial<CrtConfig> = {};
+  for (const k of keys) {
+    reset[k] = CRT_DEFAULTS[k];
+    cfg[k] = CRT_DEFAULTS[k];
+    if (pendingCfg) delete pendingCfg[k];
+  }
+  bus.post({ op: "crtConfig", cfg: reset });
   syncControls();
 });
 
-// Escape closes the window — the native shell intercepts this bus post
-// (a page can't close a window it didn't open).
-window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !e.repeat) bus.post({ op: "closePrefs" });
-});
+let initial: PaneId = "machine";
+try {
+  const saved = localStorage.getItem(PANE_KEY);
+  if (PANES.some((p) => p.id === saved)) initial = saved as PaneId;
+} catch { /* storage unavailable */ }
+showPane(initial);
 
 // The tank page may still be loading when the window opens — retry the
 // hello until a state push arrives.

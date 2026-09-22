@@ -3,95 +3,16 @@ html, body { margin: 0; height: 100%; background: #000; }
    machine bezel supplies the visible shape, so the page paints nothing
    outside it. Dev browsers keep the dark backdrop. */
 .tankroot.native, .tankroot.native body.tankpage { background: transparent; }
-/* Add-on browser overlay. Interactive content stays below the top
-   22px native drag strip — a full-height overlay would swallow it. */
-.ov {
-  position: fixed; inset: 0; z-index: 10; cursor: default;
-  display: flex; align-items: center; justify-content: center;
-  padding: 30px 12px 12px; box-sizing: border-box;
-  background: rgba(3, 7, 13, .72);
-  font: 13px/1.4 -apple-system, system-ui, sans-serif;
-}
-.card {
-  width: min(560px, 100%); max-height: 100%;
-  display: flex; flex-direction: column;
-  background: #101823; border: 1px solid #24344a;
-  border-radius: 10px; overflow: hidden;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, .6);
-}
-.hd {
-  display: flex; align-items: center;
-  padding: 12px 14px 10px; border-bottom: 1px solid #1c2938;
-}
-.hd .title { color: #e8eef6; font-weight: 600; font-size: 14px; }
-.hd .sub { color: #6b7f96; font-size: 11px; }
-.hd .titles { flex: 1; }
-.hd .x {
-  background: none; border: 0; cursor: pointer;
-  color: #6b7f96; font-size: 14px; padding: 4px 8px;
-}
-.hd .x:hover { color: #fff; }
-.body { overflow-y: auto; padding: 10px 14px; flex: 1; }
-.sec {
-  color: #8fa5bd; font-size: 11px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 1.2px;
-  margin: 10px 0 6px;
-}
-.grid {
-  display: grid; gap: 6px;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-}
-.tile {
-  position: relative; display: flex; flex-direction: column;
-  align-items: center; gap: 6px; padding: 10px 8px;
-  background: #0c1420; border: 1px solid #1c2938; border-radius: 8px;
-  color: #b8c7d8; font: inherit; cursor: pointer; text-align: center;
-}
-.tile:hover { border-color: #3b567a; color: #fff; background: #111d2e; }
-.tile .tname { font-size: 12px; overflow-wrap: anywhere; }
-.tile .tnote { font-size: 30px; line-height: 64px; color: #7a9cc8; }
-.sechint { color: #8fa5bd; font-size: 12px; margin: -4px 0 10px; }
-.tile .tthumb { image-rendering: pixelated; max-width: 96px; max-height: 64px; }
-.tile .tick {
-  display: none; position: absolute; top: 5px; right: 7px;
-  color: #7ddb8a; font-size: 12px;
-}
-.tile.done .tick { display: block; }
-.detail .back {
-  background: none; border: 0; cursor: pointer; padding: 0 0 8px;
-  color: #6f9fd8; font: inherit; font-size: 12px;
-}
-.detail .back:hover { color: #a8ccf5; }
-.detail .dname { color: #e8eef6; font-size: 16px; font-weight: 600; }
-.detail .dmeta { color: #6b7f96; font-size: 11px; margin: 2px 0 10px; }
-.detail .pv {
-  display: flex; justify-content: center; padding: 10px;
-  background: #081120; border: 1px solid #1c2938; border-radius: 8px;
-  min-height: 60px; align-items: center;
-}
-.detail .pv canvas { image-rendering: pixelated; max-width: 100%; max-height: 180px; }
-.detail .pv audio { width: 100%; }
-.detail .dstatus, .browse .dstatus { color: #8fa5bd; font-size: 12px; margin: 10px 0; }
+/* The add-on browser over the tank (browser and touch use): its own
+   Platinum window on a transparent layer; a press outside closes it. */
+.ov { position: fixed; inset: 0; z-index: 10; cursor: default; }
+.ov .iwin { position: absolute; }
 /* Only exists on hover-less (touch) devices — see web/main.ts. */
 #opentrigger {
   position: fixed; z-index: 5;
   right: calc(8px + env(safe-area-inset-right, 0px));
   bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-  background: rgba(16, 24, 35, .8); border: 1px solid #24344a;
-  border-radius: 14px; cursor: pointer; opacity: .85;
-  color: #b8c7d8; font: 12px/1 -apple-system, system-ui, sans-serif;
-  padding: 10px 16px;
 }
-.detail .dact, .browse .dact {
-  background: #2b6cb8; border: 0; border-radius: 7px; cursor: pointer;
-  color: #fff; font: inherit; font-weight: 600; padding: 8px 16px;
-}
-.detail .dact:hover, .browse .dact:hover { background: #3580d4; }
-.ft {
-  padding: 8px 14px; border-top: 1px solid #1c2938; text-align: center;
-}
-.ft a { color: #e06c6c; font-size: 11px; text-decoration: none; }
-.ft a:hover { text-decoration: underline; }
 /* Machine shell: the machine art SVG fills the window (letterboxed if
    the aspect ever drifts) and paints ON TOP of the tank, so its
    transparent glass and baked reflections overlay the water. Behind
@@ -100,8 +21,8 @@ html, body { margin: 0; height: 100%; background: #000; }
    #machine is pointer-events:none: clicks fall through to the tank
    canvas, or to the page body — a window drag — everywhere else. */
 /* z-index pins the paint order — DOM order alone can be reordered once
-   canvases get their own compositing layers. Overlays (.ov z10,
-   #opentrigger z5) stay above all three. */
+   canvases get their own compositing layers. The add-on window layer
+   (.ov, z 10) and #opentrigger (z 5) stay above all three. */
 #screenback { position: fixed; z-index: 0; background: #050505; display: none; }
 #screen { position: absolute; z-index: 1; cursor: default; }
 #machine { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
@@ -127,134 +48,71 @@ canvas#crt {
 body.crt canvas#crt { display: block; }
 body.crt canvas#tank { opacity: 0; }
 
-/* Panel window (panel.html): the card is the page — no overlay chrome. */
-.panelpage {
-  font: 13px/1.4 -apple-system, system-ui, sans-serif;
-  background: #101823;
-  display: flex; flex-direction: column;
-}
-.panelpage #overview, .panelpage #panel { flex: 1; min-height: 0; }
-.panelpage .card {
-  width: auto; max-height: none; height: 100%;
-  border: 0; border-radius: 0; box-shadow: none;
-}
-#tabs {
-  display: flex; gap: 2px; padding: 8px 10px 0;
-  border-bottom: 1px solid #1c2938; background: #101823;
-}
-#tabs .tab {
-  background: none; border: 0; cursor: pointer; font: inherit;
-  color: #6b7f96; padding: 6px 12px; font-weight: 600;
-  border-bottom: 2px solid transparent;
-}
-#tabs .tab:hover { color: #b8c7d8; }
-#tabs .tab.on { color: #e8eef6; border-bottom-color: #2b6cb8; }
-#overview {
-  flex: 1; overflow-y: auto; padding: 10px 14px;
-}
-.ostats { color: #8fa5bd; font-size: 12px; margin: 4px 0 6px; }
-.osec {
-  color: #8fa5bd; font-size: 11px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 1.2px;
-  margin: 14px 0 6px;
-}
-.oempty { color: #54687e; font-size: 12px; margin: 4px 0; }
-.orow {
-  display: flex; align-items: center; gap: 10px;
-  background: #0c1420; border: 1px solid #1c2938; border-radius: 8px;
-  padding: 8px 12px; margin-bottom: 6px;
-}
-.orow .oname { color: #e8eef6; font-size: 13px; overflow-wrap: anywhere; }
-.orow .ometa { color: #6b7f96; font-size: 11px; flex: 1; }
-/* Fixed box so rows don't jump when the thumb reply lands. */
-.orow .othumbbox {
-  flex: none; width: 38px; height: 28px;
-  display: flex; align-items: center; justify-content: center;
-  background: #081120; border-radius: 4px; overflow: hidden;
-}
-.orow .othumb {
-  max-width: 100%; max-height: 100%; image-rendering: pixelated;
-}
-.orow .orm {
-  background: none; border: 1px solid #3b2b2b; border-radius: 6px;
-  color: #e08a8a; font: inherit; font-size: 11px; cursor: pointer;
-  padding: 4px 10px;
-}
-.orow .orm:hover { background: #2b1a1a; border-color: #6b3b3b; }
+/* ---- Platinum client windows -------------------------------------------
+   Preferences, Tank Overview, Import Add-ons and Tank Stats are Mac OS
+   8 windows (web/platinum.css). The native windows are borderless and
+   shadowless, so the page draws the whole look — including the 1px
+   drop shadow, which is why the window stops 1px short of the
+   viewport's right and bottom. In a browser tab it fills the tab. */
+.ptroot, .ptroot body { margin: 0; background: transparent; }
+.pt-page-window { position: fixed; left: 0; top: 0; right: 1px; bottom: 1px; }
 
-/* Preferences window (prefs.html): header + footer stay put, the
-   control list scrolls between them. */
-.prefpage { color: #b8c7d8; }
-.pfhead { padding: 14px 16px 12px; border-bottom: 1px solid #1c2938; }
-.pfmaster {
-  display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
+/* ---- Preferences (web/prefs.ts) ----------------------------------------
+   A fixed-size control panel, 564 x 456 (native window 565 x 457 with
+   the shadow). Pane buttons down an 80px strip on the left, parted from
+   the pane by a gray/black/white line, as in Desktop Pictures. */
+#pwin .pt-content { display: flex; }
+#pfstrip {
+  flex: none; width: 80px; padding-top: 12px;
+  box-shadow: inset -1px 0 #888;
 }
-.pfmaster input { margin-top: 2px; accent-color: #2b6cb8; }
-.pftitle { display: block; color: #e8eef6; font-weight: 600; }
-.pfsub {
-  display: block; color: #6b7f96; font-size: 11px; margin-top: 2px;
+.pfpanebtn { width: 40px; margin: 0 20px 18px; }
+.pfpanebtn .pt-bevel-caption { width: 40px; }
+#pfpanes {
+  position: relative; flex: 1; min-width: 0;
+  border-left: 1px solid #000; box-shadow: inset 1px 0 #fff;
 }
-.pfwarn {
-  margin-top: 10px; padding: 8px 10px; border-radius: 6px;
-  background: #241d10; border: 1px solid #4a3a1c;
-  color: #d8b56b; font-size: 11px;
+.pfpane { position: absolute; left: 14px; right: 14px; top: 12px; }
+.pfpane[hidden] { display: none; }
+
+/* Machine: the cases in a list box beside a preview well. */
+#pfmachines { position: absolute; left: 0; top: 0; width: 190px; height: 322px; }
+#pfmachines .pt-row { padding-left: 4px; font: var(--pt-font-system); }
+#pfpreview {
+  position: absolute; left: 204px; right: 0; top: 0; height: 322px;
+  display: flex; align-items: center; justify-content: center;
+  background: #fff;
 }
-#pfcontrols { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px; }
-.pfsec {
-  color: #8fa5bd; font-size: 11px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 1.2px;
-  margin: 10px 0 4px;
+#pfpreview svg { width: 90%; height: 90%; }
+
+/* Monitor and Picture: Keyboard-style sliders in group boxes — caption
+   above, ticks under the track, end captions below — three to a row. */
+#pfcrt { display: flex; }
+#crt-warn { position: absolute; left: 196px; right: 0; top: 0; }
+.pfgroup { padding: 12px 11px 6px; }
+#pftraits .pfgroup:first-child { margin-top: 28px; }
+#pftraits .pfgroup + .pfgroup { margin-top: 24px; }
+#pfpicture .pfgroup { margin-top: 12px; }
+#pfpicture .pfgroup + .pfgroup { margin-top: 30px; }
+.pfrow { display: flex; gap: 20px; }
+.pfrow + .pfrow { margin-top: 6px; }
+.pfslider { flex: none; width: 125px; }
+.pflabel { display: block; padding-left: 4px; margin-bottom: 5px; }
+.pfends { display: flex; justify-content: space-between; margin-top: 2px; padding: 0 1px 0 3px; }
+
+/* Caption area along the bottom, with Defaults at its right. */
+#pffoot { position: absolute; left: 14px; right: 14px; bottom: 10px; height: 52px; }
+#pfdesc {
+  position: absolute; left: 0; right: 0; top: 8px;
+  font: var(--pt-font-small); line-height: 13px;
+  max-height: 39px; overflow: hidden;
 }
-/* Machine picker: mini bezel previews rendered from the same SVG the
-   tank window draws. */
-#pfmachine {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
-  padding-bottom: 8px;
-}
-.pftile {
-  display: flex; flex-direction: column; align-items: center;
-  gap: 4px; padding: 8px; font: inherit; text-align: center;
-  background: #0c1420; border: 1px solid #1c2938; border-radius: 8px;
-  color: #b8c7d8; cursor: pointer;
-}
-.pftile:hover { border-color: #3b567a; color: #fff; }
-.pftile.on { border-color: #2b6cb8; background: #12233a; }
-.pftile svg { width: 100%; height: 56px; display: block; }
-.pftiletitle { color: #e8eef6; font-size: 12px; font-weight: 600; }
-.pftileblurb { color: #6b7f96; font-size: 10.5px; line-height: 1.35; }
-.pfrow { padding: 10px 0; border-bottom: 1px solid #16202e; }
-.pfrow:last-child { border-bottom: 0; }
-.pfrowtop {
-  display: flex; justify-content: space-between; align-items: baseline;
-}
-.pfname { color: #e8eef6; font-weight: 600; font-size: 12px; }
-.pfval {
-  color: #6b7f96; font-size: 11px; font-variant-numeric: tabular-nums;
-}
-.pfrow input[type="range"] {
-  width: 100%; margin: 6px 0 4px; accent-color: #2b6cb8;
-}
-.pfblurb { color: #6b7f96; font-size: 11px; }
-.pffoot {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 16px; border-top: 1px solid #1c2938;
-}
-#pfreset {
-  background: none; border: 1px solid #24344a; border-radius: 6px;
-  color: #b8c7d8; font: inherit; font-size: 12px; cursor: pointer;
-  padding: 5px 12px;
-}
-#pfreset:hover { border-color: #3b567a; color: #fff; }
-.pfhint { color: #54687e; font-size: 11px; }
+#pffoot:has(#pfdefaults:not([hidden])) #pfdesc { right: 76px; }
+#pfdefaults { position: absolute; right: 0; bottom: 0; }
+#pfdefaults[hidden] { display: none; }
 
 /* ---- Tank Stats window (web/stats.ts) ----------------------------------
-   A Mac OS 8 document window (web/platinum.css) laid out like a Get
-   Info window. The native window is borderless and shadowless, so the
-   page draws the whole look — including the 1px drop shadow, which is
-   why the window stops 1px short of the viewport's right and bottom.
-   In a browser tab it floats as a classic window. */
-.statsroot, body.statspage { background: transparent; }
-#swin { position: fixed; left: 0; top: 0; right: 1px; bottom: 1px; }
+   Laid out like a Get Info window. */
 #swin .pt-content { padding: 4px 12px 0; }
 /* Bar, right-aligned percentage, trend arrow; the bar sits on rows
    1..14 of its 17px field row, centered on the text's cap height. */
@@ -269,3 +127,83 @@ body.crt canvas#tank { opacity: 0; }
 .scareline { padding-left: 9px; text-indent: -9px; }
 /* "• ": the escape eats the first space, the second follows the bullet. */
 .scareline::before { content: "\2022  "; }
+
+/* ---- Tank Overview (web/overview.ts) -----------------------------------
+   A Finder list-view window: header placard, column headers, rows with
+   the sort column shaded dd and the others ee over white rules, and a
+   bottom strip with Remove clear of the grow box. */
+#owin .pt-content { display: flex; flex-direction: column; }
+#osummary, #oheads, #obar { flex: none; }
+.ohead-name { flex: 1; min-width: 0; padding-left: 50px; }
+.ohead-kind { flex: none; width: 96px; }
+.ohead-status { flex: none; width: 151px; } /* runs over the scroll bar */
+#olist { flex: 1; min-height: 0; border: 0; background: #eee; }
+/* Edge to edge in the window, a focus ring would only show top and
+   bottom; the selection already marks the keyboard's place. */
+#olist:focus-visible { outline: none; }
+#olist .pt-row { display: flex; background: #fff; color: #000; font: var(--pt-font-small); }
+.ocell {
+  box-sizing: border-box; height: 31px; padding: 9px 4px 0;
+  background: #eee;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ocell-name { position: relative; flex: 1; min-width: 0; padding-left: 50px; }
+.ocell-kind { flex: none; width: 96px; }
+.ocell-status { flex: none; width: 136px; }
+#olist[data-sort="name"] .ocell-name, #olist[data-sort="kind"] .ocell-kind,
+#olist[data-sort="status"] .ocell-status { background: #ddd; }
+.othumb {
+  position: absolute; left: 6px; top: 2px; width: 38px; height: 28px;
+  overflow: hidden;
+}
+.othumb img { position: absolute; image-rendering: pixelated; }
+/* Selected, the Finder way: the name inverts, the icon darkens. */
+#olist .pt-row.pt-selected { background: #fff; color: #000; }
+.pt-selected .oname { background: #000; color: #fff; box-shadow: 1px 0 #000, -1px 0 #000; }
+.pt-selected .othumb img { filter: brightness(0.5); }
+#obar { position: relative; height: 31px; border-top: 1px solid #000; }
+#oremove { position: absolute; right: 22px; top: 5px; }
+
+/* ---- the add-on browser (web/import.ts) ----------------------------------
+   Laid out like the Chooser: Show: pop-up across the top, the section's
+   add-ons in a list on the left, the chosen one's preview and details on
+   the right, the credit and the default button along the bottom. The
+   same markup fills the Import Add-ons window and the overlay window. */
+.imp { font: var(--pt-font-small); }
+.ihead {
+  position: absolute; left: 12px; right: 12px; top: 10px; height: 19px;
+  display: flex; align-items: flex-start;
+}
+.ishow { font: var(--pt-font-system); margin: 1px 6px 0 0; }
+.ipop { width: 180px; }
+.icount { margin: 3px 0 0 auto; }
+.ilist { position: absolute; left: 12px; top: 40px; bottom: 50px; width: 46%; }
+.irow { display: flex; font: var(--pt-font-small); }
+.ithumb { position: relative; flex: none; width: 38px; height: 28px; margin: 2px 6px 0 4px; overflow: hidden; }
+.ithumb canvas { position: absolute; image-rendering: pixelated; }
+.irowname { flex: 1; min-width: 0; padding-top: 9px; overflow: hidden; text-overflow: ellipsis; }
+.icheck { flex: none; width: 18px; padding-top: 7px; font: var(--pt-font-system); visibility: hidden; }
+.irow.done .icheck { visibility: visible; }
+.idetail {
+  position: absolute; top: 40px; right: 12px; bottom: 50px;
+  left: calc(46% + 24px);
+}
+.ipreview { position: relative; height: 55%; min-height: 60px; overflow: hidden; }
+.ipreview canvas { position: absolute; image-rendering: pixelated; }
+.iname { margin-top: 8px; font: var(--pt-font-system); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imeta { margin-top: 2px; color: #555; }
+.istatus { margin-top: 6px; }
+.iplay { margin-top: 8px; }
+.iplay[hidden] { display: none; }
+.ifoot { position: absolute; left: 12px; right: 12px; bottom: 10px; height: 30px; }
+.ifoot .pt-separator { position: absolute; left: 0; right: 0; top: 0; }
+.icredit { position: absolute; left: 0; top: 14px; }
+.idonate { position: absolute; top: 9px; left: 210px; }
+.iadd { position: absolute; right: 16px; bottom: -6px; }
+/* A narrow window (the overlay on a small tank) drops the preview. */
+@media (max-width: 479px) {
+  .ov .ilist { width: auto; right: 12px; bottom: 116px; }
+  .ov .idetail { top: auto; left: 12px; height: 60px; bottom: 50px; }
+  .ov .ipreview { display: none; }
+  .ov .icredit, .ov .idonate { display: none; }
+}
