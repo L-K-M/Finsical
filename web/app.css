@@ -49,6 +49,8 @@ html, body { margin: 0; height: 100%; background: #000; }
 }
 .tile:hover { border-color: #3b567a; color: #fff; background: #111d2e; }
 .tile .tname { font-size: 12px; overflow-wrap: anywhere; }
+.tile .tnote { font-size: 30px; line-height: 64px; color: #7a9cc8; }
+.sechint { color: #8fa5bd; font-size: 12px; margin: -4px 0 10px; }
 .tile .tthumb { image-rendering: pixelated; max-width: 96px; max-height: 64px; }
 .tile .tick {
   display: none; position: absolute; top: 5px; right: 7px;
@@ -276,7 +278,7 @@ body.statspage {
   /* Platinum pinstripes: alternating 1px light/gray bands — this
      texture fills the whole draggable strip. */
   background: repeating-linear-gradient(
-    to bottom, #f8f8f8 0, #f8f8f8 1px, #d2d2d2 1px, #d2d2d2 2px);
+    to bottom, #fff 0, #fff 1px, #dadada 1px, #dadada 2px);
   /* Etched groove separating the titlebar from the window face. */
   border-bottom: 1px solid #666;
   box-shadow: 0 1px 0 #f6f6f6;
@@ -321,12 +323,13 @@ body.statspage {
 #szoom::before { left: 2px; top: 4px; box-shadow: 1px 1px 0 rgba(255, 255, 255, .4); }
 #szoom::after { right: 2px; top: 2px; box-shadow: 1px 1px 0 rgba(255, 255, 255, .4); }
 #sshade { right: 8px; }
+/* Collapse glyph: a tiny window icon — outlined square with a solid
+   titlebar strip across the top. */
 #sshade::after {
-  content: ""; position: absolute; left: 2px; right: 2px;
-  top: 5px; height: 0;
-  border-top: 1px solid #444;
-  border-bottom: 1px solid #444;
-  box-shadow: 0 2px 0 rgba(255, 255, 255, .5);
+  content: ""; position: absolute; inset: 3px;
+  border: 1px solid #444;
+  border-top: 3px solid #444;
+  box-shadow: 1px 1px 0 rgba(255, 255, 255, .55);
 }
 #sbody {
   flex: 1; margin: 8px;
@@ -337,8 +340,38 @@ body.statspage {
   padding: 10px 12px;
   overflow-y: auto;
 }
+/* Platinum scrollbar: pinstriped embossed thumb in a flat track. */
+#sbody::-webkit-scrollbar { width: 15px; }
+#sbody::-webkit-scrollbar-track {
+  background: #ededed;
+  border-left: 1px solid #9a9a9a;
+}
+#sbody::-webkit-scrollbar-thumb {
+  background: repeating-linear-gradient(to bottom,
+    #f4f4f4 0, #f4f4f4 2px, #d0d0d0 2px, #d0d0d0 4px);
+  border: 1px solid #555;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #9a9a9a;
+}
+/* OS 8 grow box: a hollow square top-left over a diagonal-hatched
+   triangle filling the window's bottom-right corner. */
+#sgrow {
+  position: absolute; right: 1px; bottom: 1px;
+  width: 14px; height: 14px;
+  cursor: nwse-resize; touch-action: none;
+}
+#sgrow::before {
+  content: ""; position: absolute; left: 0; top: 0;
+  width: 7px; height: 7px;
+  border: 1px solid #444; background: #ddd;
+}
+#sgrow::after {
+  content: ""; position: absolute; inset: 0;
+  background: repeating-linear-gradient(135deg,
+    #555 0, #555 1px, transparent 1px, transparent 4px);
+  clip-path: polygon(0 100%, 100% 4px, 100% 100%);
+}
 /* Windowshade: collapse box folds the body away. */
-#swin.shaded #sbody { display: none; }
+#swin.shaded #sbody, #swin.shaded #sgrow { display: none; }
 /* Browser fallback folds to the titlebar; native shell resizes the
    real NSWindow, so this only matters outside the app. */
 #swin.shaded { bottom: auto; height: 24px; }
