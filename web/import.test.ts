@@ -162,5 +162,8 @@ describe("qualifySoundItemName", () => {
     // a sibling 'snd ' record keeps its own name.
     expect(qualifySoundItemName([rec("dup"), rec("tap")], "dup (2)")
       .map((r) => r.name)).toEqual(["dup (2)", "tap"]);
+    // Qualifier + extension both strip before the stem compare.
+    expect(qualifySoundItemName([rec("dup")], "dup (2).mp3")
+      .map((r) => r.name)).toEqual(["dup (2).mp3"]);
   });
 });
