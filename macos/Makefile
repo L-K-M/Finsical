@@ -11,7 +11,7 @@ $(APP): bundle Finsical.swift Info.plist Finsical.icns
 	cp Info.plist $(APP).staging/Contents/
 	cp Finsical.icns $(APP).staging/Contents/Resources/
 	cp ../web/index.html ../web/panel.html ../web/prefs.html \
-	   ../web/stats.html ../web/app.css \
+	   ../web/stats.html ../web/app.css ../web/platinum.css \
 	   ../dist/bundle.js ../dist/panel.js ../dist/prefs.js \
 	   ../dist/stats.js \
 	   $(APP).staging/Contents/Resources/web/
