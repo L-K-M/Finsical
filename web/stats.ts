@@ -152,11 +152,16 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) bus.post({ op: "hello" });
 });
 // The shell expands a close-while-shaded window natively on reopen —
-// a growing viewport is the only signal that distinguishes reopen
-// from tab-switch/minimize (which must leave the shade folded).
+// a small→large viewport transition is the only signal that
+// distinguishes reopen from tab-switch/minimize (which must leave the
+// shade folded). In a browser tab the fold is CSS-only, so the
+// viewport never drops below the threshold and nothing unshades.
+let lastInnerH = window.innerHeight;
 window.addEventListener("resize", () => {
-  if (shaded && window.innerHeight > 60) {
+  const h = window.innerHeight;
+  if (shaded && lastInnerH <= 60 && h > 60) {
     shaded = false;
     win.classList.remove("shaded");
   }
+  lastInnerH = h;
 });
