@@ -73,6 +73,13 @@ describe("bitmap strikes", () => {
     for (const s of [CHARCOAL_12, GENEVA_10]) {
       const cps = s.glyphs.map((g) => g[0]);
       expect(new Set(cps).size).toBe(cps.length);
+      // A hex string that doesn't split into whole rows would decode a
+      // truncated extra row without complaint.
+      for (const [cp, , , , width, hex] of s.glyphs) {
+        const digits = Math.ceil(width / 4);
+        expect(digits ? hex.length % digits : hex.length,
+               `U+${cp.toString(16)}`).toBe(0);
+      }
       for (const g of strikeGlyphs(s)) {
         expect(g.top + 1).toBeLessThanOrEqual(s.ascent);
         expect(g.rows.length - 1 - g.top).toBeLessThanOrEqual(s.descent);
@@ -129,6 +136,16 @@ describe("buildPixelFont", () => {
     let sum = 0;
     for (let i = 0; i < font.length; i += 4) sum = (sum + dv.getUint32(i)) >>> 0;
     expect(sum).toBe(0xb1b0afba);
+  });
+
+  it("rejects glyphs it cannot encode", () => {
+    const g = { codepoint: 0x41, advance: 1, lsb: 0, top: 0, width: 1,
+                rows: [1] };
+    const spec = { family: "T", bold: false, sizePx: 1, ascent: 1, descent: 0 };
+    expect(() => buildPixelFont({ ...spec, glyphs: [g, g] }))
+      .toThrow(/duplicate/);
+    expect(() => buildPixelFont({ ...spec, glyphs: [{ ...g, width: 33 }] }))
+      .toThrow(/wide/);
   });
 
   it("maps characters to glyphs with pixel-exact advances", () => {

@@ -139,7 +139,8 @@ export function mountWindow(el: HTMLElement,
     })
     .finally(layout);
 
-  // Frontmost window draws active; any other draws inactive.
+  // Active while the page has focus: the native shell gives every
+  // Platinum window its own page, so page focus is window focus.
   const syncFocus = () =>
     el.classList.toggle("pt-inactive", !document.hasFocus());
   window.addEventListener("focus", syncFocus);

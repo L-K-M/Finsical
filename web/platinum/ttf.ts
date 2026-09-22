@@ -43,6 +43,9 @@ const UNITS_PER_PIXEL = 128;
  * format's seconds-since-1904 (the high 32 bits stay zero). */
 const MAC_OS_8_RELEASE = 2952720000;
 
+/** Widest glyph a row bit mask can hold (JS shifts are 32-bit). */
+const MAX_WIDTH = 32;
+
 interface Rect { x0: number; x1: number; y0: number; y1: number }
 
 /** Partition a glyph's pixels into rectangles: horizontal runs, merged
@@ -169,10 +172,17 @@ function nameTable(family: string, style: string): Uint8Array {
 export function buildPixelFont(spec: PixelFontSpec): Uint8Array {
   const U = UNITS_PER_PIXEL;
   const glyphs = [...spec.glyphs].sort((a, b) => a.codepoint - b.codepoint);
-  for (const g of glyphs) {
+  glyphs.forEach((g, i) => {
     if (g.codepoint < 0x20 || g.codepoint > 0xfffd)
       throw new RangeError(`code point ${g.codepoint} outside the BMP`);
-  }
+    // A second glyph for one code point would be unreachable in cmap.
+    if (g.codepoint === glyphs[i - 1]?.codepoint)
+      throw new RangeError(`duplicate code point ${g.codepoint}`);
+    // Row masks are read with 32-bit shifts.
+    if (g.width > MAX_WIDTH)
+      throw new RangeError(`glyph ${g.codepoint} is ${g.width}px wide; ` +
+                           `rows hold at most ${MAX_WIDTH}`);
+  });
   const upem = spec.sizePx * U;
   const asc = spec.ascent * U;
   const desc = spec.descent * U;

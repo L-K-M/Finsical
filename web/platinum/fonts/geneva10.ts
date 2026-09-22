@@ -4,7 +4,7 @@
 // Each entry: [code point, advance, lsb, top, width, rows]. `rows` is
 // hex, ceil(width / 4) digits per pixel row, leftmost pixel in the
 // most significant bit; `top` counts rows above the baseline row.
-// Decoded by strike() in ../bitmapfont.ts.
+// Decoded by strikeGlyphs() in ../bitmapfont.ts.
 import type { StrikeData } from "../bitmapfont.js";
 
 export const GENEVA_10: StrikeData = {

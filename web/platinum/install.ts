@@ -17,16 +17,21 @@ let installed: Promise<void> | null = null;
  * platinum.css, so callers should report the error and carry on. */
 export function installPlatinum(): Promise<void> {
   if (installed) return installed;
-  const style = document.createElement("style");
-  style.textContent = `:root {\n${spriteCss()}\n}`;
-  document.head.appendChild(style);
-  const faces = [CHARCOAL_12, GENEVA_10]
-    .flatMap((s) => [face(s, false), face(s, true)]);
-  // FontFaceSet's setlike add() is typed only in lib.dom.iterable,
-  // which this project doesn't load.
-  const set = document.fonts as unknown as { add(f: FontFace): void };
-  for (const f of faces) set.add(f);
-  installed = Promise.all(faces.map((f) => f.load())).then(() => undefined);
+  // An async body turns a synchronous throw (say, a malformed strike)
+  // into the same cached rejection a refused face produces. Everything
+  // before the await still runs now, so the sprites exist at first paint.
+  installed = (async () => {
+    const style = document.createElement("style");
+    style.textContent = `:root {\n${spriteCss()}\n}`;
+    document.head.appendChild(style);
+    const faces = [CHARCOAL_12, GENEVA_10]
+      .flatMap((s) => [face(s, false), face(s, true)]);
+    // FontFaceSet's setlike add() is typed only in lib.dom.iterable,
+    // which this project doesn't load.
+    const set = document.fonts as unknown as { add(f: FontFace): void };
+    for (const f of faces) set.add(f);
+    await Promise.all(faces.map((f) => f.load()));
+  })();
   return installed;
 }
 

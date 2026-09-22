@@ -22,7 +22,7 @@ export function strikeGlyphs(data: StrikeData): PixelGlyph[] {
     const digits = Math.ceil(width / 4);
     const rows: number[] = [];
     for (let i = 0; digits && i < hex.length; i += digits) {
-      rows.push(parseInt(hex.slice(i, i + digits), 16) >>
+      rows.push(parseInt(hex.slice(i, i + digits), 16) >>>
                 (digits * 4 - width));
     }
     return { codepoint, advance, lsb, top, width, rows };
