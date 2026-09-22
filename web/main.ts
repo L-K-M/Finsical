@@ -780,7 +780,7 @@ window.addEventListener("keydown", (e) => {
     const existing = window.open("", "finsical-stats");
     try {
       if (existing && !existing.closed &&
-          existing.location.href.endsWith("stats.html")) {
+          existing.location.pathname.endsWith("/stats.html")) {
         existing.focus();
       } else if (existing && !existing.closed) {
         // Navigate the tab this gesture already grabbed — a second
