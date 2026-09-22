@@ -133,6 +133,33 @@ document.getElementById("sshade")!.addEventListener("click", () => {
   win.classList.toggle("shaded", shaded);
   bus.post({ op: "statsShade", on: shaded });
 });
+// Grow box: bottom-right drag resizes — the native shell runs a modal
+// tracking loop; the fallback resizes the CSS window in place (height
+// locked while shaded, matching the native 24px minSize).
+document.getElementById("sgrow")!.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  if (inNativeShell()) { bus.post({ op: "statsGrow" }); return; }
+  const r = win.getBoundingClientRect();
+  const x0 = e.clientX, y0 = e.clientY, w0 = r.width, h0 = r.height;
+  win.style.left = `${r.left}px`; win.style.top = `${r.top}px`;
+  win.style.right = "auto"; win.style.bottom = "auto";
+  const move = (ev: PointerEvent) => {
+    if (ev.pointerId !== e.pointerId) return;
+    win.style.width = `${Math.max(300, w0 + ev.clientX - x0)}px`;
+    if (!shaded)
+      win.style.height = `${Math.max(60, h0 + ev.clientY - y0)}px`;
+  };
+  const up = (ev: PointerEvent) => {
+    if (ev.pointerId !== e.pointerId) return;
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    window.removeEventListener("pointercancel", up);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+  window.addEventListener("pointercancel", up);
+});
 // Dragging the titlebar moves the window (native shell performs it).
 document.getElementById("stitle")!.addEventListener("pointerdown", (e) => {
   if (e.button !== 0 || e.target instanceof HTMLButtonElement) return;

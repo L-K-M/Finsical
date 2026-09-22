@@ -49,6 +49,8 @@ html, body { margin: 0; height: 100%; background: #000; }
 }
 .tile:hover { border-color: #3b567a; color: #fff; background: #111d2e; }
 .tile .tname { font-size: 12px; overflow-wrap: anywhere; }
+.tile .tnote { font-size: 30px; line-height: 64px; color: #7a9cc8; }
+.sechint { color: #8fa5bd; font-size: 12px; margin: -4px 0 10px; }
 .tile .tthumb { image-rendering: pixelated; max-width: 96px; max-height: 64px; }
 .tile .tick {
   display: none; position: absolute; top: 5px; right: 7px;
@@ -266,19 +268,25 @@ body.statspage {
   /* Raised frame: bright top-left inner edge, mid-gray bottom-right —
      the Platinum window's 3D rim. */
   box-shadow:
-    inset 1px 1px 0 rgba(255, 255, 255, .9),
-    inset -1px -1px 0 #969696;
+    inset 1px 1px 0 #f2f2f2,
+    inset -1px -1px 0 #8a8a8a;
+  border-radius: 3px 3px 0 0; /* top corners round off slightly */
+  overflow: hidden; /* #stitle's square corners would paint past the curve */
   box-sizing: border-box;
 }
 #stitle {
   position: relative;
-  height: 22px; flex: none;
-  /* Platinum pinstripes: alternating 1px light/gray bands — this
-     texture fills the whole draggable strip. */
-  background: repeating-linear-gradient(
-    to bottom, #f8f8f8 0, #f8f8f8 1px, #d2d2d2 1px, #d2d2d2 2px);
+  height: 20px; flex: none;
+  /* Platinum pinstripes: 1px #ddd / 1px #999 bands inset inside a
+     #ccc margin — the stripes don't touch the bar's edges. */
+  background:
+    linear-gradient(#ccc, #ccc) 0 0 / 100% 4px no-repeat,
+    linear-gradient(#ccc, #ccc) 0 100% / 100% 4px no-repeat,
+    repeating-linear-gradient(
+      to bottom, #ddd 0, #ddd 1px, #999 1px, #999 2px);
+  background-color: #ccc;
   /* Etched groove separating the titlebar from the window face. */
-  border-bottom: 1px solid #666;
+  border-bottom: 1px solid #2a2a2a;
   box-shadow: 0 1px 0 #f6f6f6;
   cursor: default;
 }
@@ -288,21 +296,26 @@ body.statspage {
   font-size: 12px; color: #000;
   pointer-events: none;
 }
-/* Titlebar boxes: a small embossed button — lit top-left face over a
-   gradient, dark outline, engraved glyph. */
+/* Titlebar boxes: the Platinum button is a soft diagonal-gradient
+   face (lit from below-right) inside a dark outline, with a faint
+   outer rim — light top-left, dark bottom-right. */
 #stitle button {
   position: absolute; top: 4px;
-  width: 13px; height: 13px; padding: 0;
-  background: linear-gradient(to bottom, #f4f4f4, #d2d2d2);
-  border: 1px solid #333;
-  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #a0a0a0;
+  width: 12px; height: 12px; padding: 0;
+  background: linear-gradient(135deg, #989898 0%, #f4f4f4 100%);
+  border: 1px solid #3c3c3c;
+  box-shadow:
+    -1px -1px 0 rgba(255, 255, 255, .45),
+    1px 1px 0 rgba(0, 0, 0, .30);
   cursor: pointer;
 }
 #stitle button:active {
-  background: #999;
-  box-shadow: inset 1px 1px 0 #666;
+  background: #888;
+  box-shadow:
+    -1px -1px 0 rgba(255, 255, 255, .2),
+    1px 1px 0 rgba(0, 0, 0, .4);
 }
-#sclose { left: 8px; }
+#sclose { left: 6px; }
 /* Close box carries an inner square; collapse box a horizontal bar;
    zoom box two overlapping squares. Each glyph gets a faint light
    edge on its bottom-right so it reads engraved, not printed. */
@@ -311,7 +324,7 @@ body.statspage {
   border: 1px solid #444;
   box-shadow: 1px 1px 0 rgba(255, 255, 255, .55);
 }
-#szoom { right: 23px; }
+#szoom { right: 25px; }
 #szoom::before, #szoom::after {
   content: ""; position: absolute;
   width: 5px; height: 5px;
@@ -321,24 +334,55 @@ body.statspage {
 #szoom::before { left: 2px; top: 4px; box-shadow: 1px 1px 0 rgba(255, 255, 255, .4); }
 #szoom::after { right: 2px; top: 2px; box-shadow: 1px 1px 0 rgba(255, 255, 255, .4); }
 #sshade { right: 8px; }
+/* Collapse glyph: a tiny window icon — outlined square with a solid
+   titlebar strip across the top. */
 #sshade::after {
-  content: ""; position: absolute; left: 2px; right: 2px;
-  top: 5px; height: 0;
-  border-top: 1px solid #444;
-  border-bottom: 1px solid #444;
-  box-shadow: 0 2px 0 rgba(255, 255, 255, .5);
+  content: ""; position: absolute; inset: 3px;
+  border: 1px solid #444;
+  border-top: 3px solid #444;
+  box-shadow: 1px 1px 0 rgba(255, 255, 255, .55);
 }
 #sbody {
   flex: 1; margin: 8px;
-  background: #fff;
-  /* Sunken white field: dark outer edge, inner shade top-left. */
+  background: #efefef; /* the OS 8 content face — light gray, not white */
+  /* Sunken field: dark outer edge, inner shade top-left. */
   border: 1px solid #666;
-  box-shadow: inset 1px 1px 0 #b4b4b4, inset -1px -1px 0 #f6f6f6;
+  box-shadow: inset 1px 1px 0 #b4b4b4, inset -1px -1px 0 #fafafa;
   padding: 10px 12px;
   overflow-y: auto;
 }
+/* Platinum scrollbar: pinstriped embossed thumb in a flat track. */
+#sbody::-webkit-scrollbar { width: 15px; }
+#sbody::-webkit-scrollbar-track {
+  background: #ededed;
+  border-left: 1px solid #9a9a9a;
+}
+#sbody::-webkit-scrollbar-thumb {
+  background: repeating-linear-gradient(to bottom,
+    #f4f4f4 0, #f4f4f4 2px, #d0d0d0 2px, #d0d0d0 4px);
+  border: 1px solid #555;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #9a9a9a;
+}
+/* OS 8 grow box: a hollow square top-left over a diagonal-hatched
+   triangle filling the window's bottom-right corner. */
+#sgrow {
+  position: absolute; right: 1px; bottom: 1px;
+  width: 14px; height: 14px;
+  cursor: nwse-resize; touch-action: none;
+}
+#sgrow::before {
+  content: ""; position: absolute; left: 0; top: 0;
+  width: 7px; height: 7px;
+  border: 1px solid #444; background: #ddd;
+}
+#sgrow::after {
+  content: ""; position: absolute; inset: 0;
+  background: repeating-linear-gradient(135deg,
+    #555 0, #555 1px, transparent 1px, transparent 4px);
+  clip-path: polygon(0 100%, 100% 4px, 100% 100%);
+}
 /* Windowshade: collapse box folds the body away. */
-#swin.shaded #sbody { display: none; }
+#swin.shaded #sbody, #swin.shaded #sgrow { display: none; }
 /* Browser fallback folds to the titlebar; native shell resizes the
    real NSWindow, so this only matters outside the app. */
 #swin.shaded { bottom: auto; height: 24px; }
@@ -346,7 +390,10 @@ body.statspage {
   display: flex; align-items: center; gap: 8px;
   padding: 3px 0;
 }
-.srow + .srow { border-top: 1px dotted #bbb; }
+.srow + .srow {
+  border-top: 1px solid #d2d2d2;
+  box-shadow: inset 0 1px 0 #fafafa; /* etched groove under the line */
+}
 .slabel { flex: none; width: 92px; }
 .sval {
   flex: 1; text-align: right;
@@ -354,7 +401,7 @@ body.statspage {
 }
 .smeter {
   flex: 1; height: 10px;
-  background: #fff;
+  background: #efefef;
   /* Sunken track: dark rim plus an inner top-left shade line. */
   border: 1px solid #666;
   box-shadow: inset 1px 1px 0 #b0b0b0;
@@ -362,13 +409,10 @@ body.statspage {
 }
 .sfill {
   display: block; height: 100%;
-  /* OS 8 progress blue as a lit tube: top highlight, dark underside. */
+  /* The OS 8 meter is a navy glass tube: a bright band rides the top
+     third, then it falls off fast to near-black at the bottom edge. */
   background: linear-gradient(to bottom,
-    #7b8ae0 0%, #3b4fc4 45%, #2a37a0 55%, #5566cc 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .45),
-    inset 0 -1px 0 rgba(0, 0, 30, .4),
-    inset -1px 0 0 rgba(0, 0, 30, .25);
+    #595a89 0%, #eff0fc 32%, #7374a1 58%, #282948 80%, #000004 100%);
 }
 #scare { margin-top: 10px; }
 .scarehead {

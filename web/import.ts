@@ -834,12 +834,21 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         section = it.section;
         browse.appendChild(el("div", "sec",
           `${section} · ${items.filter((x) => x.section === section).length}`));
+        if (section === "sounds")
+          browse.appendChild(el("div", "sechint",
+            "The game's own effects aren't on archive.org — drop its " +
+            ".rsrc, .bin, or .hqx file on the tank or this window to " +
+            "add them."));
         grid = el("div", "grid");
         browse.appendChild(grid);
       }
       const t = el("button", "tile");
       t.dataset.url = it.url;
       if (installed.has(it.url)) t.classList.add("done");
+      // Audio packs have no sprite art to thumb — a note glyph keeps
+      // the tile from reading as an empty/broken card.
+      if (it.section === "sounds" && !thumbs.get(it.url))
+        t.appendChild(el("span", "tnote", "♪"));
       const th = thumbs.get(it.url);
       if (th) paintThumb(t, th);
       t.appendChild(el("span", "tname", it.inner));

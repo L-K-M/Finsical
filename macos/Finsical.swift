@@ -544,6 +544,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 }
                 return
             }
+            // Grow box: modal mouse-tracking loop like AppKit's own
+            // resize — the bottom-right drag adjusts width/height with
+            // the top edge pinned. Polls pressedMouseButtons so an
+            // already-released click can't wedge the loop.
+            if body["op"] as? String == "statsGrow",
+               message.webView === statsView, let w = statsWindow {
+                let f0 = w.frame, p0 = NSEvent.mouseLocation
+                while NSEvent.pressedMouseButtons & 1 != 0 {
+                    guard let ev = NSApp.nextEvent(
+                        matching: [.leftMouseDragged, .leftMouseUp],
+                        until: Date(timeIntervalSinceNow: 0.1),
+                        inMode: .eventTracking, dequeue: true)
+                    else { continue }
+                    if ev.type == .leftMouseUp { break }
+                    let p = NSEvent.mouseLocation
+                    let nw = max(w.minSize.width,
+                                 f0.width + p.x - p0.x)
+                    let nh = max(w.minSize.height,
+                                 f0.height - (p.y - p0.y))
+                    w.setFrame(NSRect(x: f0.minX, y: f0.maxY - nh,
+                                      width: nw, height: nh),
+                               display: true)
+                }
+                return
+            }
             if body["op"] as? String == "dragWindow" {
                 if message.webView === webView {
                     dragWindow(window, firstResponder: webView)
