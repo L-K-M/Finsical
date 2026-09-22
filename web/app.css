@@ -319,7 +319,7 @@ body.statspage {
   background: #e0e0e0;
 }
 #szoom::before { left: 2px; top: 4px; box-shadow: 1px 1px 0 rgba(255, 255, 255, .4); }
-#szoom::after { right: 2px; top: 2px; }
+#szoom::after { right: 2px; top: 2px; box-shadow: 1px 1px 0 rgba(255, 255, 255, .4); }
 #sshade { right: 8px; }
 #sshade::after {
   content: ""; position: absolute; left: 2px; right: 2px;

@@ -92,6 +92,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     /// The stats window's user-set frame — its zoom box toggles between
     /// this and the default size (System 8 user/standard states).
     private var statsUserFrame: NSRect?
+    /// Default stats-window size — the zoom box's "standard" state and
+    /// the window's initial content size share it.
+    private let statsStdSize = CGSize(width: 360, height: 320)
 
     /// Restore a window's autosaved frame or center it on first launch,
     /// then enable autosaving for future moves and resizes. The saved
@@ -192,8 +195,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     /// drags, closeStats closes, statsShade folds it up.
     @objc func openStats() {
         if statsWindow == nil {
-            let sv = WKWebView(frame: .init(x: 0, y: 0, width: 360,
-                                          height: 320),
+            let sv = WKWebView(frame: .init(origin: .zero,
+                                          size: statsStdSize),
                                configuration: makeWebConfig())
             sv.uiDelegate = self
             sv.navigationDelegate = self
@@ -470,6 +473,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             }
             if body["op"] as? String == "closeStats",
                message.webView === statsView {
+                statsUserFrame = nil // fresh zoom cycle on reopen
                 statsWindow?.close()
                 return
             }
@@ -532,9 +536,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                     statsUserFrame = nil
                 } else {
                     statsUserFrame = w.frame
-                    let f = w.frame, d = CGSize(width: 360, height: 320)
-                    w.setFrame(NSRect(x: f.minX, y: f.maxY - d.height,
-                                      width: d.width, height: d.height),
+                    let f = w.frame
+                    w.setFrame(NSRect(x: f.minX,
+                                      y: f.maxY - statsStdSize.height,
+                                      width: statsStdSize.width,
+                                      height: statsStdSize.height),
                                display: true, animate: true)
                 }
                 return

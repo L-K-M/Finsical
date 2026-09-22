@@ -115,6 +115,9 @@ document.getElementById("sclose")!.addEventListener("click", () => {
 // the browser fallback can only resize script-opened windows).
 let savedSize: { w: number; h: number } | null = null;
 document.getElementById("szoom")!.addEventListener("click", () => {
+  // Native ignores statsZoom while shaded — match it so the fallback
+  // toggle can't advance its saved state on an ignored click.
+  if (shaded) return;
   if (inNativeShell()) { bus.post({ op: "statsZoom" }); return; }
   if (savedSize) {
     window.resizeTo(savedSize.w, savedSize.h);
