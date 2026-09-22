@@ -46,6 +46,11 @@ const HUNGER_STARVING = 0.85;
 /** Avg hunger that warrants a feeding hint. */
 const HUNGER_FEED = 0.55;
 
+/** Number.isFinite, not ??: a NaN payload mustn't render "NaN%" and
+ * silently pass the advice checks below. */
+const fin = (v: number | undefined, d: number): number =>
+  Number.isFinite(v) ? v! : d;
+
 export function deriveStats(s: StatsInput): TankStats {
   const fish = (s.fish ?? []).filter((f): f is StatsFish => !!f);
   const hungries = fish
@@ -58,12 +63,8 @@ export function deriveStats(s: StatsInput): TankStats {
   const worst = hungries.length
     ? hungries.reduce((a, f) => (f.hunger > a.hunger ? f : a))
     : null;
-  // Number.isFinite, not ??: a NaN payload mustn't render "NaN%" and
-  // silently pass every water-gated advice check below.
-  const water = Number.isFinite(s.waterQuality)
-    ? Math.min(1, Math.max(0, s.waterQuality!))
-    : 1;
-  const light = Number.isFinite(s.light) ? s.light! : 1;
+  const water = Math.min(1, Math.max(0, fin(s.waterQuality, 1)));
+  const light = fin(s.light, 1);
   const stats: TankStats = {
     fishCount: fish.length,
     avgHunger,
@@ -71,11 +72,11 @@ export function deriveStats(s: StatsInput): TankStats {
     seeking: fish.filter((f) => f.state === "seek").length,
     startled: fish.filter((f) => f.state === "startle").length,
     waterPct: Math.round(water * 100),
-    food: s.food ?? 0,
-    foodSettled: s.foodSettled ?? 0,
-    bubbles: s.bubbles ?? 0,
+    food: fin(s.food, 0),
+    foodSettled: fin(s.foodSettled, 0),
+    bubbles: fin(s.bubbles, 0),
     phase: light > 0.5 ? "day" : "night",
-    uptimeMin: Math.floor((s.tickCount ?? 0) / 30 / 60),
+    uptimeMin: Math.floor(fin(s.tickCount, 0) / 30 / 60),
     advice: [],
   };
   stats.advice = advice(stats, water);

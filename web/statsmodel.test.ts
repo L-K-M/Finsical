@@ -125,4 +125,14 @@ describe("labels", () => {
   it("treats NaN light as day", () => {
     expect(deriveStats({ ...base, light: NaN }).phase).toBe("day");
   });
+
+  it("treats NaN counters as zero", () => {
+    const s = deriveStats({ ...base, foodSettled: NaN, bubbles: NaN,
+                            tickCount: NaN });
+    expect(s.foodSettled).toBe(0);
+    expect(s.bubbles).toBe(0);
+    expect(s.uptimeMin).toBe(0);
+    // A NaN must not silently suppress the rotting-food hint — zero
+    // genuinely means none settled, so this just mustn't read "NaN".
+  });
 });
