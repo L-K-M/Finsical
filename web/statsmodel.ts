@@ -1,0 +1,129 @@
+/**
+ * Tank-stats derivations for the optional stats window — pure functions
+ * so vitest can pin the guidance rules without a DOM. Input is the
+ * tank page's `state` bus payload (web/main.ts postState); thresholds
+ * mirror core/sim.ts so the advice tracks what the sim actually does.
+ */
+export interface StatsFish {
+  species?: string;
+  hunger?: number; // 0 full .. 1 starving
+  state?: string;
+}
+export interface StatsInput {
+  fish?: StatsFish[];
+  waterQuality?: number; // 1 clean .. 0 foul
+  food?: number;         // pellets in the water
+  foodSettled?: number;  // pellets rotting on the gravel
+  bubbles?: number;
+  light?: number;        // 0.3 night .. 1 day
+  tickCount?: number;    // 30 ticks per second
+}
+
+export interface TankStats {
+  fishCount: number;
+  /** Mean hunger across fish — null with an empty tank. */
+  avgHunger: number | null;
+  hungriest: { name: string; hunger: number } | null;
+  seeking: number;
+  startled: number;
+  /** 0..100 */
+  waterPct: number;
+  food: number;
+  foodSettled: number;
+  bubbles: number;
+  phase: "day" | "night";
+  uptimeMin: number;
+  /** Ordered care hints — the most urgent first, capped at two. */
+  advice: string[];
+}
+
+// Mirrored from core/sim.ts — kept local so the stats page can stay a
+// dumb renderer of the bus payload without importing the sim.
+/** Below this water quality fish lose their appetite (QUALITY_SEEK). */
+const QUALITY_SEEK = 0.3;
+/** Above this hunger fish actively seek food (HUNGER_SEEK). */
+const HUNGER_SEEK = 0.4;
+/** Hunger where "hungry" becomes "starving" for the worst-off fish. */
+const HUNGER_STARVING = 0.85;
+/** Avg hunger that warrants a feeding hint. */
+const HUNGER_FEED = 0.55;
+
+export function deriveStats(s: StatsInput): TankStats {
+  const fish = (s.fish ?? []).filter((f): f is StatsFish => !!f);
+  const hungries = fish
+    .filter((f): f is StatsFish & { hunger: number } =>
+      Number.isFinite(f.hunger))
+    .map((f) => ({ name: f.species || "Fish", hunger: f.hunger! }));
+  const avgHunger = hungries.length
+    ? hungries.reduce((a, f) => a + f.hunger, 0) / hungries.length
+    : null;
+  const worst = hungries.length
+    ? hungries.reduce((a, f) => (f.hunger > a.hunger ? f : a))
+    : null;
+  const water = Math.min(1, Math.max(0, s.waterQuality ?? 1));
+  const light = s.light ?? 1;
+  const stats: TankStats = {
+    fishCount: fish.length,
+    avgHunger,
+    hungriest: worst,
+    seeking: fish.filter((f) => f.state === "seek").length,
+    startled: fish.filter((f) => f.state === "startle").length,
+    waterPct: Math.round(water * 100),
+    food: s.food ?? 0,
+    foodSettled: s.foodSettled ?? 0,
+    bubbles: s.bubbles ?? 0,
+    phase: light > 0.5 ? "day" : "night",
+    uptimeMin: Math.floor((s.tickCount ?? 0) / 30 / 60),
+    advice: [],
+  };
+  stats.advice = advice(stats, water);
+  return stats;
+}
+
+function advice(st: TankStats, water: number): string[] {
+  const out: string[] = [];
+  if (!st.fishCount) {
+    out.push("No fish yet — add some from the Add-ons importer.");
+    return out;
+  }
+  if (water < QUALITY_SEEK) {
+    out.push("Water is foul — fish won't eat until it clears. " +
+             "Stop feeding and let the filter catch up.");
+  }
+  if (st.foodSettled > 0 && water < 0.7) {
+    out.push("Uneaten food is rotting on the gravel — " +
+             "feed a little less at a time.");
+  }
+  if (water >= QUALITY_SEEK) {
+    if (st.avgHunger !== null && st.avgHunger >= HUNGER_FEED) {
+      out.push("Fish are hungry — drop food near the surface " +
+               "(press F or click high in the tank).");
+    } else if (st.hungriest && st.hungriest.hunger >= HUNGER_STARVING) {
+      out.push(`${st.hungriest.name} is starving — feed soon.`);
+    }
+  }
+  if (!out.length) out.push("The tank is healthy — nothing needed.");
+  return out.slice(0, 2);
+}
+
+/** "1h 23m" / "45m" — matches the panel overview's uptime format. */
+export function uptime(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/** Compact hunger label — same bands as the overview's. */
+export function hungerLabel(h: number): string {
+  if (h < 0.33) return "full";
+  if (h < 0.66) return "peckish";
+  return "hungry";
+}
+
+/** Trend arrow from a pair of samples, oldest-first; |delta| below
+ * the dead zone reads as steady. */
+export function trend(prev: number | null, cur: number): string {
+  if (prev === null || !Number.isFinite(prev)) return "→";
+  const d = cur - prev;
+  if (Math.abs(d) < 0.02) return "→";
+  return d > 0 ? "↑" : "↓";
+}

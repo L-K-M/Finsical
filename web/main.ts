@@ -374,6 +374,12 @@ function postState(): void {
          ...(pack !== undefined ? { pack } : {}) })),
     waterQuality: sim.waterQuality,
     tickCount: sim.tickCount,
+    // The stats window reads these; kept as raw counts so it can derive
+    // its own guidance (e.g. settled pellets foul the water as they rot).
+    food: sim.food.length,
+    foodSettled: sim.food.reduce((n, f) => n + (f.settled > 0 ? 1 : 0), 0),
+    bubbles: sim.bubbles.length,
+    light: sim.light,
     // Preferences window reads this — `on`/`available` reflect the
     // live GL state (a lost context reports off/unavailable even if
     // the stored preference says on).
@@ -765,6 +771,11 @@ window.addEventListener("keydown", (e) => {
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "c" &&
              !e.repeat && !importPanel.isOpen) {
     setCrt(!crtOn); // bare C: ⌘C is Copy via the Edit menu
+  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "s" &&
+             !e.repeat && !importPanel.isOpen && !inNativeShell()) {
+    // Browser-only fallback — the app opens stats.html via Tank ▸
+    // Tank Stats; over BroadcastChannel the new tab finds the tank.
+    window.open("stats.html");
   }
 });
 
