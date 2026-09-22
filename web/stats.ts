@@ -129,8 +129,11 @@ const greet = setInterval(() => {
   else bus.post({ op: "hello" });
 }, 500);
 bus.post({ op: "hello" });
+// Ungated on `greeted`: if the tank tab opens after the greet retries
+// gave up, this heartbeat is the revival path — one cheap message, and
+// an unanswered hello costs nothing when no tank is listening.
 setInterval(() => {
-  if (greeted && !document.hidden) bus.post({ op: "hello" });
+  if (!document.hidden) bus.post({ op: "hello" });
 }, 2000);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) bus.post({ op: "hello" });

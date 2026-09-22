@@ -443,12 +443,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                message.webView === statsView, let w = statsWindow {
                 let f = w.frame
                 if body["on"] as? Bool == true {
-                    statsPreShadeH = f.height
+                    // A page reload while shaded resends on:true — keep
+                    // the first captured height or unshade restores 24.
+                    if statsPreShadeH == nil { statsPreShadeH = f.height }
                     let h: CGFloat = 24 // titlebar + border
+                    // Programmatic setFrame can clamp to minSize; drop
+                    // the floor while folded and restore it on expand.
+                    w.minSize = NSSize(width: w.minSize.width, height: h)
                     w.setFrame(NSRect(x: f.minX, y: f.maxY - h,
                                       width: f.width, height: h),
                                display: true, animate: true)
                 } else if let h = statsPreShadeH {
+                    w.minSize = NSSize(width: w.minSize.width,
+                                       height: 200)
                     w.setFrame(NSRect(x: f.minX, y: f.maxY - h,
                                       width: f.width, height: h),
                                display: true, animate: true)

@@ -55,6 +55,13 @@ describe("deriveStats", () => {
     expect(s.advice.some((a) => /rotting/.test(a))).toBe(true);
   });
 
+  it("doesn't contradict itself when foul water sank the food", () => {
+    // Below QUALITY_SEEK the advice is already "stop feeding" — the
+    // portion-size hint must not stack a "feed a little less" beside it.
+    const s = deriveStats({ ...base, waterQuality: 0.2, foodSettled: 2 });
+    expect(s.advice.join(" ")).not.toMatch(/rotting/);
+  });
+
   it("advises feeding when the tank is hungry", () => {
     const s = deriveStats({
       ...base,

@@ -90,7 +90,9 @@ function advice(st: TankStats, water: number): string[] {
     out.push("Water is foul — fish won't eat until it clears. " +
              "Stop feeding and let the filter catch up.");
   }
-  if (st.foodSettled > 0 && water < 0.7) {
+  // Foul water already says "stop feeding" — the portion-size hint
+  // would contradict it, so it only runs once water is recovering.
+  if (st.foodSettled > 0 && water >= QUALITY_SEEK && water < 0.7) {
     out.push("Uneaten food is rotting on the gravel — " +
              "feed a little less at a time.");
   }
@@ -121,9 +123,10 @@ export function hungerLabel(h: number): string {
 
 /** Trend arrow from a pair of samples, oldest-first; |delta| below
  * the dead zone reads as steady. */
-export function trend(prev: number | null, cur: number): string {
+export function trend(prev: number | null, cur: number,
+                      deadZone = 0.02): string {
   if (prev === null || !Number.isFinite(prev)) return "→";
   const d = cur - prev;
-  if (Math.abs(d) < 0.02) return "→";
+  if (Math.abs(d) < deadZone) return "→";
   return d > 0 ? "↑" : "↓";
 }
