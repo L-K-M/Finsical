@@ -96,13 +96,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     /// the window's initial content size share it.
     private let statsStdSize = CGSize(width: 360, height: 320)
 
-    /// Restore a window's autosaved frame or center it on first launch,
-    /// then enable autosaving for future moves and resizes. The saved
-    /// frame is clamped to the screens that exist now, so a stale entry
-    /// can't strand a window off a detached display.
+    /// Which persistence key each window saves its frame under.
+    private var frameKeys: [ObjectIdentifier: String] = [:]
+
+    /// Restore a window's saved frame, or center it on first launch.
+    /// Not setFrameUsingName: its restore constrains the frame to the
+    /// window's current screen — the main display this early — so a
+    /// window parked on a second monitor got dragged back to display 1.
+    /// The saved rect is applied verbatim when it intersects any
+    /// attached screen; a frame left on a detached display falls back
+    /// to centered rather than stranding the window offscreen.
     private func restoreOrCenter(_ w: NSWindow, _ name: String) {
-        if !w.setFrameUsingName(name) { w.center() }
-        w.setFrameAutosaveName(name)
+        w.delegate = self
+        frameKeys[ObjectIdentifier(w)] = name
+        let saved = UserDefaults.standard
+            .string(forKey: "FinsicalFrame.\(name)")
+            .map(NSRectFromString)
+        if let f = saved, f.width > 0, f.height > 0,
+           NSScreen.screens.contains(where: { $0.frame.intersects(f) }) {
+            w.setFrame(f, display: false)
+        } else {
+            w.center()
+        }
+    }
+
+    /// Every move/resize rewrites the saved frame, so the value on disk
+    /// is always where the user last left the window.
+    private func persistFrame(_ object: Any?) {
+        guard let w = object as? NSWindow,
+              let name = frameKeys[ObjectIdentifier(w)] else { return }
+        UserDefaults.standard.set(NSStringFromRect(w.frame),
+                                  forKey: "FinsicalFrame.\(name)")
     }
 
     private func makeWebConfig() -> WKWebViewConfiguration {
@@ -426,8 +450,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         layer.mask = mask
     }
 
+    func windowDidMove(_ note: Notification) { persistFrame(note.object) }
+
     func windowDidResize(_ note: Notification) {
         if note.object as? NSWindow === window { syncMask() }
+        persistFrame(note.object)
     }
 
     // Any backing-scale change — a move between displays (committed
