@@ -11,8 +11,9 @@ $(APP): bundle Finsical.swift Info.plist Finsical.icns
 	cp Info.plist $(APP).staging/Contents/
 	cp Finsical.icns $(APP).staging/Contents/Resources/
 	cp ../web/index.html ../web/panel.html ../web/prefs.html \
-	   ../web/app.css \
+	   ../web/stats.html ../web/app.css \
 	   ../dist/bundle.js ../dist/panel.js ../dist/prefs.js \
+	   ../dist/stats.js \
 	   $(APP).staging/Contents/Resources/web/
 	@if [ -d ../web/pack ]; then cp -r ../web/pack $(APP).staging/Contents/Resources/web/; fi
 	# assets is required — the Plus machine's shell lives there; fail

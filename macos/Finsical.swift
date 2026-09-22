@@ -66,6 +66,12 @@ final class DragStrip: NSView {
     }
 }
 
+/// Borderless NSWindows can't become key by default — the stats window
+/// needs key status for its Escape-to-close and menu shortcuts.
+final class KeyableWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                          WKNavigationDelegate, WKScriptMessageHandler,
                          NSWindowDelegate {
@@ -75,6 +81,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     private var panelView: WKWebView?
     private var prefsWindow: NSWindow?
     private var prefsView: WKWebView?
+    private var statsWindow: NSWindow?
+    private var statsView: WKWebView?
+    /// Frame height before a windowshade collapse — restored on open.
+    private var statsPreShadeH: CGFloat?
+    /// Bumped on every shade/expand so a stale expand-completion can't
+    /// clear state a newer toggle already replaced.
+    private var statsShadeGen = 0
+    private var statsPreShadeMinH: CGFloat?
 
     private func makeWebConfig() -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
@@ -158,6 +172,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 url: URL(string: "finsical://app/prefs.html")!))
         }
         prefsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Stats window — borderless, so the page's System 8 chrome
+    /// (pinstripe titlebar, close/collapse boxes) IS the window
+    /// (web/stats.ts). Chrome gestures arrive as bus ops: dragWindow
+    /// drags, closeStats closes, statsShade folds it up.
+    @objc func openStats() {
+        if statsWindow == nil {
+            let sv = WKWebView(frame: .init(x: 0, y: 0, width: 360,
+                                          height: 320),
+                               configuration: makeWebConfig())
+            sv.uiDelegate = self
+            sv.navigationDelegate = self
+            // Same transparency levers as the tank — the page's painted
+            // window edge is the only visible surface.
+            sv.underPageBackgroundColor = .clear
+            if sv.responds(to: NSSelectorFromString("setDrawsBackground:")) {
+                sv.setValue(false, forKey: "drawsBackground")
+            }
+            let w = KeyableWindow(
+                contentRect: sv.frame,
+                styleMask: [.borderless, .resizable],
+                backing: .buffered, defer: false)
+            w.isOpaque = false
+            w.backgroundColor = .clear
+            w.hasShadow = true
+            w.minSize = NSSize(width: 300, height: 200)
+            w.contentView = sv
+            w.isReleasedWhenClosed = false // reopen reuses the window
+            w.initialFirstResponder = sv
+            w.center()
+            statsWindow = w
+            statsView = sv
+            sv.load(URLRequest(
+                url: URL(string: "finsical://app/stats.html")!))
+        }
+        // Reopening a window closed while shaded: expand it here —
+        // reopening is only knowable at the shell. The page clears its
+        // own `shaded` flag when the viewport grows past titlebar size.
+        if let w = statsWindow, let h = statsPreShadeH {
+            w.minSize = NSSize(width: w.minSize.width,
+                               height: statsPreShadeMinH ?? 200)
+            let f = w.frame
+            w.setFrame(NSRect(x: f.minX, y: f.maxY - h,
+                              width: f.width, height: h), display: true)
+            statsPreShadeH = nil
+            statsPreShadeMinH = nil
+        }
+        statsWindow?.makeKeyAndOrderFront(nil)
     }
 
     /// The tank window's shape follows the selected machine case.
@@ -351,10 +414,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         if note.object as? NSWindow === window { syncMask() }
     }
 
-    /// A bezel mousedown asks for a window drag — synthesize the
-    /// leftMouseDown performDrag expects, at the cursor's position.
-    private func dragTank() {
-        let w = window!
+    /// A bezel/titlebar mousedown asks for a window drag — synthesize
+    /// the leftMouseDown performDrag expects, at the cursor's position.
+    private func dragWindow(_ w: NSWindow?, firstResponder: NSView?) {
+        guard let w else { return }
         let loc = w.convertPoint(fromScreen: NSEvent.mouseLocation)
         guard let ev = NSEvent.mouseEvent(with: .leftMouseDown,
             location: loc, modifierFlags: [], timestamp: 0,
@@ -363,7 +426,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         else { return }
         w.performDrag(with: ev)
         // Same as DragStrip — hand first responder back to the page.
-        w.makeFirstResponder(webView)
+        w.makeFirstResponder(firstResponder)
     }
 
     /// Bus relay: posts from a client window (panel, prefs) go to the
@@ -385,9 +448,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 prefsWindow?.close()
                 return
             }
-            if body["op"] as? String == "dragWindow",
-               message.webView === webView {
-                dragTank()
+            if body["op"] as? String == "closeStats",
+               message.webView === statsView {
+                statsWindow?.close()
+                return
+            }
+            // Windowshade: the collapse box folds the window down to
+            // its titlebar (System 8 style) and back.
+            if body["op"] as? String == "statsShade",
+               message.webView === statsView, let w = statsWindow {
+                let f = w.frame
+                // Each shade/expand supersedes the previous animation —
+                // the expand's deferred clear must not fire for a state
+                // a newer toggle already replaced.
+                statsShadeGen += 1
+                let gen = statsShadeGen
+                if body["on"] as? Bool == true {
+                    // A page reload while shaded resends on:true — keep
+                    // the first captured height or unshade restores 24.
+                    // Clamp to minSize so a rapid toggle can't capture
+                    // a mid-animation frame and shrink the restore.
+                    if statsPreShadeH == nil {
+                        statsPreShadeH = max(f.height, w.minSize.height)
+                    }
+                    let h: CGFloat = 24 // titlebar + border
+                    // Programmatic setFrame can clamp to minSize; drop
+                    // the floor while folded and restore it on expand.
+                    if statsPreShadeMinH == nil {
+                        statsPreShadeMinH = w.minSize.height
+                    }
+                    w.minSize = NSSize(width: w.minSize.width, height: h)
+                    w.setFrame(NSRect(x: f.minX, y: f.maxY - h,
+                                      width: f.width, height: h),
+                               display: true, animate: true)
+                } else if let h = statsPreShadeH {
+                    w.minSize = NSSize(width: w.minSize.width,
+                                       height: statsPreShadeMinH ?? 200)
+                    // Clear the saved height only when the expand
+                    // actually lands — a shade clicked mid-animation
+                    // must keep the real height, not the partial frame.
+                    NSAnimationContext.runAnimationGroup({ _ in
+                        w.animator().setFrame(
+                            NSRect(x: f.minX, y: f.maxY - h,
+                                   width: f.width, height: h),
+                            display: true)
+                    }, completionHandler: {
+                        if gen == self.statsShadeGen &&
+                           abs(w.frame.height - h) < 0.5 {
+                            self.statsPreShadeH = nil
+                            self.statsPreShadeMinH = nil
+                        }
+                    })
+                }
+                return
+            }
+            if body["op"] as? String == "dragWindow" {
+                if message.webView === webView {
+                    dragWindow(window, firstResponder: webView)
+                } else if message.webView === statsView {
+                    dragWindow(statsWindow, firstResponder: statsView)
+                }
                 return
             }
             // Tank state carries the machine's viewBox aspect —
@@ -431,7 +551,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
               let text = String(data: data, encoding: .utf8) else { return }
         // Closed windows keep their webview alive (reopen reuses it)
         // but have no need for pushes — skip them until they're shown.
-        let clients = [panelView, prefsView].compactMap { $0 }
+        let clients = [panelView, prefsView, statsView]
+            .compactMap { $0 }
             .filter { $0.window?.isVisible == true }
         let dests: [WKWebView] = message.webView === webView
             ? clients
@@ -445,7 +566,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                      .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
         for dest in dests {
             let name = dest === webView ? "tank"
-                     : dest === panelView ? "panel" : "prefs"
+                     : dest === panelView ? "panel"
+                     : dest === statsView ? "stats" : "prefs"
             dest.evaluateJavaScript(
                 "window.__bus ? (window.__bus(\(js)), undefined) : 'dropped'") {
                 result, error in
@@ -601,6 +723,9 @@ let tankMenu = NSMenu(title: "Tank")
 tankMenu.addItem(withTitle: "Tank Overview",
                  action: #selector(AppDelegate.openOverview),
                  keyEquivalent: "o")
+tankMenu.addItem(withTitle: "Tank Stats",
+                 action: #selector(AppDelegate.openStats),
+                 keyEquivalent: "S") // ⇧⌘S — ⌘S is the Save convention
 tankMenu.addItem(withTitle: "Import Add-ons…",
                  action: #selector(AppDelegate.openImport),
                  keyEquivalent: "i")
