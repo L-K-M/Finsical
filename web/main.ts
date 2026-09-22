@@ -782,6 +782,11 @@ window.addEventListener("keydown", (e) => {
       if (existing && !existing.closed &&
           existing.location.href.endsWith("stats.html")) {
         existing.focus();
+      } else if (existing && !existing.closed) {
+        // Navigate the tab this gesture already grabbed — a second
+        // window.open can be blocked (one open per gesture in Safari).
+        existing.location.assign("stats.html");
+        existing.focus();
       } else {
         window.open("stats.html", "finsical-stats");
       }

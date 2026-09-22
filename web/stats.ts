@@ -149,5 +149,13 @@ setInterval(() => {
   if (!document.hidden) bus.post({ op: "hello" });
 }, 2000);
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) bus.post({ op: "hello" });
+  if (document.hidden) return;
+  // Reopened after close-while-shaded: the page never reloaded, so
+  // resync the native windowshade (Swift restores the saved frame).
+  if (shaded) {
+    shaded = false;
+    win.classList.remove("shaded");
+    bus.post({ op: "statsShade", on: false });
+  }
+  bus.post({ op: "hello" });
 });
