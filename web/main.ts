@@ -778,10 +778,16 @@ window.addEventListener("keydown", (e) => {
     // Reuse without re-navigating: a reload would wipe the 90 s trend
     // window stats.ts keeps for the arrows.
     const existing = window.open("", "finsical-stats");
-    if (existing && !existing.closed &&
-        existing.location.href.endsWith("stats.html")) {
-      existing.focus();
-    } else {
+    try {
+      if (existing && !existing.closed &&
+          existing.location.href.endsWith("stats.html")) {
+        existing.focus();
+      } else {
+        window.open("stats.html", "finsical-stats");
+      }
+    } catch {
+      // The named tab was navigated cross-origin — the location read
+      // throws SecurityError. Reopen ours over the same name.
       window.open("stats.html", "finsical-stats");
     }
   }
