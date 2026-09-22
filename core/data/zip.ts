@@ -36,6 +36,17 @@ export function zipEntries(d: Uint8Array): ZipEntry[] {
   const cdOff = u32(v, eocd + 16);
   const out: ZipEntry[] = [];
   const dec = new TextDecoder();
+  const decStrict = new TextDecoder("utf-8", { fatal: true });
+  // Pre-Unicode tools wrote names in a local code page; the Japanese
+  // Aquazone archives use Shift_JIS (the GP UTF-8 flag is unset). The
+  // heuristic can't distinguish a CP1252 name whose bytes happen to be
+  // valid SJIS — those still decode wrong — but a Shift_JIS result with
+  // replacement characters is certainly a misdetection, so fall back to
+  // lenient UTF-8 in that case rather than keeping the worse guess.
+  const decSjis = (() => {
+    try { return new TextDecoder("shift_jis"); }
+    catch { return null; }
+  })();
   let p = cdOff;
   for (let i = 0; i < count; i++) {
     if (p + 46 > d.length || u32(v, p) !== CDIR)
@@ -45,8 +56,18 @@ export function zipEntries(d: Uint8Array): ZipEntry[] {
     const nlen = u16(v, p + 28), elen = u16(v, p + 30), clen = u16(v, p + 32);
     if (p + 46 + nlen + elen + clen > eocd)
       throw new Error("zip: truncated central directory");
+    const raw = d.subarray(p + 46, p + 46 + nlen);
+    let name: string;
+    if (u16(v, p + 8) & 0x800) name = dec.decode(raw); // GP flag: UTF-8
+    else {
+      try { name = decStrict.decode(raw); }
+      catch {
+        const sj = decSjis?.decode(raw);
+        name = sj && !sj.includes("\uFFFD") ? sj : dec.decode(raw);
+      }
+    }
     out.push({
-      name: dec.decode(d.subarray(p + 46, p + 46 + nlen)),
+      name,
       method: u16(v, p + 10),
       csize: u32(v, p + 20),
       usize: u32(v, p + 24),

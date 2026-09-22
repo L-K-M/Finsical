@@ -73,12 +73,26 @@ export class TankAudio {
     void this.ctx.resume().then(() => this.startAmbient());
   }
 
+  /** Play one imported sound by name — install feedback and the only
+   * trigger for records (like an imported music track) that no sim
+   * event maps onto. */
+  playImported(name: string): void {
+    this.play(this.imported.get(name) ?? null, 0.8);
+  }
+
   private find(...subs: string[]): AudioBuffer | null {
-    // Imported (user-dropped) sounds outrank bundled manifest sounds —
-    // the drop is the more deliberate, more recent act.
-    for (const map of [this.imported, this.buffers])
-      for (const [name, buf] of map)
-        if (subs.some((s) => name.toLowerCase().includes(s))) return buf;
+    // Exact names beat substring hits globally — a bundled "aqua" keeps
+    // the ambient slot over an unrelated import that merely contains
+    // the substring. Within each pass, imported (user-dropped) sounds
+    // still outrank bundled manifest ones — the drop is the more
+    // deliberate, more recent act.
+    for (const exact of [true, false])
+      for (const map of [this.imported, this.buffers])
+        for (const [name, buf] of map) {
+          const n = name.toLowerCase();
+          if (subs.some((s) => exact ? n === s : n.includes(s)))
+            return buf;
+        }
     return null;
   }
 

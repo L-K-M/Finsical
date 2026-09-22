@@ -4,10 +4,10 @@ import { zipEntries, zipRead } from "./zip.js";
 const enc = new TextEncoder();
 
 /** Build a minimal single-entry zip. method 0 = stored, 8 = deflate-raw. */
-function buildZip(name: string, payload: Uint8Array,
+function buildZip(name: string | Uint8Array, payload: Uint8Array,
                   method = 0, data?: Uint8Array): Uint8Array {
   const body = data ?? payload;
-  const n = enc.encode(name);
+  const n = typeof name === "string" ? enc.encode(name) : name;
   const lh = new Uint8Array(30 + n.length + body.length);
   const lv = new DataView(lh.buffer);
   lv.setUint32(0, 0x04034b50, true);
@@ -54,6 +54,21 @@ describe("zipEntries", () => {
     expect(es[0]!.name).toBe("clownfish.fsh");
     expect(es[0]!.method).toBe(0);
     expect(es[0]!.usize).toBe(5);
+  });
+
+  it("decodes Shift_JIS names from pre-Unicode archives", () => {
+    // Real name bytes from the JPN set's 非売品詰め合わせ.zip — no
+    // UTF-8 flag, Shift_JIS body text.
+    const sjis = new Uint8Array([
+      65, 81, 85, 65, 90, 79, 78, 69, 32, 148, 241, 148, 132, 149, 105,
+      139, 108, 130, 223, 141, 135, 130, 237, 130, 185, 47, 65, 81, 85,
+      65, 90, 79, 78, 69, 32, 131, 125, 131, 98, 131, 76, 131, 147, 131,
+      116, 131, 66, 131, 98, 131, 86, 131, 133, 129, 105, 77, 65, 67,
+      144, 234, 151, 112, 129, 106, 46, 122, 105, 112]);
+    const z = buildZip(sjis, enc.encode("x"));
+    expect(zipEntries(z)[0]!.name).toBe(
+      "AQUAZONE 非売品詰め合わせ/" +
+      "AQUAZONE マッキンフィッシュ（MAC専用）.zip");
   });
 
   it("rejects non-zip data", () => {

@@ -13,6 +13,7 @@
 import { zipEntries, zipRead } from "../core/data/zip.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
+import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
 import { metaGet, metaPut, packDelete, packGet, packPut }
   from "./store.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
@@ -24,6 +25,11 @@ export const DEFAULT_ITEM = "aquazonewithguppiesandaddons";
 const JPN_ITEM = "aquazone-jpn-set";
 const JPN_ZIP = "AQUAZONE (JPN) SET.zip";
 const JPN_ROOT = "AQUAZONE (JPN) SET/AQUAZONE ITEM/";
+/** Non-retail bonus bundle inside the JPN set — carries the exclusive
+ * たまちゃん/カメどん fish loose in subfolders and the Mac-only zip
+ * (with its CD bonus track) nested a level deeper. */
+const JPN_BONUS = `${JPN_ZIP}/AQUAZONE (JPN) SET/` +
+  "AQUAZONE 非売品詰め合わせ.zip";
 
 export interface Collection {
   section: string;
@@ -38,8 +44,16 @@ export interface Collection {
    * serves the file itself. */
   prefix?: string;
   /** Loose-file mode: only entries matching this extension filter list —
-   * keeps tank-set subfolders' stray .plt/.acc out of the tanks section. */
+   * keeps tank-set subfolders' stray .plt/.acc out of the tanks section.
+   * Nested-zip mode: the leaf-entry filter (packs, audio, …). */
   exts?: RegExp;
+  /** Nested-zip mode: matching entries also list when they sit inside
+   * subdirectories of the collection zip (default is top-level only). */
+  deep?: boolean;
+  /** Nested-zip mode: entries matching this are themselves zips to
+   * open; their `exts`-matching entries import too — the add-on sits
+   * two archives deep, past what archive.org's zip view serves. */
+  inside?: RegExp;
 }
 
 /** Outer archives that hold importable add-on packs. The JPN SET item
@@ -62,6 +76,12 @@ export const COLLECTIONS: Collection[] = [
     prefix: JPN_ROOT + "水槽/", exts: /\.azn$/i },
   { section: "fish", item: JPN_ITEM, outer: JPN_ZIP,
     prefix: "AQUAZONE (JPN) SET/AQUAZONE 魚/", exts: /\.fsh$/i },
+  // The non-retail bundle's fish sit in per-title subfolders; its Mac
+  // archive (マッキンフィッシュ（MAC専用）.zip) holds the CD bonus track.
+  { section: "fish", item: JPN_ITEM, outer: JPN_BONUS,
+    exts: /\.fsh$/i, deep: true },
+  { section: "sounds", item: JPN_ITEM, outer: JPN_BONUS,
+    exts: AUDIO_FILE_EXT, deep: true, inside: /\.zip$/i },
 ];
 
 const PACK_EXT = /\.(fsh|grv|plt|acc|azn|rez)$/i;
@@ -160,24 +180,57 @@ async function listPage(item: string, outer: string): Promise<string> {
 }
 
 /** List one collection's add-ons. Three outer layouts: a zip whose HTML
- * page exposes inner pack zips; a nested zip-of-packs ("a.zip/b.zip",
- * enumerated locally); or a zip holding loose pack files directly
- * (`prefix` set — each entry is served raw by zip view). */
+ * page exposes inner pack zips; a nested zip ("a.zip/b.zip", enumerated
+ * locally — subdirectories and one zip-in-zip level when `deep`/`inside`
+ * allow); or a zip holding loose pack files directly (`prefix` set —
+ * each entry is served raw by zip view). */
 async function listCollection(col: Collection): Promise<Importable[]> {
   const item = col.item ?? DEFAULT_ITEM;
   const { outer } = col;
   if (outer.includes("/")) {
     // Nested collection zip: no HTML listing exists, so enumerate its own
-    // entries. Each pack entry is addressed as "{zip url}#{entry name}".
+    // entries. Each entry is addressed as "{zip url}#{entry name}"; a
+    // leaf inside a nested zip adds another fragment.
     const zipUrl =
       `${BASE}/${item}/${outer.split("/").map(encodeURIComponent).join("/")}`;
     const z = await fetchZip(zipUrl);
+    const exts = col.exts ?? PACK_EXT;
+    const stem = (n: string) =>
+      n.replace(/\.[^.]+$/, "").split("/").pop()!;
     const out: Importable[] = [];
+    // `inner` feeds names/labels — deep listings can repeat a basename
+    // across subdirs, so collisions qualify with the path, then a count.
+    const used = new Set<string>();
+    const push = (entry: string, url: string): void => {
+      const base = stem(entry);
+      if (!base) return;
+      // A colliding basename prefers the extension-stripped full path;
+      // flat names have no path to fall back on, so count up.
+      const full = entry.replace(/\.[^.]+$/, "");
+      let inner = base;
+      if (used.has(inner) && full !== base && !used.has(full))
+        inner = full;
+      for (let n = 2; used.has(inner); n++) inner = `${base} (${n})`;
+      used.add(inner);
+      out.push({ section: "", inner, url });
+    };
     for (const e of zipEntries(z)) {
-      if (!PACK_EXT.test(e.name) || e.name.includes("/")) continue;
-      const name = e.name.replace(/\.[^.]+$/, "");
-      if (name) out.push({ section: "", inner: name,
-                          url: `${zipUrl}#${e.name}` });
+      if (e.name.endsWith("/")) continue; // directory entry
+      if (exts.test(e.name) && (col.deep || !e.name.includes("/"))) {
+        push(e.name, `${zipUrl}#${e.name}`);
+        continue;
+      }
+      if (!col.inside?.test(e.name)) continue;
+      let iz: Uint8Array;
+      try { iz = await zipRead(z, e); }
+      catch { continue; } // unreadable nested archive — skip it
+      let leaves: ReturnType<typeof zipEntries>;
+      try { leaves = zipEntries(iz); }
+      catch { continue; } // matched the .zip filter but isn't one
+      for (const leaf of leaves) {
+        if (leaf.name.endsWith("/") || !exts.test(leaf.name)) continue;
+        push(leaf.name, `${zipUrl}#${e.name}#${leaf.name}`);
+      }
     }
     return out;
   }
@@ -224,49 +277,84 @@ async function listCollection(col: Collection): Promise<Importable[]> {
   return out;
 }
 
-/** Fetch an add-on zip and return every pack entry inside. A URL fragment
- * ("{zip}#{entry}") addresses one pack directly inside a nested collection
- * zip — archive.org can't serve entries two zips deep. */
-async function fetchInnerPacks(url: string): Promise<Uint8Array[]> {
-  const i = url.indexOf("#");
-  const zipUrl = i === -1 ? url : url.slice(0, i);
-  const entry = i === -1 ? undefined : url.slice(i + 1);
-  if (entry === undefined && !/\.zip$/i.test(zipUrl)) {
+interface RawBlob { name: string; data: Uint8Array }
+
+/** Fetch an add-on's raw file bytes. URL fragments chain: "{zip}#{entry}"
+ * addresses one entry inside a nested collection zip, and a fragment
+ * that is itself a zip entry descends another level ("{zip}#{a.zip}
+ * #{dir/file.mp3}") — archive.org can't serve entries that deep. */
+async function fetchInnerBlobs(url: string): Promise<RawBlob[]> {
+  const [zipUrl, ...frags] = url.split("#");
+  if (!frags.length && !/\.zip$/i.test(zipUrl!)) {
     // Loose file inside a collection zip — the URL serves the pack or
     // image itself; no container to open. fetchZip already memoizes,
     // dedupes concurrent calls, and persists bytes on immutable hosts.
-    return [await fetchZip(zipUrl)];
+    const name = zipUrl!.split("/").pop() ?? zipUrl!;
+    let decoded = name;
+    try { decoded = decodeURIComponent(name); } catch { /* keep raw */ }
+    return [{ name: decoded, data: await fetchZip(zipUrl!) }];
   }
-  const z = await fetchZip(zipUrl);
-  const packs: Uint8Array[] = [];
-  for (const e of zipEntries(z)) {
-    if (entry !== undefined ? e.name !== entry : !PACK_EXT.test(e.name))
-      continue;
+  let z = await fetchZip(zipUrl!);
+  for (let i = 0; i < frags.length; i++) {
+    const e = zipEntries(z).find((x) => x.name === frags[i]);
+    if (!e) throw new Error(`${url}: entry missing`);
     const d = await zipRead(z, e);
-    if (isPack(d)) packs.push(d);
+    if (i === frags.length - 1) return [{ name: e.name, data: d }];
+    z = d; // this fragment addressed another zip — descend into it
   }
-  if (entry !== undefined && !packs.length)
-    throw new Error(`${url}: entry missing or not a pack`);
+  // No fragments: every pack entry in the zip (multi-fish inner zips).
+  const packs: RawBlob[] = [];
+  for (const e of zipEntries(z)) {
+    if (!PACK_EXT.test(e.name)) continue;
+    const d = await zipRead(z, e);
+    if (isPack(d)) packs.push({ name: e.name, data: d });
+  }
   return packs;
 }
 
 export interface PackResult {
   sheets: Map<string, SpriteSheet>;
   images: Map<string, IndexedImage>;
+  /** Sound records — `wav` is the encoded payload (literal WAV for
+   * 'snd ' decodes, the compressed stream for audio files). */
+  sounds: { name: string; wav: Uint8Array }[];
+}
+
+/** The listing qualifies colliding leaf names ("sub/dup", "dup (2)");
+ * an audio-file record takes its name from the basename stem, so it
+ * must carry the same qualification — otherwise installing the sibling
+ * stem separately overwrites this record in the bank/store. Only the
+ * record matching the unqualified leaf stem is renamed: 'snd ' fork
+ * records and differently-stemmed audio keep their own names. */
+export function qualifySoundItemName(
+    recs: { name: string; wav: Uint8Array }[], inner: string):
+    { name: string; wav: Uint8Array }[] {
+  const stem = inner.split("/").pop()!
+    .replace(/\.(zip|wav|mp3|aiff?|m4a|ogg|flac)$/i, "")
+    .replace(/ \(\d+\)$/, "");
+  return recs.map((s) =>
+    s.name === stem && s.name !== inner ? { ...s, name: inner } : s);
 }
 
 /** Download + decode one add-on (inner zip of a collection zip). Returns
  * one result per pack entry — multi-fish zips keep species separate so
- * the caller can pick each one's best sheet. */
+ * the caller can pick each one's best sheet. Sound-bearing entries
+ * (audio files, 'snd ' resource forks) come back as sound records. */
 export async function importAddon(url: string): Promise<PackResult[]> {
-  const blobs = await fetchInnerPacks(url);
+  const blobs = await fetchInnerBlobs(url);
   const out: PackResult[] = [];
-  for (const p of blobs) {
-    if (isPack(p)) {
-      out.push({ sheets: fshToSheets(p), images: packImages(p) });
-    } else if (isBmp(p)) {
-      const img = decodeBmp(p);
-      if (img) out.push({ sheets: new Map(), images: new Map([[url, img]]) });
+  for (const b of blobs) {
+    if (isPack(b.data)) {
+      out.push({ sheets: fshToSheets(b.data), images: packImages(b.data),
+                 sounds: [] });
+    } else if (isBmp(b.data)) {
+      const img = decodeBmp(b.data);
+      if (img) out.push({ sheets: new Map(), sounds: [],
+                         images: new Map([[url, img]]) });
+    } else {
+      const sounds = fileSoundRecords(b.name, b.data);
+      if (sounds.length)
+        out.push({ sheets: new Map(), images: new Map(), sounds });
     }
   }
   return out;
@@ -304,6 +392,11 @@ export interface ImportHandlers {
   onSheets(sheets: Map<string, SpriteSheet>, name: string, url: string,
            section: string, live: boolean): void;
   onImages(images: Iterable<IndexedImage>, src: string, section: string): void;
+  /** Sound records from a sound-bearing add-on — audio files and
+   * 'snd ' resource forks alike arrive pre-flattened to {name, wav}.
+   * `live` marks user installs vs restores (a restore must not play). */
+  onSounds?(recs: { name: string; wav: Uint8Array }[],
+            live: boolean): void;
   /** Fired once per successful install — lets the caller record which
    * add-ons went into the tank so they can be restored later. */
   onInstall?(it: Importable): void;
@@ -322,9 +415,26 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return e;
 }
 
+/** MIME for a sound record's encoded bytes — magic-sniffed since the
+ * record stem carries no extension ("" = let the element sniff). */
+function audioType(d: Uint8Array): string {
+  const s = (o: number, ...b: number[]) =>
+    b.every((x, i) => d[o + i] === x);
+  if (s(0, 0x52, 0x49, 0x46, 0x46)) return "audio/wav";   // RIFF
+  if (s(0, 0x49, 0x44, 0x33) || s(0, 0xFF) && (d[1]! & 0xE0) === 0xE0)
+    return "audio/mpeg";                                 // ID3 / frame sync
+  if (s(0, 0x46, 0x4F, 0x52, 0x4D)) return "audio/aiff"; // FORM
+  if (s(0, 0x4F, 0x67, 0x67, 0x53)) return "audio/ogg";  // OggS
+  if (s(0, 0x66, 0x4C, 0x61, 0x43)) return "audio/flac"; // fLaC
+  return "";
+}
+
 // Packs are immutable per URL — memoize so re-visits skip the download.
 // Module-level so the tank page's remote-install path shares the cache.
 const packCache = new Map<string, Promise<PackResult[]>>();
+/** The sound preview's live Blob URL — one at a time, revoked when the
+ * detail pane rebuilds. */
+let sndObjUrl: string | null = null;
 export function fetchAddon(url: string): Promise<PackResult[]> {
   let p = packCache.get(url);
   if (!p) {
@@ -532,7 +642,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       const it = thumbQueue.shift()!;
       thumbRunning++;
       void fetchPack(it.url).then((rs) => {
-        const usable = rs.filter((r) => r.sheets.size || r.images.size);
+        const usable = rs.filter(
+          (r) => r.sheets.size || r.images.size || r.sounds.length);
         const pv = usable.length ? h.preview(usable) : null;
         if (!pv) return;
         thumbs.set(it.url, pv);
@@ -583,12 +694,15 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   // install) and restore (re-import on launch); only the onInstall
   // side effect differs. `live` marks user installs vs restores.
   function applyPack(it: Importable, rs: PackResult[], live: boolean): void {
-    const usable = rs.filter((r) => r.sheets.size || r.images.size);
+    const usable = rs.filter(
+      (r) => r.sheets.size || r.images.size || r.sounds.length);
     if (!usable.length) throw new Error("no pack inside");
     for (const r of usable) {
       if (r.sheets.size)
         h.onSheets(r.sheets, it.inner, it.url, it.section, live);
       if (r.images.size) h.onImages(r.images.values(), it.url, it.section);
+      if (r.sounds.length)
+        h.onSounds?.(qualifySoundItemName(r.sounds, it.inner), live);
     }
     installed.add(it.url);
     browse.querySelector(`[data-url="${CSS.escape(it.url)}"]`)
@@ -618,9 +732,15 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   function showDetail(it: Importable): void {
     browse.style.display = "none";
     detail.style.display = "";
+    // The previous preview's Blob URL pins its bytes — release it once
+    // the detail pane is being rebuilt (its element is gone).
+    if (sndObjUrl) { URL.revokeObjectURL(sndObjUrl); sndObjUrl = null; }
     detail.textContent = "";
     const back = el("button", "back", "‹ All add-ons");
-    back.addEventListener("click", showBrowse);
+    back.addEventListener("click", () => {
+      if (sndObjUrl) { URL.revokeObjectURL(sndObjUrl); sndObjUrl = null; }
+      showBrowse();
+    });
     detail.appendChild(back);
     detail.appendChild(el("div", "dname", it.inner));
     detail.appendChild(el("div", "dmeta", `${it.section} · archive.org`));
@@ -634,13 +754,34 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     detailRef = { url: it.url, act, status };
 
     void fetchPack(it.url).then((rs) => {
-      const usable = rs.filter((r) => r.sheets.size || r.images.size);
+      const usable = rs.filter(
+        (r) => r.sheets.size || r.images.size || r.sounds.length);
       if (!usable.length) throw new Error("no pack inside");
       const pv = h.preview(usable);
-      if (pv) { pvBox.appendChild(pv); thumbs.set(it.url, pv);
-                storeThumb(it, pv); }
+      // Cache the thumb even if this view was navigated away from while
+      // the fetch was in flight; only pane mutation is gated below.
+      if (pv) { thumbs.set(it.url, pv); storeThumb(it, pv); }
+      // A stale resolve must not create a Blob URL (it would orphan on
+      // the next assignment) or touch the detached pane's nodes. The
+      // captured status element identifies this build — reopening the
+      // same URL mid-fetch replaces it, rejecting the older callback.
+      if (!detailRef || detailRef.url !== it.url ||
+          detailRef.status !== status) return;
+      if (pv) pvBox.appendChild(pv);
+      const snds = usable.flatMap((r) => r.sounds);
+      if (snds.length) {
+        // Sound add-ons preview with a real player — the payload is
+        // already-decoded WAV or a browser-decodable encoded stream.
+        const au = el("audio", "dau");
+        au.controls = true;
+        sndObjUrl = URL.createObjectURL(
+          new Blob([snds[0]!.wav], { type: audioType(snds[0]!.wav) }));
+        au.src = sndObjUrl;
+        pvBox.appendChild(au);
+      }
       const kinds = [...new Set(usable.map((r) =>
-        r.sheets.size ? "fish" : "scenery"))].join(" + ");
+        r.sheets.size ? "fish" : r.sounds.length ? "sound" : "scenery"))]
+        .join(" + ");
       status.textContent =
         `${usable.length} pack${usable.length > 1 ? "s" : ""} · ${kinds}`;
       act.style.display = "";

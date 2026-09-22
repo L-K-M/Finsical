@@ -1,6 +1,8 @@
 import { mountImportPanel } from "./import.js";
 import { previewOf } from "./render.js";
 import { fishThumbKey, openBus } from "./bus.js";
+import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
+import { sndsMerge } from "./store.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
 
@@ -90,6 +92,37 @@ panel.open();
 // the tank page just sees an unknown op and ignores it.
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !e.repeat) bus.post({ op: "closePanel" });
+});
+
+// Sound files dropped on the panel: decoded/encoded bytes persist to
+// the shared IndexedDB store, then the tank page is asked to reload
+// and play them (audio contexts live in the tank page's webview).
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  void (async () => {
+    const recs: { name: string; wav: Uint8Array }[] = [];
+    for (const file of Array.from(e.dataTransfer?.files ?? [])) {
+      if (file.size > 32 * 1024 * 1024) { // same cap as the tank
+        console.warn("snd skip (too large):", file.name);
+        continue;
+      }
+      try {
+        recs.push(...fileSoundRecords(
+          file.name, new Uint8Array(await file.arrayBuffer())));
+      } catch (err) { console.warn("snd skip:", file.name, err); }
+    }
+    if (!recs.length) return;
+    qualifySoundNames(recs);
+    try { await sndsMerge(recs); }
+    catch (err) {
+      // The tank re-reads the store on soundsLoaded — nothing landed,
+      // so posting it would report a success that isn't one.
+      console.warn("snd persist failed:", err);
+      return;
+    }
+    bus.post({ op: "soundsLoaded", name: recs[0]!.name });
+  })().catch((err) => console.warn("sound drop failed:", err));
 });
 
 // ---- tabs ------------------------------------------------------------------

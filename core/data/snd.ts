@@ -374,3 +374,38 @@ export function hasSounds(data: Uint8Array): boolean {
   try { return sndResources(data).length > 0; }
   catch { return false; }
 }
+
+/** Extensions decodeAudioData handles natively — a plain audio file
+ * imports as a named record with the encoded bytes carried verbatim
+ * (`wav` is "the encoded payload", not always literal WAV). */
+export const AUDIO_FILE_EXT = /\.(wav|mp3|aiff?|m4a|ogg|flac)$/i;
+
+/** Sound records for one file: audio files pass their bytes through
+ * for decodeAudioData; anything else is tried as a (possibly wrapped)
+ * resource fork. [] when the file carries neither. */
+export function fileSoundRecords(name: string, data: Uint8Array):
+    { name: string; wav: Uint8Array }[] {
+  const base = name.split("/").pop()!;
+  // "._x.mp3" is a macOS AppleDouble companion, not raw audio — let it
+  // fall through to the fork path (or [] when it holds no 'snd ').
+  if (!base.startsWith("._") && AUDIO_FILE_EXT.test(base))
+    return [{ name: base.replace(/\.[^.]+$/, ""), wav: data }];
+  try {
+    return soundsFromRsrc(data)
+      .map((s) => ({ name: s.name, wav: wavBytes(s) }));
+  } catch { return []; } // not a resource fork
+}
+
+/** Records key by name in the sound bank and the persisted store —
+ * qualify same-stem records inside one batch ("a.mp3" + "a.wav") so
+ * the later one doesn't silently overwrite the earlier. In-place. */
+export function qualifySoundNames(
+    recs: { name: string; wav: Uint8Array }[]): void {
+  const seen = new Set<string>();
+  for (const r of recs) {
+    let n = r.name, i = 2;
+    while (seen.has(n)) n = `${r.name} (${i++})`;
+    r.name = n;
+    seen.add(n);
+  }
+}
