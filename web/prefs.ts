@@ -66,6 +66,12 @@ const PIC_SPECS: SliderSpec[] = [
   { key: "zoom", label: "Overscan",
     blurb: "Real sets run the raster a little past the glass — this " +
       "zooms in, cropping the outermost pixels like the bezel did." },
+  { key: "hsize", label: "Horizontal size", fmt: offset,
+    blurb: "The width pot from the service menu — stretches or " +
+      "squeezes the raster sideways inside the glass." },
+  { key: "vsize", label: "Vertical size", fmt: offset,
+    blurb: "The height pot — tubes drifted tall or squat as they " +
+      "warmed up, and owners dialed it back by hand." },
   { key: "red", label: "Red gain", fmt: offset,
     blurb: "Trims the red gun, like a service-menu adjustment. " +
       "Lower it to cool the picture, raise it to warm." },

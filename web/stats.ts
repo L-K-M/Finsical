@@ -1,4 +1,4 @@
-import { openBus } from "./bus.js";
+import { inNativeShell, openBus } from "./bus.js";
 import { deriveStats, hungerLabel, trend, uptime } from "./statsmodel.js";
 import type { BusMsg } from "./bus.js";
 import type { StatsInput, TankStats } from "./statsmodel.js";
@@ -110,6 +110,19 @@ const bus = openBus((m: BusMsg) => {
 document.getElementById("sclose")!.addEventListener("click", () => {
   bus.post({ op: "closeStats" });
   window.close(); // browser-tab fallback; no-ops where not script-opened
+});
+// Zoom box: toggles user ↔ standard size (native shell performs it;
+// the browser fallback can only resize script-opened windows).
+let savedSize: { w: number; h: number } | null = null;
+document.getElementById("szoom")!.addEventListener("click", () => {
+  if (inNativeShell()) { bus.post({ op: "statsZoom" }); return; }
+  if (savedSize) {
+    window.resizeTo(savedSize.w, savedSize.h);
+    savedSize = null;
+  } else {
+    savedSize = { w: window.outerWidth, h: window.outerHeight };
+    window.resizeTo(400, 360);
+  }
 });
 let shaded = false;
 document.getElementById("sshade")!.addEventListener("click", () => {

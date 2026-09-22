@@ -89,6 +89,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     /// clear state a newer toggle already replaced.
     private var statsShadeGen = 0
     private var statsPreShadeMinH: CGFloat?
+    /// The stats window's user-set frame — its zoom box toggles between
+    /// this and the default size (System 8 user/standard states).
+    private var statsUserFrame: NSRect?
+
+    /// Restore a window's autosaved frame or center it on first launch,
+    /// then enable autosaving for future moves and resizes. The saved
+    /// frame is clamped to the screens that exist now, so a stale entry
+    /// can't strand a window off a detached display.
+    private func restoreOrCenter(_ w: NSWindow, _ name: String) {
+        if !w.setFrameUsingName(name) { w.center() }
+        w.setFrameAutosaveName(name)
+    }
 
     private func makeWebConfig() -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
@@ -122,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             w.contentView = pv
             w.isReleasedWhenClosed = false // reopen reuses the window
             w.initialFirstResponder = pv
-            w.center()
+            restoreOrCenter(w, "FinsicalPanel")
             panelWindow = w
             panelView = pv
             pv.load(URLRequest(
@@ -165,7 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             w.contentView = pv
             w.isReleasedWhenClosed = false // reopen reuses the window
             w.initialFirstResponder = pv
-            w.center()
+            restoreOrCenter(w, "FinsicalPrefs")
             prefsWindow = w
             prefsView = pv
             pv.load(URLRequest(
@@ -202,7 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             w.contentView = sv
             w.isReleasedWhenClosed = false // reopen reuses the window
             w.initialFirstResponder = sv
-            w.center()
+            restoreOrCenter(w, "FinsicalStats")
             statsWindow = w
             statsView = sv
             sv.load(URLRequest(
@@ -219,6 +231,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                               width: f.width, height: h), display: true)
             statsPreShadeH = nil
             statsPreShadeMinH = nil
+        } else if let w = statsWindow, w.frame.height < 40 {
+            // A frame autosaved while shaded restores as a titlebar
+            // sliver — with no pre-shade height after a relaunch it
+            // would stay stuck. Grow it back, top edge pinned.
+            let f = w.frame
+            w.setFrame(NSRect(x: f.minX, y: f.maxY - 200,
+                              width: f.width, height: 200),
+                       display: true)
         }
         statsWindow?.makeKeyAndOrderFront(nil)
     }
@@ -502,6 +522,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 }
                 return
             }
+            // Zoom box: toggles between the user's frame and the
+            // standard (default-size) state, top edge pinned.
+            if body["op"] as? String == "statsZoom",
+               message.webView === statsView, let w = statsWindow,
+               statsPreShadeH == nil {
+                if let uf = statsUserFrame {
+                    w.setFrame(uf, display: true, animate: true)
+                    statsUserFrame = nil
+                } else {
+                    statsUserFrame = w.frame
+                    let f = w.frame, d = CGSize(width: 360, height: 320)
+                    w.setFrame(NSRect(x: f.minX, y: f.maxY - d.height,
+                                      width: d.width, height: d.height),
+                               display: true, animate: true)
+                }
+                return
+            }
             if body["op"] as? String == "dragWindow" {
                 if message.webView === webView {
                     dragWindow(window, firstResponder: webView)
@@ -692,7 +729,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             strip.heightAnchor.constraint(equalToConstant: 22),
         ])
 
-        window.center()
+        restoreOrCenter(window, "FinsicalTank")
         window.makeKeyAndOrderFront(nil)
 
         webView.load(URLRequest(url: URL(string: "finsical://app/index.html")!))

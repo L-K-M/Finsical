@@ -78,7 +78,9 @@ export function wrapAngle(d: number): number {
   return ((d + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) -
     Math.PI;
 }
-const HUNGER_PER_TICK = 1 / (30 * 120); // starving after ~2 min
+/** Hunger rise per tick — a fish starves after ~20 min unfed (~1.5 day
+ * cycles), keeping Aquazone's once-a-day feeding rhythm. */
+const HUNGER_PER_TICK = 1 / (30 * 1200);
 const HUNGER_SEEK = 0.4;
 const EAT_DIST = 6;
 const FOOD_SINK = 0.35;
