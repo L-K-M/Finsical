@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { hasSounds, mace3Decode, parseSnd, soundsFromRsrc,
-         unwrapContainer, wavBytes } from "./snd.js";
+import { fileSoundRecords, hasSounds, mace3Decode, parseSnd,
+         soundsFromRsrc, unwrapContainer, wavBytes } from "./snd.js";
 
 const sha256 = async (d: Uint8Array): Promise<string> =>
   [...new Uint8Array(await crypto.subtle.digest("SHA-256", d))]
@@ -401,5 +401,34 @@ describe("soundsFromRsrc", () => {
     const cut = hqx.subarray(0, 60);
     expect(() => unwrapContainer(cut)).not.toThrow();
     expect(unwrapContainer(cut)).toEqual(cut);
+  });
+});
+
+describe("fileSoundRecords", () => {
+  const pcm = new Uint8Array(64).fill(0x80);
+  const snd = sndFmt1U8(pcm);
+  const fork = buildRsrc(new Map([["snd ", [[1, "tap", 0, snd]]]]));
+
+  it("passes audio files through under their stem name", () => {
+    const mp3 = new Uint8Array([0xFF, 0xFB, 0x92, 0x44]);
+    expect(fileSoundRecords("Macinfish.mp3", mp3))
+      .toEqual([{ name: "Macinfish", wav: mp3 }]);
+    expect(fileSoundRecords("bloop.WAV", pcm)[0]!.name).toBe("bloop");
+  });
+
+  it("decodes resource forks to WAV records", () => {
+    const recs = fileSoundRecords("AQUAZONE.rsrc", fork);
+    expect(recs).toHaveLength(1);
+    expect(recs[0]!.name).toBe("tap");
+    expect(recs[0]!.wav.slice(0, 4))
+      .toEqual(new Uint8Array([0x52, 0x49, 0x46, 0x46])); // "RIFF"
+  });
+
+  it("returns [] for files that carry no sound", () => {
+    expect(fileSoundRecords("notes.txt", new Uint8Array([1, 2, 3])))
+      .toEqual([]);
+    // A pack file is not a fork — returns nothing rather than throwing.
+    expect(fileSoundRecords("fish.fsh", new Uint8Array(300)))
+      .toEqual([]);
   });
 });

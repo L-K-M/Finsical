@@ -374,3 +374,22 @@ export function hasSounds(data: Uint8Array): boolean {
   try { return sndResources(data).length > 0; }
   catch { return false; }
 }
+
+/** Extensions decodeAudioData handles natively — a plain audio file
+ * imports as a named record with the encoded bytes carried verbatim
+ * (`wav` is "the encoded payload", not always literal WAV). */
+export const AUDIO_FILE_EXT = /\.(wav|mp3|aiff?|m4a|ogg|flac)$/i;
+
+/** Sound records for one file: audio files pass their bytes through
+ * for decodeAudioData; anything else is tried as a (possibly wrapped)
+ * resource fork. [] when the file carries neither. */
+export function fileSoundRecords(name: string, data: Uint8Array):
+    { name: string; wav: Uint8Array }[] {
+  if (AUDIO_FILE_EXT.test(name))
+    return [{ name: name.split("/").pop()!.replace(/\.[^.]+$/, ""),
+              wav: data }];
+  try {
+    return soundsFromRsrc(data)
+      .map((s) => ({ name: s.name, wav: wavBytes(s) }));
+  } catch { return []; } // not a resource fork
+}

@@ -5,7 +5,7 @@ import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
 import { TankAudio } from "./audio.js";
 import { fetchAddon, mountImportPanel, COLLECTIONS } from "./import.js";
-import { soundsFromRsrc, wavBytes } from "../core/data/snd.js";
+import { fileSoundRecords } from "../core/data/snd.js";
 import { sndsGet, sndsMerge } from "./store.js";
 import { imageCanvas, previewOf, swimCanvas } from "./render.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
@@ -334,9 +334,25 @@ function recordInstall(it: Importable): void {
   saveTank();
 }
 
+/** Imported sound records (audio file or 'snd ' fork) enter the live
+ * bank and persist — both install paths (local panel, remote relay)
+ * funnel here so behavior can't diverge. Live installs also play the
+ * first record once as feedback; restores stay silent. */
+async function handleSounds(
+    recs: { name: string; wav: Uint8Array }[],
+    live = true): Promise<void> {
+  await audio.addWavs(recs);
+  // Persist best-effort — a quota failure logs, never breaks import.
+  void sndsMerge(recs).catch((e) =>
+    console.warn("snd persist failed:", e));
+  if (live) audio.playImported(recs[0]!.name);
+  audio.startAmbient();
+}
+
 const importPanel = mountImportPanel({
   onSheets: handleSheets,
   onImages: handleImages,
+  onSounds: (recs, live) => { void handleSounds(recs, live); },
   onInstall: recordInstall,
   preview: previewOf,
 });
@@ -494,6 +510,17 @@ function onBusMessage(m: BusMsg): void {
   } else if (m.op === "machine" && typeof m.id === "string") {
     const nm = machineById(m.id);
     if (nm && nm.id !== machine.id) { applyMachine(nm); postState(); }
+  } else if (m.op === "soundsLoaded") {
+    // The panel page dropped sound files into the shared IndexedDB
+    // store — re-read it (merges under the same name) and optionally
+    // play the named record as feedback.
+    void sndsGet().then((recs) => {
+      if (!recs?.length) return;
+      void audio.addWavs(recs).then(() => {
+        if (typeof m.name === "string") audio.playImported(m.name);
+        audio.startAmbient();
+      });
+    }).catch((e) => console.warn("snd reload failed:", e));
   }
 }
 
@@ -576,12 +603,14 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   installsInFlight.add(it.url);
   try {
     const rs = await fetchAddon(it.url);
-    const usable = rs.filter((r) => r.sheets.size || r.images.size);
+    const usable = rs.filter(
+      (r) => r.sheets.size || r.images.size || r.sounds.length);
     if (!usable.length) throw new Error("no pack inside");
     for (const r of usable) {
       if (r.sheets.size)
         handleSheets(r.sheets, it.inner, it.url, it.section, true);
       if (r.images.size) handleImages(r.images.values(), it.url, it.section);
+      if (r.sounds.length) await handleSounds(r.sounds);
     }
     recordInstall(it);
     bus.post({ op: "installed", url: it.url });
@@ -857,28 +886,24 @@ window.addEventListener("drop", (e) => {
       console.info(`azpack imported: ${flat.size} files`);
       return;
     }
-    // Resource forks carry 'snd ' — a dropped AQUAZONE .rsrc (or its
-    // .bin/.hqx/AppleDouble wrapping) decodes in-app and persists.
-    // Classic forks cap at ~16MB, but .bin/.hqx wrappers inflate that
-    // (BinHex text is ~4/3), so allow up to 32MB before skipping.
+    // Audio files (mp3/wav/…) and 'snd ' resource forks — a dropped
+    // AQUAZONE .rsrc (or its .bin/.hqx/AppleDouble wrapping) or a plain
+    // audio file decodes in-app and persists. Classic forks cap at
+    // ~16MB, but .bin/.hqx wrappers inflate that (BinHex text is ~4/3),
+    // so allow up to 32MB before skipping.
     const recs: { name: string; wav: Uint8Array }[] = [];
     for (const [name, file] of flat) {
       if (file.size > 32 * 1024 * 1024) continue;
       // A pack file belongs to the pass below — don't buffer it twice.
       const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());
       if (isPack(head)) continue;
-      const snds = soundsFromRsrc(new Uint8Array(await file.arrayBuffer()));
-      if (!snds.length) continue;
-      for (const s of snds) recs.push({ name: s.name, wav: wavBytes(s) });
-      console.info(`${name}: ${snds.length} sounds imported`);
+      const got = fileSoundRecords(
+        name, new Uint8Array(await file.arrayBuffer()));
+      if (!got.length) continue;
+      recs.push(...got);
+      console.info(`${name}: ${got.length} sounds imported`);
     }
-    if (recs.length) {
-      await audio.addWavs(recs);
-      // Persist best-effort — a quota failure logs, never breaks import.
-      void sndsMerge(recs).catch((e) =>
-        console.warn("snd persist failed:", e));
-      audio.startAmbient();
-    }
+    if (recs.length) await handleSounds(recs);
     // Not an .azpack folder — try each dropped file as a raw .fsh/.REZ pack.
     for (const [name, file] of flat) {
       const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());
