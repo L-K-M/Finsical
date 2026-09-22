@@ -47,6 +47,15 @@ describe("Sim", () => {
     expect(sim.food[0]!.y).toBeLessThan(100 - 12 + 0.4);
   });
 
+  it("hunger builds over ~20 minutes, not seconds", () => {
+    const sim = new Sim({ width: 200, height: 100 }, 5);
+    const f = sim.addFish({ x: 40, y: 50, hunger: 0 });
+    for (let i = 0; i < 30 * 60; i++) sim.tick(); // one minute
+    expect(f.hunger).toBeLessThan(0.1);
+    for (let i = 0; i < 30 * 1200; i++) sim.tick(); // ~20 more
+    expect(f.hunger).toBeGreaterThanOrEqual(1);
+  });
+
   it("hungry fish seeks and eats food", () => {
     const sim = new Sim({ width: 200, height: 100 }, 5);
     const f = sim.addFish({ x: 40, y: 50, hunger: 0.9 });

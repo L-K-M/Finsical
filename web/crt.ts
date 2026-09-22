@@ -40,6 +40,8 @@ uniform float uGrain; // analog noise
 uniform float uBright;// picture brightness gain (0.5 = neutral)
 uniform float uContr; // picture contrast around mid level
 uniform float uZoom;  // overscan crop (0 = full raster)
+uniform float uHSize; // raster width pot (0.5 = neutral)
+uniform float uVSize; // raster height pot (0.5 = neutral)
 uniform float uRed;   // per-channel gain trims
 uniform float uGreen;
 uniform float uBlue;
@@ -63,6 +65,11 @@ void main() {
   // little crop is authentic. Crop in raster space, BEFORE the warp —
   // the crop stays uniform and the curved black corners survive.
   uv = (uv - 0.5) / (1.0 + 0.12 * uZoom) + 0.5;
+  // Front-panel size pots stretch or shrink the raster inside the
+  // glass — before the warp, so a shrunken raster's matte edge still
+  // bows with the tube. 0.75–1.25 is a service-adjustment range.
+  uv = (uv - 0.5) / vec2(0.75 + 0.5 * uHSize,
+                         0.75 + 0.5 * uVSize) + 0.5;
   // Barrel curve: sample positions bow outward like curved tube glass.
   vec2 cc = uv * 2.0 - 1.0;
   uv = (cc * (1.0 + (0.10 * uCurve) * dot(cc, cc))) * 0.5 + 0.5;
@@ -166,6 +173,10 @@ export interface CrtConfig {
   contrast: number;
   /** Edge crop like real overscan — 0 shows the full raster. */
   zoom: number;
+  /** Raster width inside the glass — 0.5 is neutral. */
+  hsize: number;
+  /** Raster height inside the glass — 0.5 is neutral. */
+  vsize: number;
   /** Per-channel trims — 0.5 is neutral on each. */
   red: number;
   green: number;
@@ -177,6 +188,7 @@ export const CRT_DEFAULTS: Readonly<CrtConfig> = Object.freeze<CrtConfig>({
   misconvergence: 0.35, grille: 1.0, curvature: 0.45, vignette: 0.35,
   flicker: 0.30, grain: 0.30,
   brightness: 0.50, contrast: 0.50, zoom: 0.0,
+  hsize: 0.50, vsize: 0.50,
   red: 0.50, green: 0.50, blue: 0.50,
 });
 
@@ -279,6 +291,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     misconvergence: "uConv", grille: "uGrill", curvature: "uCurve",
     vignette: "uVig", flicker: "uFlick", grain: "uGrain",
     brightness: "uBright", contrast: "uContr", zoom: "uZoom",
+    hsize: "uHSize", vsize: "uVSize",
     red: "uRed", green: "uGreen", blue: "uBlue",
   };
   const traitLoc = {} as Record<keyof CrtConfig, WebGLUniformLocation | null>;
