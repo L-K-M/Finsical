@@ -81,16 +81,18 @@ export class TankAudio {
   }
 
   private find(...subs: string[]): AudioBuffer | null {
-    // Imported (user-dropped) sounds outrank bundled manifest sounds —
-    // the drop is the more deliberate, more recent act. Exact names win
-    // over substring hits so a dropped "aqua.mp3" claims the ambient
-    // slot instead of an unrelated import that happens to contain it.
-    for (const map of [this.imported, this.buffers]) {
-      for (const [name, buf] of map)
-        if (subs.some((s) => name.toLowerCase() === s)) return buf;
-      for (const [name, buf] of map)
-        if (subs.some((s) => name.toLowerCase().includes(s))) return buf;
-    }
+    // Exact names beat substring hits globally — a bundled "aqua" keeps
+    // the ambient slot over an unrelated import that merely contains
+    // the substring. Within each pass, imported (user-dropped) sounds
+    // still outrank bundled manifest ones — the drop is the more
+    // deliberate, more recent act.
+    for (const exact of [true, false])
+      for (const map of [this.imported, this.buffers])
+        for (const [name, buf] of map) {
+          const n = name.toLowerCase();
+          if (subs.some((s) => exact ? n === s : n.includes(s)))
+            return buf;
+        }
     return null;
   }
 

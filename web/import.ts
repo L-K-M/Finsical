@@ -198,23 +198,32 @@ async function listCollection(col: Collection): Promise<Importable[]> {
     const stem = (n: string) =>
       n.replace(/\.[^.]+$/, "").split("/").pop()!;
     const out: Importable[] = [];
+    // `inner` feeds names/labels — deep listings can repeat a basename
+    // across subdirs, so a collision falls back to the full path.
+    const used = new Set<string>();
+    const push = (entry: string, url: string): void => {
+      const base = stem(entry);
+      if (!base) return;
+      const inner = used.has(base) ? entry.replace(/\.[^.]+$/, "") : base;
+      used.add(inner);
+      out.push({ section: "", inner, url });
+    };
     for (const e of zipEntries(z)) {
       if (e.name.endsWith("/")) continue; // directory entry
       if (exts.test(e.name) && (col.deep || !e.name.includes("/"))) {
-        const inner = stem(e.name);
-        if (inner) out.push({ section: "", inner,
-                            url: `${zipUrl}#${e.name}` });
+        push(e.name, `${zipUrl}#${e.name}`);
         continue;
       }
       if (!col.inside?.test(e.name)) continue;
       let iz: Uint8Array;
       try { iz = await zipRead(z, e); }
       catch { continue; } // unreadable nested archive — skip it
-      for (const leaf of zipEntries(iz)) {
+      let leaves: ReturnType<typeof zipEntries>;
+      try { leaves = zipEntries(iz); }
+      catch { continue; } // matched the .zip filter but isn't one
+      for (const leaf of leaves) {
         if (leaf.name.endsWith("/") || !exts.test(leaf.name)) continue;
-        const inner = stem(leaf.name);
-        if (inner) out.push({ section: "", inner,
-                            url: `${zipUrl}#${e.name}#${leaf.name}` });
+        push(leaf.name, `${zipUrl}#${e.name}#${leaf.name}`);
       }
     }
     return out;
@@ -401,6 +410,9 @@ function audioType(d: Uint8Array): string {
 // Packs are immutable per URL — memoize so re-visits skip the download.
 // Module-level so the tank page's remote-install path shares the cache.
 const packCache = new Map<string, Promise<PackResult[]>>();
+/** The sound preview's live Blob URL — one at a time, revoked when the
+ * detail pane rebuilds. */
+let sndObjUrl: string | null = null;
 export function fetchAddon(url: string): Promise<PackResult[]> {
   let p = packCache.get(url);
   if (!p) {
@@ -697,6 +709,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   function showDetail(it: Importable): void {
     browse.style.display = "none";
     detail.style.display = "";
+    // The previous preview's Blob URL pins its bytes — release it once
+    // the detail pane is being rebuilt (its element is gone).
+    if (sndObjUrl) { URL.revokeObjectURL(sndObjUrl); sndObjUrl = null; }
     detail.textContent = "";
     const back = el("button", "back", "‹ All add-ons");
     back.addEventListener("click", showBrowse);
@@ -725,8 +740,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         // already-decoded WAV or a browser-decodable encoded stream.
         const au = el("audio", "dau");
         au.controls = true;
-        au.src = URL.createObjectURL(
+        sndObjUrl = URL.createObjectURL(
           new Blob([snds[0]!.wav], { type: audioType(snds[0]!.wav) }));
+        au.src = sndObjUrl;
         pvBox.appendChild(au);
       }
       const kinds = [...new Set(usable.map((r) =>

@@ -352,7 +352,10 @@ async function handleSounds(
 const importPanel = mountImportPanel({
   onSheets: handleSheets,
   onImages: handleImages,
-  onSounds: (recs, live) => { void handleSounds(recs, live); },
+  onSounds: (recs, live) => {
+    void handleSounds(recs, live)
+      .catch((e) => console.warn("sound import failed:", e));
+  },
   onInstall: recordInstall,
   preview: previewOf,
 });
@@ -516,7 +519,8 @@ function onBusMessage(m: BusMsg): void {
     // play the named record as feedback.
     void sndsGet().then((recs) => {
       if (!recs?.length) return;
-      void audio.addWavs(recs).then(() => {
+      // Returned, so the outer catch sees addWavs rejections too.
+      return audio.addWavs(recs).then(() => {
         if (typeof m.name === "string") audio.playImported(m.name);
         audio.startAmbient();
       });

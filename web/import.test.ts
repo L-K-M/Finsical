@@ -71,6 +71,7 @@ const innerZip = buildZip([{ name: MP3_LEAF, data: MP3_BYTES }]);
 const outerZip = buildZip([
   { name: "dir/", data: new Uint8Array(0) },
   { name: "dir/Tamatama.fsh", data: new Uint8Array([1, 2, 3]) },
+  { name: "dir/notreally.zip", data: enc.encode("not a zip") },
   { name: MACZIP_NAME, data: innerZip },
 ]);
 
@@ -101,6 +102,13 @@ describe("archive.org nested collections", () => {
     expect(fish.some((i) => i.inner === "Tamatama")).toBe(true);
     expect(fish.find((i) => i.inner === "Tamatama")!.url.split("#"))
       .toHaveLength(2);
+  });
+
+  it("survives a .zip-named entry that isn't a zip", async () => {
+    // dir/notreally.zip matches `inside` but can't parse — it must be
+    // skipped, not sink the collection's whole listing.
+    const items = await listAddons();
+    expect(items.filter((i) => i.section === "sounds")).toHaveLength(1);
   });
 
   it("imports the nested mp3 as a sound record", async () => {

@@ -38,7 +38,11 @@ export function zipEntries(d: Uint8Array): ZipEntry[] {
   const dec = new TextDecoder();
   const decStrict = new TextDecoder("utf-8", { fatal: true });
   // Pre-Unicode tools wrote names in a local code page; the Japanese
-  // Aquazone archives use Shift_JIS (the GP UTF-8 flag is unset).
+  // Aquazone archives use Shift_JIS (the GP UTF-8 flag is unset). The
+  // heuristic can't distinguish a CP1252 name whose bytes happen to be
+  // valid SJIS — those still decode wrong — but a Shift_JIS result with
+  // replacement characters is certainly a misdetection, so fall back to
+  // lenient UTF-8 in that case rather than keeping the worse guess.
   const decSjis = (() => {
     try { return new TextDecoder("shift_jis"); }
     catch { return null; }
@@ -57,7 +61,10 @@ export function zipEntries(d: Uint8Array): ZipEntry[] {
     if (u16(v, p + 8) & 0x800) name = dec.decode(raw); // GP flag: UTF-8
     else {
       try { name = decStrict.decode(raw); }
-      catch { name = decSjis?.decode(raw) ?? dec.decode(raw); }
+      catch {
+        const sj = decSjis?.decode(raw);
+        name = sj && !sj.includes("\uFFFD") ? sj : dec.decode(raw);
+      }
     }
     out.push({
       name,

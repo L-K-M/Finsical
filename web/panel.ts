@@ -108,8 +108,13 @@ window.addEventListener("drop", (e) => {
         file.name, new Uint8Array(await file.arrayBuffer())));
     }
     if (!recs.length) return;
-    await sndsMerge(recs).catch((err) =>
-      console.warn("snd persist failed:", err));
+    try { await sndsMerge(recs); }
+    catch (err) {
+      // The tank re-reads the store on soundsLoaded — nothing landed,
+      // so posting it would report a success that isn't one.
+      console.warn("snd persist failed:", err);
+      return;
+    }
     bus.post({ op: "soundsLoaded", name: recs[0]!.name });
   })().catch((err) => console.warn("sound drop failed:", err));
 });
