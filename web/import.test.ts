@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { importAddon, listAddons } from "./import.js";
+import { importAddon, listAddons, qualifySoundItemName }
+  from "./import.js";
 
 const enc = new TextEncoder();
 
@@ -125,5 +126,29 @@ describe("archive.org nested collections", () => {
     const rs = await importAddon(snd.url);
     expect(rs).toHaveLength(1);
     expect(rs[0]!.sounds).toEqual([{ name: "Macinfish", wav: MP3_BYTES }]);
+  });
+});
+
+describe("qualifySoundItemName", () => {
+  const rec = (name: string) => ({ name, wav: new Uint8Array(4) });
+
+  it("renames an audio record to a path-qualified inner", () => {
+    // The listing disambiguated "dup" to "sub/dup" — the record must
+    // carry that identity or a separately-installed sibling aliases it.
+    const rs = qualifySoundItemName([rec("dup")], "sub/dup");
+    expect(rs.map((r) => r.name)).toEqual(["sub/dup"]);
+  });
+
+  it("renames a numeric-suffix inner the same way", () => {
+    const rs = qualifySoundItemName([rec("dup")], "dup (2)");
+    expect(rs.map((r) => r.name)).toEqual(["dup (2)"]);
+  });
+
+  it("leaves unqualified names and fork records alone", () => {
+    expect(qualifySoundItemName([rec("Macinfish")], "Macinfish")
+      .map((r) => r.name)).toEqual(["Macinfish"]);
+    // 'snd ' record names come from the resource, not the filename.
+    expect(qualifySoundItemName([rec("tap"), rec("bloop")], "sounds")
+      .map((r) => r.name)).toEqual(["tap", "bloop"]);
   });
 });

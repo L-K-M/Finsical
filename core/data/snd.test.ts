@@ -425,6 +425,13 @@ describe("fileSoundRecords", () => {
       .toEqual(new Uint8Array([0x52, 0x49, 0x46, 0x46])); // "RIFF"
   });
 
+  it("routes ._ AppleDouble companions to the fork path", () => {
+    // A Finder zip's ._song.mp3 isn't audio — it mustn't pass through
+    // as an undecodable record.
+    expect(fileSoundRecords("._song.mp3", new Uint8Array([1, 2, 3])))
+      .toEqual([]);
+  });
+
   it("returns [] for files that carry no sound", () => {
     expect(fileSoundRecords("notes.txt", new Uint8Array([1, 2, 3])))
       .toEqual([]);

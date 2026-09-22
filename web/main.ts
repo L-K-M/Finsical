@@ -4,7 +4,8 @@ import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.j
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
 import { TankAudio } from "./audio.js";
-import { fetchAddon, mountImportPanel, COLLECTIONS } from "./import.js";
+import { fetchAddon, mountImportPanel, qualifySoundItemName,
+         COLLECTIONS } from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { sndsGet, sndsMerge } from "./store.js";
 import { imageCanvas, previewOf, swimCanvas } from "./render.js";
@@ -622,8 +623,11 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
       if (r.images.size) handleImages(r.images.values(), it.url, it.section);
     }
     // One batch across resources: dedupes names globally, plays the
-    // feedback once, and a decode failure can't fail the install.
-    const sounds = usable.flatMap((r) => r.sounds);
+    // feedback once, and a decode failure can't fail the install. The
+    // listing's qualified `inner` is the record identity — a sibling
+    // stem installed separately mustn't overwrite under the basename.
+    const sounds = usable.flatMap(
+      (r) => qualifySoundItemName(r.sounds, it.inner));
     if (sounds.length)
       await handleSounds(sounds)
         .catch((e) => console.warn("sound install skipped:", e));

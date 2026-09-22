@@ -385,9 +385,11 @@ export const AUDIO_FILE_EXT = /\.(wav|mp3|aiff?|m4a|ogg|flac)$/i;
  * resource fork. [] when the file carries neither. */
 export function fileSoundRecords(name: string, data: Uint8Array):
     { name: string; wav: Uint8Array }[] {
-  if (AUDIO_FILE_EXT.test(name))
-    return [{ name: name.split("/").pop()!.replace(/\.[^.]+$/, ""),
-              wav: data }];
+  const base = name.split("/").pop()!;
+  // "._x.mp3" is a macOS AppleDouble companion, not raw audio — let it
+  // fall through to the fork path (or [] when it holds no 'snd ').
+  if (!base.startsWith("._") && AUDIO_FILE_EXT.test(base))
+    return [{ name: base.replace(/\.[^.]+$/, ""), wav: data }];
   try {
     return soundsFromRsrc(data)
       .map((s) => ({ name: s.name, wav: wavBytes(s) }));

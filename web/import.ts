@@ -320,6 +320,21 @@ export interface PackResult {
   sounds: { name: string; wav: Uint8Array }[];
 }
 
+/** The listing qualifies colliding leaf names ("sub/dup", "dup (2)");
+ * an audio-file record takes its name from the basename stem, so it
+ * must carry the same qualification — otherwise installing the sibling
+ * stem separately overwrites this record in the bank/store. 'snd '
+ * fork records keep their resource names (they never equal the leaf
+ * stem). */
+export function qualifySoundItemName(
+    recs: { name: string; wav: Uint8Array }[], inner: string):
+    { name: string; wav: Uint8Array }[] {
+  return recs.map((s) =>
+    s.name !== inner &&
+    (inner.includes("/") || inner.startsWith(`${s.name} (`))
+      ? { ...s, name: inner } : s);
+}
+
 /** Download + decode one add-on (inner zip of a collection zip). Returns
  * one result per pack entry — multi-fish zips keep species separate so
  * the caller can pick each one's best sheet. Sound-bearing entries
@@ -685,7 +700,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       if (r.sheets.size)
         h.onSheets(r.sheets, it.inner, it.url, it.section, live);
       if (r.images.size) h.onImages(r.images.values(), it.url, it.section);
-      if (r.sounds.length) h.onSounds?.(r.sounds, live);
+      if (r.sounds.length)
+        h.onSounds?.(qualifySoundItemName(r.sounds, it.inner), live);
     }
     installed.add(it.url);
     browse.querySelector(`[data-url="${CSS.escape(it.url)}"]`)
