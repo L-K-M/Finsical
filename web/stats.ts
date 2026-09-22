@@ -156,10 +156,14 @@ document.addEventListener("visibilitychange", () => {
 // distinguishes reopen from tab-switch/minimize (which must leave the
 // shade folded). In a browser tab the fold is CSS-only, so the
 // viewport never drops below the threshold and nothing unshades.
+// Must stay comfortably above the native shell's shaded (titlebar-only)
+// window height (~24px) and below its minimum expanded height — drift
+// here silently breaks reopen-unshade.
+const SHADED_MAX_H = 60;
 let lastInnerH = window.innerHeight;
 window.addEventListener("resize", () => {
   const h = window.innerHeight;
-  if (shaded && lastInnerH <= 60 && h > 60) {
+  if (shaded && lastInnerH <= SHADED_MAX_H && h > SHADED_MAX_H) {
     shaded = false;
     win.classList.remove("shaded");
   }
