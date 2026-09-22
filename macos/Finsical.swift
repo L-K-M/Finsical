@@ -85,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     private var statsView: WKWebView?
     /// Frame height before a windowshade collapse — restored on open.
     private var statsPreShadeH: CGFloat?
+    private var statsPreShadeMinH: CGFloat?
 
     private func makeWebConfig() -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
@@ -449,17 +450,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                     let h: CGFloat = 24 // titlebar + border
                     // Programmatic setFrame can clamp to minSize; drop
                     // the floor while folded and restore it on expand.
+                    if statsPreShadeMinH == nil {
+                        statsPreShadeMinH = w.minSize.height
+                    }
                     w.minSize = NSSize(width: w.minSize.width, height: h)
                     w.setFrame(NSRect(x: f.minX, y: f.maxY - h,
                                       width: f.width, height: h),
                                display: true, animate: true)
                 } else if let h = statsPreShadeH {
                     w.minSize = NSSize(width: w.minSize.width,
-                                       height: 200)
+                                       height: statsPreShadeMinH ?? 200)
                     w.setFrame(NSRect(x: f.minX, y: f.maxY - h,
                                       width: f.width, height: h),
                                display: true, animate: true)
                     statsPreShadeH = nil
+                    statsPreShadeMinH = nil
                 }
                 return
             }

@@ -59,6 +59,7 @@ describe("deriveStats", () => {
     // Below QUALITY_SEEK the advice is already "stop feeding" — the
     // portion-size hint must not stack a "feed a little less" beside it.
     const s = deriveStats({ ...base, waterQuality: 0.2, foodSettled: 2 });
+    expect(s.advice.join(" ")).toMatch(/Stop feeding/);
     expect(s.advice.join(" ")).not.toMatch(/rotting/);
   });
 
