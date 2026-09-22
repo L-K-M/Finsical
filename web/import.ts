@@ -323,16 +323,15 @@ export interface PackResult {
 /** The listing qualifies colliding leaf names ("sub/dup", "dup (2)");
  * an audio-file record takes its name from the basename stem, so it
  * must carry the same qualification — otherwise installing the sibling
- * stem separately overwrites this record in the bank/store. 'snd '
- * fork records keep their resource names (they never equal the leaf
- * stem). */
+ * stem separately overwrites this record in the bank/store. Only the
+ * record matching the unqualified leaf stem is renamed: 'snd ' fork
+ * records and differently-stemmed audio keep their own names. */
 export function qualifySoundItemName(
     recs: { name: string; wav: Uint8Array }[], inner: string):
     { name: string; wav: Uint8Array }[] {
+  const stem = inner.split("/").pop()!.replace(/ \(\d+\)$/, "");
   return recs.map((s) =>
-    s.name !== inner &&
-    (inner.includes("/") || inner.startsWith(`${s.name} (`))
-      ? { ...s, name: inner } : s);
+    s.name === stem && s.name !== inner ? { ...s, name: inner } : s);
 }
 
 /** Download + decode one add-on (inner zip of a collection zip). Returns

@@ -151,4 +151,9 @@ describe("qualifySoundItemName", () => {
     expect(qualifySoundItemName([rec("tap"), rec("bloop")], "sounds")
       .map((r) => r.name)).toEqual(["tap", "bloop"]);
   });
+
+  it("keeps fork record names under a path-qualified inner", () => {
+    expect(qualifySoundItemName([rec("tap"), rec("bloop")], "sub/sounds")
+      .map((r) => r.name)).toEqual(["tap", "bloop"]);
+  });
 });
