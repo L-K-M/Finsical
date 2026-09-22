@@ -129,10 +129,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     private func parseSavedFrame(_ s: String) -> NSRect? {
         var f = NSRectFromString(s)
         if f.width <= 0 || f.height <= 0 {
-            let p = s.split(separator: " ").compactMap { Double($0) }
-            f = p.count >= 4
-                ? NSRect(x: p[0], y: p[1], width: p[2], height: p[3])
-                : .zero
+            let parts = s.split(separator: " ")
+            guard parts.count >= 4,
+                  let x = Double(parts[0]), let y = Double(parts[1]),
+                  let w = Double(parts[2]), let h = Double(parts[3])
+            else { return nil }
+            f = NSRect(x: x, y: y, width: w, height: h)
         }
         return f.width > 0 && f.height > 0 ? f : nil
     }
