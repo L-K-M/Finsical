@@ -199,12 +199,18 @@ async function listCollection(col: Collection): Promise<Importable[]> {
       n.replace(/\.[^.]+$/, "").split("/").pop()!;
     const out: Importable[] = [];
     // `inner` feeds names/labels — deep listings can repeat a basename
-    // across subdirs, so a collision falls back to the full path.
+    // across subdirs, so collisions qualify with the path, then a count.
     const used = new Set<string>();
     const push = (entry: string, url: string): void => {
       const base = stem(entry);
       if (!base) return;
-      const inner = used.has(base) ? entry.replace(/\.[^.]+$/, "") : base;
+      // A colliding basename prefers the extension-stripped full path;
+      // flat names have no path to fall back on, so count up.
+      const full = entry.replace(/\.[^.]+$/, "");
+      let inner = base;
+      if (used.has(inner) && full !== base && !used.has(full))
+        inner = full;
+      for (let n = 2; used.has(inner); n++) inner = `${base} (${n})`;
       used.add(inner);
       out.push({ section: "", inner, url });
     };
@@ -714,7 +720,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     if (sndObjUrl) { URL.revokeObjectURL(sndObjUrl); sndObjUrl = null; }
     detail.textContent = "";
     const back = el("button", "back", "‹ All add-ons");
-    back.addEventListener("click", showBrowse);
+    back.addEventListener("click", () => {
+      if (sndObjUrl) { URL.revokeObjectURL(sndObjUrl); sndObjUrl = null; }
+      showBrowse();
+    });
     detail.appendChild(back);
     detail.appendChild(el("div", "dname", it.inner));
     detail.appendChild(el("div", "dmeta", `${it.section} · archive.org`));

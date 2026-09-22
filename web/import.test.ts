@@ -67,7 +67,11 @@ const MP3_LEAF = new Uint8Array([
   115, 104, 46, 109, 112, 51]);
 const MP3_BYTES = new Uint8Array([0x49, 0x44, 0x33, 0x04, 1, 2, 3]); // ID3
 
-const innerZip = buildZip([{ name: MP3_LEAF, data: MP3_BYTES }]);
+const innerZip = buildZip([
+  { name: MP3_LEAF, data: MP3_BYTES },
+  { name: "dup.mp3", data: MP3_BYTES },
+  { name: "sub/dup.mp3", data: MP3_BYTES },
+]);
 const outerZip = buildZip([
   { name: "dir/", data: new Uint8Array(0) },
   { name: "dir/Tamatama.fsh", data: new Uint8Array([1, 2, 3]) },
@@ -92,8 +96,12 @@ describe("archive.org nested collections", () => {
   it("lists sounds two zips deep and fish in subdirectories", async () => {
     const items = await listAddons();
     const sounds = items.filter((i) => i.section === "sounds");
-    expect(sounds).toHaveLength(1);
+    expect(sounds).toHaveLength(3);
     expect(sounds[0]!.inner).toBe("Macinfish");
+    // Same-stem leaves in different subdirs must not alias — the
+    // colliding one keeps its path-qualified name.
+    expect(sounds.map((i) => i.inner).sort())
+      .toEqual(["Macinfish", "dup", "sub/dup"]);
     // zipUrl#innerMacZip#leaf — the entry chain is the identity.
     expect(sounds[0]!.url.split("#")).toHaveLength(3);
     expect(sounds[0]!.url).toContain(
@@ -108,7 +116,7 @@ describe("archive.org nested collections", () => {
     // dir/notreally.zip matches `inside` but can't parse — it must be
     // skipped, not sink the collection's whole listing.
     const items = await listAddons();
-    expect(items.filter((i) => i.section === "sounds")).toHaveLength(1);
+    expect(items.filter((i) => i.section === "sounds")).toHaveLength(3);
   });
 
   it("imports the nested mp3 as a sound record", async () => {
