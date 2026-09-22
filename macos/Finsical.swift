@@ -109,15 +109,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     private func restoreOrCenter(_ w: NSWindow, _ name: String) {
         w.delegate = self
         frameKeys[ObjectIdentifier(w)] = name
-        let saved = UserDefaults.standard
-            .string(forKey: "FinsicalFrame.\(name)")
-            .map(NSRectFromString)
-        if let f = saved, f.width > 0, f.height > 0,
+        let defaults = UserDefaults.standard
+        // Fall back to the legacy setFrameAutosaveName key so upgraded
+        // installs keep the placements they already saved.
+        let saved = (defaults.string(forKey: "FinsicalFrame.\(name)")
+                     ?? defaults.string(forKey: "NSWindow Frame \(name)"))
+            .flatMap(parseSavedFrame)
+        if let f = saved,
            NSScreen.screens.contains(where: { $0.frame.intersects(f) }) {
             w.setFrame(f, display: false)
         } else {
             w.center()
         }
+    }
+
+    /// New values are NSStringFromRect output ("{{x, y}, {w, h}}"); the
+    /// legacy autosave key is "x y w h sx sy sw sh" — take its first
+    /// four fields and ignore the screen descriptor.
+    private func parseSavedFrame(_ s: String) -> NSRect? {
+        var f = NSRectFromString(s)
+        if f.width <= 0 || f.height <= 0 {
+            let p = s.split(separator: " ").compactMap { Double($0) }
+            f = p.count >= 4
+                ? NSRect(x: p[0], y: p[1], width: p[2], height: p[3])
+                : .zero
+        }
+        return f.width > 0 && f.height > 0 ? f : nil
     }
 
     /// Every move/resize rewrites the saved frame, so the value on disk
