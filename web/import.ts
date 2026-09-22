@@ -329,7 +329,9 @@ export interface PackResult {
 export function qualifySoundItemName(
     recs: { name: string; wav: Uint8Array }[], inner: string):
     { name: string; wav: Uint8Array }[] {
-  const stem = inner.split("/").pop()!.replace(/ \(\d+\)$/, "");
+  const stem = inner.split("/").pop()!
+    .replace(/ \(\d+\)$/, "")
+    .replace(/\.(zip|wav|mp3|aiff?|m4a|ogg|flac)$/i, "");
   return recs.map((s) =>
     s.name === stem && s.name !== inner ? { ...s, name: inner } : s);
 }

@@ -156,4 +156,11 @@ describe("qualifySoundItemName", () => {
     expect(qualifySoundItemName([rec("tap"), rec("bloop")], "sub/sounds")
       .map((r) => r.name)).toEqual(["tap", "bloop"]);
   });
+
+  it("qualifies only the record matching the leaf stem", () => {
+    // Mixed batch: the leaf-stem record takes the item identity while
+    // a sibling 'snd ' record keeps its own name.
+    expect(qualifySoundItemName([rec("dup"), rec("tap")], "dup (2)")
+      .map((r) => r.name)).toEqual(["dup (2)", "tap"]);
+  });
 });
