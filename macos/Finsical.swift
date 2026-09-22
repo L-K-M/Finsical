@@ -132,7 +132,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             let parts = s.split(separator: " ")
             guard parts.count >= 4,
                   let x = Double(parts[0]), let y = Double(parts[1]),
-                  let w = Double(parts[2]), let h = Double(parts[3])
+                  let w = Double(parts[2]), let h = Double(parts[3]),
+                  x.isFinite, y.isFinite, w.isFinite, h.isFinite
             else { return nil }
             f = NSRect(x: x, y: y, width: w, height: h)
         }
