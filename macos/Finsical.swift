@@ -691,7 +691,7 @@ tankMenu.addItem(withTitle: "Tank Overview",
                  keyEquivalent: "o")
 tankMenu.addItem(withTitle: "Tank Stats",
                  action: #selector(AppDelegate.openStats),
-                 keyEquivalent: "s")
+                 keyEquivalent: "S") // ⇧⌘S — ⌘S is the Save convention
 tankMenu.addItem(withTitle: "Import Add-ons…",
                  action: #selector(AppDelegate.openImport),
                  keyEquivalent: "i")

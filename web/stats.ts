@@ -49,6 +49,11 @@ function trendBase(): Sample | null {
   const cutoff = Date.now() - TREND_AGE_MS;
   let old: Sample | null = null;
   for (const s of history) { if (s.t > cutoff) break; old = s; }
+  // A hidden/closed window misses pushes — a baseline far older than
+  // the window would compare "now" against a stale sample. Fall back
+  // to the oldest in-window sample so the arrow means ~90 s again.
+  if (old && Date.now() - old.t > 2 * TREND_AGE_MS)
+    return history.find((s) => s.t > cutoff) ?? null;
   return old;
 }
 
