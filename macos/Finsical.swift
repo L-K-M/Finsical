@@ -95,6 +95,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     /// Default stats-window size — the zoom box's "standard" state and
     /// the window's initial content size share it.
     private let statsStdSize = CGSize(width: 360, height: 320)
+    /// Smallest expanded stats window: the page clips rather than
+    /// scrolls (Platinum windows without scroll bars), so this keeps
+    /// every field and two care hints visible.
+    private let statsMinSize = NSSize(width: 300, height: 250)
+    /// Windowshaded height: the page's 22px collapsed Platinum window
+    /// plus the 1px drop shadow it draws below itself.
+    private let statsShadedH: CGFloat = 23
 
     /// Restore a window's autosaved frame or center it on first launch,
     /// then enable autosaving for future moves and resizes. The saved
@@ -189,8 +196,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         prefsWindow?.makeKeyAndOrderFront(nil)
     }
 
-    /// Stats window — borderless, so the page's System 8 chrome
-    /// (pinstripe titlebar, close/collapse boxes) IS the window
+    /// Stats window — borderless, so the page's Mac OS 8 chrome
+    /// (web/platinum: frame, pinstripe titlebar, boxes, 1px drop
+    /// shadow) IS the window
     /// (web/stats.ts). Chrome gestures arrive as bus ops: dragWindow
     /// drags, closeStats closes, statsShade folds it up.
     @objc func openStats() {
@@ -212,8 +220,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 backing: .buffered, defer: false)
             w.isOpaque = false
             w.backgroundColor = .clear
-            w.hasShadow = true
-            w.minSize = NSSize(width: 300, height: 200)
+            // Mac OS 8 windows cast a hard 1px shadow, which the page
+            // draws; a soft AppKit shadow would ring it.
+            w.hasShadow = false
+            w.minSize = statsMinSize
             w.contentView = sv
             w.isReleasedWhenClosed = false // reopen reuses the window
             w.initialFirstResponder = sv
@@ -228,7 +238,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         // own `shaded` flag when the viewport grows past titlebar size.
         if let w = statsWindow, let h = statsPreShadeH {
             w.minSize = NSSize(width: w.minSize.width,
-                               height: statsPreShadeMinH ?? 200)
+                               height: statsPreShadeMinH ??
+                                   statsMinSize.height)
             let f = w.frame
             w.setFrame(NSRect(x: f.minX, y: f.maxY - h,
                               width: f.width, height: h), display: true)
@@ -239,8 +250,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             // sliver — with no pre-shade height after a relaunch it
             // would stay stuck. Grow it back, top edge pinned.
             let f = w.frame
-            w.setFrame(NSRect(x: f.minX, y: f.maxY - 200,
-                              width: f.width, height: 200),
+            let h = statsMinSize.height
+            w.setFrame(NSRect(x: f.minX, y: f.maxY - h,
+                              width: f.width, height: h),
                        display: true)
         }
         statsWindow?.makeKeyAndOrderFront(nil)
@@ -494,7 +506,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                     if statsPreShadeH == nil {
                         statsPreShadeH = max(f.height, w.minSize.height)
                     }
-                    let h: CGFloat = 24 // titlebar + border
+                    let h = statsShadedH
                     // Programmatic setFrame can clamp to minSize; drop
                     // the floor while folded and restore it on expand.
                     if statsPreShadeMinH == nil {
@@ -506,7 +518,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                                display: true, animate: true)
                 } else if let h = statsPreShadeH {
                     w.minSize = NSSize(width: w.minSize.width,
-                                       height: statsPreShadeMinH ?? 200)
+                                       height: statsPreShadeMinH ??
+                                           statsMinSize.height)
                     // Clear the saved height only when the expand
                     // actually lands — a shade clicked mid-animation
                     // must keep the real height, not the partial frame.

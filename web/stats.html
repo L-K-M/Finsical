@@ -1,23 +1,18 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="statsroot">
 <head>
   <meta charset="utf-8" />
   <title>Tank Stats</title>
+  <link rel="stylesheet" href="platinum.css" />
   <link rel="stylesheet" href="app.css" />
 </head>
 <body class="statspage">
   <div id="swin">
-    <div id="stitle">
-      <button id="sclose" aria-label="Close"></button>
-      <span id="sname">Tank Stats</span>
-      <button id="szoom" aria-label="Zoom"></button>
-      <button id="sshade" aria-label="Collapse"></button>
-    </div>
-    <div id="sbody">
-      <div id="srows"></div>
+    <div class="pt-content">
+      <div id="srows" class="pt-fields"></div>
+      <div class="pt-separator"></div>
       <div id="scare"></div>
     </div>
-    <div id="sgrow" role="separator" aria-label="Resize window" title="Resize window"></div>
   </div>
   <script src="stats.js"></script>
 </body>
