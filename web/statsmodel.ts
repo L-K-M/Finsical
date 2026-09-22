@@ -41,8 +41,6 @@ export interface TankStats {
 // dumb renderer of the bus payload without importing the sim.
 /** Below this water quality fish lose their appetite (QUALITY_SEEK). */
 const QUALITY_SEEK = 0.3;
-/** Above this hunger fish actively seek food (HUNGER_SEEK). */
-const HUNGER_SEEK = 0.4;
 /** Hunger where "hungry" becomes "starving" for the worst-off fish. */
 const HUNGER_STARVING = 0.85;
 /** Avg hunger that warrants a feeding hint. */
