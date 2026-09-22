@@ -205,6 +205,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             sv.load(URLRequest(
                 url: URL(string: "finsical://app/stats.html")!))
         }
+        // Reopening a window closed while shaded: expand it here —
+        // reopening is only knowable at the shell. The page clears its
+        // own `shaded` flag when the viewport grows past titlebar size.
+        if let w = statsWindow, let h = statsPreShadeH {
+            w.minSize = NSSize(width: w.minSize.width,
+                               height: statsPreShadeMinH ?? 200)
+            let f = w.frame
+            w.setFrame(NSRect(x: f.minX, y: f.maxY - h,
+                              width: f.width, height: h), display: true)
+            statsPreShadeH = nil
+            statsPreShadeMinH = nil
+        }
         statsWindow?.makeKeyAndOrderFront(nil)
     }
 
@@ -446,7 +458,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 if body["on"] as? Bool == true {
                     // A page reload while shaded resends on:true — keep
                     // the first captured height or unshade restores 24.
-                    if statsPreShadeH == nil { statsPreShadeH = f.height }
+                    // Clamp to minSize so a rapid toggle can't capture
+                    // a mid-animation frame and shrink the restore.
+                    if statsPreShadeH == nil {
+                        statsPreShadeH = max(f.height, w.minSize.height)
+                    }
                     let h: CGFloat = 24 // titlebar + border
                     // Programmatic setFrame can clamp to minSize; drop
                     // the floor while folded and restore it on expand.

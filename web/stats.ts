@@ -149,13 +149,14 @@ setInterval(() => {
   if (!document.hidden) bus.post({ op: "hello" });
 }, 2000);
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) return;
-  // Reopened after close-while-shaded: the page never reloaded, so
-  // resync the native windowshade (Swift restores the saved frame).
-  if (shaded) {
+  if (!document.hidden) bus.post({ op: "hello" });
+});
+// The shell expands a close-while-shaded window natively on reopen —
+// a growing viewport is the only signal that distinguishes reopen
+// from tab-switch/minimize (which must leave the shade folded).
+window.addEventListener("resize", () => {
+  if (shaded && window.innerHeight > 60) {
     shaded = false;
     win.classList.remove("shaded");
-    bus.post({ op: "statsShade", on: false });
   }
-  bus.post({ op: "hello" });
 });

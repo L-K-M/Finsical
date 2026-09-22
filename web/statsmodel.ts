@@ -63,7 +63,7 @@ export function deriveStats(s: StatsInput): TankStats {
   const water = Number.isFinite(s.waterQuality)
     ? Math.min(1, Math.max(0, s.waterQuality!))
     : 1;
-  const light = s.light ?? 1;
+  const light = Number.isFinite(s.light) ? s.light! : 1;
   const stats: TankStats = {
     fishCount: fish.length,
     avgHunger,

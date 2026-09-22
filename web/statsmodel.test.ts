@@ -121,4 +121,8 @@ describe("labels", () => {
     expect(s.waterPct).toBe(100);
     expect(s.advice.join()).not.toMatch(/foul|rotting/);
   });
+
+  it("treats NaN light as day", () => {
+    expect(deriveStats({ ...base, light: NaN }).phase).toBe("day");
+  });
 });
