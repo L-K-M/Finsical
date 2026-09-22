@@ -393,3 +393,17 @@ export function fileSoundRecords(name: string, data: Uint8Array):
       .map((s) => ({ name: s.name, wav: wavBytes(s) }));
   } catch { return []; } // not a resource fork
 }
+
+/** Records key by name in the sound bank and the persisted store —
+ * qualify same-stem records inside one batch ("a.mp3" + "a.wav") so
+ * the later one doesn't silently overwrite the earlier. In-place. */
+export function qualifySoundNames(
+    recs: { name: string; wav: Uint8Array }[]): void {
+  const seen = new Set<string>();
+  for (const r of recs) {
+    let n = r.name, i = 2;
+    while (seen.has(n)) n = `${r.name} (${i++})`;
+    r.name = n;
+    seen.add(n);
+  }
+}

@@ -5,7 +5,7 @@ import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
 import { TankAudio } from "./audio.js";
 import { fetchAddon, mountImportPanel, COLLECTIONS } from "./import.js";
-import { fileSoundRecords } from "../core/data/snd.js";
+import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { sndsGet, sndsMerge } from "./store.js";
 import { imageCanvas, previewOf, swimCanvas } from "./render.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
@@ -341,6 +341,8 @@ function recordInstall(it: Importable): void {
 async function handleSounds(
     recs: { name: string; wav: Uint8Array }[],
     live = true): Promise<void> {
+  if (!recs.length) return;
+  qualifySoundNames(recs); // same-stem files in one batch mustn't alias
   await audio.addWavs(recs);
   // Persist best-effort — a quota failure logs, never breaks import.
   void sndsMerge(recs).catch((e) =>
@@ -610,11 +612,18 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     const usable = rs.filter(
       (r) => r.sheets.size || r.images.size || r.sounds.length);
     if (!usable.length) throw new Error("no pack inside");
+    let sndFeedback = true; // play once per install, not per resource
     for (const r of usable) {
       if (r.sheets.size)
         handleSheets(r.sheets, it.inner, it.url, it.section, true);
       if (r.images.size) handleImages(r.images.values(), it.url, it.section);
-      if (r.sounds.length) await handleSounds(r.sounds);
+      if (r.sounds.length) {
+        // Encoded audio reaches decodeAudioData unvalidated — a bad
+        // entry mustn't fail the whole install after sheets landed.
+        await handleSounds(r.sounds, sndFeedback)
+          .catch((e) => console.warn("sound install skipped:", e));
+        sndFeedback = false;
+      }
     }
     recordInstall(it);
     bus.post({ op: "installed", url: it.url });
@@ -907,7 +916,10 @@ window.addEventListener("drop", (e) => {
       recs.push(...got);
       console.info(`${name}: ${got.length} sounds imported`);
     }
-    if (recs.length) await handleSounds(recs);
+    // A bad audio file mustn't abort the raw-pack pass below.
+    if (recs.length)
+      await handleSounds(recs)
+        .catch((e) => console.warn("sound import failed:", e));
     // Not an .azpack folder — try each dropped file as a raw .fsh/.REZ pack.
     for (const [name, file] of flat) {
       const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());

@@ -1,7 +1,7 @@
 import { mountImportPanel } from "./import.js";
 import { previewOf } from "./render.js";
 import { fishThumbKey, openBus } from "./bus.js";
-import { fileSoundRecords } from "../core/data/snd.js";
+import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { sndsMerge } from "./store.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
@@ -104,10 +104,13 @@ window.addEventListener("drop", (e) => {
     const recs: { name: string; wav: Uint8Array }[] = [];
     for (const file of Array.from(e.dataTransfer?.files ?? [])) {
       if (file.size > 32 * 1024 * 1024) continue; // same cap as the tank
-      recs.push(...fileSoundRecords(
-        file.name, new Uint8Array(await file.arrayBuffer())));
+      try {
+        recs.push(...fileSoundRecords(
+          file.name, new Uint8Array(await file.arrayBuffer())));
+      } catch (err) { console.warn("snd skip:", file.name, err); }
     }
     if (!recs.length) return;
+    qualifySoundNames(recs);
     try { await sndsMerge(recs); }
     catch (err) {
       // The tank re-reads the store on soundsLoaded — nothing landed,

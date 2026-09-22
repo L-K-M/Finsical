@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fileSoundRecords, hasSounds, mace3Decode, parseSnd,
-         soundsFromRsrc, unwrapContainer, wavBytes } from "./snd.js";
+         qualifySoundNames, soundsFromRsrc, unwrapContainer, wavBytes }
+  from "./snd.js";
 
 const sha256 = async (d: Uint8Array): Promise<string> =>
   [...new Uint8Array(await crypto.subtle.digest("SHA-256", d))]
@@ -430,5 +431,24 @@ describe("fileSoundRecords", () => {
     // A pack file is not a fork — returns nothing rather than throwing.
     expect(fileSoundRecords("fish.fsh", new Uint8Array(300)))
       .toEqual([]);
+  });
+});
+
+describe("qualifySoundNames", () => {
+  const rec = (name: string) => ({ name, wav: new Uint8Array(4) });
+
+  it("qualifies same-stem records in one batch", () => {
+    // Records key by name in the bank and store — an unqualified
+    // duplicate would silently overwrite.
+    const recs = [rec("a"), rec("a"), rec("b"), rec("a")];
+    qualifySoundNames(recs);
+    expect(recs.map((r) => r.name))
+      .toEqual(["a", "a (2)", "b", "a (3)"]);
+  });
+
+  it("leaves unique names alone", () => {
+    const recs = [rec("x"), rec("y")];
+    qualifySoundNames(recs);
+    expect(recs.map((r) => r.name)).toEqual(["x", "y"]);
   });
 });
