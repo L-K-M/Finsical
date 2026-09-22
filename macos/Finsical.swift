@@ -85,6 +85,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     private var statsView: WKWebView?
     /// Frame height before a windowshade collapse — restored on open.
     private var statsPreShadeH: CGFloat?
+    /// Bumped on every shade/expand so a stale expand-completion can't
+    /// clear state a newer toggle already replaced.
+    private var statsShadeGen = 0
     private var statsPreShadeMinH: CGFloat?
 
     private func makeWebConfig() -> WKWebViewConfiguration {
@@ -455,6 +458,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             if body["op"] as? String == "statsShade",
                message.webView === statsView, let w = statsWindow {
                 let f = w.frame
+                // Each shade/expand supersedes the previous animation —
+                // the expand's deferred clear must not fire for a state
+                // a newer toggle already replaced.
+                statsShadeGen += 1
+                let gen = statsShadeGen
                 if body["on"] as? Bool == true {
                     // A page reload while shaded resends on:true — keep
                     // the first captured height or unshade restores 24.
@@ -485,7 +493,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                                    width: f.width, height: h),
                             display: true)
                     }, completionHandler: {
-                        if abs(w.frame.height - h) < 0.5 {
+                        if gen == self.statsShadeGen &&
+                           abs(w.frame.height - h) < 0.5 {
                             self.statsPreShadeH = nil
                             self.statsPreShadeMinH = nil
                         }
