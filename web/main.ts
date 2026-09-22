@@ -908,13 +908,13 @@ window.addEventListener("drop", (e) => {
     // so allow up to 32MB before skipping.
     const recs: { name: string; wav: Uint8Array }[] = [];
     for (const [name, file] of flat) {
+      // A pack file belongs to the pass below — don't buffer it twice.
+      const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());
+      if (isPack(head)) continue;
       if (file.size > 32 * 1024 * 1024) {
         console.warn("snd skip (too large):", name);
         continue;
       }
-      // A pack file belongs to the pass below — don't buffer it twice.
-      const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());
-      if (isPack(head)) continue;
       const got = fileSoundRecords(
         name, new Uint8Array(await file.arrayBuffer()));
       if (!got.length) continue;
