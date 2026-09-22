@@ -12,7 +12,6 @@ import type { StatsInput, TankStats } from "./statsmodel.js";
 // still renders live state over BroadcastChannel.
 
 const win = document.getElementById("swin")!;
-const body = document.getElementById("sbody")!;
 const rowsEl = document.getElementById("srows")!;
 const careEl = document.getElementById("scare")!;
 
@@ -90,7 +89,13 @@ const bus = openBus((m: BusMsg) => {
   const st = deriveStats(m as StatsInput);
   history.push({ t: Date.now(), avgHunger: st.avgHunger,
                  water: st.waterPct / 100 });
-  while (history.length > 512) history.shift();
+  // Trim by age, keeping the newest pre-cutoff sample that trendBase()
+  // needs — a bare count cap can evict it once pushes arrive faster
+  // than 512 per 90s and the arrows pin to "→". The count cap stays as
+  // a backstop but never evicts index 0 (the baseline).
+  const cutoff = Date.now() - TREND_AGE_MS;
+  while (history.length > 1 && history[1]!.t <= cutoff) history.shift();
+  if (history.length > 512) history.splice(1, history.length - 512);
   render(st);
 });
 
