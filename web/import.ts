@@ -741,8 +741,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         (r) => r.sheets.size || r.images.size || r.sounds.length);
       if (!usable.length) throw new Error("no pack inside");
       const pv = h.preview(usable);
-      if (pv) { pvBox.appendChild(pv); thumbs.set(it.url, pv);
-                storeThumb(it, pv); }
+      // Cache the thumb even if this view was navigated away from while
+      // the fetch was in flight; only pane mutation is gated below.
+      if (pv) { thumbs.set(it.url, pv); storeThumb(it, pv); }
+      // A stale resolve must not create a Blob URL (it would orphan on
+      // the next assignment) or touch the detached pane's nodes.
+      if (detailRef?.url !== it.url) return;
+      if (pv) pvBox.appendChild(pv);
       const snds = usable.flatMap((r) => r.sounds);
       if (snds.length) {
         // Sound add-ons preview with a real player — the payload is

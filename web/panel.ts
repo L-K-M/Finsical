@@ -103,7 +103,10 @@ window.addEventListener("drop", (e) => {
   void (async () => {
     const recs: { name: string; wav: Uint8Array }[] = [];
     for (const file of Array.from(e.dataTransfer?.files ?? [])) {
-      if (file.size > 32 * 1024 * 1024) continue; // same cap as the tank
+      if (file.size > 32 * 1024 * 1024) { // same cap as the tank
+        console.warn("snd skip (too large):", file.name);
+        continue;
+      }
       try {
         recs.push(...fileSoundRecords(
           file.name, new Uint8Array(await file.arrayBuffer())));
