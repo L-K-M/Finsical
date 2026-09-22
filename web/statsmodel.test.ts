@@ -115,4 +115,10 @@ describe("labels", () => {
     expect(trend(0.5, 0.4)).toBe("↓");
     expect(trend(0.5, NaN)).toBe("→"); // malformed sample reads steady
   });
+
+  it("treats NaN waterQuality as missing", () => {
+    const s = deriveStats({ ...base, waterQuality: NaN });
+    expect(s.waterPct).toBe(100);
+    expect(s.advice.join()).not.toMatch(/foul|rotting/);
+  });
 });

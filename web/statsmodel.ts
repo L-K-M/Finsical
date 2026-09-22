@@ -58,7 +58,11 @@ export function deriveStats(s: StatsInput): TankStats {
   const worst = hungries.length
     ? hungries.reduce((a, f) => (f.hunger > a.hunger ? f : a))
     : null;
-  const water = Math.min(1, Math.max(0, s.waterQuality ?? 1));
+  // Number.isFinite, not ??: a NaN payload mustn't render "NaN%" and
+  // silently pass every water-gated advice check below.
+  const water = Number.isFinite(s.waterQuality)
+    ? Math.min(1, Math.max(0, s.waterQuality!))
+    : 1;
   const light = s.light ?? 1;
   const stats: TankStats = {
     fishCount: fish.length,
