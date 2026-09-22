@@ -775,7 +775,15 @@ window.addEventListener("keydown", (e) => {
              !e.repeat && !importPanel.isOpen && !inNativeShell()) {
     // Browser-only fallback — the app opens stats.html via Tank ▸
     // Tank Stats; over BroadcastChannel the new tab finds the tank.
-    window.open("stats.html", "finsical-stats"); // reuse, don't spawn N
+    // Reuse without re-navigating: a reload would wipe the 90 s trend
+    // window stats.ts keeps for the arrows.
+    const existing = window.open("", "finsical-stats");
+    if (existing && !existing.closed &&
+        existing.location.href.endsWith("stats.html")) {
+      existing.focus();
+    } else {
+      window.open("stats.html", "finsical-stats");
+    }
   }
 });
 

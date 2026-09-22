@@ -86,6 +86,7 @@ describe("deriveStats", () => {
 
   it("caps advice at two lines, most urgent first", () => {
     const s = deriveStats({ ...base, waterQuality: 0.2, foodSettled: 3 });
+    expect(s.advice[0]).toMatch(/foul/); // most urgent first
     expect(s.advice.length).toBeLessThanOrEqual(2);
   });
 

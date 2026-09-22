@@ -313,6 +313,9 @@ body.statspage {
 }
 /* Windowshade: collapse box folds the body away. */
 #swin.shaded #sbody { display: none; }
+/* Browser fallback folds to the titlebar; native shell resizes the
+   real NSWindow, so this only matters outside the app. */
+#swin.shaded { bottom: auto; height: 24px; }
 .srow {
   display: flex; align-items: center; gap: 8px;
   padding: 3px 0;
