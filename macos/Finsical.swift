@@ -476,11 +476,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 } else if let h = statsPreShadeH {
                     w.minSize = NSSize(width: w.minSize.width,
                                        height: statsPreShadeMinH ?? 200)
-                    w.setFrame(NSRect(x: f.minX, y: f.maxY - h,
-                                      width: f.width, height: h),
-                               display: true, animate: true)
-                    statsPreShadeH = nil
-                    statsPreShadeMinH = nil
+                    // Clear the saved height only when the expand
+                    // actually lands — a shade clicked mid-animation
+                    // must keep the real height, not the partial frame.
+                    NSAnimationContext.runAnimationGroup({ _ in
+                        w.animator().setFrame(
+                            NSRect(x: f.minX, y: f.maxY - h,
+                                   width: f.width, height: h),
+                            display: true)
+                    }, completionHandler: {
+                        if abs(w.frame.height - h) < 0.5 {
+                            self.statsPreShadeH = nil
+                            self.statsPreShadeMinH = nil
+                        }
+                    })
                 }
                 return
             }
