@@ -69,7 +69,7 @@ export interface Bubble {
   y: number;
 }
 
-const MARGIN = 16;
+export const MARGIN = 16;
 export const SURFACE = 10;
 export const BOTTOM_PAD = 12;
 

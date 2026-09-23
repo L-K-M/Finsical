@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DAY_TICKS, FOOD_ROT_TICKS, Sim, TURN_TICKS } from "./sim.js";
+import { DAY_TICKS, FOOD_ROT_TICKS, MARGIN, Sim, SURFACE, TURN_TICKS } from "./sim.js";
 
 // States a fish may be in when it's not seeking food.
 const IDLE_STATES = ["drift", "turn"];
@@ -164,14 +164,16 @@ describe("Sim", () => {
       sim.waterQuality = 0; // pinned — filtration would creep it up
       sim.tick();
     }
-    expect(f.y).toBeLessThanOrEqual(40);
+    // Full-gasp ceiling is SURFACE + MARGIN + per-fish slack (≤8);
+    // bound by that + transit tolerance, not an id-specific pixel row.
+    expect(f.y).toBeLessThanOrEqual(SURFACE + MARGIN + 16);
     let maxY = 0;
     for (let i = 0; i < 500; i++) {
       sim.waterQuality = 0;
       sim.tick();
       maxY = Math.max(maxY, f.y);
     }
-    expect(maxY).toBeLessThanOrEqual(45); // stays under the waterline
+    expect(maxY).toBeLessThanOrEqual(SURFACE + MARGIN + 20); // under the waterline
   });
 
   it("day/night light oscillates in [0,1]", () => {
