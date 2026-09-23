@@ -1,4 +1,4 @@
-import { BOTTOM_PAD, DAY_TICKS, Sim } from "../core/sim.js";
+import { BOTTOM_PAD, DAY_TICKS, FOOD_ENTRY_Y, Sim } from "../core/sim.js";
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
@@ -10,6 +10,9 @@ import { decorFrame, decorPhase } from "../core/data/decor.js";
 import { pickSwimSheet } from "../core/data/swimsheet.js";
 import { ART_SCALE } from "./artscale.js";
 import { TankAudio } from "./audio.js";
+import { drawRipples, drawSplashes, newSplash, tickRipples,
+         tickSplashes } from "./fx.js";
+import type { Ripple, Splash } from "./fx.js";
 import { pushButton } from "osmium-ui";
 import { fetchAddon, mountImportPanel, qualifySoundItemName,
          COLLECTIONS } from "./import.js";
@@ -217,8 +220,13 @@ canvas.addEventListener("pointerdown", (e) => {
   const p = tankPoint(e.clientX, e.clientY);
   if (!p) return;
   audio.unlock();
-  if (p.y < TANK.height * 0.15) { sim.dropFood(p.x); audio.feed(); }
-  else { sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height); }
+  if (p.y < TANK.height * 0.15) {
+    sim.dropFood(p.x); audio.feed();
+    splashes.push(newSplash(p.x, FOOD_ENTRY_Y));
+  } else {
+    sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
+    ripples.push({ x: p.x, y: p.y, age: 0 });
+  }
   requestPaint();
 });
 // The nearest calm fish notices the hovering pointer and drifts over
@@ -276,8 +284,9 @@ function spawnFish(sheetIdx: number, species: string, pack?: string,
                    cap: CapRule = "enforce"): Fish | null {
   if (cap === "enforce" && sim.fish.length >= FISH_CAP) return null;
   const facing = Math.random() < 0.5 ? 1 : -1;
+  const x = 60 + Math.random() * (TANK.width - 120);
   const f = sim.addFish({
-    x: 60 + Math.random() * (TANK.width - 120),
+    x,
     y: 30 + Math.random() * (TANK.height - 90),
     facing: facing as 1 | -1,
     heading: facing > 0 ? 0 : Math.PI,
@@ -287,6 +296,9 @@ function spawnFish(sheetIdx: number, species: string, pack?: string,
     ...(pack !== undefined ? { pack } : {}),
   });
   bindExtents(f);
+  // A new fish enters through the surface — pair the splash sound
+  // with droplets where it went in.
+  splashes.push(newSplash(x, FOOD_ENTRY_Y));
   saveTank();
   requestPaint();
   return f;
@@ -990,16 +1002,20 @@ document.addEventListener("pointerdown", (e) => {
 postState();
 
 // Native-menu / keyboard entry points (macos/Finsical.swift calls these).
-// A pinch of pellets scattered around the middle, raining in over a
-// moment, so repeated feeds don't stack into one sinking column.
+/** A pinch of pellets, one per hungry fish, scattered around a random
+ * spot on the surface and raining in over a moment: repeated feeds
+ * neither stack into one sinking column nor always pile up in the
+ * middle. Each pellet splashes where it goes in. */
 function feedFish(): void {
-  // A pinch of pellets, scattered around a random spot on the surface:
-  // always dead-center piles pellets in one spot and never moves the
-  // school.
   const x = 30 + Math.random() * (TANK.width - 60);
   const hungry = sim.fish.filter((f) => f.hunger > HUNGER_SEEK).length;
-  for (const p of feedPinch(Math.random, hungry))
-    setTimeout(() => sim.dropFood(x + p.dx), p.delay);
+  for (const p of feedPinch(Math.random, hungry)) {
+    setTimeout(() => {
+      sim.dropFood(x + p.dx);
+      splashes.push(newSplash(x + p.dx, FOOD_ENTRY_Y));
+      requestPaint();
+    }, p.delay);
+  }
   audio.feed();
   requestPaint();
 }
@@ -1331,6 +1347,10 @@ let waterMotion: WaterMotion = reducedMotion.matches ? "still" : "animated";
 reducedMotion.addEventListener("change", (e) => {
   waterMotion = e.matches ? "still" : "animated";
 });
+// Water feedback — glass-tap rings and feed splashes, ticked on the
+// sim clock so they animate even while fish pause between decisions.
+const ripples: Ripple[] = [];
+const splashes: Splash[] = [];
 function render(): void {
   if (backdropCv) {
     ctx.drawImage(backdropCv, 0, 0);
@@ -1362,6 +1382,10 @@ function render(): void {
   for (const f of sim.fish) drawFish(f);
 
   drawBubbles(ctx, sim.bubbles);
+
+  // On the glass, so over the fish: ripples and splashes paint last.
+  drawRipples(ctx, ripples);
+  drawSplashes(ctx, splashes);
 
   // Fouled water murks the whole scene.
   drawMurk(ctx, sim.waterQuality,
@@ -1429,6 +1453,8 @@ function drawNight(now: Date): void {
 function tickSim(): void {
   const bubbles = sim.bubbles.length;
   sim.tick();
+  tickRipples(ripples);
+  tickSplashes(splashes);
   // Sparse bloops: only some spawns make a sound. Checked per tick so
   // the odds don't depend on how often the tank is drawn.
   if (sim.bubbles.length > bubbles && Math.random() < 0.25)

@@ -86,7 +86,10 @@ export interface Bubble {
 }
 
 export const MARGIN = 16;
+/** Top of the water; food enters a couple of pixels below it. */
 export const SURFACE = 10;
+/** Y where a dropped pellet appears (see dropFood). */
+export const FOOD_ENTRY_Y = SURFACE + 2;
 export const BOTTOM_PAD = 12;
 /** Share of a big sprite's half-extent kept inside the glass; the rest
  * may pass behind the frame, the way fish reach a real tank's edge. */
@@ -290,7 +293,7 @@ export class Sim {
   /** Drop a food pellet at x; it sinks to the gravel. */
   dropFood(x: number): void {
     const cx = Math.min(Math.max(x, MARGIN), this.tank.width - MARGIN);
-    this.food.push({ x: cx, y: SURFACE + 2, eaten: false, settled: 0 });
+    this.food.push({ x: cx, y: FOOD_ENTRY_Y, eaten: false, settled: 0 });
   }
 
   /** Knock on the glass: startle fish near (x, y), strength fading
