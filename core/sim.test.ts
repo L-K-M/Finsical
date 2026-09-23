@@ -20,6 +20,17 @@ describe("Sim", () => {
     expect(a.food).toEqual(b.food);
   });
 
+  it("defaults each missing or non-finite target field on its own", () => {
+    const sim = new Sim({ width: 320, height: 200 });
+    const plain = sim.addFish({ x: 50, y: 60 });
+    expect([plain.tx, plain.ty, plain.bandY]).toEqual([50, 60, 60]);
+    // A caller giving only tx must not leave ty at 0 (the surface).
+    const onlyTx = sim.addFish({ x: 50, y: 60, tx: 100 });
+    expect([onlyTx.tx, onlyTx.ty]).toEqual([100, 60]);
+    const bad = sim.addFish({ x: 50, y: 60, tx: NaN, ty: 5, bandY: NaN });
+    expect([bad.tx, bad.ty, bad.bandY]).toEqual([50, 5, 60]);
+  });
+
   it("keeps fish inside the tank", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     sim.addFish({ x: 160, y: 100, speed: 2 });
