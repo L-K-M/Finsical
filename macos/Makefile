@@ -5,6 +5,10 @@ ICONSET := Finsical.iconset
 # Osmium UI (npm dependency): the stylesheet and the native window host.
 OSMIUM := ../node_modules/osmium-ui
 SOURCES := Finsical.swift $(OSMIUM)/macos/OsmiumWindows.swift
+# Oldest macOS the app runs on; keep in step with LSMinimumSystemVersion in
+# Info.plist. swiftc ignores MACOSX_DEPLOYMENT_TARGET and would otherwise
+# target the build host's macOS, so pass it explicitly through -target.
+MACOS_MIN := 12.0
 
 all: $(APP)
 
@@ -23,7 +27,17 @@ $(APP): bundle $(SOURCES) Info.plist Finsical.icns
 	# assets is required — the Plus machine's shell lives there; fail
 	# the build rather than ship an empty silhouette.
 	cp -r ../web/assets $(APP).staging/Contents/Resources/web/
-	MACOSX_DEPLOYMENT_TARGET=12.0 swiftc -O -o $(APP).staging/Contents/MacOS/Finsical $(SOURCES)
+	swiftc -O -target $(shell uname -m)-apple-macos$(MACOS_MIN) \
+		-o $(APP).staging/Contents/MacOS/Finsical $(SOURCES)
+	# The linked binary is what the OS enforces, so fail the build if its
+	# minimum macOS differs from the one Info.plist promises.
+	@minos="$$(vtool -show-build $(APP).staging/Contents/MacOS/Finsical | awk '$$1 == "minos" { print $$2 }')"; \
+	promised="$$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' Info.plist)"; \
+	if [ -z "$$minos" ] || [ "$$minos" != "$$promised" ]; then \
+		echo "Binary minos '$$minos' does not match LSMinimumSystemVersion '$$promised'" >&2; \
+		exit 1; \
+	fi; \
+	echo "Binary minos $$minos matches LSMinimumSystemVersion"
 	rm -rf $(APP) && mv $(APP).staging $(APP)
 	codesign --force --sign - $(APP)
 	@echo "Built $(APP)"
