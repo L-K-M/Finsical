@@ -9,13 +9,15 @@ import { ICON_PALETTE, ICON_SPRITES } from "./icons.js";
 import { hourLabel, LIGHTING_DEFAULTS, sanitizeLighting }
   from "../core/light.js";
 import type { Lighting, LightMode } from "../core/light.js";
+import { SOUND_DEFAULTS, sanitizeSoundConfig } from "./audio.js";
+import type { SoundConfig } from "./audio.js";
 
-// Preferences window: a Mac OS 8 control panel with four panes: the
-// machine case, the CRT tube effect, the monitor's picture controls
-// and the tank's lighting. The tank page owns persistence and
+// Preferences window: a Mac OS 8 control panel with five panes: the
+// machine case, the CRT tube effect, the monitor's picture controls,
+// the tank's lighting and sound. The tank page owns persistence and
 // rendering: this page renders the state it pushes back (op:"state"
-// carries `crt`, `machine` and `lighting` snapshots) and posts
-// intents: crtEnabled, crtConfig, machine, lighting.
+// carries `crt`, `machine`, `lighting` and `sound` snapshots) and posts
+// intents: crtEnabled, crtConfig, machine, lighting, soundConfig.
 
 interface SliderSpec {
   key: keyof CrtConfig;
@@ -114,7 +116,7 @@ const PICTURE_GROUPS: Group[] = [
   { title: "Color", rows: [["red", "green", "blue"]] },
 ];
 
-type PaneId = "machine" | "monitor" | "picture" | "lighting";
+type PaneId = "machine" | "monitor" | "picture" | "lighting" | "sound";
 const PANES: { id: PaneId; label: string; icon: string; hint: string;
                /** Hint while the CRT effect is off (its sliders dim). */
                offHint?: string;
@@ -135,6 +137,9 @@ const PANES: { id: PaneId; label: string; icon: string; hint: string;
   { id: "lighting", label: "Lighting", icon: "icon-lighting",
     hint: "How the tank is lit. Point at a pop-up menu to see what it " +
       "does.", keys: [] },
+  { id: "sound", label: "Sound", icon: "icon-sound",
+    hint: "How the tank sounds. Point at a control to see what it does.",
+    keys: [] },
 ];
 const PANE_KEY = "finsical:prefsPane";
 
@@ -190,6 +195,7 @@ const bus = openBus((m) => {
   // a missing field just means an older page build.
   warnEl.hidden = crt.available !== false;
   if (crt.cfg !== undefined) cfg = sanitizeCrtConfig(crt.cfg);
+  if (m.sound !== undefined) takeSound(sanitizeSoundConfig(m.sound));
   const mc = m.machine as { id?: unknown } | undefined;
   if (typeof mc?.id === "string" &&
       (machinePending === null || mc.id === machinePending)) {
@@ -215,8 +221,16 @@ hostWindow(document.getElementById("pwin")!, { title: "Preferences" });
 // Explains whatever the pointer (or keyboard focus) is on, the way
 // Balloon Help would, and falls back to the pane's own hint.
 let pane: PaneId = "machine";
-let described: SliderSpec | LightSpec | null = null;
-function describe(spec: SliderSpec | LightSpec | null): void {
+/** A Sound pane control the caption area can explain. */
+interface SoundItem {
+  label: string;
+  blurb: string;
+  input: HTMLInputElement;
+  /** Shown after the label, like a slider's value. */
+  value?: () => string;
+}
+let described: SliderSpec | LightSpec | SoundItem | null = null;
+function describe(spec: SliderSpec | LightSpec | SoundItem | null): void {
   described = spec;
   descEl.textContent = "";
   if (pane === "machine") {
@@ -233,7 +247,10 @@ function describe(spec: SliderSpec | LightSpec | null): void {
   }
   const [label, blurb] = "key" in spec
     ? [`${spec.label}: ${(spec.fmt ?? pct)(cfg[spec.key])}`, spec.blurb]
-    : [`${spec.label}: ${spec.value()}`, spec.blurb()];
+    : "input" in spec
+      ? [spec.value ? `${spec.label}: ${spec.value()}` : spec.label,
+         spec.blurb]
+      : [`${spec.label}: ${spec.value()}`, spec.blurb()];
   descEl.append(el("span", "osm-label", label), ` — ${blurb}`);
 }
 
@@ -420,12 +437,16 @@ addGroups(PICTURE_GROUPS, document.getElementById("pfpicture")!);
 // level so a missed pointerup can't wedge a slider out of echo sync.
 const endDrags = () => {
   dragging.clear();
-  if (!described || !("key" in described)) return;
+  volDragging = false;
+  // Lighting pop-ups have no drag to end.
+  if (!described || !("key" in described || "input" in described)) return;
   // WebKit doesn't focus a range input on click, so a release over the
   // slider keeps its caption while the slider is still pointed at.
-  const input = sliders.get(described.key)!;
+  const input = "key" in described ? sliders.get(described.key)!
+    : described.input;
   if (document.activeElement !== input &&
-      !input.closest(".pfslider")!.matches(":hover")) describe(null);
+      !input.closest(".pfslider, .osm-checkbox")!.matches(":hover"))
+    describe(null);
 };
 window.addEventListener("pointerup", endDrags);
 window.addEventListener("pointercancel", endDrags);
@@ -570,11 +591,134 @@ function syncLighting(): void {
 }
 syncLighting();
 
+// ---- the Sound pane ---------------------------------------------------
+// Volume with its Mute box, then the tank's own sounds. Changes post
+// as partial op:"soundConfig" messages, coalesced to one per frame like
+// the CRT sliders.
+let sound: SoundConfig = { ...SOUND_DEFAULTS };
+// Values set here that the state pushes have yet to echo: pushes
+// already in flight still carry the old ones and would flip a checkbox
+// back. Like the CRT switch, the latch times out so a dropped post
+// can't wedge a control.
+let soundTouched: Partial<SoundConfig> = {};
+let soundTimer: ReturnType<typeof setTimeout> | undefined;
+let volDragging = false;
+let pendingSound: Partial<SoundConfig> | null = null;
+let soundPostScheduled = false;
+
+const volInput = document.getElementById("snd-volume") as HTMLInputElement;
+const volUnit = document.getElementById("pfvol")!;
+const muteBox = document.getElementById("snd-mute") as HTMLInputElement;
+const bubblesBox = document.getElementById("snd-bubbles") as HTMLInputElement;
+const ambientBox = document.getElementById("snd-ambient") as HTMLInputElement;
+
+function postSound(patch: Partial<SoundConfig>): void {
+  sound = { ...sound, ...patch };
+  soundTouched = { ...soundTouched, ...patch };
+  clearTimeout(soundTimer);
+  soundTimer = setTimeout(() => { soundTouched = {}; }, 1500);
+  pendingSound = { ...pendingSound, ...patch };
+  syncSound();
+  if (soundPostScheduled) return;
+  soundPostScheduled = true;
+  requestAnimationFrame(() => {
+    soundPostScheduled = false;
+    const p = pendingSound;
+    pendingSound = null;
+    if (p) bus.post({ op: "soundConfig", cfg: p });
+  });
+}
+
+/** Adopt a state push's settings, except values still awaiting their
+ * echo and the volume while it's being dragged. */
+function takeSound(s: SoundConfig): void {
+  for (const k of Object.keys(s) as (keyof SoundConfig)[]) {
+    if (k in soundTouched) {
+      if (soundTouched[k] !== s[k]) continue;
+      delete soundTouched[k];
+    }
+    if (k === "volume" && volDragging) continue;
+    sound = { ...sound, [k]: s[k] };
+  }
+  syncSound();
+}
+
+function syncSound(): void {
+  if (!volDragging) volInput.value = String(Math.round(sound.volume * 100));
+  volInput.setAttribute("aria-valuetext",
+                        sound.muted ? "Muted" : pct(sound.volume));
+  muteBox.checked = sound.muted;
+  bubblesBox.checked = sound.bubbles;
+  ambientBox.checked = sound.ambient;
+  // Mute keeps the volume, so the slider dims instead of dropping to
+  // Off, the way Mac OS 8 dims controls that depend on an off switch.
+  setEnabled(volInput, !sound.muted);
+  volUnit.classList.toggle("pfoff", sound.muted);
+  if (described) describe(described);
+}
+
+/** Point the caption area at a control while it's hovered or focused. */
+function captioned(item: SoundItem, host: HTMLElement): void {
+  item.input.addEventListener("focus", () => describe(item));
+  item.input.addEventListener("blur", () => {
+    if (item.input === volInput) volDragging = false;
+    if (described === item) describe(null);
+  });
+  host.addEventListener("pointerenter", () => describe(item));
+  host.addEventListener("pointerleave", () => {
+    // A volume drag keeps its caption until the pointer is released.
+    if (described === item && !(item.input === volInput && volDragging) &&
+        document.activeElement !== item.input) describe(null);
+  });
+}
+
+captioned({ label: "Volume", input: volInput,
+            value: () => sound.muted ? "Muted" : pct(sound.volume),
+            blurb: "How loud the tank plays everything: bubbles, glass " +
+              "taps, feeding and the water. All the way left is silent." },
+          volUnit);
+captioned({ label: "Mute", input: muteBox,
+            blurb: "Silences every sound the tank makes. The volume " +
+              "stays where it is for when you turn sound back on." },
+          document.getElementById("pfmute")!);
+captioned({ label: "Bubble sounds", input: bubblesBox,
+            blurb: "An occasional soft bloop as bubbles rise through " +
+              "the water." },
+          document.getElementById("pfbubbles")!);
+captioned({ label: "Water ambience", input: ambientBox,
+            blurb: "The quiet loop of running water that plays under " +
+              "everything else." },
+          document.getElementById("pfambient")!);
+
+volInput.addEventListener("input", () =>
+  postSound({ volume: Number(volInput.value) / 100 }));
+volInput.addEventListener("pointerdown", () => { volDragging = true; });
+// Value-changing keys latch like a drag, as on the CRT sliders.
+volInput.addEventListener("keydown", (e) => {
+  if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey &&
+      ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
+       "Home", "End", "PageUp", "PageDown"].includes(e.key))
+    volDragging = true;
+});
+muteBox.addEventListener("change", () =>
+  postSound({ muted: muteBox.checked }));
+bubblesBox.addEventListener("change", () =>
+  postSound({ bubbles: bubblesBox.checked }));
+ambientBox.addEventListener("change", () =>
+  postSound({ ambient: ambientBox.checked }));
+for (const id of ["pfmute", "pfbubbles", "pfambient"])
+  trackHighlight(document.getElementById(id)!);
+syncSound();
+
 // Defaults restores the visible pane's settings only. The other panes
 // are out of sight and stay as they are.
 pushButton(defaultsBtn, () => {
   if (pane === "lighting") {
     setLighting({ ...LIGHTING_DEFAULTS });
+    return;
+  }
+  if (pane === "sound") {
+    postSound({ ...SOUND_DEFAULTS });
     return;
   }
   const keys = PANES.find((p) => p.id === pane)!.keys;

@@ -102,7 +102,16 @@ body.crt canvas#tank { opacity: 0; }
 .pflabel { display: block; padding-left: 4px; margin-bottom: 5px; }
 .pfends { display: flex; justify-content: space-between; margin-top: 2px; padding: 0 1px 0 3px; }
 /* CRT off: the sliders are disabled and their captions dim with them. */
-.pfcrtoff .pfslider { color: #888; }
+.pfcrtoff :is(#pftraits, #pfpicture) .pfslider, .pfslider.pfoff { color: #888; }
+
+/* Sound: the volume slider with Mute beside it, as in Monitors & Sound,
+   then a group of checkboxes for the tank's own sounds. */
+#pane-sound .pfgroup { margin-top: 12px; }
+#pane-sound .pfgroup + .pfgroup { margin-top: 30px; }
+#pane-sound .pfrow { align-items: flex-start; gap: 24px; }
+#pfmute { margin-top: 1px; }
+#pane-sound .osm-checkbox { display: flex; width: max-content; }
+#pane-sound .osm-checkbox + .osm-checkbox { margin-top: 6px; }
 
 /* Lighting: titled pop-ups in a group box. */
 .pflrow { display: flex; gap: 24px; }
