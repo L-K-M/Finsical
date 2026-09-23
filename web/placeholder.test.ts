@@ -14,10 +14,13 @@ describe("placeholder fish", () => {
     }
   });
 
-  it("frames differ only in the tail — the body must not wag", () => {
+  it("frames differ only in the tail — the body holds still, the tail wags", () => {
     const a = PLACEHOLDER_FRAMES[0]!;
     const b = PLACEHOLDER_FRAMES[1]!;
     for (let i = 0; i < 14; i++)
       expect(a[i]!.slice(0, 18)).toBe(b[i]!.slice(0, 18));
+    // The wag itself: the two tail regions must actually differ.
+    expect(a.map((r) => r.slice(18)).join("\n"))
+      .not.toBe(b.map((r) => r.slice(18)).join("\n"));
   });
 });
