@@ -58,11 +58,26 @@ final class WebHandler: NSObject, WKURLSchemeHandler {
 /// Thin strip at the top edge that drags the window. The traffic-light
 /// buttons render above it (titlebar layer), so they stay clickable.
 final class DragStrip: NSView {
+    /// A press on the inactive tank moves it at once (see TankWebView).
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        event?.type == .leftMouseDown
+    }
+
     override func mouseDown(with event: NSEvent) {
         window?.performDrag(with: event)
         // Dragging leaves first responder off the webview (bare keys
         // like F/C would go dead) — hand it back to the page.
         window?.makeFirstResponder(superview)
+    }
+}
+
+/// The tank floats over other apps, so most clicks on it arrive while
+/// Finsical is inactive. WebKit would spend that first click on
+/// activating the app alone; take a left press so it feeds or taps.
+/// Other buttons just activate.
+final class TankWebView: WKWebView {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        event?.type == .leftMouseDown
     }
 }
 
@@ -115,10 +130,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         return config
     }
 
-    @objc func openPrefs() { host.show(prefs) }
-    @objc func openOverview() { host.show(overview) }
-    @objc func openImport() { host.show(addons) }
-    @objc func openStats() { host.show(stats) }
+    @objc func openPrefs() { showClient(prefs) }
+    @objc func openOverview() { showClient(overview) }
+    @objc func openImport() { showClient(addons) }
+    @objc func openStats() { showClient(stats) }
+
+    /// Space between the tank and a client window placed beside it.
+    private let clientGap: CGFloat = 12
+
+    /// Open a client window where it can be seen. Osmium windows are
+    /// normal level, and one can never order above the floating tank,
+    /// so it takes the tank's level. It comes to the current Space
+    /// (and over a full-screen app) instead of pulling the user back
+    /// to the Space it was first opened on. Its first open, with no
+    /// saved frame, would center it under the tank: it goes beside the
+    /// tank instead. Not hidesOnDeactivate: Import Add-ons must stay up
+    /// while Finder is active for file drags, and the bus relay skips
+    /// hidden windows.
+    private func showClient(_ hw: OsmiumHostedWindow) {
+        let fresh = hw.window == nil
+            && frames.frame(for: hw.spec.frameKey) == nil
+        host.show(hw)
+        guard let w = hw.window else { return }
+        w.level = window.level
+        w.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        if fresh, let vis = (window.screen ?? NSScreen.main)?.visibleFrame {
+            w.setFrameTopLeftPoint(AppDelegate.besideTank(
+                window.frame, size: w.frame.size, visible: vis,
+                gap: clientGap))
+        }
+        // Again, so the new level and Space behavior take effect.
+        w.makeKeyAndOrderFront(nil)
+    }
+
+    /// Top-left corner for a window of `size` beside `tank`, top edges
+    /// aligned: to its right when that fits in `visible`, else to its
+    /// left, then clamped into `visible` (AppKit doesn't constrain
+    /// borderless windows).
+    private static func besideTank(_ tank: NSRect, size: NSSize,
+                                   visible: NSRect, gap: CGFloat) -> NSPoint {
+        var x = tank.maxX + gap
+        if x + size.width > visible.maxX { x = tank.minX - gap - size.width }
+        x = max(visible.minX, min(x, visible.maxX - size.width))
+        let top = min(visible.maxY, max(tank.maxY, visible.minY + size.height))
+        return NSPoint(x: x, y: top)
+    }
 
     /// The tank window's shape follows the selected machine case.
     /// Applied only when the id changes — state pushes every ~2s.
@@ -465,8 +521,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     }
 
     func applicationDidFinishLaunching(_ note: Notification) {
-        webView = WKWebView(frame: .init(x: 0, y: 0, width: 640, height: 400),
-                            configuration: makeWebConfig())
+        webView = TankWebView(frame: .init(x: 0, y: 0, width: 640, height: 400),
+                              configuration: makeWebConfig())
         webView.uiDelegate = self
         webView.navigationDelegate = self
         // The webview must not paint behind the page — a transparent

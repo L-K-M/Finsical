@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- In the macOS app, Preferences, Tank Overview, Import Add-ons and
+  Tank Stats open in front of the floating tank, beside it the first
+  time, and on the desktop you are using. The first click on the tank
+  while another app is active now feeds or taps, and Cmd-I opens the
+  Import Add-ons window instead of a cramped importer inside the tank.
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview
