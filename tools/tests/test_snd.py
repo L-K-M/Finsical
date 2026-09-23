@@ -8,6 +8,17 @@ from tools.az.snd import parse_snd, snd_to_wav, SndError
 
 _MACE_TAB_SHA256 = ("2d7875ce06077795d98f9c2e4b0d966"
                     "52ed6e25e70a16d7c127998c450aa52bf")
+_MACE_TAB4_SHA256 = ("1b8eccf922fa4da0966d013f5dd693d"
+                     "c0e169ae102aee702cd75c143ff58834c")
+
+
+def lcg_bytes(n: int, seed: int = 1) -> bytes:
+    """Deterministic byte stream shared with core/data/snd.test.ts."""
+    out = bytearray()
+    for _ in range(n):
+        seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF
+        out.append((seed >> 16) & 0xFF)
+    return bytes(out)
 
 
 def snd_fmt1_u8(pcm: bytes, rate: float = 22254.5454) -> bytes:
@@ -101,13 +112,30 @@ class TestParse(unittest.TestCase):
         self.assertTrue(any(abs(x) > 1000 for x in s))  # real signal, not mute
 
     def test_mace3_golden_vector(self):
-        # Pins the verified decode (checked against the AQUAZONE 1.7.9
-        # resource fork) — catches table-endianness/column regressions.
+        # Hash from a line-by-line port of FFmpeg's mace.c (read_table,
+        # chomp3) with its per-position tables; catches table-endianness,
+        # column and table-selection regressions.
         import hashlib
         out = mace3_decode(b"\x39\xf1" * 100, 100)
         self.assertEqual(hashlib.sha256(out).hexdigest(),
-                         "150be20e43645c06031f3dbde785d2a7"
-                         "e996450eb07766e331a5ad94656b9eac")
+                         "b0a200e1b12b8b030724fd034cfb19c1"
+                         "04e8131fbb3c7429d0bc337707cb9a5f")
+
+    def test_mace3_cross_implementation_vector(self):
+        # Same LCG stream and hash as core/data/snd.test.ts, so the TS
+        # and Python decoders are pinned to the same FFmpeg-derived output.
+        import hashlib
+        out = mace3_decode(lcg_bytes(2000), 1000)
+        self.assertEqual(hashlib.sha256(out).hexdigest(),
+                         "c56379769c0e49253d408696f7b47b76"
+                         "040cefd65cd0409837e843ef8dc763b0")
+
+    def test_mace3_has_no_dc_drift(self):
+        # The middle 2-bit code must use MACEtab3/4, which can go
+        # negative; with the 3-bit tables the level rails near +32767.
+        out = mace3_decode(b"\x39\xf1" * 2000, 2000)
+        s = struct.unpack(f"<{len(out) // 2}h", out)
+        self.assertLess(abs(sum(s) / len(s)), 2000)
 
     def test_parse_snd_mace3_golden(self):
         # End-to-end pin of the 0xFE branch: header reads at hoff+8/+22/+56
@@ -119,8 +147,8 @@ class TestParse(unittest.TestCase):
         self.assertEqual(rate, 22254)
         self.assertEqual(len(pcm), 10 * 6 * 2)
         self.assertEqual(hashlib.sha256(pcm).hexdigest(),
-                         "39205b11a9f1c4636aa66013b7f36ee6"
-                         "87e6ac5993d325ecab0835b6e91a016f")
+                         "0e7832566fa0a88c9a6fc29b927df72d"
+                         "93d3ce0f72d5c4a9af808b60b1bfa398")
 
     def test_extsh_u8(self):
         # encode 0xff / sampleSize 8: raw unsigned u8 behind 64-byte hdr.
@@ -169,6 +197,10 @@ class TestParse(unittest.TestCase):
                                "mace_tab.bin"), "rb") as f:
             self.assertEqual(hashlib.sha256(f.read()).hexdigest(),
                              _MACE_TAB_SHA256)
+        with open(os.path.join(os.path.dirname(mace.__file__),
+                               "mace_tab4.bin"), "rb") as f:
+            self.assertEqual(hashlib.sha256(f.read()).hexdigest(),
+                             _MACE_TAB4_SHA256)
 
     def test_rejects_bad_format(self):
         with self.assertRaises(SndError):
