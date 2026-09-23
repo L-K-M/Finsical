@@ -34,6 +34,31 @@ describe("itemsOf", () => {
     expect(items[0]!.remove).toEqual({ op: "removeFish", id: 1 });
     expect(items[3]!.remove).toEqual({ op: "removeAddon", url: "u:blue" });
   });
+
+  it("offers Use on idle scenery, Showing on the active pack", () => {
+    const items = itemsOf({ ...STATE, scenery: { gravel: "u:blue" } });
+    const blue = items[3]!;
+    expect(blue.status).toBe("Showing");
+    expect(blue.use).toBeUndefined();
+    // A second scenery pack not on display can be swapped in.
+    const more = itemsOf({ ...STATE,
+      addons: [...STATE.addons,
+        { section: "gravel", inner: "Slate.grv", url: "u:slate" }],
+      scenery: { gravel: "u:blue" } });
+    const slate = more[4]!;
+    expect(slate.status).toBe("In tank");
+    expect(slate.use).toEqual({ op: "useAddon", url: "u:slate" });
+  });
+
+  it("never offers Use on fish or decor packs", () => {
+    const items = itemsOf({ ...STATE,
+      addons: [...STATE.addons,
+        { section: "plants", inner: "Kelp.pl", url: "u:kelp" }] });
+    for (const i of items) {
+      if (i.name === "tang.fsh") expect(i.use).toBeUndefined();
+      if (i.name === "Kelp.pl") expect(i.use).toBeUndefined();
+    }
+  });
 });
 
 describe("sortItems", () => {
