@@ -1,9 +1,15 @@
 # Finsical Analysis — Shovel-Ready Improvements
 
-Consolidates six independent review passes plus follow-up review
+Consolidates seven independent review passes plus follow-up review
 responses. Nothing below is dropped: implemented items stay listed
 with their branch/PR so future work can see what landed, and every
 open idea is written so an LLM can pick it up cold.
+
+Baseline for this pass (seventh, full-repo `tmp.md` against
+`origin/main` `0499443`): `npm ci`, typecheck clean, 167 tests,
+`python3 -m unittest discover -s tools/tests`. Live archive.org
+listings return 200; test-time "listing 404" logs are the intentional
+`import.test.ts` fetch stub.
 
 ## Completed (other pass, in branches)
 
@@ -326,12 +332,69 @@ open idea is written so an LLM can pick it up cold.
   `powerT0`'s sentinel is `-Infinity` (0 meant page-load time — a
   pre-enable frame could play a stray warm-up).
 
+## Completed (seventh pass — full-repo review, PRs open, all at steady state)
+
+- **PR #99** (`fix/decor-reinstall`): "Add Again" on a
+  plants/accessories pack no longer stacks a duplicate — `addDecor`
+  replaces that pack's frames instead of always pushing. GLM round 2
+  clean (0 actionable).
+- **PR #109** (`fix/light-curve`): full-sine light curve so a
+  `DAY_TICKS` cycle includes a sustained night near the 0.3 floor;
+  stats Day/Night tracks the same threshold the render uses.
+- **PR #115** (`fix/audio-unlock`): first feed/tap from keyboard or
+  menu unlocks `AudioContext` the same way a click does (`unlock()`
+  called from those paths; `e.repeat` guard so held keys don't spam).
+  Declined: ambient-stack re-entry double-guard (basis of prior
+  refusal — `unlock()` already idempotent).
+- **PR #116** (`docs/readme-version`): README version marker kept in
+  step with `package.json`/`Info.plist` (release script notes;
+  EXIT/signal traps so a failed bump doesn't leave a half-written
+  README). Tip `ce14382`. 0 actionable.
+- **PR #119** (`fix/native-import-shortcut`): in the native shell,
+  Cmd/Ctrl+I opens only the native Import window — the page overlay
+  no longer competes when a WKWebView menu already owns the shortcut.
+  Declined: `e.metaKey`-only guard (Ctrl+I is the actual dual-UI
+  path; meta-only would leave the reported bug).
+- **PR #123** (`feat/pause-sim`): pause freezes `tick()` while
+  render continues (screenshots/benchmarks); Tank menu + bare key;
+  pause-persistence, `e.repeat`, and TDZ findings declined with
+  reasons. Streak >2 minor-only rounds → stopped.
+- **PR #142** (`feat/crt-presets`): named `CrtConfig` bundles in the
+  Monitor pane — Authentic, Sharp, Soft, Pixel Perfect — frozen via
+  `CRT_PRESETS`, applied by dropping any pending custom config and
+  posting the full preset; disabled with the CRT-off checkbox;
+  balloon captions clear when a slider takes over. Round 1: tube-key
+  list derived from `CRT_DEFAULTS` minus picture keys; focus handler
+  guards `!described` like pointerenter. Round 2–3: Authentic aliasing
+  declined (`CRT_DEFAULTS` already frozen + `isFrozen` test); CSS dim
+  and `setEnabled` claims refuted (`osm-button:disabled` dims;
+  `setEnabled` is `HTMLInputElement`-only). 0 actionable on `e7aadb6`.
+- **PR #143** (`feat/food-zone`): feed-zone cue — pure
+  `web/feedzone.ts` (`FEED_ZONE`, `isFeedZoneY`, `containPoint`,
+  `feedZoneLineY`), crosshair + bright 1px boundary under the pointer
+  (rechecked each frame from the last client point so resize can't
+  strand the state; cleared immediately on leave). Round 1–2: hover
+  moved to `render()`, letterbox math extracted + tested, boundary
+  `ceil`, zero-area rect covered. Round 3: 0/0 NaN path + line
+  invariant pin declined as info-only nits after two clean rounds.
+
 ## Bugs / Reliability (open)
 
 - `core/sim.ts`: `nearestFood()` can briefly target food that was just eaten if called with a slightly stale snapshot. Confirm removal order in `tick()`.
 - `core/sim.ts`: `tap()` propagates panic but doesn't cap bubble spawn in foul water. Consider a max-bubble cap for performance.
 - `web/crt.ts`: `hash()` uses `fract()` which may lose precision over very long sessions; wrap `uTime` more frequently or use a different noise source.
 - `macos/Finsical.swift`: `loadMaskImage()` alpha-offset computation assumes `premultipliedFirst`; add a runtime check or fallback for other byte orders.
+- ~~**"Add Again" duplicates plant/accessory decor** (`addDecor` always `decors.push`).~~ Landed: PR #99 (replace that pack's frames; backdrop/gravel were already delete-then-set by URL).
+- ~~**Multi-pack drop stops after the first successful pack file** (pack-pass `return` out of the whole async IIFE).~~ Landed: PR #94 (`decodeDroppedPacks` imports every decodable pack).
+- ~~**Day/night curve almost never reaches night** (half-wave sine; stats stuck near "day").~~ Landed: PR #109 (full-sine + sustained night floor) and PR #113 (night valley + tint).
+- ~~**Audio stays locked until the first tank click** (`unlock()` only on `pointerdown`).~~ Landed: PR #115 (keyboard/menu paths call `unlock()`).
+- ~~**No volume or mute control** (hard-coded gains; no Sound pane).~~ Landed: PR #101 (mute) and PR #133 (volume sliders + master bus).
+- ~~**README version marker stale** (0.2.0 vs 0.3.0; release.sh didn't bump README).~~ Landed: PR #116.
+- ~~**Ctrl+I in the native shell opens the in-page overlay**, not the Import window (two UIs for one shortcut).~~ Landed: PR #119 (native prefers the native window).
+- `window.finsical.openImport` appears dead — exposed for the native shell; Swift only invokes `feedFish`/`toggleCrt`. Either wire a native path or remove the surface.
+- **Save/load drops mid-swim fields** — `saveTank()` omits `state`/`phase`/`latch`/`peak`/`tx`/`ty`/`turnDir`/`turnFrom`/`panicHops`; on load fish restart a decision cycle from rest and forget an in-progress turn. Persist the motion fields (or document the reset).
+- **Stats "Light: Day/Night" threshold is coarse** — `light > 0.5` flips late in dusk/dawn; keep model and render in lockstep when either changes (PR #109 closed the curve half; verify the stats phase still agrees after further light edits).
+- `web/import.ts`: thumbnail fetch dedupe hole — IDB-miss path deletes from `thumbQueued` then pushes to `thumbQueue`, so a second `wantThumb` before fetch completion queues a duplicate (`pumpThumbs` never checks). Harmless today (`fetchAddon` memoized) but slow packs starve the 3-wide queue.
 - ~~`web/import.ts`: thumbnail fetch dedupe hole — IDB-miss path deletes from `thumbQueued` then pushes to `thumbQueue`, so a second `wantThumb` before fetch completion queues a duplicate (`pumpThumbs` never checks). Harmless today (`fetchAddon` memoized) but slow packs starve the 3-wide queue.~~ Landed: PR #134 (`thumbFetching` tracks in-flight URLs).
 - `web/import.ts`: loose-mode (`prefix:`) listings don't dedupe colliding basenames the way the nested-zip branch does — two same-name rows bind `sheetBySpecies` last-wins. Copy the `used`-set logic over.
 - ~~Fetch path has no timeouts: a stalled archive.org request wedges that URL in `installsInFlight` while the panel's 15 s "Try Again" re-arms a no-op button. Add `AbortController` timeouts (~30 s) + clear in-flight on timeout.~~ Landed: PR #134 — a 30 s *stall* timeout (resets per body chunk; rejected promises evict their cache memo).
@@ -348,7 +411,12 @@ open idea is written so an LLM can pick it up cold.
 
 ## Performance / Engineering (open)
 
-- Hoist per-frame string allocs in `render()`: murk/dark `rgba()` templates rebuilt each frame, `globalAlpha` toggled per pellet.
+- Hoist per-frame string allocs in `render()`: murk/dark `rgba()` templates rebuilt each frame, `globalAlpha` toggled per pellet (P1 in the seventh-pass notes; cache alpha strings or a prebuilt overlay canvas).
+- ~~CRT path uploads a full texture every frame + unbounded DPR.~~ Landed: PR #88 (buffer capped at 2x DPR; `resize()` only when dirty). Still open: skip upload when the 2D canvas is unchanged (hard with animation).
+- ~~Backdrop drawn at full tank size every frame without prescale.~~ Landed: PR #87 / PR #125 (pick one at merge) — cover-fit + once-per-pack prescale, `render()` is a 1:1 blit.
+- State push cadence while Overview/Stats open: `postState()` on every 10 s save and bus hellos; Overview/Stats also heartbeat every 2 s with full fish list + addons JSON. Acceptable at current roster sizes; coalesce/slim if rosters grow past dozens of fish (related to the four-window hello-poll item below).
+- `swimCanvas` cache is unbounded per sheet×frame×facing — bounded by sheet metadata (small); large imported sheets still allocate every combination on first use. Lazy fill already helps; optional LRU not urgent (the related `swimCache` LRU cap landed in the other pass).
+- IndexedDB pack cache: thumb entries share the pack budget deliberately; ensure installed packs win over thumbs under pressure (they do if thumbs are older; fresh thumbs could still evict packs — worth a pin/priority for live installs).
 - Sim is O(F·P) (`nearestFood` per fish per tick) + O(F²) panic fan-out + O(F²) schoolmate `filter` per decision — fine under caps, the stutter vector without them. Fish cap landed at 24 (PR #111); still open: cap pellets (~60, evict oldest) — overfeeding currently fouls the tank in ~1 s, which reads as broken.
 - `AudioContext` is constructed during page load before any gesture (suspended-context warnings). Defer creation to `unlock()`.
 - `saveTank` serializes the roster to localStorage every 10 s even when clean. Hash-and-skip.
@@ -373,9 +441,20 @@ open idea is written so an LLM can pick it up cold.
 - **Starter reef bundle.** One-click curated set (6 fish + gravel + plant) + first-run card ("Your tank is empty. [Import Add-ons…] [Stock a starter reef]") — fixes asset-failure silence and cold-start discoverability together.
 - **Overview actions.** Click row → spotlight fish in tank (ring highlight); rename (persist in save); state icons. Sort-column choice isn't persisted either.
 - ~~**Stats history.** Sparklines for water/hunger from the existing 90 s `history` samples.~~ Landed: PR #140 (44x14 1-bit canvas per meter; gaps for missing samples).
-- **Pause/sleep.** Freeze `tick()` (render continues) for screenshots/benchmarks.
+- **Pause/sleep.** ~~Freeze `tick()` (render continues) for screenshots/benchmarks.~~ Landed: PR #123.
 - ~~**No mute/volume.**~~ Landed: PR #101 (mute + active-source tracking) and PR #133 (master/ambient volume sliders, master gain bus, live ramps). Two Sound panes exist (#101/#133) — reconcile at merge; native-menu mute wiring from #101 still applies.
-- **In-app help — partially landed** (PR #102's Shortcuts window lists F/C/S/⌘I in-browser). Still open: the same list inside the native app (its menu bar has no Help menu) and the feed-vs-tap gesture hint; a Balloon Help mode (below) would subsume both.
+- **Save slots / tank profiles** — multiple `SAVE_KEY` slots in prefs or a small Tank menu; export/import JSON for backup.
+- **About box** — version from `package.json`/Info.plist, license (Uncredit/Unlicense), archive.org credit, LLM disclosure link. A basic About dialog landed in PR #103; richer metadata/LM disclosure still open.
+- **Click a fish to select** — hit-test on tank; highlight + Overview row sync; optional "follow" later. Prerequisite for per-fish care UI. (⌥-click Get-Info landed in PR #137 — select/highlight is distinct.)
+- **Favicon + viewport meta** — viewport meta landed (PRs #90/#93); `index.html` still has no favicon (browser tabs show a blank icon).
+- **Decor count / "Add again" for scenery quantity** — replace-on-reinstall landed (PR #99); an Overview quantity control remains optional.
+- **Sound browser for game SFX** — Sounds section explains the game's own `.rsrc` isn't on archive.org; could deep-link or accept folder drop of a whole set with a progress UI.
+- **Machine case thumbnails in prefs list** — list is text-only; a small icon column (or richer preview) would sell the 11 cases.
+- **Offline sim catch-up (optional)** — sim does not advance while the app is closed; long absences reset nothing (good) but also never progress day/night. Cap a tick budget on launch if wanted (distinct from the hidden-tab stall above).
+- **Empty-state first-run tour** — on no packs, point at Import Add-ons / F to feed / click to knock; Overview already has empty copy; PR #131's hint note covers the tank foot.
+- **Fish death / hunger consequences** — same as lifecycle stage 1 below (Egg*/SicH hooks unused); pair any death path with a revive so it stays friendly. Explicitly declined: starvation notifications.
+- **Water chemistry UI** — Watr/SicH data noted in PLAN; Stats already shows quality %; advanced pane later.
+- **In-app help — partially landed** (PR #102's Shortcuts window lists F/C/S/⌘I in-browser). Still open: the same list inside the native app (its menu bar has no Help menu) and the feed-vs-tap gesture hint; a Balloon Help mode (below) would subsume both. Keyboard help overlay = the same list as a `?`/`H` overlay.
 - **Per-species swim params.** `FsTI` (speed, depth band, hunger rate) is decoded and unused; all fish share behavior constants.
 - ~~**`feedFish` drops at tank center** — menu feed could drop at a random x for variety.~~ Landed: PR #135.
 - **Backdrop/gravel chooser.** Partially landed: the Overview's "Use" action (PR #118) swaps among installed scenery packs and persists the pick. Still open: `pickBackdrop` newest-wins on *install*, and a prefs-side chooser/preview.
@@ -406,8 +485,17 @@ open idea is written so an LLM can pick it up cold.
 
 ## User Experience / Delight (open)
 
+- **CRT presets — landed** (PR #142): Authentic / Sharp / Soft / Pixel Perfect in the Monitor pane; on/off remains the checkbox (the seventh-pass "Off" name folded into the existing switch). Still open: lower all-day defaults as a user-tunable baseline beyond Soft.
+- **Preferences window fixed pixel layout** — `app.css` is absolute inside 564×456 (native 565×457); host `hostWindow` does not pass `grow`. Confirm Osmium resizability; if fixed, document it (panes can clip if resize is ever enabled).
+- **Overview Remove is destructive without confirm** — Delete/Backspace or Remove drops fish/add-ons immediately; a confirm (or undo via toast) would reduce oopses (empty-tank's two-click arm is the pattern).
+- **Stats window clips care hints (by design)** — `grow.min` 300×60; `advice.slice(0, 2)`. Acceptable; longer advice could open a help overlay later.
+- **Touch trigger only on `hover: none`** — `#opentrigger` may miss stylus-with-mouse / hybrid laptops; consider also showing when no menu bar is available (browser-only).
+- **No first-run pack guidance in-tank** — banner/balloon pointing at Tank ▸ Import Add-ons would beat console-only feedback when azpack load fails (PR #131's hint covers the happy path).
+- **Archive.org credit + Donate present — good** — keep; consider surfacing offline mode ("showing cached listing").
+- **Overview Remove / sort persistence** — column sort choice isn't persisted across sessions.
 - Right-click (ctrl-click) contextual menu on the tank — Feed, Clean tank, Import Add-ons…, Snapshot, Mute — keeps chrome-free look, makes everything reachable even where the menu bar doesn't. The `pointerdown` handler already reserves non-left buttons.
-- Feed affordances: crumb cursor over the top 15%, crumb trail + plip on drop; touch long-press = scare split. (Drag-to-feed scattering landed in PR #106.)
+- **Feed-zone affordance — landed** (PR #143): crosshair over the top 15% + bright 1px boundary under the pointer; `containPoint` shared letterbox math. Still open: crumb trail + plip on drop; touch long-press = scare split. (Drag-to-feed scattering landed in PR #106.)
+- ~~Feed zone invisible (top 15% click = food, else knock; no cue).~~ Landed: PR #143.
 - Import flow: per-row progress spinners, 2–3-wide parallel installs, failure text naming the file.
 - Touch: feed-vs-tap (y<15%) is still hard to discover even with the menu bar — a first-use hint or the feed affordances above would fix it.
 - Stale badges: grey client-window numbers until the first fresh push after wake.
@@ -435,9 +523,32 @@ open idea is written so an LLM can pick it up cold.
 - Time-lapse contact sheet (1 fps toDataURL for 60 s).
 - Vintage filter mode (sepia + reduced saturation + vignette).
 - Bubble trails: faint fading trails as fish swim.
+- Feed key `F` could play a tiny "plop" even before unlock by resuming on the keydown that is itself a gesture (keys often count) — pairs with PR #115's unlock paths.
+- Tap-the-glass already startles + sound; add a rare fish "photobomb" or sparkle on perfect water quality.
+- Machine case switch: brief white flash or CRT degauss wobble (CSS/GL one-shot) would sell the hardware swap.
+- Day/night: stars or room reflection on the bezel at night.
+- Save "up time" and show a tiny anniversary line at 24h/7d.
+- Sounds: imported record play button already exists in importer; a Tank menu ▸ Play Sound ▸ [name] list would be fun for drops.
+- Easter egg: Konami-style sequence or hidden "Aquazone" about screen with original credits (license-safe text) — the Konami→bonus-fish line above is the short form.
 - Custom 16×16 sprite editor in palette colors, persisted to localStorage.
 - Konami-style easter egg → a tiny bonus fish. Optional whimsy.
 - Declined, recorded: windowshade double-click collapse (native window is chromeless — nothing to shade); seasonal/holiday gravel (scope creep).
+
+## Testing & tooling gaps (open)
+
+- No DOM/unit tests for entry-bundle handlers (decor merge and multi-pack drop now have pure helpers + tests — `web/drop.ts`, PR #99's replace path); keep extracting pure helpers when touching `main.ts`.
+- No dedicated test for light-curve / stats phase agreement beyond PR #109's night-fraction pins — re-verify if the threshold moves again.
+- `import.test.ts` stubs all non-`.zip` fetches as 404 — expected noise in logs; a comment at the stub helps future readers (already noted in the seventh-pass baseline).
+- Python tools covered by unittest; Swift only via CI build.
+- No e2e for bus install ack path (remote panel → tank).
+- Live archive.org is not in CI (correct — flaky); a scheduled smoke job could catch listing HTML changes early.
+
+## Docs / packaging (open)
+
+- CHANGELOG.md Unreleased section is rich; keep appending user-facing notes for each shipped idea.
+- PLAN.md still accurate for out-of-scope breeding/water; update when those land.
+- Favicon still missing (viewport meta landed earlier).
+- README version marker tracked by PR #116.
 
 ## Design Notes (preserved)
 
@@ -513,6 +624,36 @@ open idea is written so an LLM can pick it up cold.
   fish-only so skipping `usePack` for scenery is safe (#134); stats
   history pushes before render and stays bounded (#140).
 
+## Review-response log (seventh pass — full-repo review)
+
+- Applied: decor replace-on-reinstall (#99); full-sine light curve
+  (#109); `unlock()` on keyboard/menu feed paths (#115); README
+  version + release-script traps (#116); native Cmd/Ctrl+I prefers
+  the native Import window (#119); pause sim (#123); CRT presets
+  tube-key derivation from `CRT_DEFAULTS` and focus/pointerenter
+  `!described` guard (#142); feed-zone hover rechecked each frame,
+  `containPoint` extraction + tests, `ceil` boundary, immediate
+  `pointerleave` clear, zero-area rect test (#143).
+- Declined with reasons: `e.metaKey`-only import-shortcut guard
+  (#119 — Ctrl+I is the dual-UI path); pause-persistence / TDZ /
+  `e.repeat` concerns (#123, #115 — already handled or out of
+  scope); Authentic preset aliasing `CRT_DEFAULTS` (#142 — already
+  `Object.freeze`d, covered by `isFrozen` test); active-preset
+  highlight (#142 — out of scope / product decision); 0/0 NaN-path
+  and `feedZoneLineY` invariant pins (#143 — info-only nits after
+  two consecutive rounds without important findings).
+- Refuted with evidence: CRT-off preset buttons already dim via
+  `osm-button:disabled` (`osmium-ui` osmium.css:263) (#142);
+  `setEnabled` is typed `HTMLInputElement` and only toggles
+  `.osm-disabled` on checkbox/slider ancestors — cannot take
+  buttons (#142); ambient-stacks double-guard already in place
+  (#115).
+- Steady state: #99 round 2 clean; #109/#116 no actionable; #115
+  `e.repeat` declined, otherwise clean; #119 clean after decline;
+  #123 minor-only streak stopped; #142 round 3 0 actionable on
+  `e7aadb6` (merge CLEAN); #143 round 3 info-only after applying
+  rounds 1–2 (merge CLEAN). All eight left open for human review.
+
 ## Implementation Order (suggested for future work)
 
 1. Pellet cap + foul-rate sanity (fish cap landed in PR #111; sim test first, TDD).
@@ -523,12 +664,13 @@ open idea is written so an LLM can pick it up cold.
 6. Install progress/parallelism in the import flow (the search/filter half landed in PR #136).
 7. ~~Fetch timeouts + thumb queue dedupe.~~ Landed: PR #134 (stall timeout + `thumbFetching`).
 8. Lifecycle stage 1 (sickness lethargy → eggs later).
-9. Light dimmer + real-clock sync (lamp toggle landed in PR #132; moonlight curve in PR #113).
-10. Food pellet animation + gravel texture (decor anchoring landed in PR #139).
+9. Light dimmer + real-clock sync (lamp toggle landed in PR #132; moonlight curve in PR #113; full-sine curve landed in PR #109).
+10. Food pellet animation + gravel texture (decor anchoring landed in PR #139; feed-zone cue landed in PR #143).
 11. Night glow + darkened sleeping-fish sprites (sleep state landed in PR #128).
 12. Screen relaxation mode, fish diary, vintage filter + adaptive murk.
 13. Breeding, sprite editor, remaining delights as seasoning.
+14. Merge-time reconciliations: #142 CRT presets vs any other Monitor-pane work; #143 feed-zone vs PR #106's drag path (complementary — cue vs scatter).
 
 ---
 
-*Merged from six review passes (two other-pass tmp.md files already folded above; third- and fourth-pass swe.md/tmp.md, the fifth pass's swe.md, and the sixth pass's tmp.md folded with implemented items marked by PR). No entries removed; overlapping ideas consolidated and cross-referenced. Cross-pass overlaps to reconcile at merge: #107/#106/#129 (tap ripple), #125/#87 (backdrop cover-fit), #93/#94 (multi-pack drop), #101/#133 (Sound pane), #103/#102/#126 (browser menu bar + shortcuts), placeholder-fish branches vs #131.*
+*Merged from seven review passes (six prior tmp.md/swe.md files already folded above; the seventh pass's full-repo `tmp.md` folded with implemented items marked by PR). No entries removed; overlapping ideas consolidated and cross-referenced. Cross-pass overlaps to reconcile at merge: #107/#106/#129 (tap ripple), #125/#87 (backdrop cover-fit), #93/#94 (multi-pack drop), #101/#133 (Sound pane), #103/#102/#126 (browser menu bar + shortcuts), placeholder-fish branches vs #131, #142 (CRT presets) vs Monitor-pane custom config, #143 (feed-zone cue) vs #106 (drag-to-feed).*
