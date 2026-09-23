@@ -36,7 +36,9 @@ source](#build-from-source), which compiles for the Mac that runs the build.
    - **macOS 12 to 14:** Control-click the app, choose **Open**, then
      **Open** again in the dialog.
 
-   Alternatively, remove the quarantine flag in Terminal:
+   Alternatively, remove the quarantine flag in Terminal. This skips
+   Gatekeeper's check for this one app, so only do it for software you
+   trust:
 
    ```sh
    xattr -dr com.apple.quarantine /Applications/Finsical.app
