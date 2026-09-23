@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The macOS app has the standard Mac menu items: About Finsical,
+  Services, Hide Finsical (Cmd-H), Hide Others, Show All and a Help
+  menu. The Window menu can turn off Float Above Other Windows and Show
+  on All Desktops, remembered across launches, and Tank > CRT Effect
+  shows a checkmark while the effect is on. Cmd-W on the tank no longer
+  quits the app; quit with Cmd-Q.
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview

@@ -68,7 +68,7 @@ final class DragStrip: NSView {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                          WKNavigationDelegate, WKScriptMessageHandler,
-                         NSWindowDelegate {
+                         NSWindowDelegate, NSMenuItemValidation {
     private var window: NSWindow!
     private var webView: WKWebView!
     /// Saved window frames, under the keys Finsical has always used.
@@ -337,6 +337,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 OsmiumWindowHost.drag(window, firstResponder: webView)
                 return
             }
+            // The live CRT state (off when GL is unavailable) for the
+            // CRT Effect checkmark. Falls through like the machine.
+            if body["op"] as? String == "state",
+               message.webView === webView,
+               let crt = body["crt"] as? [String: Any] {
+                crtOn = crt["on"] as? Bool == true
+            }
             // Tank state carries the machine's viewBox aspect —
             // retune the frame to the case outline. Falls through:
             // clients still need the push.
@@ -404,7 +411,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         }
     }
 
-    /// Closing the tank quits the app even if the panel is still open.
+    /// The tank has no close action, so Cmd-W meant for a client window
+    /// can't quit the toy; should it close some other way, quit rather
+    /// than leave the app running without its tank.
     func windowWillClose(_ note: Notification) {
         if note.object as? NSWindow === window { NSApp.terminate(nil) }
     }
@@ -429,6 +438,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         if let url = URL(string: "https://archive.org/donate") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    @objc func openHelp() {
+        if let url = URL(string: "https://github.com/L-K-M/Finsical#readme") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// The standard About panel (name, icon and version come from
+    /// Info.plist), with credits for what Finsical builds on.
+    @objc func showAbout() {
+        let para = NSMutableParagraphStyle()
+        para.alignment = .center
+        let credits = NSAttributedString(
+            string: "Inspired by AquaZone by 9003 Inc., published by Mindscape.\n"
+                + "Fish, plants and scenery add-ons from the Internet Archive.\n"
+                + "Mac OS 8 windows by the Osmium UI library.",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                .foregroundColor: NSColor.labelColor,
+                .paragraphStyle: para,
+            ])
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
+    }
+
+    /// The tank's live CRT state, from its last state push.
+    private var crtOn = false
+
+    /// UserDefaults keys for the tank's Window-menu toggles. Both
+    /// default on, which is how the tank behaved before they existed.
+    private enum WindowPref {
+        static let float = "FinsicalFloat"
+        static let allSpaces = "FinsicalAllSpaces"
+    }
+
+    @objc func toggleFloat() { togglePref(WindowPref.float) }
+    @objc func toggleAllSpaces() { togglePref(WindowPref.allSpaces) }
+
+    private func togglePref(_ key: String) {
+        let defaults = UserDefaults.standard
+        defaults.set(!defaults.bool(forKey: key), forKey: key)
+        applyWindowPrefs()
+    }
+
+    /// Float Above Other Windows and Show on All Desktops, applied to
+    /// the tank. Open client windows take the tank's level too: one
+    /// left floating over a normal tank would cover every other app.
+    private func applyWindowPrefs() {
+        let defaults = UserDefaults.standard
+        window.level = defaults.bool(forKey: WindowPref.float)
+            ? .floating : .normal
+        window.collectionBehavior = defaults.bool(forKey: WindowPref.allSpaces)
+            ? [.canJoinAllSpaces, .fullScreenAuxiliary]
+            : [.managed, .participatesInCycle]
+        for hw in host.windows { hw.window?.level = window.level }
+    }
+
+    /// Checkmarks for the toggles. Every other item of ours is always
+    /// enabled.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        let defaults = UserDefaults.standard
+        switch menuItem.action {
+        case #selector(toggleCrt):
+            menuItem.state = crtOn ? .on : .off
+        case #selector(toggleFloat):
+            menuItem.state = defaults.bool(forKey: WindowPref.float)
+                ? .on : .off
+        case #selector(toggleAllSpaces):
+            menuItem.state = defaults.bool(forKey: WindowPref.allSpaces)
+                ? .on : .off
+        default:
+            break
+        }
+        return true
     }
 
     /// Keep the aquarium on screen: hand any top-level http(s) navigation
@@ -486,7 +569,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
 
         window = NSWindow(
             contentRect: webView.frame,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable,
+            // Not .closable: Cmd-W on the tank would quit the app.
+            styleMask: [.titled, .miniaturizable, .resizable,
                         .fullSizeContentView],
             backing: .buffered, defer: false)
         window.title = "Finsical"
@@ -497,8 +581,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         // silhouette float free; the shadow follows the painted shape.
         window.isOpaque = false
         window.backgroundColor = .clear
-        window.level = .floating                    // always on top
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        UserDefaults.standard.register(defaults: [
+            WindowPref.float: true, WindowPref.allSpaces: true,
+        ])
+        applyWindowPrefs() // on top and on every Space by default
         window.contentAspectRatio = NSSize(width: 320, height: 200)
         window.contentView = webView
         window.delegate = self
@@ -506,6 +592,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         // No traffic lights on the tank — the buttons are pointless for a
         // floating window, and everything lives in the menu. The behaviors
         // stay: ⌘M still minimizes, edges still resize, menu zoom works.
+        // There is no close action to keep (see the styleMask).
         window.standardWindowButton(.closeButton)?.isHidden = true
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
         window.standardWindowButton(.zoomButton)?.isHidden = true
@@ -537,6 +624,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
 enum FinsicalApp {
     static func main() {
         let app = NSApplication.shared
+        // No Show Tab Bar or tab items in the Window menu: every window
+        // here is a fixed Mac OS 8 window, never a tab.
+        NSWindow.allowsAutomaticWindowTabbing = false
         let delegate = AppDelegate()
         app.delegate = delegate
         app.setActivationPolicy(.regular)
@@ -544,9 +634,32 @@ enum FinsicalApp {
         let appItem = NSMenuItem()
         mainMenu.addItem(appItem)
         let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About Finsical",
+                        action: #selector(AppDelegate.showAbout),
+                        keyEquivalent: "")
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Preferences…",
                         action: #selector(AppDelegate.openPrefs),
                         keyEquivalent: ",")
+        appMenu.addItem(.separator())
+        let servicesItem = appMenu.addItem(withTitle: "Services",
+                                           action: nil, keyEquivalent: "")
+        let servicesMenu = NSMenu(title: "Services")
+        servicesItem.submenu = servicesMenu
+        app.servicesMenu = servicesMenu
+        appMenu.addItem(.separator())
+        // Hiding matters for a window that floats above every app.
+        appMenu.addItem(withTitle: "Hide Finsical",
+                        action: #selector(NSApplication.hide(_:)),
+                        keyEquivalent: "h")
+        let hideOthers = appMenu.addItem(
+            withTitle: "Hide Others",
+            action: #selector(NSApplication.hideOtherApplications(_:)),
+            keyEquivalent: "h")
+        hideOthers.keyEquivalentModifierMask = [.option, .command]
+        appMenu.addItem(withTitle: "Show All",
+                        action: #selector(NSApplication.unhideAllApplications(_:)),
+                        keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit Finsical",
                         action: #selector(NSApplication.terminate(_:)),
@@ -567,7 +680,7 @@ enum FinsicalApp {
         tankMenu.addItem(withTitle: "Feed Fish",
                          action: #selector(AppDelegate.feedFish),
                          keyEquivalent: "f")
-        tankMenu.addItem(withTitle: "Toggle CRT Effect",
+        tankMenu.addItem(withTitle: "CRT Effect",
                          action: #selector(AppDelegate.toggleCrt),
                          keyEquivalent: "r")
         tankMenu.addItem(.separator())
@@ -586,11 +699,11 @@ enum FinsicalApp {
         let windowItem = NSMenuItem()
         mainMenu.addItem(windowItem)
         let windowMenu = NSMenu(title: "Window")
-        // nil target → responder chain → key window. The tank carries
-        // .closable in its styleMask (hiding the buttons doesn't remove it);
-        // the borderless client windows answer through OsmiumWindow's
-        // overrides. Both keep the windowShouldClose veto path. Closing the
-        // tank quits the app (windowWillClose).
+        // nil target → responder chain → key window. The borderless
+        // client windows answer through OsmiumWindow's overrides, which
+        // keep the windowShouldClose veto path. The tank isn't .closable,
+        // so on the tank Close is disabled and Cmd-W beeps instead of
+        // quitting the app (windowWillClose).
         windowMenu.addItem(withTitle: "Close",
                            action: #selector(NSWindow.performClose(_:)),
                            keyEquivalent: "w")
@@ -602,10 +715,25 @@ enum FinsicalApp {
                            keyEquivalent: "")
         windowItem.submenu = windowMenu
         windowMenu.addItem(.separator())
+        windowMenu.addItem(withTitle: "Float Above Other Windows",
+                           action: #selector(AppDelegate.toggleFloat),
+                           keyEquivalent: "")
+        windowMenu.addItem(withTitle: "Show on All Desktops",
+                           action: #selector(AppDelegate.toggleAllSpaces),
+                           keyEquivalent: "")
+        windowMenu.addItem(.separator())
         windowMenu.addItem(withTitle: "Bring All to Front",
                            action: #selector(NSApplication.arrangeInFront(_:)),
                            keyEquivalent: "")
         app.windowsMenu = windowMenu
+        let helpItem = NSMenuItem()
+        mainMenu.addItem(helpItem)
+        let helpMenu = NSMenu(title: "Help")
+        helpMenu.addItem(withTitle: "Finsical Help",
+                         action: #selector(AppDelegate.openHelp),
+                         keyEquivalent: "?")
+        helpItem.submenu = helpMenu
+        app.helpMenu = helpMenu // also adds the menu search field
         app.mainMenu = mainMenu
         app.activate(ignoringOtherApps: true)
         // NSApplication holds its delegate weakly.
