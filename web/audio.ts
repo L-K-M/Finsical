@@ -185,13 +185,34 @@ export class TankAudio {
     this.ambientGen++;
   }
 
-  /** Browsers gate audio behind a user gesture; call from pointerdown. */
+  /** Browsers gate audio behind a user gesture; call from pointerdown,
+   * a keydown handler, or any other activation path (native menu JS
+   * still needs a prior gesture on some WebKit builds). */
   unlock(): void {
     if (!this.ctx) return;
     // Hidden, setHidden(false) resumes on return; waking the device
     // now would undo the suspend for nothing.
-    if (!this.hidden)
-      void this.ctx.resume().then(() => this.startAmbient());
+    if (this.hidden) return;
+    // Menu-driven unlock can resume() without a user activation and
+    // reject — expected while suspended, quiet. startAmbient() is
+    // already idempotent (ambientSrc guard). Log only failures after
+    // *this* chain resumed (startAmbient threw, or a later step failed);
+    // do not infer success from ctx.state — a concurrent resume() can
+    // race this one and flip the state without this chain succeeding.
+    let resumed = false;
+    void this.ctx.resume()
+      .then(() => {
+        resumed = true;
+        return this.startAmbient();
+      })
+      .catch((err) => {
+        // Quiet only the documented no-activation rejection; surface
+        // resume failures (closed context, etc.) and startAmbient throws.
+        const expected = !resumed && err instanceof DOMException
+          && err.name === "NotAllowedError";
+        if (!expected)
+          console.warn(resumed ? "audio start failed:" : "audio resume failed:", err);
+      });
   }
 
   /** Suspend the audio device while the tank is hidden and resume it on
