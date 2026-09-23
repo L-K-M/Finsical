@@ -530,7 +530,8 @@ export function loadProblem(e: unknown): string {
 
 export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     { open(): void; close(): void; readonly isOpen: boolean;
-      restore(list: Importable[]): Promise<void>;
+      /** Resolves to the add-ons that failed to restore. */
+      restore(list: Importable[]): Promise<Importable[]>;
       notify(m: BusMsg): void } {
   const remote = opts?.remote;
   const installed = new Set<string>(); // add-on urls, not display names
@@ -1228,8 +1229,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     // applyPack's dispatch so the two install paths can't diverge;
     // skips onInstall so restores don't re-record, and skips add-ons
     // already installed while the chain was in flight.
-    restore(list: Importable[]): Promise<void> {
-      if (remote) return Promise.resolve(); // the tank page owns the sim
+    restore(list: Importable[]): Promise<Importable[]> {
+      if (remote) return Promise.resolve([]); // the tank page owns the sim
+      const failed: Importable[] = [];
       let p: Promise<void> = Promise.resolve();
       for (const it of list) {
         p = p.then(() => {
@@ -1238,11 +1240,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
             .then((rs) => {
               if (!installed.has(it.url)) applyPack(it, rs, false);
             })
-            .catch((e) =>
-              console.warn(`add-on restore failed for ${it.inner}:`, e));
+            .catch((e) => {
+              failed.push(it);
+              console.warn(`add-on restore failed for ${it.inner}:`, e);
+            });
         });
       }
-      return p;
+      return p.then(() => failed);
     },
   };
 }

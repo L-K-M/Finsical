@@ -318,6 +318,23 @@ function reconcileFish(): void {
   rosterComplete = !pending;
   if (rosterComplete) saveTank();
 }
+
+// A failed restore is usually a transient fetch — retry a couple of
+// times in the background so one flaky launch doesn't leave art-less
+// fish (or missing scenery) for the whole session. Only runs remap/
+// reconcile again when at least one pack actually landed.
+const RESTORE_RETRY_DELAYS = [15_000, 60_000];
+function retryRestores(failed: Importable[], attempt = 0): void {
+  if (!failed.length || attempt >= RESTORE_RETRY_DELAYS.length) return;
+  setTimeout(() => {
+    void importPanel.restore(failed).then((still) => {
+      if (still.length < failed.length) {
+        remapSheetIdx(); reconcileFish(); postState();
+      }
+      retryRestores(still, attempt + 1);
+    });
+  }, RESTORE_RETRY_DELAYS[attempt]);
+}
 function handleImages(images: Iterable<IndexedImage>, src: string,
                       section: string): void {
   // fish packs carry portraits too — only scenery sections touch the tank
@@ -872,6 +889,9 @@ const packFetch = async (p: string): Promise<Uint8Array> => {
   if (!r.ok) throw new Error(`${p}: ${r.status}`);
   return new Uint8Array(await r.arrayBuffer());
 };
+// Add-ons the launch-time restore couldn't fetch — retried in the
+// background by retryRestores once the chain settles.
+let restoreFailed: Importable[] = [];
 void (async () => {
   const pack = await loadAzpack(packFetch);
   const idx = usePack(pack, packFetch);
@@ -889,6 +909,7 @@ void (async () => {
   // rebind saved fish to their species' actual sheet slot and heal
   // pre-spawning rosters that never gained their fish.
   .then(() => importPanel.restore([...installedAddons]))
+  .then((failed) => { restoreFailed = failed; })
   // Imported 'snd ' sets persist — restore them so dropped sounds
   // survive relaunch even when no pack in use carries audio. Best
   // effort: a restore failure must not skip the fish roster healing.
@@ -897,7 +918,10 @@ void (async () => {
   }))
   .then((recs) => recs?.length ? audio.addWavs(recs).catch((e) =>
     console.warn("snd decode failed:", e)) : undefined)
-  .then(() => { remapSheetIdx(); reconcileFish(); });
+  .then(() => {
+    remapSheetIdx(); reconcileFish();
+    retryRestores(restoreFailed);
+  });
 
 // Drag an .azpack folder onto the window to import it.
 async function walkEntry(ent: FileSystemEntry, prefix: string,
