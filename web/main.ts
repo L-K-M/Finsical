@@ -67,7 +67,8 @@ let rosterComplete = saved?.v !== 1;
 const sim = new Sim(TANK, 0x9003);
 const audio = new TankAudio();
 if (saved) {
-  if (Number.isFinite(saved.tickCount)) sim.tickCount = saved.tickCount;
+  if (Number.isFinite(saved.tickCount))
+    sim.tickCount = Math.max(0, Math.trunc(saved.tickCount));
   if (Number.isFinite(saved.waterQuality))
     sim.waterQuality =
       Math.min(1, Math.max(0, saved.waterQuality));

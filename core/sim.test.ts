@@ -359,5 +359,10 @@ describe("Sim", () => {
     sim.lightOverride = null; // lamp on: the cycle's word is law again
     sim.tickCount = DAY_TICKS / 2;
     expect(sim.light).toBeCloseTo(1, 10);
+    // 0 is falsy but a valid pinned level — it must still win over
+    // the cycle (guards the getter against a truthiness rewrite).
+    sim.tickCount = 0;
+    sim.lightOverride = 0;
+    expect(sim.light).toBe(0);
   });
 });
