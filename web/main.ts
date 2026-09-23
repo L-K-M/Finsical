@@ -1,4 +1,4 @@
-import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
+import { BOTTOM_PAD, Sim } from "../core/sim.js";
 import { fishPose, pitch } from "../core/pose.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
@@ -12,9 +12,12 @@ import { sndsGet, sndsMerge } from "./store.js";
 import { imageCanvas, previewOf, soundIcon, swimCanvas } from "./render.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
+import { drawBubbles, drawFood, drawLight, drawMurk, feedPinch }
+  from "./water.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
   from "./machines.js";
 import type { CrtConfig } from "./crt.js";
+import type { WaterMotion } from "./water.js";
 import type { Machine } from "./machines.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
@@ -791,8 +794,11 @@ document.addEventListener("pointerdown", (e) => {
 postState();
 
 // Native-menu / keyboard entry points (macos/Finsical.swift calls these).
+// A pinch of pellets scattered around the middle, raining in over a
+// moment, so repeated feeds don't stack into one sinking column.
 function feedFish(): void {
-  sim.dropFood(TANK.width / 2);
+  for (const p of feedPinch(Math.random))
+    setTimeout(() => sim.dropFood(TANK.width / 2 + p.dx), p.delay);
   audio.feed();
 }
 (window as unknown as { finsical?: unknown }).finsical =
@@ -1067,6 +1073,13 @@ const tankGradient = (() => {
   return g;
 })();
 
+// Reduced motion freezes the ambient light (caustics, shafts, glint).
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+let waterMotion: WaterMotion = reducedMotion.matches ? "still" : "animated";
+reducedMotion.addEventListener("change", (e) => {
+  waterMotion = e.matches ? "still" : "animated";
+});
+
 let prevBubbles = 0;
 function render(): void {
   if (backdropCv) {
@@ -1090,30 +1103,19 @@ function render(): void {
                   TANK.height - 6 - d.height);
   }
 
-  for (const fd of sim.food) {
-    // Rotting pellets dissolve — fade them out over their rot lifetime.
-    ctx.globalAlpha = 1 - 0.65 * Math.min(1, fd.settled / FOOD_ROT_TICKS);
-    ctx.fillStyle = "#c9a227";
-    ctx.fillRect(Math.round(fd.x) - 1, Math.round(fd.y) - 1, 3, 3);
-    ctx.globalAlpha = 1;
-  }
+  drawLight(ctx, sim.light, sim.tickCount, waterMotion);
+
+  drawFood(ctx, sim.food);
   for (const f of sim.fish) drawFish(f);
 
-  ctx.fillStyle = "#cfe8ff";
-  for (const b of sim.bubbles) {
-    ctx.fillRect(Math.round(b.x), Math.round(b.y), 2, 2);
-  }
+  drawBubbles(ctx, sim.bubbles);
   // Sparse bloops: only some spawns make a sound.
   if (sim.bubbles.length > prevBubbles && Math.random() < 0.25)
     audio.bubble();
   prevBubbles = sim.bubbles.length;
 
   // Fouled water murks the whole scene.
-  const murk = 1 - sim.waterQuality;
-  if (murk > 0.02) {
-    ctx.fillStyle = `rgba(96,80,36,${(murk * 0.28).toFixed(3)})`;
-    ctx.fillRect(0, 0, TANK.width, TANK.height);
-  }
+  drawMurk(ctx, sim.waterQuality, sim.tickCount);
 
   // day/night dimming
   const dark = 1 - sim.light;

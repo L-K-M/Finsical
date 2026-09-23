@@ -70,7 +70,7 @@ export interface Bubble {
 }
 
 const MARGIN = 16;
-const SURFACE = 10;
+export const SURFACE = 10;
 export const BOTTOM_PAD = 12;
 
 /** Smallest signed angle delta, wrapped to [−π, π). */
