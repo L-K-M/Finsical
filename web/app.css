@@ -232,3 +232,44 @@ body.crt canvas#tank { opacity: 0; }
 .inarrow.isound .iname { margin-right: 71px; }
 .inarrow .ipreview, .inarrow .icredit, .inarrow .icount { display: none; }
 .inarrow .idonate { margin-left: 0; }
+
+/* ---- alerts (web/alert.ts) -----------------------------------------------
+   Mac OS 8's modal dialog frame around a dd face: the black outline, a
+   raised bevel (white over 99), a face-colored row, then an inset bevel
+   (99 over white), and the 1px drop shadow starting two pixels in. The
+   note or caution icon sits top left, the text beside it, the buttons
+   along the bottom right with the default button last. The scrim over
+   the page is transparent: Mac OS 8 doesn't dim what's under an alert. */
+.alertscrim { position: fixed; inset: 0; z-index: 20; cursor: default; }
+.alertwin {
+  position: absolute; box-sizing: border-box;
+  display: grid; grid-template-columns: 32px minmax(0, 1fr);
+  column-gap: 14px; padding: 14px 14px 13px;
+  background: var(--osm-dialog);
+  box-shadow: inset 0 0 0 1px #000, inset 2px 2px #fff, inset -2px -2px #999;
+  color: #000; font: var(--osm-font-system); font-synthesis: none;
+  -webkit-font-smoothing: none;
+  user-select: none; -webkit-user-select: none;
+}
+.alertwin::before {
+  content: ""; position: absolute; inset: 3px; pointer-events: none;
+  box-shadow: inset 1px 1px #999, inset -1px -1px #fff;
+}
+.alertwin::after {
+  content: ""; position: absolute; z-index: -1;
+  left: 2px; top: 2px; right: 0; bottom: 0;
+  box-shadow: 1px 1px #000;
+}
+.alerticon {
+  grid-row: 1 / span 2; width: 32px; height: 32px;
+  background: no-repeat;
+}
+.alerttext { grid-column: 2; min-height: 32px; overflow-wrap: anywhere; }
+.alertprogress { grid-column: 2; margin-top: 9px; }
+.alertprogress[hidden] { display: none; }
+.alertbuttons {
+  grid-column: 1 / -1; margin-top: 15px;
+  display: flex; flex-wrap: wrap; justify-content: flex-end;
+  align-items: center; gap: 8px 12px;
+}
+.alertbuttons:empty { display: none; }

@@ -152,3 +152,85 @@ export const ICON_SPRITES: Record<string, readonly string[]> = {
   "icon-monitor": ICON_MONITOR,
   "icon-picture": ICON_PICTURE,
 };
+
+// Alert icons, 32 x 32, in the spirit of Mac OS 8's note and caution
+// alert icons (drawn for Finsical, not copied): a face speaking into a
+// balloon, and a yellow warning triangle. Registered by web/alert.ts.
+const ICON_NOTE = [
+  "................................",
+  "................00000000000.....",
+  "..............00fffffffffff00...",
+  ".............0fffffffffffffff0..",
+  "............0fff88888888888fff0.",
+  "............0fffffffffffffffff0.",
+  "............0fffffffffffffffff0.",
+  "............0ff8888888888888ff0.",
+  "............0fffffffffffffffff0.",
+  "............0ffffffffffffffffc0.",
+  "............0fff88888888888fcc0.",
+  ".............0fffffffffffffcc0..",
+  "..............00fffffffffcc00...",
+  "...............0ff000000000.....",
+  "...............0f0..............",
+  ".....000000...00................",
+  "...00ssssss00...................",
+  "..0ssssssssss0..................",
+  ".0ssssssssssss0.................",
+  ".0sssssssss00ss0................",
+  "0ssssssssss00ss0................",
+  "0ssssssssssssss0................",
+  "0sssssssssssssss0...............",
+  "0ssssssssssssssss0..............",
+  "0sssssssssssssss0...............",
+  "0ssssssssssssss0................",
+  "0ssssssssss000s0................",
+  ".0ssssssssssss0.................",
+  ".0sssssssssss0..................",
+  "..0ssssssssss0..................",
+  "...0sssssssss0..................",
+  "....0ssssssss0..................",
+];
+
+const ICON_CAUTION = [
+  "................................",
+  "................................",
+  "...............00...............",
+  "...............00...............",
+  "..............0000..............",
+  "..............0yy0..............",
+  ".............00yy00.............",
+  ".............0yyyy0.............",
+  "............00yyyy00............",
+  "............0yyyyyy0............",
+  "...........00y0000y00...........",
+  "...........0yy0000yy0...........",
+  "..........00yy0000yy00..........",
+  "..........0yyy0000yyy0..........",
+  ".........00yyy0000yyy00.........",
+  ".........0yyyy0000yyyy0.........",
+  "........00yyyy0000yyyy00........",
+  "........0yyyyyy00yyyyyy0........",
+  ".......00yyyyyy00yyyyyy00.......",
+  ".......0yyyyyyy00yyyyyyy0.......",
+  "......00yyyyyyyyyyyyyyyy00......",
+  "......0yyyyyyyyyyyyyyyyyy0......",
+  ".....00yyyyyyyy00yyyyyyyy00.....",
+  ".....0yyyyyyyy0000yyyyyyyy0.....",
+  "....00yyyyyyyy0000yyyyyyyy00....",
+  "....0yyyyyyyyyy00yyyyyyyyyy0....",
+  "...00yyyyyyyyyyyyyyyyyyyyyy00...",
+  "...0yyyyyyyyyyyyyyyyyyyyyyyy0...",
+  "..00yyyyyyyyyyyyyyyyyyyyyyyy00..",
+  ".000000000000000000000000000000.",
+  "................................",
+  "................................",
+];
+
+/** The alert icons' colors: ICON_PALETTE plus a face tone, #ffcc99
+ * from the same 256-color palette. */
+export const ALERT_PALETTE: Palette = { ...ICON_PALETTE, s: "#ffcc99" };
+
+export const ALERT_ICONS: Record<string, readonly string[]> = {
+  "alert-note": ICON_NOTE,
+  "alert-caution": ICON_CAUTION,
+};
