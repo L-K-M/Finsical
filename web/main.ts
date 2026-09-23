@@ -1061,9 +1061,17 @@ const MAX_FISH_W = TANK.width * 0.6, MAX_FISH_H = TANK.height * 0.6;
 function drawFish(f: Fish): void {
   const sheet = sheetOf(f);
   if (!sheet) return drawPlaceholder(f.x, f.y, f.facing, pitch(f));
-  const pose = fishPose(sheet, f);
-  const cv = swimCanvas(sheet, animFrame(f, sheet.meta.framesPerGroup),
-                        pose.mir, pose.g);
+  let cv: HTMLCanvasElement;
+  try {
+    const pose = fishPose(sheet, f);
+    cv = swimCanvas(sheet, animFrame(f, sheet.meta.framesPerGroup),
+                    pose.mir, pose.g);
+  } catch (e) {
+    if (!(e instanceof RangeError)) throw e;
+    // A truncated pack can legitimately lack this cell — an uncaught
+    // RangeError here would kill the whole rAF loop, so fall back.
+    return drawPlaceholder(f.x, f.y, f.facing, pitch(f));
+  }
   const s = Math.min(1, MAX_FISH_W / cv.width, MAX_FISH_H / cv.height);
   const w = cv.width * s, h = cv.height * s;
   ctx.save();
