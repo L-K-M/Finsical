@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The water reacts now: knocking on the glass draws an expanding pixel
+  ring at the tap, and food (or a newly installed fish) breaks the
+  surface with a small splash of droplets. Both effects tick on the
+  sim clock and paint as whole pixels, matching the retro bubbles.
+
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview

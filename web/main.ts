@@ -4,6 +4,9 @@ import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.j
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
 import { TankAudio } from "./audio.js";
+import { drawRipples, drawSplashes, newSplash, tickRipples,
+         tickSplashes } from "./fx.js";
+import type { Ripple, Splash } from "./fx.js";
 import { pushButton } from "osmium-ui";
 import { fetchAddon, mountImportPanel, qualifySoundItemName,
          COLLECTIONS } from "./import.js";
@@ -106,8 +109,13 @@ canvas.addEventListener("pointerdown", (e) => {
   const y = (e.clientY - r.top - (r.height - TANK.height * s) / 2) / s;
   if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return; // letterbox bar
   audio.unlock();
-  if (y < TANK.height * 0.15) { sim.dropFood(x); audio.feed(); }
-  else { sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height); }
+  if (y < TANK.height * 0.15) {
+    sim.dropFood(x); audio.feed();
+    splashes.push(newSplash(x, 12));
+  } else {
+    sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height);
+    ripples.push({ x, y, age: 0 });
+  }
 });
 
 // ---- sprite loading ----------------------------------------------------
@@ -137,8 +145,9 @@ function usePack(pack: { sheets: Map<string, SpriteSheet>;
  * install URL: the precise identity when packs share a species name. */
 function spawnFish(sheetIdx: number, species: string, pack?: string): void {
   const facing = Math.random() < 0.5 ? 1 : -1;
+  const x = 60 + Math.random() * (TANK.width - 120);
   sim.addFish({
-    x: 60 + Math.random() * (TANK.width - 120),
+    x,
     y: 30 + Math.random() * (TANK.height - 90),
     facing: facing as 1 | -1,
     heading: facing > 0 ? 0 : Math.PI,
@@ -146,6 +155,9 @@ function spawnFish(sheetIdx: number, species: string, pack?: string): void {
     sheetIdx, species,
     ...(pack !== undefined ? { pack } : {}),
   });
+  // A new fish enters through the surface — pair the splash sound
+  // with droplets where it went in.
+  splashes.push(newSplash(x, 12));
   saveTank();
 }
 
@@ -794,6 +806,7 @@ postState();
 function feedFish(): void {
   sim.dropFood(TANK.width / 2);
   audio.feed();
+  splashes.push(newSplash(TANK.width / 2, 12));
 }
 (window as unknown as { finsical?: unknown }).finsical =
   { openImport: () => importPanel.open(), feedFish,
@@ -1067,6 +1080,11 @@ const tankGradient = (() => {
   return g;
 })();
 
+// Water feedback — glass-tap rings and feed splashes, ticked on the
+// sim clock so they animate even while fish pause between decisions.
+const ripples: Ripple[] = [];
+const splashes: Splash[] = [];
+
 let prevBubbles = 0;
 function render(): void {
   if (backdropCv) {
@@ -1108,6 +1126,10 @@ function render(): void {
     audio.bubble();
   prevBubbles = sim.bubbles.length;
 
+  // On the glass, so over the fish: ripples and splashes paint last.
+  drawRipples(ctx, ripples);
+  drawSplashes(ctx, splashes);
+
   // Fouled water murks the whole scene.
   const murk = 1 - sim.waterQuality;
   if (murk > 0.02) {
@@ -1133,6 +1155,8 @@ function frame(now: number): void {
   const step = 1000 / TICKS_PER_SECOND;
   while (acc >= step) {
     sim.tick();
+    tickRipples(ripples);
+    tickSplashes(splashes);
     acc -= step;
   }
   render();
