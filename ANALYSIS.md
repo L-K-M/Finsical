@@ -1,6 +1,6 @@
 # Finsical Analysis — Shovel-Ready Improvements
 
-Consolidates five independent review passes plus follow-up review
+Consolidates six independent review passes plus follow-up review
 responses. Nothing below is dropped: implemented items stay listed
 with their branch/PR so future work can see what landed, and every
 open idea is written so an LLM can pick it up cold.
@@ -247,24 +247,103 @@ open idea is written so an LLM can pick it up cold.
   pane: mute + active-source tracking) — reconcile at merge; the
   volume-slider half of the open item below lands here.
 
+## Completed (sixth pass — Devin, PRs open for review)
+
+- **PR #134** (`fix/import-reliability`): every fetch runs under a
+  stall timeout — 30 s without body progress aborts, so
+  slow-but-healthy archive.org transfers finish while a true wedge
+  rejects and the panel's Try Again actually retries; thumbnail
+  fetches dedupe while in flight (`thumbFetching`); tank/scenery
+  sections no longer register sheets into the fish pool (starter
+  fish can't round-robin onto scenery art); `remoteInstall` drops
+  its redundant second `postState`. Review round 2 applied: the
+  original total-duration cap became a progress-resetting stall
+  budget, and the timeout message went host-neutral. Verified per
+  review: `recordInstall`→`saveTank` broadcasts unconditionally,
+  `zipCache` evicts rejected promises, all `sheetByPack`/
+  `packBySheet` consumers are fish-only.
+- **PR #135** (`fix/tank-polish`): tap-zone classification
+  normalized by half-dimensions (near-corner taps pick the right
+  knock variant); `.irowname` nowrap (long/Japanese add-on names
+  ellipsize instead of hard-clipping in the 32 px row); fish dest
+  rects round to ≥1×1 integers (less HiDPI shimmer on level
+  swims); saved fish fields sanitized — finite+clamped numerics,
+  `bandY` falls back to the clamped `y`, invalid `sheetIdx`/`pack`/
+  `id` dropped rather than zeroed, `speed` floor matches `cruise`;
+  `visibilitychange → hidden` saves so native quit can't lose the
+  last ≤10 s; menu feed drops at a random x. Declined: deleting
+  empty `species` — `""` is the sim's own unbound sentinel.
+- **PR #136** (`feat/import-filter`): substring filter field in the
+  add-on browser header — case-insensitive, scoped to the current
+  section, "N of M" count, Escape clears the field without closing
+  the panel, filter survives section switches. Review round 2
+  applied: `stopPropagation` on Escape, autocomplete/spellcheck
+  off, forced-colors focus outline, `aria-live` on the count.
+  Refuted: "inner is HTML markup" — it is the zip entry name
+  rendered via `textContent`.
+- **PR #137** (`feat/fish-get-info`): ⌥-click a fish for a
+  Mac-style Get-Info card that tracks it as it swims — species,
+  hunger, mood (`Record<Fish["state"], string>` so a new state
+  fails typecheck), cruise; closed by its close box, Escape, an
+  ⌥-click on empty water, or the fish leaving the tank. Review
+  round 2 applied: `audio.unlock()` runs before the ⌥-click early
+  return, the card origin uses rect deltas against `screenEl` (was
+  mixed offset/rect coordinate spaces), and the 7 px close box got
+  an invisible ::before halo for touch.
+- **PR #138** (`feat/begging-fish`): hunger above ~0.75 biases a
+  fish's depth band to just under the surface (begging), and the
+  nearest calm fish within 80 px of a hovering pointer drifts over
+  to look — hunger and panic outrank curiosity. Review round 2
+  applied: the standoff guard measures fish-to-pointer (was
+  fish-to-target, which pinned a hovering fish to the exact cursor
+  instead of holding a ring); non-primary pointers ignored; sim
+  constants exported for the test; `noticeFish` made public so the
+  test asserts identity rather than a flaky wander position.
+- **PR #139** (`feat/decor-depth`): decor roots anchor into the
+  gravel strip (quarter buried, no more floating/sunken plants), up
+  to 3 art frames per pack largest-first, and the middle frame
+  plays foreground over fish and bubbles capped at half tank
+  height; `keyMask` clears key-index pixels including enclosed
+  pockets. `pickDecorArts` honors `max=0` (contract fix + test) and
+  `addDecor` replaces a re-imported pack's frames instead of
+  stacking. Declined: drawing pellets topmost — mid-water occlusion
+  by foreground plants is the depth effect (intent pinned in a
+  comment).
+- **PR #140** (`feat/stats-sparklines`): inline 44×14 1-bit
+  sparklines for water quality and hunger beside each meter —
+  newest sample right, per-column gaps for missing data, text and
+  progress-bar accessibility untouched. Review round 2 applied:
+  intrinsic canvas size (no CSS w/h, so a border-box reset can't
+  squeeze the columns), an all-null series skips the framed blank,
+  and non-finite samples gap like nulls. Verified: history push
+  precedes render; age+count trims keep it bounded.
+- **PR #141** (`feat/crt-poweron`): a `uPower` shader uniform plays
+  a ~450 ms tube warm-up on every enable — a bright center line
+  opens into the full raster while the whole raster squeezes into
+  the band; the brightness boost keys to raster openness so total
+  emitted light stays roughly constant (no mid-animation flash);
+  skipped under `prefers-reduced-motion`. Review round 2 applied:
+  `powerT0`'s sentinel is `-Infinity` (0 meant page-load time — a
+  pre-enable frame could play a stray warm-up).
+
 ## Bugs / Reliability (open)
 
 - `core/sim.ts`: `nearestFood()` can briefly target food that was just eaten if called with a slightly stale snapshot. Confirm removal order in `tick()`.
 - `core/sim.ts`: `tap()` propagates panic but doesn't cap bubble spawn in foul water. Consider a max-bubble cap for performance.
 - `web/crt.ts`: `hash()` uses `fract()` which may lose precision over very long sessions; wrap `uTime` more frequently or use a different noise source.
 - `macos/Finsical.swift`: `loadMaskImage()` alpha-offset computation assumes `premultipliedFirst`; add a runtime check or fallback for other byte orders.
-- `web/import.ts`: thumbnail fetch dedupe hole — IDB-miss path deletes from `thumbQueued` then pushes to `thumbQueue`, so a second `wantThumb` before fetch completion queues a duplicate (`pumpThumbs` never checks). Harmless today (`fetchAddon` memoized) but slow packs starve the 3-wide queue.
+- ~~`web/import.ts`: thumbnail fetch dedupe hole — IDB-miss path deletes from `thumbQueued` then pushes to `thumbQueue`, so a second `wantThumb` before fetch completion queues a duplicate (`pumpThumbs` never checks). Harmless today (`fetchAddon` memoized) but slow packs starve the 3-wide queue.~~ Landed: PR #134 (`thumbFetching` tracks in-flight URLs).
 - `web/import.ts`: loose-mode (`prefix:`) listings don't dedupe colliding basenames the way the nested-zip branch does — two same-name rows bind `sheetBySpecies` last-wins. Copy the `used`-set logic over.
-- Fetch path has no timeouts: a stalled archive.org request wedges that URL in `installsInFlight` while the panel's 15 s "Try Again" re-arms a no-op button. Add `AbortController` timeouts (~30 s) + clear in-flight on timeout.
+- ~~Fetch path has no timeouts: a stalled archive.org request wedges that URL in `installsInFlight` while the panel's 15 s "Try Again" re-arms a no-op button. Add `AbortController` timeouts (~30 s) + clear in-flight on timeout.~~ Landed: PR #134 — a 30 s *stall* timeout (resets per body chunk; rejected promises evict their cache memo).
 - Sim time stops when the tab is hidden (rAF-driven), so stats uptime/hunger/day-night stall while client windows claim live readings. Advance catch-up ticks on visibilitychange, drive from a Worker, or grey stale numbers until fresh pushes land. Note for stats wording: "up 4h" is visible-hours, not wall-hours.
-- Fractional sprite dest rects (`drawFish` rounds translate but not w/h) shimmer on HiDPI with smoothing off. Round w/h to whole pixels.
+- ~~Fractional sprite dest rects (`drawFish` rounds translate but not w/h) shimmer on HiDPI with smoothing off. Round w/h to whole pixels.~~ Landed: PR #135 (rounded, clamped ≥1; pitched fish still rotate through fractional space by design).
 - Cosmetic drift: Swift `DragStrip` is 22 px, overlay `TOP_CLEAR` is 24 with a comment saying 22. Pick one number.
 - `PLAN.md` overclaims the sim ("mood" — growth stages now exist; mood still doesn't). Implement mood or reword.
-- Saved fish fields aren't validated beyond `x`/`y` (`loadTank` roster filter in `web/main.ts`). A hand-corrupted `hunger: "x"` or `null` enters the sim, poisons `Math.min` results, and re-persists (the `scale` field got this guard in PR #110 — extend the same pattern to the other numeric fields).
-- `remoteInstall` calls `recordInstall` (→ `saveTank` → `postState`) and then `postState()` again — one redundant broadcast per install.
+- ~~Saved fish fields aren't validated beyond `x`/`y` (`loadTank` roster filter in `web/main.ts`). A hand-corrupted `hunger: "x"` or `null` enters the sim, poisons `Math.min` results, and re-persists (the `scale` field got this guard in PR #110 — extend the same pattern to the other numeric fields).~~ Landed: PR #135 — every numeric field finite+clamped, `bandY` defaults to the clamped `y`, invalid `sheetIdx`/`pack`/`id`/`species` sanitized or dropped.
+- ~~`remoteInstall` calls `recordInstall` (→ `saveTank` → `postState`) and then `postState()` again — one redundant broadcast per install.~~ Landed: PR #134.
 - Drop-path stem logic: `name.replace(/\.[^.]*$/, "")` strips the last dot-suffix only; keep it aligned with the remote path's stem logic (`replace(/\.[^.]+$/, "")`) — same regex, noted so future edits don't diverge.
-- `web/audio.ts` `tap()` zone pick compares raw pixel distances (`dx < dy`) on a 320x200 tank — normalize by w/2 and h/2 so corner taps pick the right knock variant.
-- Native quit can drop the last ≤10 s of tank state: `pagehide` is unreliable in WKWebView on termination; also save on `visibilitychange → hidden`.
+- ~~`web/audio.ts` `tap()` zone pick compares raw pixel distances (`dx < dy`) on a 320x200 tank — normalize by w/2 and h/2 so corner taps pick the right knock variant.~~ Landed: PR #135.
+- ~~Native quit can drop the last ≤10 s of tank state: `pagehide` is unreliable in WKWebView on termination; also save on `visibilitychange → hidden`.~~ Landed: PR #135.
 - `pickBackdrop` keys art by source (`""` for bundled *and* drag-dropped packs): a drop silently rebinds the bundled art and `removeAddon` can never restore it. Synthetic source keys fix it.
 
 ## Performance / Engineering (open)
@@ -286,19 +365,19 @@ open idea is written so an LLM can pick it up cold.
 
 ## Missing features (open)
 
-- **Click-a-fish info card (highest value).** Per-species names + descriptions (`FsTH`) are decoded but never shown; clicks only scare. ⌥-click (or plain click) should open a Get-Info fish card: name, description, hunger/mood, species params.
+- **Click-a-fish info card — partially landed** (PR #137: ⌥-click opens a tracking Get-Info card with species/hunger/mood/cruise). Still open: surface the decoded `FsTH` per-species names + descriptions on the card.
 - **Fish lifecycle stage 1.** No sickness (`SicH` unused), death, birth/eggs (`Egg*` unused) — growth landed in PR #110 but hunger still has no *adverse* consequence. Start with lethargy at hunger ≥ ~0.9 + recovery on feed, wired to the decoded birth/sick/dead `snd` events.
 - **Lighting switch — partially landed** (PR #132: lamp off pins `LIGHT_NIGHT`, on restores the cycle; L key + native menu; persisted). Still open: a dimmer (continuous level, `LigH` data already decoded) and real-clock sync (local-time day/night), both natural fits for the same prefs pane.
 - **More foods.** `FdHd` data decoded and ignored; flakes/pellets/live food with different sink rates is one `sink` field on `Food`.
-- **Import search/filter.** JPN sections are long; add a name-substring filter box.
+- ~~**Import search/filter.** JPN sections are long; add a name-substring filter box.~~ Landed: PR #136 (per-section substring filter + result count + Escape-clears).
 - **Starter reef bundle.** One-click curated set (6 fish + gravel + plant) + first-run card ("Your tank is empty. [Import Add-ons…] [Stock a starter reef]") — fixes asset-failure silence and cold-start discoverability together.
 - **Overview actions.** Click row → spotlight fish in tank (ring highlight); rename (persist in save); state icons. Sort-column choice isn't persisted either.
-- **Stats history.** Sparklines for water/hunger from the existing 90 s `history` samples.
+- ~~**Stats history.** Sparklines for water/hunger from the existing 90 s `history` samples.~~ Landed: PR #140 (44x14 1-bit canvas per meter; gaps for missing samples).
 - **Pause/sleep.** Freeze `tick()` (render continues) for screenshots/benchmarks.
 - ~~**No mute/volume.**~~ Landed: PR #101 (mute + active-source tracking) and PR #133 (master/ambient volume sliders, master gain bus, live ramps). Two Sound panes exist (#101/#133) — reconcile at merge; native-menu mute wiring from #101 still applies.
 - **In-app help — partially landed** (PR #102's Shortcuts window lists F/C/S/⌘I in-browser). Still open: the same list inside the native app (its menu bar has no Help menu) and the feed-vs-tap gesture hint; a Balloon Help mode (below) would subsume both.
 - **Per-species swim params.** `FsTI` (speed, depth band, hunger rate) is decoded and unused; all fish share behavior constants.
-- **`feedFish` drops at tank center** — menu feed could drop at a random x for variety.
+- ~~**`feedFish` drops at tank center** — menu feed could drop at a random x for variety.~~ Landed: PR #135.
 - **Backdrop/gravel chooser.** Partially landed: the Overview's "Use" action (PR #118) swaps among installed scenery packs and persists the pick. Still open: `pickBackdrop` newest-wins on *install*, and a prefs-side chooser/preview.
 - **Fish naming/rename UI.** `FsTH` name records exist; the overview is the natural Finder-style inline-edit home. (A named-fish branch exists in the other pass — reconcile.)
 - **No sickness/death beyond lethargy** — see lifecycle; fish gasping at the surface in foul water now exists (PR #106) as the pure-visual first step.
@@ -312,12 +391,13 @@ open idea is written so an LLM can pick it up cold.
 - **Gravel finish.** Feather the strip's top edge 1–2 px into the water; seat decor roots *in* it; consider subtle noise texture over flat `#8a6d3b`.
 - ~~**Procedural placeholder fish.**~~ Landed via PR #131 (24x14 pixel guppy, two-frame wag; other placeholder branches exist — reconcile). Still open: placeholder fish get no overview thumbnail — the pending-thumbs key stays alive by design; consider a placeholder thumb so the list never looks broken.
 - **Machine preview with tank.** Render the 320×200 gradient inside the prefs preview glass (`sx/sy/sw/sh` all exist) so cases aren't picked blind.
-- **Decor anchors to `TANK.height - 6`, not the gravel top** — tall `.grv` strips leave plants looking sunken, thin ones leave them floating. Anchor to the rendered gravel height (`gh`).
+- ~~**Decor anchors to `TANK.height - 6`, not the gravel top** — tall `.grv` strips leave plants looking sunken, thin ones leave them floating. Anchor to the rendered gravel height (`gh`).~~ Landed: PR #139 — roots sit a quarter-strip deep in the rendered gravel, plus multi-frame picks and a foreground layer.
 - ~~**Bubble variety.**~~ Landed via PR #108 (highlight pixel + wall-clock wobble). Still open: a 1 px size range.
 - **`cursor: grab` on `body.tankpage`** suggests window-drag in plain browsers where it does nothing — cosmetic lie outside the native shell.
+- **`prefers-reduced-motion` across the CRT.** The power-on animation (PR #141) already opts out, but flicker/grain and the rolling band still animate — flatten them at configure() time under the media query.
 - **Eat gulp sound** — `find("eat","gulp")` on `food.eaten` if a pack ships one; silent otherwise.
 - Food pellet eaten-animation (shrink/rotate before splash).
-- Adaptive murk tint (toward backdrop's dominant color, not fixed brown).
+- Adaptive murk tint (toward backdrop's dominant color, not fixed brown); a slow sine shimmer on the murk would read as water, not jelly.
 - Night glow: faint bottom bioluminescence at very low light.
 - Reflection layer: low-opacity mirrored canvas behind machine glass for depth.
 - **Night-light bezel tint** — the machine case art could dim with `sim.light` via CSS filter; subtle, lovely.
@@ -331,7 +411,7 @@ open idea is written so an LLM can pick it up cold.
 - Import flow: per-row progress spinners, 2–3-wide parallel installs, failure text naming the file.
 - Touch: feed-vs-tap (y<15%) is still hard to discover even with the menu bar — a first-use hint or the feed affordances above would fix it.
 - Stale badges: grey client-window numbers until the first fresh push after wake.
-- **Cursor awareness:** the nearest fish idly faces the pointer when it hovers the tank (no click) — subtle "it notices you". Cheap: in `decide()` occasionally target near last pointer pos.
+- ~~**Cursor awareness:** the nearest fish idly faces the pointer when it hovers the tank (no click) — subtle "it notices you". Cheap: in `decide()` occasionally target near last pointer pos.~~ Landed: PR #138 — nearest calm fish within `NOTICE_RADIUS` drifts to a `NOTICE_STANDOFF` ring around the pointer.
 - ~~**Fish sleep mode**~~ — landed via PR #128 as a real `sleep` state: fish settle on the gravel at dusk, idle with a weak stroke, wake at dawn or on a knock.
 - Keyboard shortcut cheat sheet — landed in-browser via PR #102's Shortcuts window; `?`/`H` overlay or a native-app equivalent still open.
 - Fish Diary (`⌘⇧H`): age, pellets eaten, favorite depth band per fish.
@@ -348,9 +428,9 @@ open idea is written so an LLM can pick it up cold.
 - Tank weather: rain rings + dim + filter gurgle, cosmetic and cozy.
 - Laser-pointer toy (hold L, fish chase the light). Useless, irresistible.
 - Snail on the glass: a tiny snail inches across the front pane every few hours, leaving a faint clean streak (subtle lighter band). Pure aquarium truth.
-- Begging fish: hunger > ~0.75 biases the wander band toward the surface and hovers under a cursor parked on the top strip — sells the sim instantly.
+- ~~Begging fish: hunger > ~0.75 biases the wander band toward the surface and hovers under a cursor parked on the top strip — sells the sim instantly.~~ Landed: PR #138 (the hover part landed as cursor awareness, above).
 - Party mode: playing a music add-on keys fish tail-wag rate to the AudioContext clock. Silly, delightful, one constant away from `animFrame`.
-- CRT power-on animation: enabling the effect plays a ~400 ms tube warm-up (horizontal line bloom to full raster) — one uniform + timestamp in the shader.
+- ~~CRT power-on animation: enabling the effect plays a ~400 ms tube warm-up (horizontal line bloom to full raster) — one uniform + timestamp in the shader.~~ Landed: PR #141 (`uPower`; 450 ms; reduced-motion skips it).
 - Save Picture with bezel: composite the machine-case PNG over the tank canvas exactly as on screen; a shareable postcard (the plain-tank snapshot landed in #103).
 - Time-lapse contact sheet (1 fps toDataURL for 60 s).
 - Vintage filter mode (sepia + reduced saturation + vignette).
@@ -402,22 +482,53 @@ open idea is written so an LLM can pick it up cold.
 - Review gaps: PR #102's first GLM run died HTTP 429 (rate limits from concurrent passes); a manual rerun completed and its findings were applied. No PR ended in an unreported gap.
 - Steady state: #94 (rounds 4-5 clean), #102 (round 3 stale-only), #129 (round 2 clean), #131 (rounds 2-3 minor/stale only), #132 (rounds 2-4 minor, round 4's suggestion already present verbatim), #133 (rounds 2-3 minor, all applied). All six left open for human review per the task brief.
 
+## Review-response log (sixth pass — Devin)
+
+- Applied: progress-based stall timeout replacing the total-duration
+  cap + host-neutral timeout wording (#134); `bandY` fallback clamped
+  to the already-clamped `y`, ≥1 rounded sprite dims, `speed` floor
+  0.1, shimmer-comment reword (#135); Escape `stopPropagation`,
+  autocomplete/spellcheck off, forced-colors focus outline,
+  `aria-live` count (#136); `audio.unlock()` before the ⌥-click early
+  return, rect-delta card origin, close-box hit halo, typed
+  `INFO_MOODS` (#137); standoff measured fish-to-pointer, `isPrimary`
+  pointer guard, exported sim constants, `noticeFish` public so the
+  test asserts identity not wander position (#138); `max=0` contract
+  + test, re-import dedup splice, half-height foreground cap (#139);
+  intrinsic sparkline size, all-null series guard, non-finite gap
+  (#140); `-Infinity` `powerT0` sentinel, openness-keyed warm-up gain
+  (#141).
+- Declined with reasons: deleting empty `species` — `""` is the
+  sim's unbound sentinel (`addFish` defaults it; lookups fall
+  through either way) (#135); drawing pellets topmost over front
+  decor — mid-water occlusion is the depth effect and pellets over
+  fish bodies would read as spots (#139).
+- Refuted with evidence: "the filter matches raw markup" —
+  `it.inner` is the zip entry/display name rendered via
+  `textContent`; there is no markup in it (#136).
+- Verification confirmations (info findings): `recordInstall` →
+  `saveTank` → `postState` fires unconditionally including
+  reinstalls; `zipCache` evicts rejected promises via
+  `p.catch(delete)`; all `sheetByPack`/`packBySheet` consumers are
+  fish-only so skipping `usePack` for scenery is safe (#134); stats
+  history pushes before render and stays bounded (#140).
+
 ## Implementation Order (suggested for future work)
 
 1. Pellet cap + foul-rate sanity (fish cap landed in PR #111; sim test first, TDD).
-2. Fish info card (data already decoded; biggest feature win).
+2. ~~Fish info card (data already decoded; biggest feature win).~~ Landed: PR #137; the `FsTH` names/descriptions on the card remain.
 3. First-run card + starter reef bundle (hint note landed in PR #131; the curated bundle remains).
 4. Scene life, one effect per PR (check other-pass branches first).
 5. Sound-pane reconciliation (#101 vs #133) at merge + keep browser/native menu wiring in sync (lights L vs ⌘L, CRT C vs ⌘R).
-6. Import search + install progress/parallelism.
-7. Fetch timeouts + thumb queue dedupe.
+6. Install progress/parallelism in the import flow (the search/filter half landed in PR #136).
+7. ~~Fetch timeouts + thumb queue dedupe.~~ Landed: PR #134 (stall timeout + `thumbFetching`).
 8. Lifecycle stage 1 (sickness lethargy → eggs later).
 9. Light dimmer + real-clock sync (lamp toggle landed in PR #132; moonlight curve in PR #113).
-10. Food pellet animation + gravel texture + decor anchoring (quick visual wins).
+10. Food pellet animation + gravel texture (decor anchoring landed in PR #139).
 11. Night glow + darkened sleeping-fish sprites (sleep state landed in PR #128).
 12. Screen relaxation mode, fish diary, vintage filter + adaptive murk.
 13. Breeding, sprite editor, remaining delights as seasoning.
 
 ---
 
-*Merged from five review passes (two other-pass tmp.md files already folded above; third- and fourth-pass swe.md/tmp.md and the fifth pass's swe.md folded with implemented items marked by PR). No entries removed; overlapping ideas consolidated and cross-referenced. Cross-pass overlaps to reconcile at merge: #107/#106/#129 (tap ripple), #125/#87 (backdrop cover-fit), #93/#94 (multi-pack drop), #101/#133 (Sound pane), #103/#102/#126 (browser menu bar + shortcuts), placeholder-fish branches vs #131.*
+*Merged from six review passes (two other-pass tmp.md files already folded above; third- and fourth-pass swe.md/tmp.md, the fifth pass's swe.md, and the sixth pass's tmp.md folded with implemented items marked by PR). No entries removed; overlapping ideas consolidated and cross-referenced. Cross-pass overlaps to reconcile at merge: #107/#106/#129 (tap ripple), #125/#87 (backdrop cover-fit), #93/#94 (multi-pack drop), #101/#133 (Sound pane), #103/#102/#126 (browser menu bar + shortcuts), placeholder-fish branches vs #131.*
