@@ -314,7 +314,7 @@ describe("Sim", () => {
     expect(df).toBeLessThan(dc * 0.7); // vigor 0.5 vs 1.0
   });
 
-  it("day/night light oscillates in [0,1]", () => {
+  it("day/night light oscillates in [0.3, 1]", () => {
     const sim = new Sim({ width: 100, height: 100 }, 1);
     let min = 1, max = 0;
     for (let i = 0; i < DAY_TICKS; i++) {
@@ -322,9 +322,35 @@ describe("Sim", () => {
       min = Math.min(min, sim.light);
       max = Math.max(max, sim.light);
     }
-    expect(min).toBeGreaterThanOrEqual(0.15);
-    expect(max).toBeLessThanOrEqual(1);
-    expect(max - min).toBeGreaterThan(0.5);
+    expect(min).toBeCloseTo(0.3);
+    expect(max).toBeCloseTo(1);
+  });
+
+  // The old curve was one hump per cycle: night was 18% of it and a
+  // fresh tank opened at the darkest moment.
+  it("opens in daylight and gives night about half the cycle", () => {
+    const sim = new Sim({ width: 100, height: 100 }, 1);
+    expect(sim.light).toBeGreaterThanOrEqual(0.85);
+    let night = 0, maxStep = 0, prev = sim.light;
+    for (let i = 0; i < DAY_TICKS; i++) {
+      sim.tick();
+      if (sim.light < 0.5) night++;
+      maxStep = Math.max(maxStep, Math.abs(sim.light - prev));
+      prev = sim.light;
+    }
+    expect(night / DAY_TICKS).toBeGreaterThanOrEqual(0.4);
+    expect(night / DAY_TICKS).toBeLessThanOrEqual(0.5);
+    expect(maxStep).toBeLessThan(0.001); // smooth ramps, no wrap cusp
+    expect(sim.light).toBe(new Sim({ width: 100, height: 100 }, 1).light);
+  });
+
+  it("reports an externally set light until it is cleared", () => {
+    const sim = new Sim({ width: 100, height: 100 }, 1);
+    const cycle = sim.light;
+    sim.setLight(0.45);
+    expect(sim.light).toBe(0.45);
+    sim.setLight(null);
+    expect(sim.light).toBe(cycle);
   });
 
   it("darts out of each decision — quadratic ramp capped at cruise", () => {

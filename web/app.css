@@ -102,6 +102,15 @@ body.crt canvas#tank { opacity: 0; }
 /* CRT off: the sliders are disabled and their captions dim with them. */
 .pfcrtoff .pfslider { color: #888; }
 
+/* Lighting: titled pop-ups in a group box. */
+.pflrow { display: flex; gap: 24px; }
+.pflrow + .pflrow { margin-top: 10px; }
+.pflctl { display: flex; align-items: center; gap: 6px; }
+/* Row titles right-aligned on one edge, so the pop-ups line up. */
+.pflrow > .pflctl:first-child .osm-popup-title { width: 82px; text-align: right; }
+#pl-mode { width: 160px; }
+.pfhour { width: 76px; }
+
 /* Caption area along the bottom, with Defaults at its right. */
 #pffoot { position: absolute; left: 14px; right: 14px; bottom: 10px; height: 52px; }
 #pfdesc {

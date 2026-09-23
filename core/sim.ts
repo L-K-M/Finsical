@@ -1,5 +1,6 @@
 import { makeRng } from "./rng.js";
 import { HUNGER_SEEK, QUALITY_SEEK } from "./tuning.js";
+import { demoLight } from "./light.js";
 
 export interface Tank {
   width: number;
@@ -96,8 +97,8 @@ export function wrapAngle(d: number): number {
   return ((d + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) -
     Math.PI;
 }
-/** Hunger rise per tick — a fish starves after ~20 min unfed (~1.5 day
- * cycles), keeping Aquazone's once-a-day feeding rhythm. */
+/** Hunger rise per tick — a fish starves after ~20 min unfed (~1.5
+ * demo day cycles), keeping Aquazone's once-a-day feeding rhythm. */
 const HUNGER_PER_TICK = 1 / (30 * 1200);
 /** Past this hunger a fish that isn't looking for food still takes a
  * pellet that drifts within NOTICE_DIST of it. */
@@ -295,10 +296,16 @@ export class Sim {
     }
   }
 
-  /** 0.3 = night, 1 = full daylight. */
+  /** Light set from outside (the clock timer), or null for the sim's
+   * own demo cycle. The caller reads the clock so the sim stays
+   * tick-only and deterministic. */
+  private lightOverride: number | null = null;
+  setLight(v: number | null): void { this.lightOverride = v; }
+
+  /** 0.3 = demo night, 1 = full daylight. */
   get light(): number {
-    const t = (this.tickCount % DAY_TICKS) / DAY_TICKS;
-    return 0.3 + 0.7 * Math.max(0, Math.sin(t * Math.PI));
+    return this.lightOverride ??
+      demoLight((this.tickCount % DAY_TICKS) / DAY_TICKS);
   }
 
   tick(): void {

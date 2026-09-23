@@ -33,6 +33,14 @@
   catalog tile (the Aquazone submarine, BUGDANCE), and draw at one
   scale, shrunk smoothly, so a small plant stays smaller than a large
   one; only items taller than the tank shrink further to fit.
+- Day and night are now real halves of the cycle, with smooth ramps
+  and a warm dawn and dusk, and a new tank opens in daylight instead
+  of at the darkest moment. Night is a moonlit blue rather than a flat
+  dark veil. A new Lighting pane in Preferences adds a light timer that
+  follows your Mac's clock (lights on at 08:00 and off at 22:00 unless
+  you choose other hours), with nights light enough to watch and a
+  faint moonbeam that follows the real moon, or keeps the lights on
+  all the time. Tank Stats says when the lights switch next.
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview

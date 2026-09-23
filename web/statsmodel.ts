@@ -5,6 +5,7 @@
  * thresholds come from core/tuning.ts, which the sim uses too, so the
  * advice tracks what the sim actually does.
  */
+import { hourLabel, sanitizeLighting } from "../core/light.js";
 import { HUNGER_SEEK, QUALITY_SEEK } from "../core/tuning.js";
 
 export interface StatsFish {
@@ -19,6 +20,7 @@ export interface StatsInput {
   foodSettled?: number;  // pellets rotting on the gravel
   bubbles?: number;
   light?: number;        // 0.3 night .. 1 day
+  lighting?: unknown;    // core/light.ts Lighting, validated here
   tickCount?: number;    // 30 ticks per second
 }
 
@@ -35,6 +37,8 @@ export interface TankStats {
   foodSettled: number;
   bubbles: number;
   phase: "day" | "night";
+  /** "Night (lights on at 08:00)" under the timer, else the phase. */
+  lightLabel: string;
   uptimeMin: number;
   /** Ordered care hints — the most urgent first, capped at two. */
   advice: string[];
@@ -64,6 +68,7 @@ export function deriveStats(s: StatsInput): TankStats {
     : null;
   const water = Math.min(1, Math.max(0, fin(s.waterQuality, 1)));
   const light = fin(s.light, 1);
+  const phase = light > 0.5 ? "day" : "night";
   const stats: TankStats = {
     fishCount: fish.length,
     avgHunger,
@@ -74,12 +79,22 @@ export function deriveStats(s: StatsInput): TankStats {
     food: fin(s.food, 0),
     foodSettled: fin(s.foodSettled, 0),
     bubbles: fin(s.bubbles, 0),
-    phase: light > 0.5 ? "day" : "night",
+    phase,
+    lightLabel: lightLabel(phase, s.lighting),
     uptimeMin: Math.floor(fin(s.tickCount, 0) / 30 / 60),
     advice: [],
   };
   stats.advice = advice(stats, water);
   return stats;
+}
+
+function lightLabel(phase: "day" | "night", raw: unknown): string {
+  const name = phase === "day" ? "Day" : "Night";
+  const l = sanitizeLighting(raw);
+  // Equal hours keep the lights on, so there's no switch to announce.
+  if (l.mode !== "timer" || l.on === l.off) return name;
+  return phase === "day" ? `${name} (lights off at ${hourLabel(l.off)})`
+    : `${name} (lights on at ${hourLabel(l.on)})`;
 }
 
 function advice(st: TankStats, water: number): string[] {
