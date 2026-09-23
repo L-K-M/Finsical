@@ -49,6 +49,25 @@ canvas#crt {
 body.crt canvas#crt { display: block; }
 body.crt canvas#tank { opacity: 0; }
 
+/* The browser shell's menu bar (web/menubar.ts) — exists only outside
+   the native app, which has real menus. Sits over every tank layer;
+   its pull-downs are .osm-menu (z 1000). */
+#menubar { position: fixed; left: 0; right: 0; top: 0; z-index: 20; }
+
+/* About Finsical (Apple ▸ About Finsical…): a small centered window. */
+.aboutwin { width: 280px; }
+.aboutcard {
+  padding: 14px 12px 0; text-align: center;
+  font: var(--osm-font-small);
+}
+.abouticon {
+  width: 32px; height: 32px; margin: 0 auto 6px;
+  background-repeat: no-repeat;
+}
+.aboutname { font: var(--osm-font-system); margin-bottom: 7px; }
+.aboutline { line-height: 13px; }
+.aboutok { margin: 12px 0; }
+
 /* ---- client windows --------------------------------------------------
    Preferences, Tank Overview, Import Add-ons and Tank Stats are Mac OS
    8 windows drawn by Osmium UI (osmium.css), each page one borderless

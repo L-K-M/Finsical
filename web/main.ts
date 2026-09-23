@@ -12,6 +12,7 @@ import { sndsGet, sndsMerge } from "./store.js";
 import { imageCanvas, previewOf, soundIcon, swimCanvas } from "./render.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
+import { mountAppMenuBar } from "./menubar.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
   from "./machines.js";
 import type { CrtConfig } from "./crt.js";
@@ -822,6 +823,37 @@ const syncTrigger = (show: boolean): void => {
 };
 syncTrigger(hoverNone.matches);
 hoverNone.addEventListener("change", (e) => syncTrigger(e.matches));
+// Browser-only panel opener — the app opens the client windows via its
+// Tank menu; over BroadcastChannel a same-origin tab finds the tank.
+// Reuse without re-navigating: a reload would wipe the 90 s trend
+// window stats.ts keeps for the arrows.
+function openClient(page: string, name: string): void {
+  const existing = window.open("", name);
+  try {
+    if (existing && !existing.closed &&
+        existing.location.pathname.endsWith(`/${page}`)) {
+      existing.focus();
+    } else if (existing && !existing.closed) {
+      // Navigate the tab this gesture already grabbed — a second
+      // window.open can be blocked (one open per gesture in Safari).
+      // Resolve against our URL — assign uses the target's base.
+      existing.location.assign(new URL(page, location.href).href);
+      existing.focus();
+    } else {
+      window.open(page, name);
+    }
+  } catch {
+    // The named tab went cross-origin — reading location throws
+    // SecurityError, but writing href is allowed. Steer the tab
+    // home instead of a second window.open (blocked in Safari).
+    if (existing) {
+      existing.location.href = new URL(page, location.href).href;
+      existing.focus();
+    } else {
+      window.open(page, name);
+    }
+  }
+}
 window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if ((e.metaKey || e.ctrlKey) && k === "i") {
@@ -834,37 +866,40 @@ window.addEventListener("keydown", (e) => {
     setCrt(!crtOn); // bare C: ⌘C is Copy via the Edit menu
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "s" &&
              !e.repeat && !importPanel.isOpen && !inNativeShell()) {
-    // Browser-only fallback — the app opens stats.html via Tank ▸
-    // Tank Stats; over BroadcastChannel the new tab finds the tank.
-    // Reuse without re-navigating: a reload would wipe the 90 s trend
-    // window stats.ts keeps for the arrows.
-    const existing = window.open("", "finsical-stats");
-    try {
-      if (existing && !existing.closed &&
-          existing.location.pathname.endsWith("/stats.html")) {
-        existing.focus();
-      } else if (existing && !existing.closed) {
-        // Navigate the tab this gesture already grabbed — a second
-        // window.open can be blocked (one open per gesture in Safari).
-        // Resolve against our URL — assign uses the target's base.
-        existing.location.assign(
-          new URL("stats.html", location.href).href);
-        existing.focus();
-      } else {
-        window.open("stats.html", "finsical-stats");
-      }
-    } catch {
-      // The named tab went cross-origin — reading location throws
-      // SecurityError, but writing href is allowed. Steer the tab
-      // home instead of a second window.open (blocked in Safari).
-      if (existing) {
-        existing.location.href = new URL("stats.html", location.href).href;
-        existing.focus();
-      } else {
-        window.open("stats.html", "finsical-stats");
-      }
-    }
+    openClient("stats.html", "finsical-stats");
   }
+});
+
+// A souvenir PNG of the live tank (2x nearest-neighbor — the pixels
+// stay crisp). The 2D canvas always holds the scene, CRT or not.
+function takePicture(): void {
+  const out = document.createElement("canvas");
+  out.width = TANK.width * 2;
+  out.height = TANK.height * 2;
+  const c = out.getContext("2d")!;
+  c.imageSmoothingEnabled = false;
+  c.drawImage(canvas, 0, 0, out.width, out.height);
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const a = document.createElement("a");
+  a.href = out.toDataURL("image/png");
+  a.download = `finsical-${d.getFullYear()}${pad(d.getMonth() + 1)}` +
+    `${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}` +
+    `${pad(d.getSeconds())}.png`;
+  a.click();
+}
+
+// The Mac OS 8 menu bar — browser shell only (no-op in the app, which
+// has real menus). How browser and touch users reach everything that
+// isn't a click on the glass.
+mountAppMenuBar({
+  feedFish,
+  openImport: () => importPanel.open(),
+  openClient,
+  toggleCrt: () => setCrt(!crtOn),
+  crtUsable: () => crt?.usable ?? false,
+  crtOn: () => crtOn,
+  snapshot: takePicture,
 });
 
 const packFetch = async (p: string): Promise<Uint8Array> => {
