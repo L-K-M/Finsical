@@ -1002,8 +1002,11 @@ window.addEventListener("drop", (e) => {
       // Await the write: a quota/private-mode failure should be logged
       // now, not discovered as a missing pack on next launch. The
       // session keeps its fish either way — the record is still
-      // useful this run.
-      if (!(await packPut(url, data)))
+      // useful this run. The catch is belt-and-braces: packPut's
+      // contract is never-fail, but a rejection here would throw out
+      // of the whole drop handler and skip the remaining files.
+      const stored = await packPut(url, data).catch(() => null);
+      if (!stored)
         console.warn(`drop: ${name} could not be stored — it won't ` +
           "survive a relaunch");
       if (!sheets.size) {
