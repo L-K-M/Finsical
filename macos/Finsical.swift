@@ -136,7 +136,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
 
     private func syncPauseMenu(paused: Bool) {
         pauseMenuItem?.title = paused ? "Resume Simulation" : "Pause Simulation"
-        pauseMenuItem?.state = paused ? .on : .off
     }
     private var machineMaskImage: CGImage?
     private func applyMachine(id: String, w: CGFloat, h: CGFloat,
