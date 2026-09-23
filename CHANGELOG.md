@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Preferences' pane buttons are now the size of Desktop Pictures' own,
+  54 x 40, instead of Monitors & Sound's 40 x 40.
+- Sound add-ons show a speaker icon in the add-on browser, its preview
+  and Tank Overview, where an empty box used to be. The browser no
+  longer downloads a sound add-on just to look for art it doesn't have.
+- On touch screens, a tap that stops a scrolling list no longer selects
+  the row under it (Osmium UI 0.2.0).
+- The macOS app is ready for Swift 6's stricter concurrency checks: CI
+  also builds it, with Osmium UI's window host, in Swift 6 mode.
 - The Mac OS 8 look now comes from Osmium UI
   (https://github.com/L-K-M/osmium-ui), a separate library extracted
   from Finsical: the stylesheet, windows, controls, bitmap fonts and
