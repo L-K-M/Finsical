@@ -805,9 +805,16 @@ function feedFish(): void {
 // devices and all browsers. Re-evaluate on change so convertibles
 // adapt when their input mode flips.
 const hoverNone = window.matchMedia("(hover: none)");
+// inNativeShell() reads a bridge the shell injects before page load —
+// a load-time constant, so only the hover query can flip the answer.
 const wantTrigger = (): boolean =>
   hoverNone.matches || !inNativeShell();
+// Memoized so a hover-mode change that doesn't alter the answer
+// doesn't rebuild the button (and kill a press mid-gesture).
+let triggerShown: boolean | null = null;
 const syncTrigger = (show: boolean): void => {
+  if (show === triggerShown) return;
+  triggerShown = show;
   document.getElementById("opentrigger")?.remove();
   if (!show) return;
   // A 20px Osmium push button is too small for a finger: a transparent
