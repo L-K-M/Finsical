@@ -112,15 +112,32 @@ function immutableHost(u: string): boolean {
   try { return /(^|\.)archive\.org$/.test(new URL(u).hostname); }
   catch { return false; }
 }
+/** archive.org occasionally stalls mid-response. Without a timeout a
+ * hung request pins its cache slot (and the caller's in-flight
+ * install) forever — the panel's Try Again then no-ops against the
+ * wedged entry. Aborting rejects like a network error, the cache
+ * entry drops, and the retry starts a fresh request. */
+const FETCH_TIMEOUT_MS = 30_000;
+/** fetch + consume the body under one timeout — a stall in either
+ * phase aborts the request and rejects like a network error. */
+async function fetchTimed<T>(url: string,
+                             read: (r: Response) => Promise<T>):
+    Promise<T> {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+  try { return await read(await fetch(url, { signal: ctl.signal })); }
+  finally { clearTimeout(t); }
+}
 function fetchZip(url: string): Promise<Uint8Array> {
   let p = zipCache.get(url);
   if (!p) {
     p = (async () => {
       const hit = immutableHost(url) ? await packGet(url) : null;
       if (hit) return hit;
-      const r = await fetch(url);
-      if (!r.ok) throw new Error(`${url}: ${r.status}`);
-      const d = new Uint8Array(await r.arrayBuffer());
+      const d = await fetchTimed(url, async (r) => {
+        if (!r.ok) throw new Error(`${url}: ${r.status}`);
+        return new Uint8Array(await r.arrayBuffer());
+      });
       if (immutableHost(url)) void packPut(url, d).catch(() => {});
       return d;
     })();
@@ -161,9 +178,10 @@ async function listPage(item: string, outer: string): Promise<string> {
         Number.isFinite(hit.t) && Date.now() - hit.t < PAGE_TTL_MS)
       return hit;
     try {
-      const r = await fetch(page);
-      if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
-      const fresh = { t: Date.now(), html: await r.text() };
+      const fresh = await fetchTimed(page, async (r) => {
+        if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
+        return { t: Date.now(), html: await r.text() };
+      });
       if (immutableHost(page))
         void metaPut(page, fresh).catch(() => {});
       return fresh;
@@ -525,6 +543,8 @@ export function loadProblem(e: unknown): string {
     return "The download has no add-on in it.";
   if (msg.endsWith(": entry missing"))
     return "The download is missing the add-on's file.";
+  if (/abort/i.test(msg))
+    return "archive.org took too long to answer.";
   return "Check the connection and try again.";
 }
 
@@ -918,6 +938,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   // name-only row.
   const thumbQueued = new Set<string>();
   const thumbQueue: Importable[] = [];
+  // URLs whose fetch already started: queued/queued-set only cover the
+  // wait, so without this a second wantThumb mid-fetch re-queues a
+  // duplicate that burns one of the THUMB_PAR slots.
+  const thumbFetching = new Set<string>();
   let thumbRunning = 0;
   const THUMB_PAR = 3;
 
@@ -1040,6 +1064,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     while (thumbRunning < THUMB_PAR && thumbQueue.length) {
       const it = thumbQueue.shift()!;
       thumbRunning++;
+      thumbFetching.add(it.url);
       void fetchPack(it.url).then((rs) => {
         const usable = rs.filter(
           (r) => r.sheets.size || r.images.size || r.sounds.length);
@@ -1052,12 +1077,17 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       }).catch((e) => {
         console.warn(`add-on thumb failed for ${it.inner}:`, e);
       })
-        .finally(() => { thumbRunning--; pumpThumbs(); });
+        .finally(() => {
+          thumbRunning--;
+          thumbFetching.delete(it.url);
+          pumpThumbs();
+        });
     }
   }
 
   function wantThumb(it: Importable): void {
-    if (thumbs.has(it.url) || thumbQueued.has(it.url)) return;
+    if (thumbs.has(it.url) || thumbQueued.has(it.url) ||
+        thumbFetching.has(it.url)) return;
     if (loadStoredThumb(it)) return;
     thumbQueued.add(it.url);
     thumbQueue.push(it);
