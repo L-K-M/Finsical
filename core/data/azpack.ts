@@ -109,6 +109,7 @@ export async function decodeIndexedPng(d: Uint8Array): Promise<IndexedImage> {
     throw new Error("png: bad signature");
   let w = 0, h = 0;
   const palette: [number, number, number][] = [];
+  let sawPlte = false;
   const idat: Uint8Array[] = [];
   let p = 8;
   while (p + 12 <= d.length) {
@@ -125,6 +126,10 @@ export async function decodeIndexedPng(d: Uint8Array): Promise<IndexedImage> {
           v.getUint8(10) !== 0 || v.getUint8(11) !== 0 || v.getUint8(12) !== 0)
         throw new Error("png: need 8-bit indexed, non-interlaced, methods 0");
     } else if (tag === "PLTE") {
+      // PNG allows one PLTE; appending repeats would grow the palette
+      // past the MAX_PALETTE_ENTRIES limit checked per chunk.
+      if (sawPlte) throw new Error("png: repeated PLTE");
+      sawPlte = true;
       if (len % 3 !== 0 || len > MAX_PALETTE_ENTRIES * 3)
         throw new Error("png: bad PLTE length");
       for (let i = 0; i + 2 < len; i += 3)

@@ -149,6 +149,17 @@ describe("decodeIndexedPng", () => {
     const png = encodeIndexedPng(1, 1, new Uint8Array([0]), PAL, new Uint8Array(4));
     await expect(decodeIndexedPng(png)).rejects.toThrow("png: bad PLTE length");
   });
+
+  it("rejects a repeated PLTE instead of growing the palette", async () => {
+    const png = encodeIndexedPng(1, 1, new Uint8Array(1), PAL);
+    // Signature (8) and IHDR chunk (12 + 13) come first.
+    const at = 8 + 12 + 13, len = 12 + PAL.length * 3;
+    const twice = new Uint8Array(png.length + len);
+    twice.set(png.subarray(0, at + len));
+    twice.set(png.subarray(at, at + len), at + len);
+    twice.set(png.subarray(at + len), at + 2 * len);
+    await expect(decodeIndexedPng(twice)).rejects.toThrow("png: repeated PLTE");
+  });
 });
 
 describe("SpriteSheet", () => {
