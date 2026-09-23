@@ -799,10 +799,14 @@ function feedFish(): void {
   { openImport: () => importPanel.open(), feedFish,
     toggleCrt: () => setCrt(!crtOn) };
 
-// Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
-// path. Touch fallback: hover-less devices have no keyboard or native menu.
-// Re-evaluate on change so convertibles adapt when their input mode flips.
+// The native Tank menu (⌘I / Ctrl+I) is the keyboard path, but a plain
+// browser offers no way to discover it — show the corner trigger in
+// every context the shell doesn't supply a menu for: hover-less
+// devices and all browsers. Re-evaluate on change so convertibles
+// adapt when their input mode flips.
 const hoverNone = window.matchMedia("(hover: none)");
+const wantTrigger = (): boolean =>
+  hoverNone.matches || !inNativeShell();
 const syncTrigger = (show: boolean): void => {
   document.getElementById("opentrigger")?.remove();
   if (!show) return;
@@ -820,8 +824,8 @@ const syncTrigger = (show: boolean): void => {
   document.body.appendChild(hit);
   pushButton(trigger, () => importPanel.open());
 };
-syncTrigger(hoverNone.matches);
-hoverNone.addEventListener("change", (e) => syncTrigger(e.matches));
+syncTrigger(wantTrigger());
+hoverNone.addEventListener("change", () => syncTrigger(wantTrigger()));
 window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if ((e.metaKey || e.ctrlKey) && k === "i") {

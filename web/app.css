@@ -7,7 +7,8 @@ html, body { margin: 0; height: 100%; background: #000; }
    Osmium window on a transparent layer; a press outside closes it. */
 .ov { position: fixed; inset: 0; z-index: 10; cursor: default; }
 .ov .iwin { position: absolute; }
-/* Only exists on hover-less (touch) devices — see web/main.ts. */
+/* Exists where the shell gives no Add-ons menu: touch devices and
+   browsers — see web/main.ts. */
 #opentrigger {
   position: fixed; z-index: 5; padding: 12px;
   right: calc(-4px + env(safe-area-inset-right, 0px));
