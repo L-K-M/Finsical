@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "./azpack.js";
 
 /** zlib wrapper around uncompressed deflate blocks (valid IDAT payload). */
@@ -25,7 +25,8 @@ function deflateStore(data: Uint8Array): Uint8Array {
 /** Minimal indexed-PNG encoder — mirrors tools/az/img.py save_indexed_png. */
 function encodeIndexedPng(w: number, h: number, idx: Uint8Array,
                           pal: [number, number, number][],
-                          plteBytes?: Uint8Array): Uint8Array {
+                          plteBytes?: Uint8Array,
+                          declared: readonly [number, number] = [w, h]): Uint8Array {
   const chunk = (tag: string, data: Uint8Array) => {
     const out = new Uint8Array(12 + data.length);
     const v = new DataView(out.buffer);
@@ -42,7 +43,7 @@ function encodeIndexedPng(w: number, h: number, idx: Uint8Array,
   };
   const ihdr = new Uint8Array(13);
   const hv = new DataView(ihdr.buffer);
-  hv.setUint32(0, w); hv.setUint32(4, h);
+  hv.setUint32(0, declared[0]); hv.setUint32(4, declared[1]);
   ihdr.set([8, 3, 0, 0, 0], 8); // 8-bit, indexed, no interlace
   const plte = plteBytes ?? new Uint8Array(pal.flat());
   const raw = new Uint8Array(h * (w + 1));
@@ -73,7 +74,56 @@ function encodeIndexedPng(w: number, h: number, idx: Uint8Array,
 
 const PAL: [number, number, number][] = [[0, 0, 0], [255, 0, 0], [0, 0, 255]];
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe("decodeIndexedPng", () => {
+  it("rejects excessive declared pixels before inflating", async () => {
+    const png = encodeIndexedPng(1, 1, new Uint8Array(1), PAL,
+                                 undefined, [1 << 27, 1]);
+    const inflate = vi.fn();
+    vi.stubGlobal("DecompressionStream", inflate);
+    await expect(decodeIndexedPng(png)).rejects.toThrow("png: image too large");
+    expect(inflate).not.toHaveBeenCalled();
+  });
+
+  it("rejects pixel data longer than the declared image", async () => {
+    const png = encodeIndexedPng(2, 1, new Uint8Array(2), PAL,
+                                 undefined, [1, 1]);
+    await expect(decodeIndexedPng(png)).rejects.toThrow("png: excess pixel data");
+  });
+
+  it("rejects pixel data shorter than the declared image", async () => {
+    const png = encodeIndexedPng(1, 1, new Uint8Array(1), PAL,
+                                 undefined, [2, 1]);
+    await expect(decodeIndexedPng(png)).rejects.toThrow("png: short pixel data");
+  });
+
+  it("cancels an overlong inflate stream instead of buffering it all", async () => {
+    let produced = 0;
+    let cancelled = false;
+    vi.stubGlobal("DecompressionStream", class {
+      readable = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (produced === 20) { controller.close(); return; }
+          produced++;
+          controller.enqueue(new Uint8Array(1));
+        },
+        cancel() { cancelled = true; },
+      });
+      writable = new WritableStream<Uint8Array>();
+    });
+    const png = encodeIndexedPng(1, 1, new Uint8Array(1), PAL);
+    await expect(decodeIndexedPng(png)).rejects.toThrow("png: excess pixel data");
+    expect(cancelled).toBe(true);
+    expect(produced).toBeLessThan(20);
+  });
+
+  it("rejects palettes beyond the indexed PNG limit", async () => {
+    const png = encodeIndexedPng(1, 1, new Uint8Array(1), PAL,
+                                 new Uint8Array(257 * 3));
+    await expect(decodeIndexedPng(png)).rejects.toThrow("png: bad PLTE length");
+  });
+
   it("round-trips pixels and palette", async () => {
     const idx = new Uint8Array(20).map((_, i) => i % 3); // 4x5
     const png = encodeIndexedPng(4, 5, idx, PAL);
@@ -133,6 +183,46 @@ describe("SpriteSheet", () => {
 });
 
 describe("loadAzpack", () => {
+  const meta = {
+    image: "sprites/a.png", groups: 2, framesPerGroup: 2, cellW: 1, cellH: 1,
+    dims: [[0, 0, 1, 1], [0, 1, 1, 1], [1, 0, 1, 1], [1, 1, 1, 1]],
+  };
+  const invalid: [string, Record<string, unknown>][] = [
+    ["zero groups", { groups: 0 }],
+    ["fractional frame count", { framesPerGroup: 1.5 }],
+    ["non-numeric cell width", { cellW: "1" }],
+    ["non-finite cell height", { cellH: Infinity }],
+    ["missing frame dimensions", { dims: undefined }],
+    ["an incomplete frame table", { dims: meta.dims.slice(0, 3) }],
+    ["an extra frame", { dims: [...meta.dims, [2, 0, 1, 1]] }],
+    ["an invalid frame record", { dims: [null, ...meta.dims.slice(1)] }],
+    ["out-of-order frame coordinates", { dims: [[0, 1, 1, 1], ...meta.dims.slice(1)] }],
+    ["an empty frame", { dims: [[0, 0, 0, 1], ...meta.dims.slice(1)] }],
+    ["a fractional frame width", { dims: [[0, 0, 0.5, 1], ...meta.dims.slice(1)] }],
+    ["a frame wider than its cell", { dims: [[0, 0, 2, 1], ...meta.dims.slice(1)] }],
+    ["cells outside the atlas", { cellW: 2 }],
+  ];
+  async function loadSheet(sprites: unknown) {
+    const png = encodeIndexedPng(2, 2, new Uint8Array(4), PAL);
+    const manifest = { format: "azpack/1", tag: "test", chunks: [
+      { file: "chunks/a.bin", sprites },
+    ] };
+    return loadAzpack(async (p) => p === "manifest.json"
+      ? new TextEncoder().encode(JSON.stringify(manifest)) : png);
+  }
+
+  it.each(invalid)("rejects %s before a sheet reaches the renderer", async (_, changes) => {
+    await expect(loadSheet({ ...meta, ...changes })).rejects.toThrow("manifest:");
+  });
+
+  it("accepts a complete atlas and every declared frame can render", async () => {
+    const pack = await loadSheet(meta);
+    const sheet = pack.sheets.get("chunks/a.bin")!;
+    for (let g = 0; g < meta.groups; g++)
+      for (let f = 0; f < meta.framesPerGroup; f++)
+        expect(sheet.frame(g, f).idx).toEqual(new Uint8Array(1));
+  });
+
   it("loads manifest + sprite sheets through a reader", async () => {
     const idx = new Uint8Array([0, 1, 1, 0]); // 2x2 sheet, one cell
     const png = encodeIndexedPng(2, 2, idx, PAL);
