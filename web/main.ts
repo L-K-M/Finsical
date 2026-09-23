@@ -105,10 +105,99 @@ canvas.addEventListener("pointerdown", (e) => {
   const x = (e.clientX - r.left - (r.width - TANK.width * s) / 2) / s;
   const y = (e.clientY - r.top - (r.height - TANK.height * s) / 2) / s;
   if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return; // letterbox bar
+  if (e.altKey) {
+    // ⌥-click is "Get Info": open the card on the fish under the
+    // pointer, or dismiss it when the water is empty.
+    const f = fishAt(x, y);
+    if (f) openInfo(f); else closeInfo();
+    return;
+  }
   audio.unlock();
   if (y < TANK.height * 0.15) { sim.dropFood(x); audio.feed(); }
   else { sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height); }
 });
+
+// ---- fish Get-Info card -------------------------------------------------
+// A tiny Mac window that follows the ⌥-clicked fish — its name, hunger
+// and mood. Closed by its close box, Escape, an ⌥-click on empty water,
+// or the fish leaving the tank.
+const INFO_MOODS: Record<string, string> = {
+  drift: "wandering", seek: "looking for food",
+  startle: "startled!", turn: "turning",
+};
+/** Pick radius in tank px — big cells render large, so a fixed radius
+ * under the body center is the honest "near the fish" test. */
+const INFO_PICK_R = 22;
+let infoCard: {
+  root: HTMLElement; hunger: HTMLElement; mood: HTMLElement; fish: Fish;
+} | null = null;
+
+function fishAt(x: number, y: number): Fish | null {
+  let best: Fish | null = null, bd = INFO_PICK_R * INFO_PICK_R;
+  for (const f of sim.fish) {
+    const d = (f.x - x) ** 2 + (f.y - y) ** 2;
+    if (d < bd) { bd = d; best = f; }
+  }
+  return best;
+}
+
+function closeInfo(): void {
+  infoCard?.root.remove();
+  infoCard = null;
+}
+
+function openInfo(f: Fish): void {
+  closeInfo();
+  const root = document.createElement("div");
+  root.className = "finfo";
+  const title = document.createElement("div");
+  title.className = "fintitle";
+  const close = document.createElement("button");
+  close.className = "finclose";
+  close.type = "button";
+  close.setAttribute("aria-label", "Close");
+  close.addEventListener("click", () => closeInfo());
+  const name = document.createElement("div");
+  name.className = "finname";
+  name.textContent = f.species || "Fish";
+  title.append(close, name);
+  const body = document.createElement("div");
+  body.className = "finbody";
+  const hunger = document.createElement("div");
+  const mood = document.createElement("div");
+  body.append(hunger, mood);
+  root.append(title, body);
+  // A press on the card is on the card — never feed or tap through it.
+  root.addEventListener("pointerdown", (e) => e.stopPropagation());
+  screenEl.appendChild(root);
+  infoCard = { root, hunger, mood, fish: f };
+}
+
+/** Reposition the card over its fish and refresh the two live lines.
+ * Runs per frame from render(); the fish's removal closes it. */
+function layoutInfo(): void {
+  const card = infoCard;
+  if (!card) return;
+  const f = card.fish;
+  if (!sim.fish.includes(f)) { closeInfo(); return; }
+  const r = canvas.getBoundingClientRect();
+  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
+  const ox = canvas.offsetLeft + (r.width - TANK.width * s) / 2;
+  const oy = canvas.offsetTop + (r.height - TANK.height * s) / 2;
+  const cw = card.root.offsetWidth, ch = card.root.offsetHeight;
+  let px = ox + f.x * s - cw / 2;
+  let py = oy + f.y * s - ch - 8;
+  if (py < 0) py = oy + f.y * s + 16; // too near the surface: go under
+  card.root.style.left =
+    `${Math.max(0, Math.min(px, r.width - cw))}px`;
+  card.root.style.top =
+    `${Math.max(0, Math.min(py, r.height - ch))}px`;
+  const hunger = `Hunger  ${Math.round(f.hunger * 100)}%`;
+  const mood = INFO_MOODS[f.state] ?? f.state;
+  if (card.hunger.textContent !== hunger)
+    card.hunger.textContent = hunger;
+  if (card.mood.textContent !== mood) card.mood.textContent = mood;
+}
 
 // ---- sprite loading ----------------------------------------------------
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
@@ -824,6 +913,7 @@ syncTrigger(hoverNone.matches);
 hoverNone.addEventListener("change", (e) => syncTrigger(e.matches));
 window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
+  if (k === "escape" && infoCard) { closeInfo(); return; }
   if ((e.metaKey || e.ctrlKey) && k === "i") {
     importPanel.open(); e.preventDefault();
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" &&
@@ -1121,6 +1211,8 @@ function render(): void {
     ctx.fillStyle = `rgba(4,8,24,${(dark * 0.55).toFixed(3)})`;
     ctx.fillRect(0, 0, TANK.width, TANK.height);
   }
+
+  layoutInfo();
 }
 
 // Fixed-step sim; render on rAF.
