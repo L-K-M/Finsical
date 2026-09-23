@@ -666,10 +666,19 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     // A failed install would fail its queued twins the same way —
     // drop them rather than spam installFailed per click.
     if (!ok) queuedAgain.delete(it.url);
-    const q = queuedAgain.get(it.url);
-    const next = q?.shift();
-    if (q && !q.length) queuedAgain.delete(it.url);
-    if (next) void remoteInstall(next, true);
+    // Replays already passed validation and skip the dedupe guard,
+    // so each drained call reaches its own finally and shifts the
+    // next click. Loop anyway: if an early return ever stranded the
+    // rest of the queue, this picks up where it stopped.
+    let next = queuedAgain.get(it.url)?.shift();
+    while (next) {
+      await remoteInstall(next, true);
+      // The inner call's finally drained and chained the next item —
+      // it owns the in-flight slot now, so this loop is done.
+      if (installsInFlight.has(it.url)) break;
+      next = queuedAgain.get(it.url)?.shift();
+    }
+    if (!queuedAgain.get(it.url)?.length) queuedAgain.delete(it.url);
   }
 }
 
