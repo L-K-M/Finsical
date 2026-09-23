@@ -91,6 +91,7 @@ export function deriveStats(s: StatsInput): TankStats {
 function lightLabel(phase: "day" | "night", raw: unknown): string {
   const name = phase === "day" ? "Day" : "Night";
   const l = sanitizeLighting(raw);
+  if (!l.lamp) return `${name} (lamp off)`;
   // Equal hours keep the lights on, so there's no switch to announce.
   if (l.mode !== "timer" || l.on === l.off) return name;
   return phase === "day" ? `${name} (lights off at ${hourLabel(l.off)})`

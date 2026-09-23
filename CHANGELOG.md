@@ -41,6 +41,10 @@
   you choose other hours), with nights light enough to watch and a
   faint moonbeam that follows the real moon, or keeps the lights on
   all the time. Tank Stats says when the lights switch next.
+- A lamp switch turns the tank's lights off for instant night and back
+  on, whatever the Lighting setting: Tank > Toggle Lights (Cmd-L) in the
+  app, the L key, or Lamp on in the Lighting pane. It is kept with the
+  lighting settings, and Tank Stats says when the lamp is off.
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview

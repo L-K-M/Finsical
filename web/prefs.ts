@@ -480,7 +480,8 @@ const HOURS = Array.from({ length: 24 }, (_, h) => hourLabel(h));
 const modeOf = (): (typeof MODES)[number] =>
   MODES.find((x) => x.mode === lighting.mode)!;
 const sameLighting = (a: Lighting, b: Lighting): boolean =>
-  a.mode === b.mode && a.on === b.on && a.off === b.off;
+  a.mode === b.mode && a.on === b.on && a.off === b.off &&
+  a.lamp === b.lamp;
 
 function setLighting(p: Partial<Lighting>): void {
   lighting = { ...lighting, ...p };
@@ -529,6 +530,28 @@ const offCtl = lightControl("off", {
     "dim through a sunset glow into a moonlit night.",
 }, HOURS, "Lights off at", (h) => setLighting({ off: h }));
 
+// The lamp checkbox, captioned like the pop-ups.
+const lampBox = document.getElementById("pl-lamp") as HTMLInputElement;
+const lampUnit = document.getElementById("pflamp")!;
+const lampSpec: LightSpec = {
+  label: "Lamp", value: () => lighting.lamp ? "On" : "Off",
+  blurb: () => "Switch the lamp off for night, whatever the Lighting " +
+    "setting says, and on again to hand the tank back to it. The L key " +
+    "and Tank > Toggle Lights do the same.",
+};
+trackHighlight(lampUnit);
+lampUnit.addEventListener("pointerenter", () => describe(lampSpec));
+lampUnit.addEventListener("pointerleave", () => {
+  if (described === lampSpec && document.activeElement !== lampBox)
+    describe(null);
+});
+lampBox.addEventListener("focus", () => describe(lampSpec));
+lampBox.addEventListener("blur", () => {
+  if (described === lampSpec && !lampUnit.matches(":hover")) describe(null);
+});
+lampBox.addEventListener("change",
+  () => setLighting({ lamp: lampBox.checked }));
+
 function syncLighting(): void {
   // setSelected closes an open menu, so only touch pop-ups that differ.
   const pick = (c: typeof modeCtl, i: number) => {
@@ -537,6 +560,7 @@ function syncLighting(): void {
   pick(modeCtl, MODES.indexOf(modeOf()));
   pick(onCtl, lighting.on);
   pick(offCtl, lighting.off);
+  lampBox.checked = lighting.lamp;
   const timer = lighting.mode === "timer";
   for (const c of [onCtl, offCtl]) {
     c.btn.disabled = !timer;

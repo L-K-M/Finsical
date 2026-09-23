@@ -84,9 +84,12 @@ const syncAudioVisibility = (): void => audio.setHidden(document.hidden);
 document.addEventListener("visibilitychange", syncAudioVisibility);
 syncAudioVisibility();
 if (saved) {
-  if (Number.isFinite(saved.tickCount)) sim.tickCount = saved.tickCount;
+  // Storage is untrusted: a negative or fractional tick count, or water
+  // outside 0..1, would re-persist and skew the day cycle or the murk.
+  if (Number.isFinite(saved.tickCount))
+    sim.tickCount = Math.max(0, Math.trunc(saved.tickCount));
   if (Number.isFinite(saved.waterQuality))
-    sim.waterQuality = saved.waterQuality;
+    sim.waterQuality = Math.min(1, Math.max(0, saved.waterQuality));
 }
 
 // ---- lighting -------------------------------------------------------------
@@ -991,8 +994,13 @@ function feedFish(): void {
   audio.feed();
   requestPaint();
 }
+/** Lamp switch: off holds the tank at night, on hands it back to the
+ * Lighting mode. Persisted with the lighting settings. */
+function toggleLights(): void {
+  applyLighting({ lamp: !lighting.lamp });
+}
 (window as unknown as { finsical?: unknown }).finsical =
-  { openImport: () => importPanel.open(), feedFish,
+  { openImport: () => importPanel.open(), feedFish, toggleLights,
     toggleCrt: () => setCrt(!crtOn) };
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
@@ -1028,6 +1036,9 @@ window.addEventListener("keydown", (e) => {
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "c" &&
              !e.repeat && !importPanel.isOpen) {
     setCrt(!crtOn); // bare C: ⌘C is Copy via the Edit menu
+  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "l" &&
+             !e.repeat && !importPanel.isOpen) {
+    toggleLights(); // bare L: the lamp; ⌘L belongs to the native menu
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "s" &&
              !e.repeat && !importPanel.isOpen && !inNativeShell()) {
     // Browser-only fallback — the app opens stats.html via Tank ▸

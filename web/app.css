@@ -88,6 +88,8 @@ body.crt canvas#tank { opacity: 0; }
 /* A block of its own, but only as wide as its title: that's where the
    checkbox's control rect ends. */
 #pfcrt { display: flex; width: max-content; }
+/* Lines up with the Lighting pane's pop-ups (82 px titles, 6 px gap). */
+#pflamp { display: flex; width: max-content; margin-left: 88px; }
 #crt-warn { position: absolute; left: 196px; right: 0; top: 0; }
 .pfgroup { padding: 12px 11px 6px; }
 #pftraits .pfgroup:first-child { margin-top: 28px; }

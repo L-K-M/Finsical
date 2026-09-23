@@ -16,11 +16,16 @@ export interface Lighting {
    * back to the timer restores them. Equal hours keep the lights on. */
   on: number;
   off: number;
+  /** The lamp switch (L, Tank > Toggle Lights, the Lighting pane): off
+   * holds the tank at the demo night floor in every mode; on lets
+   * `mode` light it. */
+  lamp: boolean;
 }
 
 /** The fast demo cycle stays the default; following the Mac's clock
  * is opt-in. */
-export const LIGHTING_DEFAULTS: Lighting = { mode: "demo", on: 8, off: 22 };
+export const LIGHTING_DEFAULTS: Lighting =
+  { mode: "demo", on: 8, off: 22, lamp: true };
 
 export const MINUTES_PER_DAY = 24 * 60;
 /** Light below which the tank counts as night: Stats' Day/Night reads
@@ -84,6 +89,7 @@ export function demoLight(cycle: number): number {
 /** Clock-driven light, 0.45 night .. 1 day, at `minutes` past local
  * midnight. Null in demo mode, which the sim's tick cycle drives. */
 export function lightAt(minutes: number, s: Lighting): number | null {
+  if (!s.lamp) return DEMO_NIGHT_LIGHT;
   if (s.mode === "demo") return null;
   if (s.mode === "always") return 1;
   const { level } = phaseAt(minutes, s.on * 60, s.off * 60, CLOCK_RAMP_MIN);
@@ -105,7 +111,7 @@ function rampTint(ph: Phase): Tint | null {
  * `minutes` is local clock time; in demo mode pass `cycle` instead. */
 export function twilightTint(s: Lighting, minutes: number,
                              cycle: number): Tint | null {
-  if (s.mode === "always") return null;
+  if (!s.lamp || s.mode === "always") return null;
   if (s.mode === "demo")
     return rampTint(phaseAt(demoMinutes(cycle), DEMO_ON_MIN, DEMO_OFF_MIN,
                             DEMO_RAMP_MIN));
@@ -145,5 +151,6 @@ export function sanitizeLighting(
       ? r.mode as LightMode : base.mode,
     on: isHour(r.on) ? r.on : base.on,
     off: isHour(r.off) ? r.off : base.off,
+    lamp: typeof r.lamp === "boolean" ? r.lamp : base.lamp,
   };
 }

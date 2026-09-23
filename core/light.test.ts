@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { CLOCK_NIGHT_LIGHT, demoLight, hourLabel, LIGHTING_DEFAULTS,
+import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, demoLight, hourLabel,
+         LIGHTING_DEFAULTS,
          lightAt, moonIllumination, moonPhase, sanitizeLighting,
          twilightTint } from "./light.js";
 import type { Lighting } from "./light.js";
 
-const timer: Lighting = { mode: "timer", on: 8, off: 22 };
+const timer: Lighting = { mode: "timer", on: 8, off: 22, lamp: true };
 const at = (h: number, m = 0): number => h * 60 + m;
 const mid = (CLOCK_NIGHT_LIGHT + 1) / 2;
 
@@ -33,7 +34,7 @@ describe("lightAt", () => {
   });
 
   it("wraps an overnight schedule past midnight", () => {
-    const night: Lighting = { mode: "timer", on: 20, off: 6 };
+    const night: Lighting = { mode: "timer", on: 20, off: 6, lamp: true };
     expect(lightAt(at(23), night)).toBe(1);
     expect(lightAt(at(2), night)).toBe(1);
     expect(lightAt(at(12), night)).toBe(CLOCK_NIGHT_LIGHT);
@@ -42,13 +43,24 @@ describe("lightAt", () => {
 
   it("keeps the lights on in 'always' and for equal switch times", () => {
     const always: Lighting = { ...timer, mode: "always" };
-    const same: Lighting = { mode: "timer", on: 9, off: 9 };
+    const same: Lighting = { mode: "timer", on: 9, off: 9, lamp: true };
     for (const h of [0, 3, 8, 12, 22])
       for (const s of [always, same]) expect(lightAt(at(h), s)).toBe(1);
   });
 
   it("leaves demo mode to the sim's cycle", () => {
     expect(lightAt(at(12), { ...timer, mode: "demo" })).toBeNull();
+  });
+});
+
+describe("lamp", () => {
+  it("holds every mode at the demo night floor while off", () => {
+    for (const mode of ["demo", "timer", "always"] as const)
+      expect(lightAt(at(12), { ...timer, mode, lamp: false }))
+        .toBe(DEMO_NIGHT_LIGHT);
+    expect(twilightTint({ ...timer, lamp: false }, at(8, 15), 0)).toBeNull();
+    expect(sanitizeLighting({ lamp: false }).lamp).toBe(false);
+    expect(sanitizeLighting({ lamp: "off" }).lamp).toBe(true);
   });
 });
 
@@ -106,7 +118,7 @@ describe("sanitizeLighting", () => {
   it("falls back field by field", () => {
     expect(sanitizeLighting(null)).toEqual(LIGHTING_DEFAULTS);
     expect(sanitizeLighting({ mode: "timer", on: 7, off: 24 }))
-      .toEqual({ mode: "timer", on: 7, off: 22 });
+      .toEqual({ mode: "timer", on: 7, off: 22, lamp: true });
     expect(sanitizeLighting({ mode: "disco", on: 7.5, off: "22" }))
       .toEqual(LIGHTING_DEFAULTS);
     expect(sanitizeLighting({ off: 23 }, timer)).toEqual({ ...timer, off: 23 });
