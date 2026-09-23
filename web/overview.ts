@@ -2,6 +2,7 @@ import { openBus } from "./bus.js";
 import { COLUMNS, itemsOf, sortItems, summary } from "./overviewmodel.js";
 import type { Column, Item, TankState } from "./overviewmodel.js";
 import { centerText, mountList, pushButton } from "./platinum/controls.js";
+import type { ListScroll } from "./platinum/controls.js";
 import { hostWindow } from "./winhost.js";
 
 // Tank Overview: what's in the tank, as a Mac OS 8 Finder list view —
@@ -64,7 +65,7 @@ hostWindow(document.getElementById("owin")!, bus, {
 centerText(summaryEl);
 
 // ---- column headers ---------------------------------------------------
-let sortBy: Column = "kind";
+let sortBy: Column = "name"; // the Finder's default
 const heads = new Map<Column, HTMLButtonElement>();
 for (const c of COLUMNS) {
   const h = el("button", `pt-colhead ohead-${c.id}`, c.title) as
@@ -75,7 +76,7 @@ for (const c of COLUMNS) {
     sortBy = c.id;
     syncHeads();
     lastStructure = "";
-    render();
+    render("top");
   });
   heads.set(c.id, h);
   headsEl.appendChild(h);
@@ -97,7 +98,8 @@ const list = mountList(listEl, {
   label: "Tank contents",
   onSelect: () => syncRemove(),
 });
-list.setEmpty("The tank is empty. Import add-ons to stock it.");
+// Keys go to the list from the start (arrows, type-select, Delete).
+listEl.focus({ preventScroll: true });
 
 function syncRemove(): void {
   removeBtn.disabled = !items[list.selected];
@@ -153,11 +155,15 @@ function row(it: Item, need: Set<string>): HTMLElement {
 
 // Rows are only rebuilt when membership or order changes — a full
 // rebuild on every 2s state push would reset the list under the
-// pointer. Live labels refresh in place instead.
+// pointer. Live labels refresh in place instead. A rebuild a push
+// forces (fish reordering under the Status sort) keeps the scroll
+// where it is; a new sort starts from the top.
 let lastStructure = "";
-function render(): void {
+function render(scroll: ListScroll = "keep"): void {
   const s = tankState;
   if (!s) return;
+  // Only now is "empty" a fact rather than "not heard from the tank".
+  list.setEmpty("The tank is empty. Import add-ons to stock it.");
   const fishN = (s.fish ?? []).length;
   const next = sortItems(itemsOf(s), sortBy);
   const addonN = next.filter((i) => i.rank === 1).length;
@@ -183,7 +189,7 @@ function render(): void {
   items = next;
   const need = new Set<string>();
   list.setRows(items.map((it) => row(it, need)),
-               items.findIndex((i) => i.key === keep));
+               { keep: items.findIndex((i) => i.key === keep), scroll });
   syncRemove();
   paintThumbs();
   // Rows were just rebuilt — drop thumb state for keys that died with
@@ -203,12 +209,13 @@ const greet = setInterval(() => {
 }, 500);
 bus.post({ op: "hello" });
 // Poll while the window is visible — the overview reads live, and this
-// is also the recovery path if the tank page reloaded mid-session.
-// Skipped while hidden: the relay filters pushes to closed windows.
+// is also the recovery path if the tank page reloaded mid-session or
+// was still loading when the greet loop gave up. Skipped while hidden:
+// the relay filters pushes to closed windows.
 setInterval(() => {
-  if (greeted && !document.hidden) bus.post({ op: "hello" });
+  if (!document.hidden) bus.post({ op: "hello" });
 }, 2000);
 // Snap to fresh state the moment the window is shown again.
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && greeted) bus.post({ op: "hello" });
+  if (!document.hidden) bus.post({ op: "hello" });
 });

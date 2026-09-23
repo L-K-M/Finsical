@@ -2,8 +2,8 @@ import { openBus } from "./bus.js";
 import { CRT_DEFAULTS, sanitizeCrtConfig } from "./crt.js";
 import { MACHINES, shellMarkup } from "./machines.js";
 import type { CrtConfig } from "./crt.js";
-import { centerText, mountList, pushButton, trackHighlight, trackPress }
-  from "./platinum/controls.js";
+import { centerText, mountList, pushButton, setEnabled, trackHighlight,
+         trackPress } from "./platinum/controls.js";
 import { hostWindow } from "./winhost.js";
 
 // Preferences window: a Mac OS 8 control panel with three panes —
@@ -112,16 +112,21 @@ const PICTURE_GROUPS: Group[] = [
 
 type PaneId = "machine" | "monitor" | "picture";
 const PANES: { id: PaneId; label: string; icon: string; hint: string;
+               /** Hint while the CRT effect is off (its sliders dim). */
+               offHint?: string;
                keys: (keyof CrtConfig)[] }[] = [
   { id: "machine", label: "Machine", icon: "icon-machine",
     hint: "Choose the computer the tank runs in.", keys: [] },
   { id: "monitor", label: "Monitor", icon: "icon-monitor",
     hint: "How the picture tube draws the tank. Point at a slider " +
       "to see what it does.",
+    offHint: "Turn on Simulate a CRT monitor to adjust the picture tube.",
     keys: SPECS.map((s) => s.key) },
   { id: "picture", label: "Picture", icon: "icon-picture",
     hint: "The monitor's front-panel controls, applied after the " +
       "tube. Point at a slider to see what it does.",
+    offHint: "These controls adjust the CRT effect. Turn on Simulate a " +
+      "CRT monitor in the Monitor pane to use them.",
     keys: PIC_SPECS.map((s) => s.key) },
 ];
 const PANE_KEY = "finsical:prefsPane";
@@ -138,6 +143,10 @@ const dragging = new Set<keyof CrtConfig>();
 // times out so a dropped post can't wedge the checkbox.
 let onTouched = false;
 let onTouchTimer: ReturnType<typeof setTimeout> | undefined;
+// Machine picks latch the same way: pushes already in flight still
+// carry the previous case and would snap the list back mid-browse.
+let machinePending: string | null = null;
+let machineTimer: ReturnType<typeof setTimeout> | undefined;
 // Slider drags fire input per step — coalesce to one bus post per
 // frame, carrying every trait touched since the last one.
 let pendingCfg: Partial<CrtConfig> | null = null;
@@ -164,13 +173,18 @@ const bus = openBus((m) => {
       (crt.on === true) === onBox.checked) {
     onTouched = false;
     onBox.checked = crt.on === true;
+    syncEnabled();
   }
   // Only warn when the tank explicitly reports the effect can't run —
   // a missing field just means an older page build.
   warnEl.hidden = crt.available !== false;
   if (crt.cfg !== undefined) cfg = sanitizeCrtConfig(crt.cfg);
   const mc = m.machine as { id?: unknown } | undefined;
-  if (typeof mc?.id === "string") showMachine(mc.id);
+  if (typeof mc?.id === "string" &&
+      (machinePending === null || mc.id === machinePending)) {
+    machinePending = null;
+    showMachine(mc.id);
+  }
   syncControls();
 });
 
@@ -192,7 +206,8 @@ function describe(spec: SliderSpec | null): void {
     }
   }
   if (!spec) {
-    descEl.textContent = PANES.find((p) => p.id === pane)!.hint;
+    const p = PANES.find((x) => x.id === pane)!;
+    descEl.textContent = !onBox.checked && p.offHint ? p.offHint : p.hint;
     return;
   }
   descEl.append(el("span", "pt-label",
@@ -215,6 +230,8 @@ function showPane(id: PaneId, focus = false): void {
   }
   if (focus) paneTabs.get(id)!.focus();
   defaultsBtn.hidden = id === "machine";
+  document.getElementById("pffoot")!
+    .classList.toggle("pfdefaults", !defaultsBtn.hidden);
   describe(null);
   try { localStorage.setItem(PANE_KEY, id); } catch { /* unavailable */ }
 }
@@ -263,6 +280,10 @@ const machineList = mountList(document.getElementById("pfmachines")!, {
     machineSel = m.id;
     paintPreview();
     if (pane === "machine") describe(null);
+    machinePending = m.id;
+    clearTimeout(machineTimer);
+    // One round-trip is plenty; after that the next push resyncs.
+    machineTimer = setTimeout(() => { machinePending = null; }, 1500);
     bus.post({ op: "machine", id: m.id });
   },
 });
@@ -377,8 +398,12 @@ addGroups(PICTURE_GROUPS, document.getElementById("pfpicture")!);
 // level so a missed pointerup can't wedge a slider out of echo sync.
 const endDrags = () => {
   dragging.clear();
-  if (described && document.activeElement !== sliders.get(described.key))
-    describe(null);
+  if (!described) return;
+  // WebKit doesn't focus a range input on click, so a release over the
+  // slider keeps its caption while the slider is still pointed at.
+  const input = sliders.get(described.key)!;
+  if (document.activeElement !== input &&
+      !input.closest(".pfslider")!.matches(":hover")) describe(null);
 };
 window.addEventListener("pointerup", endDrags);
 window.addEventListener("pointercancel", endDrags);
@@ -395,8 +420,18 @@ function syncControls(): void {
 syncControls();
 
 // ---- the CRT switch ---------------------------------------------------
+// The sliders only act through the CRT effect: they dim while it's off,
+// the way Mac OS 8 dims controls that depend on an off switch.
+function syncEnabled(): void {
+  for (const input of sliders.values()) setEnabled(input, onBox.checked);
+  document.getElementById("pfpanes")!
+    .classList.toggle("pfcrtoff", !onBox.checked);
+  if (!described) describe(null);
+}
+syncEnabled();
 trackHighlight(document.getElementById("pfcrt")!);
 onBox.addEventListener("change", () => {
+  syncEnabled();
   onTouched = true;
   clearTimeout(onTouchTimer);
   // One round-trip is plenty — if no matching echo lands, let the next
@@ -428,6 +463,8 @@ try {
   if (PANES.some((p) => p.id === saved)) initial = saved as PaneId;
 } catch { /* storage unavailable */ }
 showPane(initial);
+// The machine list takes the arrow keys as soon as the window opens.
+if (initial === "machine") machineList.element.focus({ preventScroll: true });
 
 // The tank page may still be loading when the window opens — retry the
 // hello until a state push arrives.

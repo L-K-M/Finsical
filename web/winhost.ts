@@ -63,8 +63,18 @@ export function hostWindow(el: HTMLElement, bus: Bus,
     }
   };
 
+  // An in-tab grow leaves an inline height, which would beat the
+  // shaded rule: park it while the window is folded.
+  let grownH = "";
   const setShade = (on: boolean) => {
     shaded = on;
+    if (on) {
+      grownH = el.style.height;
+      el.style.height = "";
+    } else if (grownH) {
+      el.style.height = grownH;
+      grownH = "";
+    }
     platinum.setShaded(on);
     bus.post({ op: "winShade", on });
   };

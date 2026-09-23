@@ -776,8 +776,8 @@ document.addEventListener("pointerdown", (e) => {
   // leftMouseDown from a touch tap has none and could hang it.
   if (e.button !== 0 || e.pointerType !== "mouse") return;
   if (!(e.target instanceof Element) || e.target.closest(
-      "#screen, .ov, #opentrigger, button, a, input, textarea, select,"
-      + " label, [contenteditable]"))
+      "#screen, .ov, .pt-menu, #opentrigger, button, a, input, textarea,"
+      + " select, label, [contenteditable]"))
     return;
   e.preventDefault();
   bus.post({ op: "dragWindow" }); // native shell → performDrag
@@ -802,11 +802,18 @@ const hoverNone = window.matchMedia("(hover: none)");
 const syncTrigger = (show: boolean): void => {
   document.getElementById("opentrigger")?.remove();
   if (!show) return;
+  // A 20px Platinum button is too small for a finger: a transparent
+  // margin around it takes taps too (44px tall in all).
+  const hit = document.createElement("div");
+  hit.id = "opentrigger";
+  hit.addEventListener("click", (e) => {
+    if (e.target === hit) importPanel.open();
+  });
   const trigger = document.createElement("button");
-  trigger.id = "opentrigger";
   trigger.className = "pt-button";
   trigger.textContent = "Add-ons\u2026";
-  document.body.appendChild(trigger);
+  hit.appendChild(trigger);
+  document.body.appendChild(hit);
   pushButton(trigger, () => importPanel.open());
 };
 syncTrigger(hoverNone.matches);

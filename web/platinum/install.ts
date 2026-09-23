@@ -26,6 +26,7 @@ export function installPlatinum(): Promise<void> {
     const style = document.createElement("style");
     style.textContent = `:root {\n${spriteCss()}\n}`;
     document.head.appendChild(style);
+    trackInputModality();
     const faces = [CHARCOAL_12, GENEVA_10]
       .flatMap((s) => [face(s, false), face(s, true)]);
     faces.push(face(GENEVA_9, false));
@@ -36,6 +37,19 @@ export function installPlatinum(): Promise<void> {
     await Promise.all(faces.map((f) => f.load()));
   })();
   return installed;
+}
+
+/** Keep .pt-kbd on the root while the keyboard is driving: set by any
+ * unmodified key, cleared by any press. platinum.css draws focus rings
+ * only under it. */
+function trackInputModality(): void {
+  const root = document.documentElement;
+  document.addEventListener("keydown", (e) => {
+    if (!e.metaKey && !e.ctrlKey) root.classList.add("pt-kbd");
+  }, true);
+  document.addEventListener("pointerdown", () => {
+    root.classList.remove("pt-kbd");
+  }, true);
 }
 
 function face(s: StrikeData, bold: boolean): FontFace {

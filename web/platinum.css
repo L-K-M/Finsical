@@ -297,7 +297,9 @@
 .pt-inactive .pt-checkbox input:checked {
   background-image: var(--pt-sprite-checkbox-on-dimmed);
 }
-.pt-checkbox:has(input:disabled) { color: #888; }
+/* .pt-disabled marks a control whose input is disabled (setEnabled in
+   controls.ts): :has() needs Safari 15.4, newer than macOS 12.0. */
+.pt-checkbox.pt-disabled { color: #888; }
 
 /* ---- sliders --------------------------------------------------------- */
 /* <div class="pt-slider"><input type="range" min="0" max="100"></div>:
@@ -343,7 +345,7 @@
 .pt-slider input:active::-moz-range-thumb {
   background-image: var(--pt-sprite-slider-thumb-pressed);
 }
-.pt-inactive .pt-slider::before, .pt-slider:has(input:disabled)::before {
+.pt-inactive .pt-slider::before, .pt-slider.pt-disabled::before {
   border-image-source: var(--pt-sprite-slider-track-dimmed);
 }
 .pt-inactive .pt-slider input::-webkit-slider-thumb,
@@ -425,6 +427,11 @@
   border-image-source: var(--pt-sprite-popup-disabled);
   color: #888;
 }
+/* A pop-up's title, a label in front of it (class .pt-popup-title),
+   dims with the control: 66 in an inactive window (Keyboard's
+   "Script:"), 88 while the pop-up is disabled (.pt-disabled). */
+.pt-inactive .pt-popup-title { color: #666; }
+.pt-popup-title.pt-disabled { color: #888; }
 /* A pop-up's menu: black outline, white/99 bevel on the dd face, a 22
    drop shadow (one pixel, starting two in), 16px items with the title
    19px in (from the outline) and the check mark 4px in. The highlight is the accent:
@@ -543,9 +550,13 @@
 .pt-row { position: relative; white-space: nowrap; overflow: hidden; }
 .pt-list-empty {
   padding: 24px 12px; color: #888;
-  font: var(--pt-font-small); text-align: center; white-space: normal;
+  font: var(--pt-font-small);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .pt-row.pt-selected { background: #000; color: #fff; }
+/* A deactivated List Manager list unhighlights its selection (Monitors
+   & Sound, SimpleSound); Finder list views keep theirs. */
+.pt-inactive .pt-row.pt-selected { background: none; color: inherit; }
 
 /* A pixel well: black edge around white (previews, info areas). */
 .pt-well { box-sizing: border-box; border: 1px solid #000; background: #fff; }
@@ -607,10 +618,15 @@
     #888;
 }
 
-/* Keyboard focus, only when navigating by keyboard (Mac OS 8 draws no
-   focus on buttons; this keeps them reachable without the mouse). */
-.pt-button:focus-visible, .pt-popup:focus-visible, .pt-bevel:focus-visible,
-.pt-checkbox input:focus-visible, .pt-slider input:focus-visible,
-.pt-list:focus-visible, .pt-colhead:focus-visible {
+/* Keyboard focus, only while the keyboard is driving (install.ts sets
+   .pt-kbd on the root; scripts focus lists and pop-ups on mouse presses
+   too, which :focus-visible alone would ring). Mac OS 8.0 control
+   panels draw no focus at all; this keeps them usable without a mouse. */
+.pt-kbd .pt-button:focus-visible, .pt-kbd .pt-popup:focus-visible,
+.pt-kbd .pt-bevel:focus-visible, .pt-kbd .pt-checkbox input:focus-visible,
+.pt-kbd .pt-slider input:focus-visible, .pt-kbd .pt-list:focus-visible,
+.pt-kbd .pt-colhead:focus-visible {
   outline: 2px solid #6666cc; outline-offset: 1px;
 }
+/* Headers run edge to edge under the placard: ring them inside. */
+.pt-kbd .pt-colhead:focus-visible { outline-offset: -3px; }

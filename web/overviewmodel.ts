@@ -24,7 +24,7 @@ export interface Item {
   name: string;
   kind: string;
   status: string;
-  /** Kind sort order: fish first, then add-ons by kind. */
+  /** 0 for a fish, 1 for an add-on (the header's counts). */
   rank: number;
   remove: BusMsg;
 }
@@ -90,8 +90,7 @@ export function sortItems(items: Item[], by: Column): Item[] {
   const name = (a: Item, b: Item) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   return [...items].sort((a, b) =>
-    by === "kind" ? a.rank - b.rank || a.kind.localeCompare(b.kind) ||
-                    name(a, b)
+    by === "kind" ? a.kind.localeCompare(b.kind) || name(a, b)
     : by === "status" ? a.status.localeCompare(b.status) || name(a, b)
     : name(a, b) || a.kind.localeCompare(b.kind));
 }

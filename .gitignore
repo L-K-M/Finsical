@@ -7,9 +7,8 @@ macos/Finsical.iconset/
 *.azpack
 az-data/
 web/pack/
-web/bundle.js
-web/overview.js
-web/addons.js
+# esbuild bundles from `npm run dev` (no hand-written .js lives there)
+/web/*.js
 az-src/
 /packs/
 __pycache__/

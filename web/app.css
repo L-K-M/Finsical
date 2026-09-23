@@ -9,10 +9,11 @@ html, body { margin: 0; height: 100%; background: #000; }
 .ov .iwin { position: absolute; }
 /* Only exists on hover-less (touch) devices — see web/main.ts. */
 #opentrigger {
-  position: fixed; z-index: 5;
-  right: calc(8px + env(safe-area-inset-right, 0px));
-  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  position: fixed; z-index: 5; padding: 12px;
+  right: calc(-4px + env(safe-area-inset-right, 0px));
+  bottom: calc(-4px + env(safe-area-inset-bottom, 0px));
 }
+#opentrigger .pt-button { display: block; }
 /* Machine shell: the machine art SVG fills the window (letterboxed if
    the aspect ever drifts) and paints ON TOP of the tank, so its
    transparent glass and baked reflections overlay the water. Behind
@@ -61,7 +62,7 @@ body.crt canvas#tank { opacity: 0; }
    A fixed-size control panel, 564 x 456 (native window 565 x 457 with
    the shadow). Pane buttons down an 80px strip on the left, parted from
    the pane by a gray/black/white line, as in Desktop Pictures. */
-#pwin .pt-content { display: flex; }
+#pwin:not(.pt-shaded) .pt-content { display: flex; }
 #pfstrip {
   flex: none; width: 80px; padding-top: 12px;
   box-shadow: inset -1px 0 #888;
@@ -87,7 +88,9 @@ body.crt canvas#tank { opacity: 0; }
 
 /* Monitor and Picture: Keyboard-style sliders in group boxes — caption
    above, ticks under the track, end captions below — three to a row. */
-#pfcrt { display: flex; }
+/* A block of its own, but only as wide as its title: that's where the
+   checkbox's control rect ends. */
+#pfcrt { display: flex; width: max-content; }
 #crt-warn { position: absolute; left: 196px; right: 0; top: 0; }
 .pfgroup { padding: 12px 11px 6px; }
 #pftraits .pfgroup:first-child { margin-top: 28px; }
@@ -99,6 +102,8 @@ body.crt canvas#tank { opacity: 0; }
 .pfslider { flex: none; width: 125px; }
 .pflabel { display: block; padding-left: 4px; margin-bottom: 5px; }
 .pfends { display: flex; justify-content: space-between; margin-top: 2px; padding: 0 1px 0 3px; }
+/* CRT off: the sliders are disabled and their captions dim with them. */
+.pfcrtoff .pfslider { color: #888; }
 
 /* Caption area along the bottom, with Defaults at its right. */
 #pffoot { position: absolute; left: 14px; right: 14px; bottom: 10px; height: 52px; }
@@ -107,7 +112,7 @@ body.crt canvas#tank { opacity: 0; }
   font: var(--pt-font-small); line-height: 13px;
   max-height: 39px; overflow: hidden;
 }
-#pffoot:has(#pfdefaults:not([hidden])) #pfdesc { right: 76px; }
+#pffoot.pfdefaults #pfdesc { right: 76px; }
 #pfdefaults { position: absolute; right: 0; bottom: 0; }
 #pfdefaults[hidden] { display: none; }
 
@@ -132,11 +137,13 @@ body.crt canvas#tank { opacity: 0; }
    A Finder list-view window: header placard, column headers, rows with
    the sort column shaded dd and the others ee over white rules, and a
    bottom strip with Remove clear of the grow box. */
-#owin .pt-content { display: flex; flex-direction: column; }
+#owin:not(.pt-shaded) .pt-content { display: flex; flex-direction: column; }
 #osummary, #oheads, #obar { flex: none; }
-.ohead-name { flex: 1; min-width: 0; padding-left: 50px; }
+.ohead-name { flex: 1; min-width: 150px; padding-left: 50px; }
 .ohead-kind { flex: none; width: 96px; }
-.ohead-status { flex: none; width: 151px; } /* runs over the scroll bar */
+/* Runs over the scroll bar. In a narrow window Status gives way first
+   and Name keeps its room, as in the Finder. */
+.ohead-status { flex: 0 1 151px; min-width: 0; }
 #olist { flex: 1; min-height: 0; border: 0; background: #eee; }
 /* Edge to edge in the window, a focus ring would only show top and
    bottom; the selection already marks the keyboard's place. */
@@ -147,9 +154,15 @@ body.crt canvas#tank { opacity: 0; }
   background: #eee;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.ocell-name { position: relative; flex: 1; min-width: 0; padding-left: 50px; }
+.ocell-name { position: relative; flex: 1; min-width: 150px; padding-left: 50px; }
 .ocell-kind { flex: none; width: 96px; }
-.ocell-status { flex: none; width: 136px; }
+.ocell-status { flex: 0 1 136px; min-width: 0; }
+/* The name truncates itself, so a selected name's ellipsis stays white
+   on the highlight. */
+.oname {
+  display: inline-block; max-width: 100%; vertical-align: top;
+  overflow: hidden; text-overflow: ellipsis;
+}
 #olist[data-sort="name"] .ocell-name, #olist[data-sort="kind"] .ocell-kind,
 #olist[data-sort="status"] .ocell-status { background: #ddd; }
 .othumb {
@@ -175,9 +188,13 @@ body.crt canvas#tank { opacity: 0; }
   display: flex; align-items: flex-start;
 }
 .ishow { font: var(--pt-font-system); margin: 1px 6px 0 0; }
-.ipop { width: 180px; }
-.icount { margin: 3px 0 0 auto; }
-.ilist { position: absolute; left: 12px; top: 40px; bottom: 50px; width: 46%; }
+.ipop { flex: none; width: 180px; }
+.icount {
+  flex: 0 1 auto; min-width: 0; margin: 3px 0 0 auto;
+  white-space: nowrap; overflow: hidden;
+}
+/* import.ts sets the list's width and the detail column's left edge. */
+.ilist { position: absolute; left: 12px; top: 40px; bottom: 50px; }
 .irow { display: flex; font: var(--pt-font-small); }
 .ithumb { position: relative; flex: none; width: 38px; height: 28px; margin: 2px 6px 0 4px; overflow: hidden; }
 .ithumb canvas { position: absolute; image-rendering: pixelated; }
@@ -186,24 +203,35 @@ body.crt canvas#tank { opacity: 0; }
 .irow.done .icheck { visibility: visible; }
 .idetail {
   position: absolute; top: 40px; right: 12px; bottom: 50px;
-  left: calc(46% + 24px);
+  overflow: hidden;
 }
-.ipreview { position: relative; height: 55%; min-height: 60px; overflow: hidden; }
+.ipreview { position: relative; overflow: hidden; }
+.ipreview[hidden] { display: none; }
 .ipreview canvas { position: absolute; image-rendering: pixelated; }
 .iname { margin-top: 8px; font: var(--pt-font-system); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .imeta { margin-top: 2px; color: #555; }
-.istatus { margin-top: 6px; }
+.istatus { margin-top: 6px; overflow-wrap: anywhere; }
 .iplay { margin-top: 8px; }
 .iplay[hidden] { display: none; }
-.ifoot { position: absolute; left: 12px; right: 12px; bottom: 10px; height: 30px; }
-.ifoot .pt-separator { position: absolute; left: 0; right: 0; top: 0; }
-.icredit { position: absolute; left: 0; top: 14px; }
-.idonate { position: absolute; top: 9px; left: 210px; }
-.iadd { position: absolute; right: 16px; bottom: -6px; }
-/* A narrow window (the overlay on a small tank) drops the preview. */
-@media (max-width: 479px) {
-  .ov .ilist { width: auto; right: 12px; bottom: 116px; }
-  .ov .idetail { top: auto; left: 12px; height: 60px; bottom: 50px; }
-  .ov .ipreview { display: none; }
-  .ov .icredit, .ov .idonate { display: none; }
+.ifoot {
+  position: absolute; left: 12px; right: 12px; bottom: 10px; height: 30px;
+  display: flex; align-items: flex-start;
 }
+.ifoot .pt-separator { position: absolute; left: 0; right: 0; top: 0; }
+/* The credit gives way first; Donate and the default button never meet
+   (the default button stays clear of the grow box). */
+.icredit {
+  flex: 0 1 auto; min-width: 0; margin-top: 14px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.idonate { flex: none; margin: 9px 12px 0 20px; }
+.iadd { flex: none; margin: 10px 16px 0 auto; }
+/* A narrow overlay (on a small tank) stacks the details under the list
+   and drops the preview, the credit and the count; a sound's Play
+   button moves up beside its name. */
+.inarrow .ilist { width: auto; right: 12px; bottom: 116px; }
+.inarrow .idetail { top: auto; left: 12px; height: 60px; bottom: 50px; }
+.inarrow .iplay { position: absolute; right: 0; top: 6px; margin: 0; }
+.inarrow.isound .iname { margin-right: 71px; }
+.inarrow .ipreview, .inarrow .icredit, .inarrow .icount { display: none; }
+.inarrow .idonate { margin-left: 0; }

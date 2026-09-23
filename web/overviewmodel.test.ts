@@ -38,9 +38,12 @@ describe("itemsOf", () => {
 
 describe("sortItems", () => {
   const items = itemsOf(STATE);
-  it("sorts by kind with fish first, names breaking ties", () => {
-    expect(sortItems(items, "kind").map((i) => i.name))
-      .toEqual(["Angelfish", "Clownfish", "tang.fsh", "Blue.grv"]);
+  it("sorts by kind alphabetically, like the Finder, names breaking ties",
+     () => {
+    const more = itemsOf({ ...STATE, addons: [...STATE.addons,
+      { section: "backgrounds", inner: "Reef.bg", url: "u:reef" }] });
+    expect(sortItems(more, "kind").map((i) => i.name))
+      .toEqual(["Reef.bg", "Angelfish", "Clownfish", "tang.fsh", "Blue.grv"]);
   });
   it("sorts by name, ignoring case", () => {
     expect(sortItems(items, "name").map((i) => i.name))

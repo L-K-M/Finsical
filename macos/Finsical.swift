@@ -93,6 +93,20 @@ final class KeyableWindow: NSWindow {
     }
 }
 
+/// A client page draws its own title bar, so a press there on an
+/// inactive window has to reach the page: one gesture then activates
+/// and drags the window, as in Mac OS 8. WebKit would otherwise spend
+/// the first click on activation alone; content clicks still do.
+final class ClientWebView: WKWebView {
+    /// The Platinum title bar's height (web/platinum.css).
+    private let titleBarH: CGFloat = 22
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        guard let e = event else { return false }
+        let p = convert(e.locationInWindow, from: nil)
+        return (isFlipped ? p.y : bounds.height - p.y) < titleBarH
+    }
+}
+
 /// A window whose page draws all of it (web/winhost.ts): Preferences,
 /// Tank Overview, Import Add-ons, Tank Stats.
 struct ClientSpec {
@@ -118,8 +132,8 @@ final class ClientWindow {
     /// Bumped on every shade/expand so a stale expand-completion can't
     /// clear state a newer toggle already replaced.
     var shadeGen = 0
-    /// The user-set frame while zoomed to the standard size (Mac OS 8
-    /// user/standard states).
+    /// The frame to go back to from the standard size (Mac OS 8 user
+    /// state); set when the zoom box zooms out.
     var userFrame: NSRect?
     init(_ spec: ClientSpec) { self.spec = spec }
 }
@@ -203,7 +217,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     private func persistFrame(_ object: Any?) {
         guard let w = object as? NSWindow,
               let name = frameKeys[ObjectIdentifier(w)] else { return }
-        UserDefaults.standard.set(NSStringFromRect(w.frame),
+        var f = w.frame
+        // A windowshaded window saves its expanded frame: quitting while
+        // folded must not bring it back as a titlebar sliver.
+        if let h = clients.first(where: { $0.window === w })?.preShadeH {
+            f = NSRect(x: f.minX, y: f.maxY - h, width: f.width, height: h)
+        }
+        UserDefaults.standard.set(NSStringFromRect(f),
                                   forKey: "FinsicalFrame.\(name)")
     }
 
@@ -226,8 +246,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     /// (see userContentController).
     private func show(_ c: ClientWindow) {
         if c.window == nil {
-            let v = WKWebView(frame: .init(origin: .zero, size: c.spec.size),
-                              configuration: makeWebConfig())
+            let v = ClientWebView(frame: .init(origin: .zero,
+                                               size: c.spec.size),
+                                  configuration: makeWebConfig())
             v.uiDelegate = self
             v.navigationDelegate = self
             // Same transparency levers as the tank — the page's painted
@@ -269,7 +290,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 url: URL(string: "finsical://app/\(c.spec.page)")!))
         }
         guard let w = c.window else { return }
-        let fullH = c.spec.minSize?.height ?? c.spec.size.height
         if let h = c.preShadeH {
             // Reopening a window closed while shaded: expand it here —
             // reopening is only knowable at the shell. The page clears
@@ -282,12 +302,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             c.preShadeH = nil
             c.preShadeMinH = nil
         } else if w.frame.height < 40 {
-            // A frame autosaved while shaded restores as a titlebar
-            // sliver — with no pre-shade height after a relaunch it
-            // would stay stuck. Grow it back, top edge pinned.
-            let f = w.frame
-            w.setFrame(NSRect(x: f.minX, y: f.maxY - fullH,
-                              width: f.width, height: fullH), display: true)
+            // A sliver saved by an older build while shaded: with no
+            // pre-shade height after a relaunch it would stay stuck.
+            // Grow it to the standard height, top edge pinned.
+            let f = w.frame, h = c.spec.size.height
+            w.setFrame(NSRect(x: f.minX, y: f.maxY - h,
+                              width: f.width, height: h), display: true)
         }
         w.makeKeyAndOrderFront(nil)
     }
@@ -337,21 +357,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         }
     }
 
-    /// Zoom box: toggles between the user's frame and the standard
-    /// size, top edge pinned.
+    /// Zoom box, decided the way the Mac OS 8 Window Manager does it:
+    /// a window at its standard size goes back to the user state; any
+    /// other frame becomes the user state and zooms to standard. So a
+    /// move, an edge resize or tiling needs no bookkeeping.
     private func zoom(_ c: ClientWindow) {
         guard let w = c.window, c.preShadeH == nil,
               c.spec.minSize != nil else { return }
-        if let uf = c.userFrame {
-            w.setFrame(uf, display: true, animate: true)
+        let std = standardFrame(c, w)
+        let atStd = abs(w.frame.width - std.width) < 0.5 &&
+                    abs(w.frame.height - std.height) < 0.5
+        if atStd {
+            guard let uf = c.userFrame else { return } // nowhere to go
             c.userFrame = nil
+            w.setFrame(uf, display: true, animate: true)
         } else {
             c.userFrame = w.frame
-            let f = w.frame, s = c.spec.size
-            w.setFrame(NSRect(x: f.minX, y: f.maxY - s.height,
-                              width: s.width, height: s.height),
-                       display: true, animate: true)
+            w.setFrame(std, display: true, animate: true)
         }
+    }
+
+    /// The standard state: the standard size with the top-left corner
+    /// pinned, shifted onto the screen's visible area when it would run
+    /// under the Dock or off an edge (AppKit doesn't constrain
+    /// borderless windows).
+    private func standardFrame(_ c: ClientWindow, _ w: NSWindow) -> NSRect {
+        let f = w.frame, s = c.spec.size
+        var r = NSRect(x: f.minX, y: f.maxY - s.height,
+                       width: s.width, height: s.height)
+        guard let vis = (w.screen ?? NSScreen.main)?.visibleFrame
+        else { return r }
+        r.origin.x = max(vis.minX, min(r.minX, vis.maxX - r.width))
+        r.origin.y = min(vis.maxY - r.height, max(r.minY, vis.minY))
+        return r
     }
 
     /// Grow box: modal mouse-tracking loop like AppKit's own resize —
@@ -375,8 +413,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                               width: nw, height: nh),
                        display: true)
         }
-        // Resizing by hand leaves the zoomed (standard) state.
-        c.userFrame = nil
     }
 
     /// The tank window's shape follows the selected machine case.

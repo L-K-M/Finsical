@@ -477,6 +477,14 @@ const MINI_W = 38, MINI_H = 28;
 const OVERLAY_W = 560, OVERLAY_H = 400;
 /** Height of the native tank window's drag strip, kept clear. */
 const TOP_CLEAR = 24;
+/** Below this viewport width the overlay stacks the details under the
+ * list and drops the preview. */
+const NARROW_W = 480;
+/** Detail-column height the preview must leave for the name, kind, a
+ * two-line status and the Play button. */
+const TEXT_ROOM = 99;
+/** A preview well shorter than this isn't worth showing. */
+const MIN_PREVIEW_H = 48;
 
 /** A thumbnail shrunk (never enlarged) into the list's 38 x 28 box,
  * nearest-neighbor so the pixel art stays crisp. */
@@ -494,6 +502,32 @@ function miniThumb(src: HTMLCanvasElement): HTMLCanvasElement {
 /** The add-on browser, laid out like the Chooser: a Show: pop-up of
  * sections, the section's add-ons in a list, the selected one's
  * preview beside it, and Add to Tank as the default button. */
+/** The browser's split of its content box (w x h) in whole pixels —
+ * percentages in CSS would put the bitmap text on fractions of a pixel
+ * and blur it. The list takes 46% of the width; the preview 55% of the
+ * detail column's height (top 40, bottom 50), but never the room the
+ * text under it needs; null when what's left isn't worth a well. */
+export function browserGeometry(w: number, h: number):
+    { listW: number; previewH: number | null } {
+  const dh = h - 90;
+  const ph = Math.min(Math.floor(dh * 0.55), dh - TEXT_ROOM);
+  return { listW: Math.floor(w * 0.46),
+           previewH: ph < MIN_PREVIEW_H ? null : ph };
+}
+
+/** A failed add-on download as one short line for the status area (the
+ * full error, with its URL, goes to the console). */
+export function loadProblem(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  const http = /: (\d{3})$/.exec(msg);
+  if (http) return `archive.org answered with error ${http[1]}.`;
+  if (msg === "no pack inside")
+    return "The download has no add-on in it.";
+  if (msg.endsWith(": entry missing"))
+    return "The download is missing the add-on's file.";
+  return "Check the connection and try again.";
+}
+
 export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     { open(): void; close(): void; readonly isOpen: boolean;
       restore(list: Importable[]): Promise<void>;
@@ -529,7 +563,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   card.classList.add("imp");
 
   const head = el("div", "ihead");
-  const showLabel = el("label", "ishow", "Show:");
+  const showLabel = el("label", "pt-popup-title ishow", "Show:");
   const popBtn = el("button", "pt-popup ipop");
   popBtn.type = "button";
   popBtn.id = "imp-show";
@@ -548,6 +582,12 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   const play = el("button", "pt-button iplay", "Play");
   play.type = "button";
   play.hidden = true;
+  // The narrow layout makes room for Play beside the name while it
+  // shows.
+  const showPlay = (on: boolean) => {
+    play.hidden = !on;
+    card.classList.toggle("isound", on);
+  };
   detail.append(pvBox, dname, dmeta, status, play);
 
   const foot = el("div", "ifoot");
@@ -560,6 +600,24 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   add.disabled = true;
   foot.append(el("div", "pt-separator"), credit, donate, add);
   card.append(head, listHost, detail, foot);
+
+  // ---- layout ---------------------------------------------------------
+  // See browserGeometry; a narrow overlay stacks the details under the
+  // list instead (app.css .inarrow).
+  function layout(): void {
+    const narrow = !!ov && window.innerWidth < NARROW_W;
+    card.classList.toggle("inarrow", narrow);
+    if (narrow) {
+      listHost.style.width = detail.style.left = pvBox.style.height = "";
+      return;
+    }
+    const g = browserGeometry(card.clientWidth, card.clientHeight);
+    listHost.style.width = `${g.listW}px`;
+    detail.style.left = `${g.listW + 24}px`; // list's 12px margin, then 12
+    pvBox.hidden = g.previewH === null;
+    pvBox.style.height = `${g.previewH ?? 0}px`;
+  }
+  new ResizeObserver(layout).observe(card);
 
   // ---- the default button ---------------------------------------------
   // One button carries the browser's next step: add the shown add-on,
@@ -604,7 +662,11 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     items: ["Fish"], selected: 0, label: "Show",
     onChange: (i) => showSection(sections[i]!),
   });
-  popBtn.disabled = true;
+  function setShowEnabled(on: boolean): void {
+    popBtn.disabled = !on;
+    showLabel.classList.toggle("pt-disabled", !on);
+  }
+  setShowEnabled(false);
 
   const list = mountList(listHost, {
     rowHeight: ROW_H,
@@ -652,13 +714,29 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   }
 
   // ---- detail ---------------------------------------------------------------
+  // The preview on show, kept to re-place it when the well resizes.
+  let shownPreview: HTMLCanvasElement | null = null;
+  // A remote install awaiting the tank's ack: `retry` repeats it,
+  // `more` adds another copy once it landed.
+  let pending: { ref: object; retry: () => void; more: () => void } | null =
+    null;
+  // Sets the default button for the add-on on show from its install
+  // state; null until its pack has loaded.
+  let offer: (() => void) | null = null;
+  new ResizeObserver(() => {
+    if (shownPreview) placePreview(shownPreview);
+  }).observe(pvBox);
+
   function clearDetail(): void {
     releaseSound();
     detailRef = null;
+    pending = null; // its ack still marks the row, not the pane
+    offer = null;
+    shownPreview = null;
     pvBox.textContent = "";
     dname.textContent = "";
     dmeta.textContent = "";
-    play.hidden = true;
+    showPlay(false);
     status.textContent = section === "sounds"
       ? "The game's own sound effects aren't on archive.org — drop its " +
         ".rsrc, .bin or .hqx file on the tank or this window to add them."
@@ -669,7 +747,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   /** Show a preview canvas in the well: scaled by a whole factor to
    * fill it, or shrunk to fit, on whole-pixel offsets. */
   function placePreview(pv: HTMLCanvasElement): void {
+    shownPreview = pv;
+    pvBox.textContent = "";
     const bw = pvBox.clientWidth - 8, bh = pvBox.clientHeight - 8;
+    if (bw < 1 || bh < 1) return; // hidden: placed once it has a size
     let src = pv;
     let s = Math.floor(Math.min(bw / pv.width, bh / pv.height, 4));
     if (s < 1) { src = scaled(pv, Math.min(bw / pv.width, bh / pv.height)); s = 1; }
@@ -680,7 +761,6 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     cv.style.height = `${src.height * s}px`;
     cv.style.left = `${Math.floor((pvBox.clientWidth - 2 - src.width * s) / 2)}px`;
     cv.style.top = `${Math.floor((pvBox.clientHeight - 2 - src.height * s) / 2)}px`;
-    pvBox.textContent = "";
     pvBox.appendChild(cv);
   }
   function scaled(src: HTMLCanvasElement, f: number): HTMLCanvasElement {
@@ -697,12 +777,15 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     // The previous preview's Blob URL pins its bytes — release it now
     // that the pane is rebuilt.
     releaseSound();
+    pending = null;
+    offer = null;
+    shownPreview = null;
     pvBox.textContent = "";
     dname.textContent = it.inner;
     dmeta.textContent =
       `${KIND_NAMES[it.section] ?? it.section} · archive.org`;
     status.textContent = "Fetching add-on…";
-    play.hidden = true;
+    showPlay(false);
     setAdd(installed.has(it.url) ? "Add Again" : "Add to Tank", null);
     const ref = { url: it.url, status };
     detailRef = ref;
@@ -729,7 +812,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         sndObjUrl = URL.createObjectURL(
           new Blob([snds[0]!.wav], { type: audioType(snds[0]!.wav) }));
         audio.src = sndObjUrl;
-        play.hidden = false;
+        showPlay(true);
         setButtonTitle(play, "Play");
       }
       const kinds = [...new Set(usable.map((x) =>
@@ -738,8 +821,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       status.textContent = installed.has(it.url)
         ? "Already in the tank."
         : `${usable.length} pack${usable.length > 1 ? "s" : ""}, ${kinds}.`;
-      const addIt = () => {
-        const again = installed.has(it.url);
+      // `again` travels with the label the user reads: both install
+      // paths drop a first add of something already in the tank, which
+      // is what "Add to Tank" promises.
+      const addIt = (again: boolean) => {
         try {
           applyAddon(it, usable, again);
         } catch (e) {
@@ -749,32 +834,35 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         // Local installs are synchronous; remote ones flip on the ack.
         if (!remote) {
           status.textContent = "Added to the tank.";
-          setAdd("Add Again", addIt);
+          setAdd("Add Again", () => addIt(true));
           return;
         }
         setAdd("Adding…", null);
         // The relay can drop the message if the tank page is
         // mid-reload — recover the button if no ack comes back.
-        const pending = ref;
-        pendingAdd = pending;
+        const p = { ref, retry: () => addIt(again), more: () => addIt(true) };
+        pending = p;
         setTimeout(() => {
-          if (pendingAdd !== pending || detailRef !== pending) return;
-          pendingAdd = null;
-          setAdd("Try Again", addIt);
+          if (pending !== p || detailRef !== ref) return;
+          pending = null;
+          setAdd("Try Again", p.retry);
           status.textContent = "No response from the tank — try again.";
         }, 15_000);
-        retryAdd = addIt;
       };
-      setAdd(installed.has(it.url) ? "Add Again" : "Add to Tank", addIt);
+      // Offered again whenever the add-on's install state changes under
+      // the pane (a launch-time restore, another window's install).
+      offer = () => {
+        const again = installed.has(it.url);
+        setAdd(again ? "Add Again" : "Add to Tank", () => addIt(again));
+      };
+      offer();
     }).catch((e) => {
       if (detailRef !== ref) return;
-      status.textContent =
-        `Couldn't load it: ${e instanceof Error ? e.message : e}`;
+      console.warn(`add-on ${it.inner} failed to load:`, e);
+      status.textContent = `Couldn't load it. ${loadProblem(e)}`;
       setAdd("Try Again", () => showDetail(it));
     });
   }
-  let pendingAdd: object | null = null;
-  let retryAdd: (() => void) | null = null;
 
   // ---- in-page window dragging (the overlay) --------------------------------
   function dragOverlay(win: HTMLElement, e: PointerEvent): void {
@@ -786,7 +874,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       const x = Math.round(Math.min(window.innerWidth - 40,
                                     Math.max(40 - r.width, ev.clientX - dx)));
       const y = Math.round(Math.min(window.innerHeight - 20,
-                                    Math.max(0, ev.clientY - dy)));
+                                    Math.max(TOP_CLEAR, ev.clientY - dy)));
       win.style.left = `${x}px`;
       win.style.top = `${y}px`;
     };
@@ -1010,6 +1098,17 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   function markInstalled(url: string, on: boolean): void {
     if (on) installed.add(url); else installed.delete(url);
     rowOf(url)?.classList.toggle("done", on);
+    if (detailRef?.url !== url) return;
+    // A state push can report the install before (or instead of) its
+    // ack: settle the pending add the same way.
+    if (on && pending?.ref === detailRef) ackInstalled();
+    else if (!pending) offer?.();
+  }
+  function ackInstalled(): void {
+    const p = pending!;
+    pending = null;
+    detailRef!.status.textContent = "Added to the tank.";
+    setAdd("Add Again", p.more);
   }
 
   function applyAddon(it: Importable, rs: PackResult[],
@@ -1050,7 +1149,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       } catch { /* storage unavailable */ }
       popup.setItems(sections.map((s) => SECTION_TITLES[s] ?? s),
                      sections.indexOf(start));
-      popBtn.disabled = false;
+      setShowEnabled(true);
       list.setEmpty("");
       showSection(start);
     }).catch((e) => {
@@ -1064,7 +1163,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   function close(): void {
     if (!ov || ov.style.display === "none") return;
     ov.style.display = "none";
-    releaseSound();
+    // Pause only: the pane still shows the sound and its Play button,
+    // which must work after a reopen. The Blob URL goes when the pane
+    // is rebuilt.
+    stopSound();
   }
   if (ov) {
     ov.addEventListener("pointerdown", (e) => {
@@ -1088,8 +1190,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       if (ov) {
         ov.style.display = "block";
         placeOverlay();
-        listHost.focus();
       }
+      listHost.focus({ preventScroll: true });
       if (!loaded) { loaded = true; loadListing(); }
     },
     close,
@@ -1098,17 +1200,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     notify(m: BusMsg): void {
       const ackUrl = m.url;
       if (m.op === "installed" && typeof ackUrl === "string") {
-        markInstalled(ackUrl, true);
-        if (detailRef?.url === ackUrl && pendingAdd === detailRef) {
-          pendingAdd = null;
-          detailRef.status.textContent = "Added to the tank.";
-          setAdd("Add Again", retryAdd);
-        }
+        markInstalled(ackUrl, true); // settles the pending add
       } else if (m.op === "installFailed" && typeof ackUrl === "string") {
-        if (detailRef?.url === ackUrl && pendingAdd === detailRef) {
-          pendingAdd = null;
+        if (detailRef?.url === ackUrl && pending?.ref === detailRef) {
+          const p = pending;
+          pending = null;
           detailRef.status.textContent = `Couldn't add it: ${m.error}`;
-          setAdd("Try Again", retryAdd);
+          setAdd("Try Again", p.retry);
         }
       } else if (m.op === "state" && Array.isArray(m.addons)) {
         // Tank's add-on list — sync install marks (covers restores that

@@ -149,6 +149,14 @@ export function fitButton(b: HTMLElement): void {
   b.style.paddingRight = "0";
 }
 
+/** Enable or disable a checkbox or slider input, dimming its whole
+ * control (platinum.css reads .pt-disabled on the wrapper). */
+export function setEnabled(input: HTMLInputElement, on: boolean): void {
+  input.disabled = !on;
+  input.closest(".pt-checkbox, .pt-slider")
+    ?.classList.toggle("pt-disabled", !on);
+}
+
 /** Wire a push button: press tracking, title layout (now and once the
  * bitmap fonts are in), and `action`. */
 export function pushButton(b: HTMLButtonElement, action: () => void): void {
@@ -181,8 +189,9 @@ export function bindDialogKeys(ok: HTMLButtonElement | null,
     const isCancel = e.key === "Escape" || (e.metaKey && e.key === ".");
     const b = isOk ? ok : isCancel ? cancel : null;
     const act = isOk ? actions.ok : actions.cancel;
+    // Hidden buttons (display: none anywhere up the tree) have no boxes.
     if (!b || !act || b.disabled || !b.isConnected ||
-        b.offsetParent === null) return;
+        b.getClientRects().length === 0) return;
     e.preventDefault();
     b.classList.add("pt-pressed");
     setTimeout(() => {
@@ -236,13 +245,20 @@ export function mountPopup(btn: HTMLButtonElement,
   let selected = opts.selected;
   let menu: HTMLElement | null = null;
   let hi = -1;
+  // Where the keyboard goes back to when the menu closes: the button
+  // after keyboard use, otherwise whatever had it before (a pop-up
+  // used with the mouse never takes the keyboard target).
+  let returnFocus: HTMLElement | null = null;
   const id = `pt-popup-${++popupSeq}`;
   btn.setAttribute("aria-haspopup", "listbox");
   btn.setAttribute("aria-expanded", "false");
-  if (opts.label) btn.setAttribute("aria-label", opts.label);
 
   const render = () => {
     btn.textContent = items[selected] ?? "";
+    // An aria-label replaces a button's content in its name, so it
+    // carries the current item too.
+    if (opts.label)
+      btn.setAttribute("aria-label", `${opts.label} ${items[selected] ?? ""}`);
   };
   render();
 
@@ -263,6 +279,10 @@ export function mountPopup(btn: HTMLButtonElement,
 
   function open(byKey: boolean): void {
     if (menu || btn.disabled) return;
+    const active = document.activeElement;
+    returnFocus = byKey ? btn
+      : active instanceof HTMLElement && active !== document.body ? active
+      : null;
     const r = btn.getBoundingClientRect();
     menu = part("ul", "pt-menu");
     menu.id = `${id}-menu`;
@@ -279,17 +299,26 @@ export function mountPopup(btn: HTMLButtonElement,
     });
     document.body.appendChild(menu);
     // The menu covers the text part of the button (outline to the
-    // arrow's separator) and grows to fit its widest item.
+    // arrow's separator) and grows to fit its widest item, kept on
+    // screen together with its 2px shadow.
     const widest = Math.max(0, ...items.map((t) => textWidth(t, btn)));
     const w = Math.max(Math.round(r.width) - ARROW_W, widest + ITEM_PAD);
     const h = items.length * ITEM_H + 2;
     const top = menuTop(Math.round(r.top), selected, items.length,
                         window.innerHeight);
-    menu.style.left = `${Math.round(r.left)}px`;
+    const left = Math.max(0, Math.min(Math.round(r.left),
+                                      window.innerWidth - w - 2));
+    menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
     menu.style.width = `${w}px`;
     menu.style.maxHeight = `${window.innerHeight - top - 2}px`;
-    menu.style.overflowY = h > window.innerHeight ? "auto" : "";
+    if (h > window.innerHeight - top - 2) {
+      // Taller than the screen: scroll so the current item still
+      // sits over the button.
+      menu.style.overflowY = "auto";
+      menu.scrollTop = Math.max(0, Math.max(0, selected) * ITEM_H -
+                                   (Math.round(r.top) - top));
+    }
     btn.classList.add("pt-pressed");
     btn.setAttribute("aria-expanded", "true");
     btn.setAttribute("aria-controls", menu.id);
@@ -301,9 +330,11 @@ export function mountPopup(btn: HTMLButtonElement,
     menu.addEventListener("pointermove", (e) =>
       highlight(itemAt(e.clientX, e.clientY)));
     // A click inside the open menu chooses; the release of the press
-    // that opened it is the button's to handle.
+    // that opened it is the button's to handle. Presses stay with the
+    // menu (the page underneath must not start a drag).
     let pressed = false;
     menu.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
       if (e.button === 0) { pressed = true; e.preventDefault(); }
     });
     menu.addEventListener("pointerup", (e) => {
@@ -326,7 +357,11 @@ export function mountPopup(btn: HTMLButtonElement,
     btn.removeAttribute("aria-controls");
     document.removeEventListener("pointerdown", onOutside, true);
     window.removeEventListener("blur", close);
-    if (hadFocus) btn.focus();
+    if (hadFocus) {
+      if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+      else (document.activeElement as HTMLElement | null)?.blur();
+    }
+    returnFocus = null;
   }
 
   function choose(i: number): void {
@@ -347,12 +382,26 @@ export function mountPopup(btn: HTMLButtonElement,
     }, 100);
   }
 
+  // A press outside dismisses the menu and does nothing else: its
+  // click is swallowed too, or a label or checkbox under it would act.
   function onOutside(e: PointerEvent): void {
     if (menu && !menu.contains(e.target as Node) && e.target !== btn &&
         !btn.contains(e.target as Node)) {
       e.stopPropagation();
       e.preventDefault();
       close();
+      const eat = (ev: Event) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+        done();
+      };
+      const done = () => {
+        document.removeEventListener("click", eat, true);
+        document.removeEventListener("pointerdown", done, true);
+      };
+      document.addEventListener("click", eat, true);
+      // A press that never becomes a click mustn't eat the next one.
+      setTimeout(() => document.addEventListener("pointerdown", done, true));
     }
   }
 
@@ -363,7 +412,7 @@ export function mountPopup(btn: HTMLButtonElement,
     else if (e.key === "Home") highlight(0);
     else if (e.key === "End") highlight(n - 1);
     else if (e.key === "Enter" || e.key === " ") {
-      if (hi >= 0) choose(hi);
+      if (hi >= 0 && !e.repeat) choose(hi);
     } else if (e.key === "Escape" || e.key === "Tab") close();
     else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey) {
       const k = e.key.toLowerCase();
@@ -387,7 +436,9 @@ export function mountPopup(btn: HTMLButtonElement,
     const up = (ev: PointerEvent) => {
       if (ev.pointerId !== e.pointerId) return;
       window.removeEventListener("pointerup", up, true);
+      window.removeEventListener("pointercancel", up, true);
       window.removeEventListener("pointermove", move, true);
+      if (ev.type === "pointercancel") return;
       const i = itemAt(ev.clientX, ev.clientY);
       const moved = Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) > 3;
       if (i >= 0 && moved) choose(i);
@@ -399,12 +450,13 @@ export function mountPopup(btn: HTMLButtonElement,
         highlight(itemAt(ev.clientX, ev.clientY));
     };
     window.addEventListener("pointerup", up, true);
+    window.addEventListener("pointercancel", up, true);
     window.addEventListener("pointermove", move, true);
   });
   btn.addEventListener("keydown", (e) => {
     if (["ArrowDown", "ArrowUp", " ", "Enter"].includes(e.key)) {
       e.preventDefault();
-      open(true);
+      if (!e.repeat) open(true);
     }
   });
   btn.addEventListener("click", (e) => {
@@ -420,6 +472,7 @@ export function mountPopup(btn: HTMLButtonElement,
       render();
     },
     setSelected(i) {
+      close();
       selected = i;
       render();
     },
@@ -564,6 +617,13 @@ export function attachScrollbar(host: HTMLElement, view: HTMLElement,
     thumb.addEventListener("pointercancel", end);
   });
 
+  // Wheel and trackpad scrolling over the bar scroll the view, as a
+  // native scroll bar would.
+  bar.addEventListener("wheel", (e) => {
+    view.scrollTop += e.deltaY * (e.deltaMode === 1 ? line
+      : e.deltaMode === 2 ? view.clientHeight : 1);
+    e.preventDefault();
+  }, { passive: false });
   view.addEventListener("scroll", update, { passive: true });
   const ro = new ResizeObserver(update);
   ro.observe(view);
@@ -583,23 +643,40 @@ export interface ListOptions {
   onOpen?(index: number): void;
 }
 
+/** Where a list's scroll position lands when its rows are replaced. */
+export type ListScroll =
+  /** Back to the first row (new contents), then to the kept selection. */
+  | "top"
+  /** Where it was (a refresh of the same rows mustn't jump under the
+   * reader, even to show the kept selection). */
+  | "keep";
+
+export interface SetRowsOptions {
+  /** Row to select afterwards, without reporting it; -1 clears. */
+  keep?: number;
+  scroll?: ListScroll;
+}
+
 export interface PlatinumList {
   readonly element: HTMLElement;
   readonly selected: number;
   readonly rows: readonly HTMLElement[];
   /** Replace the rows; the selection moves to `keep` (or clears). */
-  setRows(rows: HTMLElement[], keep?: number): void;
+  setRows(rows: HTMLElement[], opts?: SetRowsOptions): void;
   select(index: number, notify?: boolean): void;
-  /** Placeholder text shown centered when there are no rows. */
+  /** Placeholder line shown centered when there are no rows. */
   setEmpty(text: string): void;
 }
 
 let listSeq = 0;
+/** Movement that turns a touch press into a scroll, not a selection. */
+const TOUCH_SLOP = 6;
 
 /** A single-selection list box in `host` (styled .pt-list): rows are
- * options, the selection follows the pointer while it's down (List
- * Manager behavior), arrow keys, Home/End, Page keys and typing a
- * name's first letters move it. */
+ * options; with a mouse the selection follows the pointer while it's
+ * down (List Manager behavior) and is reported on release; a touch
+ * selects on a tap and leaves swipes to scrolling. Arrow keys,
+ * Home/End, Page keys and typing a name's first letters move it. */
 export function mountList(host: HTMLElement, opts: ListOptions): PlatinumList {
   const id = `pt-list-${++listSeq}`;
   host.classList.add("pt-list");
@@ -607,6 +684,11 @@ export function mountList(host: HTMLElement, opts: ListOptions): PlatinumList {
   host.setAttribute("aria-label", opts.label);
   host.tabIndex = 0;
   const view = part("div", "pt-list-view");
+  // The listbox is the keyboard target; its scroller must not become a
+  // second tab stop (Chromium and Firefox focus bare scrollers), and a
+  // click that focuses it hands focus straight back.
+  view.tabIndex = -1;
+  view.addEventListener("focus", () => host.focus({ preventScroll: true }));
   host.appendChild(view);
   const sb = attachScrollbar(host, view, opts.rowHeight);
   const empty = part("div", "pt-list-empty");
@@ -623,7 +705,7 @@ export function mountList(host: HTMLElement, opts: ListOptions): PlatinumList {
       view.scrollTop = r.offsetTop + r.offsetHeight - view.clientHeight;
   }
 
-  function select(i: number, notify = true): void {
+  function select(i: number, notify = true, show = true): void {
     const next = rows[i] ? i : -1;
     if (next === sel) return;
     rows[sel]?.classList.remove("pt-selected");
@@ -634,7 +716,7 @@ export function mountList(host: HTMLElement, opts: ListOptions): PlatinumList {
       r.classList.add("pt-selected");
       r.setAttribute("aria-selected", "true");
       host.setAttribute("aria-activedescendant", r.id);
-      reveal(sel);
+      if (show) reveal(sel);
     } else host.removeAttribute("aria-activedescendant");
     if (notify) opts.onSelect?.(sel);
   }
@@ -646,18 +728,40 @@ export function mountList(host: HTMLElement, opts: ListOptions): PlatinumList {
 
   view.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
+    if (e.pointerType !== "mouse") {
+      // Touch and pen: a tap selects; anything that moves is a scroll
+      // (the browser's pan cancels the pointer).
+      const x0 = e.clientX, y0 = e.clientY;
+      view.setPointerCapture(e.pointerId);
+      const up = (ev: PointerEvent) => {
+        if (ev.pointerId !== e.pointerId) return;
+        view.removeEventListener("pointerup", up);
+        view.removeEventListener("pointercancel", up);
+        if (ev.type === "pointercancel" ||
+            Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) > TOUCH_SLOP)
+          return;
+        const i = rowAt(ev.clientY);
+        if (i < rows.length) select(i);
+      };
+      view.addEventListener("pointerup", up);
+      view.addEventListener("pointercancel", up);
+      return;
+    }
     host.focus({ preventScroll: true });
+    const before = sel;
     const i = rowAt(e.clientY);
-    if (i < rows.length) select(i);
+    if (i < rows.length) select(i, false);
     view.setPointerCapture(e.pointerId);
     const move = (ev: PointerEvent) => {
       const k = Math.min(rows.length - 1, Math.max(0, rowAt(ev.clientY)));
-      if (rows.length && k !== sel) select(k);
+      if (rows.length && k !== sel) select(k, false);
     };
+    // One report per press, however many rows the drag crossed.
     const end = () => {
       view.removeEventListener("pointermove", move);
       view.removeEventListener("pointerup", end);
       view.removeEventListener("pointercancel", end);
+      if (sel !== before) opts.onSelect?.(sel);
     };
     view.addEventListener("pointermove", move);
     view.addEventListener("pointerup", end);
@@ -697,10 +801,12 @@ export function mountList(host: HTMLElement, opts: ListOptions): PlatinumList {
     element: host,
     get selected() { return sel; },
     get rows() { return rows; },
-    setRows(next, keep = -1) {
+    setRows(next, { keep = -1, scroll = "top" } = {}) {
+      const top = view.scrollTop;
       view.textContent = "";
       rows = next;
       sel = -1;
+      host.removeAttribute("aria-activedescendant");
       rows.forEach((r, i) => {
         r.classList.add("pt-row");
         r.id = `${id}-${i}`;
@@ -710,16 +816,18 @@ export function mountList(host: HTMLElement, opts: ListOptions): PlatinumList {
         view.appendChild(r);
       });
       if (!rows.length && empty.textContent) view.appendChild(empty);
-      select(keep, false);
+      view.scrollTop = scroll === "keep" ? top : 0;
+      select(keep, false, scroll === "top");
       sb.update();
     },
-    select,
+    select: (i, notify) => select(i, notify),
     setEmpty(text) {
       empty.textContent = text;
       if (!rows.length) {
         view.textContent = "";
         if (text) view.appendChild(empty);
       }
+      if (text) centerText(empty);
     },
   };
 }
