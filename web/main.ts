@@ -824,7 +824,9 @@ syncTrigger(hoverNone.matches);
 hoverNone.addEventListener("change", (e) => syncTrigger(e.matches));
 window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
-  if ((e.metaKey || e.ctrlKey) && k === "i") {
+  if ((e.metaKey || e.ctrlKey) && k === "i" && !inNativeShell()) {
+    // The app's Tank menu owns Cmd-I and opens the Import Add-ons
+    // window; the overlay would squeeze into the tank.
     importPanel.open(); e.preventDefault();
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" &&
              !e.repeat && !importPanel.isOpen) {
