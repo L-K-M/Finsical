@@ -738,13 +738,39 @@ against main itself, not against historical branch claims.
   and a non-empty `it.each` guard in the web-build test (#144);
   manifest-scoped `dims` error detail, an interior-gap `dims` test,
   and a `drawFish` placeholder fallback so an absent cell can't kill
-  the rAF loop (#145).
+  the rAF loop (#145). Round 2: build-child `timeout: 25_000` inside
+  the 30s hook (a blocking execFileSync made the hook timeout dead
+  code) and env-gated `WEB_BUILD_DEBUG` stdio (#144); drawFish catch
+  narrowed to `RangeError` so other render regressions still
+  propagate, and the non-array `dims` message split out (#145).
+- #147 round 1: gravel bottom-anchored to `m.sy + m.sh` (screen
+  rects are ~16:10 but rounded, not exact), `pvwater` gradient id
+  suffixed per machine (SVG ids are document-global), swimmer-count
+  test strips the trailing shell markup first. Facing convention
+  verified against `drawPlaceholder` (`scale(-facing)`) — preview
+  fish already mirror the live tank; no change needed.
+- #148 round 1: `f.phase = MOVE_TICKS` on seek-abandon so `decide()`
+  repicks a wander target the same tick (was: steering at the dead
+  pellet's coordinates); tests pin `toBe("drift")` + `phase === 0`,
+  and the foul-water case derives from exported `QUALITY_SEEK`.
+- #146 round 1: `invalidatePaint()` wired to every out-of-band
+  tank-mutation path (pointer feed/knock, menu feed, spawnFish,
+  handleImages, handleSheets, removeAddon) so those show next rAF;
+  stale-frame-upload test added for the `dirtyTex` contract.
 - Refuted with evidence: "truncated `dims` packs were previously
   rejected cleanly at load" — no manifest validation existed before
   PR #145; the absent-cell `RangeError` predates the PR and is now
-  cushioned (#145).
-- Steady state: pending — review rounds were still in flight on
-  #144–#148 when this document was merged.
+  cushioned (#145). "Repaint gating blanks on canvas resize" — the
+  tank canvas buffer is never reassigned on this baseline (fixed
+  320×200), no pause exists on main, and `render()` draws only sim
+  state (#146). "`resize()` may reallocate the texture" — it only
+  resizes the output canvas + viewport; the source texture is
+  allocated once at init (#146).
+- Deferred: per-(sheet,group,frame) "cell missing" memo so a
+  truncated pack stops paying exception cost per frame (#145 info
+  follow-up); a pack missing cells is already rare.
+- Steady state: pending — round 2 reviews were still in flight on
+  #146–#148 when this document was last updated.
 
 ## Implementation Order (suggested for future work)
 
