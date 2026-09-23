@@ -196,6 +196,11 @@ body.crt canvas#tank { opacity: 0; }
 .ifilter::placeholder { color: #888; }
 .ifilter:focus { outline: none; border-color: #000; box-shadow: 0 0 0 1px #fff, 0 0 0 2px #000; }
 .ifilter:disabled { background: #ddd; }
+/* Forced-colors mode suppresses box-shadow — fall back to a real
+   outline so the focused field stays visible. */
+@media (forced-colors: active) {
+  .ifilter:focus { outline: 2px solid Highlight; box-shadow: none; }
+}
 .icount {
   flex: 0 1 auto; min-width: 0; margin: 3px 0 0 auto;
   white-space: nowrap; overflow: hidden;

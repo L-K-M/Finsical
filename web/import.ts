@@ -570,7 +570,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   const filter = el("input", "ifilter");
   filter.placeholder = "Filter";
   filter.setAttribute("aria-label", "Filter the add-on list");
+  filter.autocomplete = "off";
+  filter.spellcheck = false;
   const count = el("div", "icount");
+  count.setAttribute("aria-live", "polite");
   head.append(showLabel, popBtn, filter, count);
 
   const listHost = el("div", "ilist");
@@ -731,11 +734,12 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
 
   filter.addEventListener("input", applyFilter);
   filter.addEventListener("keydown", (e) => {
-    // Escape clears the field; swallowing it keeps the panel open.
+    // Escape clears the field; consuming it keeps the panel open.
     if (e.key === "Escape" && filter.value) {
       filter.value = "";
       applyFilter();
       e.preventDefault();
+      e.stopPropagation();
     }
   });
 
