@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { browserGeometry, importAddon, listAddons, loadProblem,
-         qualifySoundItemName } from "./import.js";
+         orphanedSounds, qualifySoundItemName } from "./import.js";
 
 const enc = new TextEncoder();
 
@@ -165,6 +165,33 @@ describe("qualifySoundItemName", () => {
     // Qualifier + extension both strip before the stem compare.
     expect(qualifySoundItemName([rec("dup")], "dup (2).mp3")
       .map((r) => r.name)).toEqual(["dup (2).mp3"]);
+  });
+});
+
+describe("orphanedSounds", () => {
+  const addon = (url: string, sounds?: string[]) =>
+    ({ section: "sounds", inner: url, url, ...(sounds ? { sounds } : {}) });
+  it("returns names only the leaving add-ons owned", () => {
+    expect(orphanedSounds(
+      [addon("a.zip", ["tap", "drop"])], [addon("b.zip", ["aqua"])]))
+      .toEqual(["tap", "drop"]);
+  });
+  it("keeps a name a surviving add-on still claims", () => {
+    // Two add-ons can ship a same-named record — the survivor's copy
+    // is the one in the store, so the name must not be dropped.
+    expect(orphanedSounds(
+      [addon("a.zip", ["bubbles"])], [addon("b.zip", ["bubbles"])]))
+      .toEqual([]);
+  });
+  it("treats add-ons without recorded sounds as contributing none", () => {
+    expect(orphanedSounds([addon("a.zip")], [addon("b.zip")]))
+      .toEqual([]);
+  });
+  it("keeps everything when the leaving add-on still sits in rest", () => {
+    // Pins the caller contract: `rest` must already exclude `gone`,
+    // otherwise removeAddon silently drops nothing.
+    const a = addon("a.zip", ["tap"]);
+    expect(orphanedSounds([a], [a, addon("b.zip")])).toEqual([]);
   });
 });
 

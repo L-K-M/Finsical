@@ -14,10 +14,10 @@ import { drawRipples, drawSplashes, newSplash, tickRipples,
          tickSplashes } from "./fx.js";
 import type { Ripple, Splash } from "./fx.js";
 import { pushButton } from "osmium-ui";
-import { fetchAddon, mountImportPanel, qualifySoundItemName,
-         COLLECTIONS } from "./import.js";
+import { fetchAddon, mountImportPanel, orphanedSounds,
+         qualifySoundItemName, COLLECTIONS } from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
-import { sndsGet, sndsMerge } from "./store.js";
+import { sndsGet, sndsMerge, sndsRemove } from "./store.js";
 import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
          swimCanvas } from "./render.js";
 import { containPoint, feedZoneLineY, isFeedZoneY } from "./feedzone.js";
@@ -542,9 +542,17 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
   requestPaint();
   if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
 }
-function recordInstall(it: Importable): void {
-  if (!installedAddons.some((a) => a.url === it.url))
-    installedAddons.push(it);
+// `soundNames` are the bank records this install contributed — stored
+// on the add-on so uninstall can drop exactly its own sounds.
+function recordInstall(it: Importable, soundNames: string[] = []): void {
+  const rec = installedAddons.find((a) => a.url === it.url);
+  if (rec) {
+    if (soundNames.length)
+      rec.sounds = [...new Set([...(rec.sounds ?? []), ...soundNames])];
+  } else {
+    installedAddons.push(soundNames.length
+      ? { ...it, sounds: [...new Set(soundNames)] } : it);
+  }
   saveTank();
 }
 
@@ -810,6 +818,14 @@ function removeAddon(url: string): void {
     backdropCv = prev !== undefined ? backdropByPack.get(prev)! : null;
     backdropSrc = prev ?? "";
   }
+  // Sounds this add-on put in the bank leave it — unless a surviving
+  // add-on claims the same record name.
+  const dropSnds = orphanedSounds(gone, installedAddons);
+  if (dropSnds.length) {
+    audio.removeWavs(dropSnds);
+    void sndsRemove(dropSnds)
+      .catch((e) => console.warn("snd removal failed:", e));
+  }
   for (const s of orphaned) sheetBySpecies.delete(s);
   const slot = sheetByPack.get(url);
   // Only delete the reverse entry it still owns — a rebind may have
@@ -872,10 +888,15 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     // stem installed separately mustn't overwrite under the basename.
     const sounds = usable.flatMap(
       (r) => qualifySoundItemName(r.sounds, it.inner));
+    let storedNames: string[] = [];
     if (sounds.length)
       await handleSounds(sounds)
+        // handleSounds dedupes colliding names in place — record the
+        // final ones, and only on success: a failed decode must not
+        // claim provenance over records never written.
+        .then(() => { storedNames = sounds.map((s) => s.name); })
         .catch((e) => console.warn("sound install skipped:", e));
-    recordInstall(it);
+    recordInstall(it, storedNames);
     bus.post({ op: "installed", url: it.url });
     postState();
   } catch (e) { fail(String(e)); }
