@@ -13,8 +13,12 @@ beforeAll(() => {
   fixture = mkdtempSync(join(tmpdir(), "finsical-web-build-"));
   cpSync(join(root, "package.json"), join(fixture, "package.json"));
   for (const directory of ["web", "core", "node_modules"])
-    symlinkSync(join(root, directory), join(fixture, directory), "dir");
-  execFileSync("npm", ["run", "build"], { cwd: fixture, stdio: "pipe" });
+    symlinkSync(join(root, directory), join(fixture, directory), "junction");
+  execFileSync("npm", ["run", "build"], {
+    cwd: fixture,
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
 }, 30_000);
 
 afterAll(() => {
@@ -31,7 +35,11 @@ describe("standalone web build", () => {
       expect(existsSync(join(fixture, "dist", file)), file).toBe(true);
   });
 
-  it.each(MACHINES.filter((m) => m.image))("includes the $name case image", (m) => {
+  const imaged = MACHINES.filter((m) => m.image);
+  it("has at least one machine image to verify", () => {
+    expect(imaged.length).toBeGreaterThan(0);
+  });
+  it.each(imaged)("includes the $name case image", (m) => {
     const output = join(fixture, "dist", m.image);
     expect(existsSync(output), m.image).toBe(true);
     expect(readFileSync(output).equals(readFileSync(join(root, "web", m.image))))
