@@ -311,6 +311,9 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   // layout) so browser-zoom DPR changes still resize the buffer.
   // DPR caps at 2: the grille mask is sub-game-pixel already there,
   // and the ~15-tap shader scales with buffer pixels.
+  // Lifetime: initCrt runs once per page load (module scope in
+  // web/main.ts) and CrtFilter has no dispose path, so the observer
+  // and window listener below live exactly as long as the page.
   const MAX_CRT_DPR = 2;
   let sizeDirty = true;
   let lastDpr = 0;
