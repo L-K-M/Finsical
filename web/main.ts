@@ -3,7 +3,9 @@ import { fishPose, pitch } from "../core/pose.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
-import { TankAudio } from "./audio.js";
+import { sanitizeSoundConfig, SOUND_DEFAULTS, TankAudio }
+  from "./audio.js";
+import type { SoundConfig } from "./audio.js";
 import { pushButton } from "osmium-ui";
 import { fetchAddon, mountImportPanel, qualifySoundItemName,
          COLLECTIONS } from "./import.js";
@@ -62,6 +64,14 @@ let rosterComplete = saved?.v !== 1;
 
 const sim = new Sim(TANK, 0x9003);
 const audio = new TankAudio();
+// Sound preferences (master/ambient/mute) persist like the CRT config.
+const SOUND_KEY = "finsical:sound";
+let soundCfg: SoundConfig;
+try {
+  soundCfg = sanitizeSoundConfig(
+    JSON.parse(localStorage.getItem(SOUND_KEY) ?? "null"));
+} catch { soundCfg = sanitizeSoundConfig(null); /* storage — defaults */ }
+audio.setVolume(soundCfg);
 if (saved) {
   if (Number.isFinite(saved.tickCount)) sim.tickCount = saved.tickCount;
   if (Number.isFinite(saved.waterQuality))
@@ -407,6 +417,9 @@ function postState(): void {
     foodSettled: sim.food.reduce((n, f) => n + (f.settled > 0 ? 1 : 0), 0),
     bubbles: sim.bubbles.length,
     light: sim.light,
+    // Sound levels mirror the CRT config contract: prefs posts a
+    // partial, the tank owns truth and echoes it back in state.
+    sound: { ...soundCfg, available: audio.usable },
     // Preferences window reads this — `on`/`available` reflect the
     // live GL state (a lost context reports off/unavailable even if
     // the stored preference says on).
@@ -528,6 +541,8 @@ function onBusMessage(m: BusMsg): void {
     setCrt(m.on === true);
   } else if (m.op === "crtConfig") {
     applyCrtConfig(m.cfg);
+  } else if (m.op === "soundConfig") {
+    applySoundConfig(m.cfg);
   } else if (m.op === "machine" && typeof m.id === "string") {
     const nm = machineById(m.id);
     if (nm && nm.id !== machine.id) { applyMachine(nm); postState(); }
@@ -684,6 +699,19 @@ function applyCrtConfig(raw: unknown): void {
   crtCfg = sanitizeCrtConfig(merged);
   crt?.configure(crtCfg);
   try { localStorage.setItem(CRT_CFG_KEY, JSON.stringify(crtCfg)); }
+  catch { /* storage unavailable */ }
+  postState();
+}
+/** Merge a partial sound config (prefs checkbox/slider) onto the
+ * current one, clamp, persist, and apply to the live audio graph. */
+function applySoundConfig(raw: unknown): void {
+  const merged: Record<string, unknown> = { ...soundCfg };
+  if (raw && typeof raw === "object")
+    for (const [k, v] of Object.entries(raw))
+      if (v !== undefined) merged[k] = v;
+  soundCfg = sanitizeSoundConfig(merged);
+  audio.setVolume(soundCfg);
+  try { localStorage.setItem(SOUND_KEY, JSON.stringify(soundCfg)); }
   catch { /* storage unavailable */ }
   postState();
 }

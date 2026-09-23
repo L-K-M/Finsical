@@ -151,4 +151,10 @@ export const ICON_SPRITES: Record<string, readonly string[]> = {
   "icon-machine": ICON_MACHINE,
   "icon-monitor": ICON_MONITOR,
   "icon-picture": ICON_PICTURE,
+  "icon-sound": [
+    // The sound icon padded to the pane icons' 32 x 32.
+    ...Array.from({ length: 4 }, () => ".".repeat(32)),
+    ...SOUND_ICON,
+    ...Array.from({ length: 4 }, () => ".".repeat(32)),
+  ],
 };

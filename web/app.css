@@ -101,6 +101,8 @@ body.crt canvas#tank { opacity: 0; }
 .pfends { display: flex; justify-content: space-between; margin-top: 2px; padding: 0 1px 0 3px; }
 /* CRT off: the sliders are disabled and their captions dim with them. */
 .pfcrtoff .pfslider { color: #888; }
+/* Muted: only the Sound pane's sliders dim. */
+.pfsndoff .pfsnd { color: #888; }
 
 /* Caption area along the bottom, with Defaults at its right. */
 #pffoot { position: absolute; left: 14px; right: 14px; bottom: 10px; height: 52px; }

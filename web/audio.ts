@@ -3,8 +3,42 @@
 // maps events (feed, glass tap zone, ambient loop) onto names lazily.
 import type { AzpackManifest } from "../core/data/azpack.js";
 
+/** Volume preferences, as the prefs pane and the bus carry them.
+ * master/ambient run 0..1; muted silences everything while the levels
+ * survive (classic Sound control panel behavior). */
+export interface SoundConfig {
+  master: number;
+  ambient: number;
+  muted: boolean;
+}
+export const SOUND_DEFAULTS: Readonly<SoundConfig> =
+  Object.freeze({ master: 0.8, ambient: 0.7, muted: false });
+
+/** Clamp an untrusted config (bus message, storage) onto the defaults. */
+export function sanitizeSoundConfig(raw: unknown): SoundConfig {
+  const c = { ...SOUND_DEFAULTS };
+  if (raw && typeof raw === "object") {
+    const r = raw as Record<string, unknown>;
+    for (const k of ["master", "ambient"] as const)
+      if (typeof r[k] === "number" && Number.isFinite(r[k] as number))
+        c[k] = Math.min(1, Math.max(0, r[k] as number));
+    if (typeof r.muted === "boolean") c.muted = r.muted;
+  }
+  return c;
+}
+
+/** The ambient loop's base level — the ambient slider scales it. */
+const AMBIENT_BASE = 0.12;
+
 export class TankAudio {
   private ctx: AudioContext | null = null;
+  /** Master bus every source connects through; null before the first
+   * AudioContext exists (created lazily with it). */
+  private masterGain: GainNode | null = null;
+  /** The live ambient loop's own gain node, for live level changes. */
+  private ambientGain: GainNode | null = null;
+  private vol: SoundConfig = { ...SOUND_DEFAULTS };
+  private dead = false;
   private buffers = new Map<string, AudioBuffer>();
   // Dropped/imported 'snd ' sets persist across pack loads — load()
   // only swaps manifest sounds, never user-supplied ones.
@@ -22,13 +56,14 @@ export class TankAudio {
       try { this.ambientSrc.stop(); } catch { /* already ended */ }
       this.ambientSrc = null;
     }
+    this.ambientGain = null;
     this.ambientBuf = null;
     this.ambientWanted = false;
     this.buffers.clear();
     for (const s of manifest.sounds ?? []) {
       try {
-        const ac = this.ctx ?? new AudioContext();
-        this.ctx = ac;
+        const ac = this.ac();
+        if (!ac) break;
         const raw = await read(s.file);
         const buf = raw.buffer.slice(raw.byteOffset,
                                      raw.byteOffset + raw.byteLength);
@@ -44,8 +79,8 @@ export class TankAudio {
   async addWavs(records: { name: string; wav: Uint8Array }[]): Promise<void> {
     for (const r of records) {
       try {
-        const ac = this.ctx ?? new AudioContext();
-        this.ctx = ac;
+        const ac = this.ac();
+        if (!ac) break;
         const raw = r.wav;
         const buf = raw.buffer.slice(raw.byteOffset,
                                      raw.byteOffset + raw.byteLength);
@@ -64,6 +99,37 @@ export class TankAudio {
         this.ambientSrc = null;
       }
       this.startAmbient();
+    }
+  }
+
+  /** True once AudioContext creation is known to fail — the prefs
+   * pane dims its controls and says so. */
+  get usable(): boolean { return !this.dead; }
+
+  get volume(): SoundConfig { return { ...this.vol }; }
+
+  /** Apply new levels; live sources follow, nothing restarts. */
+  setVolume(v: SoundConfig): void {
+    this.vol = sanitizeSoundConfig(v);
+    if (this.masterGain)
+      this.masterGain.gain.value = this.vol.muted ? 0 : this.vol.master;
+    if (this.ambientGain)
+      this.ambientGain.gain.value = AMBIENT_BASE * this.vol.ambient;
+  }
+
+  /** The shared context (and its master bus), created on first use. */
+  private ac(): AudioContext | null {
+    if (this.ctx) return this.ctx;
+    if (this.dead) return null;
+    try {
+      this.ctx = new AudioContext();
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.connect(this.ctx.destination);
+      this.setVolume(this.vol);
+      return this.ctx;
+    } catch {
+      this.dead = true; // no WebAudio — every call degrades to silence
+      return null;
     }
   }
 
@@ -98,9 +164,9 @@ export class TankAudio {
 
   private play(buf: AudioBuffer | null, gain = 0.8, loop = false,
                retry = true): AudioBufferSourceNode | null {
-    if (!buf || !this.ctx) return null;
-    if (this.ctx.state === "suspended" && retry) {
-      const ac = this.ctx;
+    const ac = this.ac();
+    if (!buf || !ac) return null;
+    if (ac.state === "suspended" && retry) {
       const gen = this.ambientGen;
       void ac.resume()
         .then(() => {
@@ -114,13 +180,19 @@ export class TankAudio {
         .catch(() => { /* resume blocked until a user gesture */ });
       return null;
     }
-    if (this.ctx.state !== "running") return null;
-    const src = this.ctx.createBufferSource();
+    if (ac.state !== "running") return null;
+    const src = ac.createBufferSource();
     src.buffer = buf;
     src.loop = loop;
-    const g = this.ctx.createGain();
+    const g = ac.createGain();
     g.gain.value = gain;
-    src.connect(g).connect(this.ctx.destination);
+    src.connect(g).connect(this.masterGain ?? ac.destination);
+    if (loop) {
+      // The ambient loop rides its own gain node so the slider can
+      // trim it live; the master bus still governs the final level.
+      this.ambientGain?.disconnect();
+      this.ambientGain = g;
+    }
     src.start();
     return src;
   }
@@ -152,6 +224,7 @@ export class TankAudio {
     this.ambientWanted = true;
     this.ambientBuf = this.find("aqua");
     this.ambientGen++; // stale pending starts abort in play()
-    this.ambientSrc = this.play(this.ambientBuf, 0.12, true);
+    this.ambientSrc = this.play(
+      this.ambientBuf, AMBIENT_BASE * this.vol.ambient, true);
   }
 }

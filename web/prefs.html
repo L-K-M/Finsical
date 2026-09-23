@@ -32,6 +32,15 @@
         <section id="pane-picture" class="pfpane" role="tabpanel" hidden>
           <div id="pfpicture"></div>
         </section>
+        <section id="pane-sound" class="pfpane" role="tabpanel" hidden>
+          <label class="osm-checkbox" id="pfsnd">
+            <input type="checkbox" id="sound-on" />Play sounds
+          </label>
+          <div class="osm-caption" id="snd-warn" hidden>No WebAudio in
+            this webview — sounds can't play. Settings are kept for
+            later.</div>
+          <div id="pfvolumes"></div>
+        </section>
         <div id="pffoot">
           <div class="osm-separator"></div>
           <div id="pfdesc" aria-live="polite"></div>

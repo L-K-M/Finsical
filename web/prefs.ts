@@ -1,20 +1,25 @@
 import { openBus } from "./bus.js";
 import { CRT_DEFAULTS, sanitizeCrtConfig } from "./crt.js";
 import { MACHINES, shellMarkup } from "./machines.js";
+import { sanitizeSoundConfig, SOUND_DEFAULTS } from "./audio.js";
 import type { CrtConfig } from "./crt.js";
+import type { SoundConfig } from "./audio.js";
 import { centerText, hostWindow, mountList, pushButton, registerSprites,
          setEnabled, trackHighlight, trackPress } from "osmium-ui";
 import { ICON_PALETTE, ICON_SPRITES } from "./icons.js";
 
-// Preferences window: a Mac OS 8 control panel with three panes —
-// the machine case, the CRT tube effect, and the monitor's picture
-// controls. The tank page owns persistence and rendering: this page
-// renders the state it pushes back (op:"state" carries `crt` and
-// `machine` snapshots) and posts intents: crtEnabled, crtConfig,
-// machine.
+// Preferences window: a Mac OS 8 control panel with four panes —
+// the machine case, the CRT tube effect, the monitor's picture
+// controls, and sound. The tank page owns persistence and rendering:
+// this page renders the state it pushes back (op:"state" carries
+// `crt`, `machine` and `sound` snapshots) and posts intents:
+// crtEnabled, crtConfig, soundConfig, machine.
 
 interface SliderSpec {
-  key: keyof CrtConfig;
+  /** Config field the slider edits — a CrtConfig or SoundConfig key. */
+  key: string;
+  /** Which config the key belongs to; defaults to the CRT. */
+  sound?: boolean;
   label: string;
   /** Captions under the slider's two ends. */
   ends: readonly [string, string];
@@ -91,12 +96,23 @@ const PIC_SPECS: SliderSpec[] = [
     blurb: "Trims the blue gun. Aging tubes drift blue-weak — a " +
       "nudge restores the water's depth." },
 ];
-const ALL_SPECS: SliderSpec[] = [...SPECS, ...PIC_SPECS];
-const specOf = (k: keyof CrtConfig): SliderSpec =>
+const SOUND_SPECS: SliderSpec[] = [
+  { key: "master", label: "Overall volume", ends: ["Silent", "Full"],
+    sound: true,
+    blurb: "Everything the tank plays — splashes, knocks, bubbles and " +
+      "the water loop — scaled together. Zero and the tank is silent." },
+  { key: "ambient", label: "Water ambience", ends: ["Quiet", "Full"],
+    sound: true,
+    blurb: "The looping underwater bed — the tank's own room tone. " +
+      "Trim it under the one-shot splashes and knocks." },
+];
+
+const ALL_SPECS: SliderSpec[] = [...SPECS, ...PIC_SPECS, ...SOUND_SPECS];
+const specOf = (k: string): SliderSpec =>
   ALL_SPECS.find((s) => s.key === k)!;
 
 /** Group boxes and the slider rows inside them (three per row). */
-interface Group { title: string; rows: (keyof CrtConfig)[][] }
+interface Group { title: string; rows: string[][] }
 const MONITOR_GROUPS: Group[] = [
   { title: "Beam & Phosphor",
     rows: [["scanlines", "beam", "misconvergence"],
@@ -110,11 +126,11 @@ const PICTURE_GROUPS: Group[] = [
   { title: "Color", rows: [["red", "green", "blue"]] },
 ];
 
-type PaneId = "machine" | "monitor" | "picture";
+type PaneId = "machine" | "monitor" | "picture" | "sound";
 const PANES: { id: PaneId; label: string; icon: string; hint: string;
-               /** Hint while the CRT effect is off (its sliders dim). */
+               /** Hint while the pane's master switch is off. */
                offHint?: string;
-               keys: (keyof CrtConfig)[] }[] = [
+               keys: string[] }[] = [
   { id: "machine", label: "Machine", icon: "icon-machine",
     hint: "Choose the computer the tank runs in.", keys: [] },
   { id: "monitor", label: "Monitor", icon: "icon-monitor",
@@ -128,15 +144,22 @@ const PANES: { id: PaneId; label: string; icon: string; hint: string;
     offHint: "These controls adjust the CRT effect. Turn on Simulate a " +
       "CRT monitor in the Monitor pane to use them.",
     keys: PIC_SPECS.map((s) => s.key) },
+  { id: "sound", label: "Sound", icon: "icon-sound",
+    hint: "How loud the tank plays. Point at a slider to see what " +
+      "it does.",
+    offHint: "Turn on Play sounds to adjust the volume.",
+    keys: SOUND_SPECS.map((s) => s.key) },
 ];
 const PANE_KEY = "finsical:prefsPane";
 
 interface CrtSnap { available?: boolean; on?: boolean; cfg?: unknown }
+interface SoundSnap extends Partial<SoundConfig> { available?: boolean }
 let cfg: CrtConfig = { ...CRT_DEFAULTS };
+let sndCfg: SoundConfig = { ...SOUND_DEFAULTS };
 let greeted = false;
 // Sliders being dragged ignore state echoes so a push can't tug the
 // knob out from under the pointer.
-const dragging = new Set<keyof CrtConfig>();
+const dragging = new Set<string>();
 // After a manual toggle, stale in-flight echoes of the master switch
 // are skipped until the echo reflecting it lands — but a rejection
 // (tank reports the effect can't run) must still apply, and the latch
@@ -150,6 +173,7 @@ let machineTimer: ReturnType<typeof setTimeout> | undefined;
 // Slider drags fire input per step — coalesce to one bus post per
 // frame, carrying every trait touched since the last one.
 let pendingCfg: Partial<CrtConfig> | null = null;
+let pendingSnd: Partial<SoundConfig> | null = null;
 let postScheduled = false;
 
 function el(tag: string, cls = "", text = ""): HTMLElement {
@@ -161,6 +185,8 @@ function el(tag: string, cls = "", text = ""): HTMLElement {
 
 const onBox = document.getElementById("crt-on") as HTMLInputElement;
 const warnEl = document.getElementById("crt-warn")!;
+const sndBox = document.getElementById("sound-on") as HTMLInputElement;
+const sndWarnEl = document.getElementById("snd-warn")!;
 const descEl = document.getElementById("pfdesc")!;
 const defaultsBtn = document.getElementById("pfdefaults") as HTMLButtonElement;
 
@@ -179,6 +205,15 @@ const bus = openBus((m) => {
   // a missing field just means an older page build.
   warnEl.hidden = crt.available !== false;
   if (crt.cfg !== undefined) cfg = sanitizeCrtConfig(crt.cfg);
+  // Sound levels: muted arrives as the checkbox, levels as sliders.
+  // No latch needed — the echo can only confirm what this page posted.
+  if (m.sound !== undefined) {
+    const snd = (m.sound ?? {}) as SoundSnap;
+    sndCfg = sanitizeSoundConfig(snd);
+    sndBox.checked = !sndCfg.muted;
+    sndWarnEl.hidden = snd.available !== false;
+    syncSoundEnabled();
+  }
   const mc = m.machine as { id?: unknown } | undefined;
   if (typeof mc?.id === "string" &&
       (machinePending === null || mc.id === machinePending)) {
@@ -208,11 +243,12 @@ function describe(spec: SliderSpec | null): void {
   }
   if (!spec) {
     const p = PANES.find((x) => x.id === pane)!;
-    descEl.textContent = !onBox.checked && p.offHint ? p.offHint : p.hint;
+    const off = pane === "sound" ? sndCfg.muted : !onBox.checked;
+    descEl.textContent = off && p.offHint ? p.offHint : p.hint;
     return;
   }
   descEl.append(el("span", "osm-label",
-                   `${spec.label}: ${(spec.fmt ?? pct)(cfg[spec.key])}`),
+                   `${spec.label}: ${(spec.fmt ?? pct)(valueOf(spec))}`),
                 ` — ${spec.blurb}`);
 }
 
@@ -312,24 +348,42 @@ function showMachine(id: string): void {
 }
 
 // ---- sliders ------------------------------------------------------------
-const sliders = new Map<keyof CrtConfig, HTMLInputElement>();
+const sliders = new Map<string, HTMLInputElement>();
 
-function queueConfigPost(key: keyof CrtConfig): void {
-  (pendingCfg ??= {})[key] = cfg[key];
+/** The live value of a spec's key, whichever config owns it. */
+function valueOf(spec: SliderSpec): number {
+  return spec.sound
+    ? (sndCfg[spec.key as keyof SoundConfig] as number)
+    : cfg[spec.key as keyof CrtConfig];
+}
+
+/** Coalesce a slider step into the next frame's bus post — CRT and
+ * sound travel as separate ops, batched together per frame. */
+function queueConfigPost(key: string): void {
+  if (specOf(key).sound) {
+    // Computed writes across a union of key types resolve to never —
+    // go through a Record view (sound keys are all numbers).
+    const w = (pendingSnd ??= {}) as unknown as Record<string, number>;
+    w[key] = valueOf(specOf(key));
+  } else {
+    (pendingCfg ??= {})[key as keyof CrtConfig] =
+      cfg[key as keyof CrtConfig];
+  }
   if (postScheduled) return;
   postScheduled = true;
   requestAnimationFrame(() => {
     postScheduled = false;
-    const p = pendingCfg;
-    pendingCfg = null;
+    const p = pendingCfg, s = pendingSnd;
+    pendingCfg = null; pendingSnd = null;
     if (p) bus.post({ op: "crtConfig", cfg: p });
+    if (s) bus.post({ op: "soundConfig", cfg: s });
   });
 }
 
 /** One Keyboard-style slider: caption above, tick marks under the
  * track, end captions below. */
 function slider(spec: SliderSpec): HTMLElement {
-  const unit = el("div", "pfslider");
+  const unit = el("div", spec.sound ? "pfslider pfsnd" : "pfslider");
   const id = `sl-${spec.key}`;
   const label = el("label", "osm-caption pflabel", spec.label);
   label.setAttribute("for", id);
@@ -346,7 +400,9 @@ function slider(spec: SliderSpec): HTMLElement {
 
   input.addEventListener("input", () => {
     const v = Number(input.value) / 100;
-    cfg[spec.key] = v;
+    if (spec.sound)
+      (sndCfg as unknown as Record<string, number>)[spec.key] = v;
+    else cfg[spec.key as keyof CrtConfig] = v;
     input.setAttribute("aria-valuetext", (spec.fmt ?? pct)(v));
     if (described === spec) describe(spec);
     queueConfigPost(spec.key);
@@ -395,6 +451,8 @@ function addGroups(groups: Group[], host: HTMLElement): void {
 }
 addGroups(MONITOR_GROUPS, document.getElementById("pftraits")!);
 addGroups(PICTURE_GROUPS, document.getElementById("pfpicture")!);
+addGroups([{ title: "Volume", rows: [["master", "ambient"]] }],
+          document.getElementById("pfvolumes")!);
 // Pointer release can be routed off the input — clear drags at window
 // level so a missed pointerup can't wedge a slider out of echo sync.
 const endDrags = () => {
@@ -413,8 +471,8 @@ function syncControls(): void {
   for (const spec of ALL_SPECS) {
     const input = sliders.get(spec.key);
     if (!input || dragging.has(spec.key)) continue;
-    input.value = String(Math.round(cfg[spec.key] * 100));
-    input.setAttribute("aria-valuetext", (spec.fmt ?? pct)(cfg[spec.key]));
+    input.value = String(Math.round(valueOf(spec) * 100));
+    input.setAttribute("aria-valuetext", (spec.fmt ?? pct)(valueOf(spec)));
   }
   if (described) describe(described);
 }
@@ -431,6 +489,23 @@ function syncEnabled(): void {
 }
 syncEnabled();
 trackHighlight(document.getElementById("pfcrt")!);
+// The Sound pane's master switch: mute dims its sliders the same way.
+function syncSoundEnabled(): void {
+  for (const spec of SOUND_SPECS) {
+    const input = sliders.get(spec.key);
+    if (input) setEnabled(input, !sndCfg.muted);
+  }
+  document.getElementById("pfpanes")!
+    .classList.toggle("pfsndoff", sndCfg.muted);
+  if (!described) describe(null);
+}
+syncSoundEnabled();
+trackHighlight(document.getElementById("pfsnd")!);
+sndBox.addEventListener("change", () => {
+  sndCfg.muted = !sndBox.checked;
+  syncSoundEnabled();
+  bus.post({ op: "soundConfig", cfg: { muted: sndCfg.muted } });
+});
 onBox.addEventListener("change", () => {
   syncEnabled();
   onTouched = true;
@@ -448,13 +523,28 @@ pushButton(defaultsBtn, () => {
   if (!keys.length) return;
   // Drop coalesced slider changes still awaiting their rAF post for
   // these keys — they carry pre-reset values.
-  const reset: Partial<CrtConfig> = {};
+  const resetCrt: Partial<CrtConfig> = {};
+  const resetSnd: Record<string, number | boolean> = {};
   for (const k of keys) {
-    reset[k] = CRT_DEFAULTS[k];
-    cfg[k] = CRT_DEFAULTS[k];
-    if (pendingCfg) delete pendingCfg[k];
+    if (specOf(k).sound) {
+      // Computed writes across a union of key types resolve to never —
+      // go through a Record view instead.
+      const d = SOUND_DEFAULTS as unknown as
+        Record<string, number | boolean>;
+      (resetSnd as Record<string, number | boolean>)[k] = d[k]!;
+      (sndCfg as unknown as Record<string, number | boolean>)[k] = d[k]!;
+      if (pendingSnd) delete (pendingSnd as Partial<Record<string,
+        number | boolean>>)[k];
+    } else {
+      resetCrt[k as keyof CrtConfig] = CRT_DEFAULTS[k as keyof CrtConfig];
+      cfg[k as keyof CrtConfig] = CRT_DEFAULTS[k as keyof CrtConfig];
+      if (pendingCfg) delete pendingCfg[k as keyof CrtConfig];
+    }
   }
-  bus.post({ op: "crtConfig", cfg: reset });
+  if (Object.keys(resetCrt).length)
+    bus.post({ op: "crtConfig", cfg: resetCrt });
+  if (Object.keys(resetSnd).length)
+    bus.post({ op: "soundConfig", cfg: resetSnd });
   syncControls();
 });
 

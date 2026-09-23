@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Sound controls: a Sound pane in Preferences with a Play sounds switch,
+  an overall volume slider and a separate water-ambience trim. Levels
+  persist with the tank, apply live to whatever is playing, and muting
+  remembers the levels. The audio graph now runs through a master gain
+  bus, and a failed AudioContext shows a note in the pane instead of
+  failing silently.
+
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview
