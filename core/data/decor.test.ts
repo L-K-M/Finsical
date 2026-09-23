@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { cornerKey, keyMask, pickDecorArt } from "./decor.js";
+import { cornerKey, keyMask, pickDecorArt, pickDecorArts }
+  from "./decor.js";
 import type { IndexedImage } from "./azpack.js";
 
 const PAL: [number, number, number][] = Array.from({ length: 256 },
@@ -69,6 +70,23 @@ describe("pickDecorArt", () => {
   });
   it("returns null for an empty pack", () => {
     expect(pickDecorArt([])).toBeNull();
+  });
+});
+
+describe("pickDecorArts", () => {
+  it("returns up to max keyed frames, largest first", () => {
+    const a = framed(30, 30, 255, 3);
+    const b = framed(60, 60, 255, 3);
+    const c = framed(45, 45, 255, 3);
+    const d = framed(20, 20, 255, 3);
+    const picks = pickDecorArts([a, b, c, d, thumbnail()], 3);
+    expect(picks.map((p) => p.img)).toEqual([b, c, a]);
+    expect(picks.every((p) => p.key === 255)).toBe(true);
+  });
+  it("keeps the single-frame fallback for keyless packs", () => {
+    const only = thumbnail(50);
+    expect(pickDecorArts([only], 3))
+      .toEqual([{ img: only, key: 0, guessed: true }]);
   });
 });
 

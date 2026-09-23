@@ -27,23 +27,30 @@ export function cornerKey(img: IndexedImage): number | null {
   return null;
 }
 
-/** The decor art frame: largest image with a uniform corner key.
- * Falls back (`guessed`) to the largest image with sprite-convention
- * index-0 transparency when no frame declares a key — legacy packs may
- * rely on enclosed index-0 holes staying transparent, so the fallback
- * keeps the old global-clear semantics instead of flood-filling. */
-export function pickDecorArt(images: Iterable<IndexedImage>):
-    { img: IndexedImage; key: number; guessed?: boolean } | null {
-  let best: { img: IndexedImage; key: number } | null = null;
+/** Up to `max` decor art frames, largest first, each with its corner
+ * key. Falls back (`guessed`) to a single largest image with
+ * sprite-convention index-0 transparency when no frame declares a key —
+ * legacy packs may rely on enclosed index-0 holes staying transparent,
+ * so the fallback keeps the old global-clear semantics instead of
+ * flood-filling. */
+export function pickDecorArts(images: Iterable<IndexedImage>, max: number):
+    { img: IndexedImage; key: number; guessed?: boolean }[] {
+  const keyed: { img: IndexedImage; key: number }[] = [];
   let anyImg: IndexedImage | null = null;
   for (const img of images) {
     if (!anyImg || img.w * img.h > anyImg.w * anyImg.h) anyImg = img;
     const key = cornerKey(img);
-    if (key === null) continue;
-    if (!best || img.w * img.h > best.img.w * best.img.h)
-      best = { img, key };
+    if (key !== null) keyed.push({ img, key });
   }
-  return best ?? (anyImg ? { img: anyImg, key: 0, guessed: true } : null);
+  keyed.sort((a, b) => b.img.w * b.img.h - a.img.w * a.img.h);
+  if (keyed.length) return keyed.slice(0, Math.max(1, max));
+  return anyImg ? [{ img: anyImg, key: 0, guessed: true }] : [];
+}
+
+/** The decor art frame: largest image with a uniform corner key. */
+export function pickDecorArt(images: Iterable<IndexedImage>):
+    { img: IndexedImage; key: number; guessed?: boolean } | null {
+  return pickDecorArts(images, 1)[0] ?? null;
 }
 
 /** Alpha mask (1 = opaque): every pixel of the key index is transparent. */

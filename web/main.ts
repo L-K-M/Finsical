@@ -2,7 +2,7 @@ import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
 import { fishPose, pitch } from "../core/pose.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
-import { keyMask, pickDecorArt } from "../core/data/decor.js";
+import { keyMask, pickDecorArts } from "../core/data/decor.js";
 import { TankAudio } from "./audio.js";
 import { pushButton } from "osmium-ui";
 import { fetchAddon, mountImportPanel, qualifySoundItemName,
@@ -192,29 +192,37 @@ function pickGravel(images: Iterable<IndexedImage>, src: string): void {
                 gravelByPack.set(src, imageCanvas(gravel, false)); }
   if (gravel) { gravelCv = gravelByPack.get(src)!; gravelSrc = src; }
 }
-// Decorations (plants/accessories) sit on the gravel between the backdrop
-// and the fish. Each pack's art frame is scaled to fit; the set is
-// re-spaced across the tank floor whenever one is added.
-const decors: { cv: HTMLCanvasElement; pack: string }[] = [];
+// Decorations (plants/accessories) sit on the gravel around the fish:
+// most render behind them, and each pack's second-largest frame draws
+// in front as a foreground piece. Each pack contributes up to
+// DECOR_FRAMES art frames; the set is re-spaced across the tank floor
+// whenever one is added.
+const DECOR_FRAMES = 3;
+const decors: { cv: HTMLCanvasElement; pack: string; front: boolean }[] = [];
 function addDecor(images: Iterable<IndexedImage>, src: string): void {
   // Art frames share one corner key index (0 or 255 depending on the
   // pack); catalog thumbnails have textured corners and are skipped.
-  const pick = pickDecorArt(images);
-  if (!pick) return;
-  if (!pick.img.w || !pick.img.h) return; // zero-area art renders nothing
-  const cv = pick.guessed
-    ? imageCanvas(pick.img, false) // legacy: global index-0 clear
-    : imageCanvas(pick.img, false, keyMask(pick.img, pick.key));
-  const s = Math.min(1, TANK.height * 0.8 / cv.height,
-                     TANK.width * 0.5 / cv.width);
-  if (s >= 1) { decors.push({ cv, pack: src }); return; }
-  const scaled = document.createElement("canvas");
-  scaled.width = Math.max(1, Math.round(cv.width * s));
-  scaled.height = Math.max(1, Math.round(cv.height * s));
-  const c2 = scaled.getContext("2d")!;
-  c2.imageSmoothingEnabled = false;
-  c2.drawImage(cv, 0, 0, scaled.width, scaled.height);
-  decors.push({ cv: scaled, pack: src });
+  const picks = pickDecorArts(images, DECOR_FRAMES);
+  for (let i = 0; i < picks.length; i++) {
+    const pick = picks[i]!;
+    if (!pick.img.w || !pick.img.h) continue; // zero-area art
+    const cv = pick.guessed
+      ? imageCanvas(pick.img, false) // legacy: global index-0 clear
+      : imageCanvas(pick.img, false, keyMask(pick.img, pick.key));
+    const s = Math.min(1, TANK.height * 0.8 / cv.height,
+                       TANK.width * 0.5 / cv.width);
+    let use = cv;
+    if (s < 1) {
+      use = document.createElement("canvas");
+      use.width = Math.max(1, Math.round(cv.width * s));
+      use.height = Math.max(1, Math.round(cv.height * s));
+      const c2 = use.getContext("2d")!;
+      c2.imageSmoothingEnabled = false;
+      c2.drawImage(cv, 0, 0, use.width, use.height);
+    }
+    // Sorted largest first: the middle-size frame plays foreground.
+    decors.push({ cv: use, pack: src, front: picks.length > 1 && i === 1 });
+  }
 }
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
@@ -1075,19 +1083,28 @@ function render(): void {
     ctx.fillStyle = tankGradient;
     ctx.fillRect(0, 0, TANK.width, TANK.height);
   }
-  if (gravelCv) {
-    const gh = Math.round(gravelCv.height * TANK.width / gravelCv.width);
-    ctx.drawImage(gravelCv, 0, TANK.height - gh, TANK.width, gh);
-  } else if (!backdropCv) {
+  const gravelH = gravelCv
+    ? Math.round(gravelCv.height * TANK.width / gravelCv.width)
+    : BOTTOM_PAD;
+  if (gravelCv)
+    ctx.drawImage(gravelCv, 0, TANK.height - gravelH, TANK.width, gravelH);
+  else if (!backdropCv) {
     ctx.fillStyle = "#8a6d3b"; // gravel
     ctx.fillRect(0, TANK.height - BOTTOM_PAD, TANK.width, BOTTOM_PAD);
   }
-  // Decorations spread evenly across the floor, bottoms planted in gravel.
+  // Decorations spread evenly across the floor, roots buried a quarter
+  // of the gravel strip deep rather than floating over the tank floor.
+  // The back layer draws here; front pieces draw after the fish.
   const dn = decors.length;
+  const gravelTop = TANK.height - gravelH;
+  const bury = Math.min(gravelH - 1,
+                        Math.max(2, Math.round(gravelH * 0.25)));
+  const decorX = (i: number, d: HTMLCanvasElement) =>
+    Math.round(TANK.width * (i + 0.5) / dn - d.width / 2);
   for (let i = 0; i < dn; i++) {
-    const d = decors[i]!.cv;
-    ctx.drawImage(d, Math.round(TANK.width * (i + 0.5) / dn - d.width / 2),
-                  TANK.height - 6 - d.height);
+    const d = decors[i]!;
+    if (d.front) continue;
+    ctx.drawImage(d.cv, decorX(i, d.cv), gravelTop + bury - d.cv.height);
   }
 
   for (const fd of sim.food) {
@@ -1107,6 +1124,14 @@ function render(): void {
   if (sim.bubbles.length > prevBubbles && Math.random() < 0.25)
     audio.bubble();
   prevBubbles = sim.bubbles.length;
+
+  // Foreground decor: rises past fish and bubbles so the tank reads as
+  // layered water, not a flat stage.
+  for (let i = 0; i < dn; i++) {
+    const d = decors[i]!;
+    if (!d.front) continue;
+    ctx.drawImage(d.cv, decorX(i, d.cv), gravelTop + bury - d.cv.height);
+  }
 
   // Fouled water murks the whole scene.
   const murk = 1 - sim.waterQuality;
