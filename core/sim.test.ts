@@ -53,7 +53,9 @@ describe("Sim", () => {
       const f = sim.addFish({ x: 60, y: 120, hunger: 0, halfW: 50, halfH });
       sim.dropFood(200);
       // Sated until the pellet has settled on the gravel.
-      while (!sim.food[0]!.settled) sim.tick();
+      let wait = 0;
+      while (!sim.food[0]?.settled && ++wait < 5000) sim.tick();
+      expect(wait, `halfH ${halfH}: pellet settled`).toBeLessThan(5000);
       f.hunger = 1;
       let eaten = false;
       for (let i = 0; i < 3000 && !eaten; i++) {
