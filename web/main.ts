@@ -1067,6 +1067,21 @@ const tankGradient = (() => {
   return g;
 })();
 
+// A 5x5 bubble: pale ring, white glint, hollow center. Pre-rendered
+// once; drawn per bubble with a sinusoidal side-wobble.
+const bubbleSprite = (() => {
+  const cv = document.createElement("canvas");
+  cv.width = 5; cv.height = 5;
+  const c = cv.getContext("2d")!;
+  const rim = "#bfe0f8", glint = "#ffffff";
+  for (const [x, y] of [[1,0],[2,0],[3,0],[0,1],[4,1],[0,2],[4,2],
+                        [0,3],[4,3],[1,4],[2,4],[3,4]] as const) {
+    c.fillStyle = rim; c.fillRect(x, y, 1, 1);
+  }
+  c.fillStyle = glint; c.fillRect(1, 1, 1, 1);
+  return cv;
+})();
+
 let prevBubbles = 0;
 function render(): void {
   if (backdropCv) {
@@ -1093,15 +1108,20 @@ function render(): void {
   for (const fd of sim.food) {
     // Rotting pellets dissolve — fade them out over their rot lifetime.
     ctx.globalAlpha = 1 - 0.65 * Math.min(1, fd.settled / FOOD_ROT_TICKS);
-    ctx.fillStyle = "#c9a227";
-    ctx.fillRect(Math.round(fd.x) - 1, Math.round(fd.y) - 1, 3, 3);
+    const x = Math.round(fd.x), y = Math.round(fd.y);
+    // Two-tone flake: pale flake body over a shadowed base.
+    ctx.fillStyle = "#e8c53c";
+    ctx.fillRect(x - 1, y - 1, 3, 2);
+    ctx.fillStyle = "#8a6d1a";
+    ctx.fillRect(x - 1, y + 1, 3, 1);
     ctx.globalAlpha = 1;
   }
   for (const f of sim.fish) drawFish(f);
 
-  ctx.fillStyle = "#cfe8ff";
   for (const b of sim.bubbles) {
-    ctx.fillRect(Math.round(b.x), Math.round(b.y), 2, 2);
+    // Wobble derived from position + tick — no sim state needed.
+    const wx = b.x + Math.sin(sim.tickCount * 0.15 + b.y * 0.4) * 1.2;
+    ctx.drawImage(bubbleSprite, Math.round(wx) - 2, Math.round(b.y) - 2);
   }
   // Sparse bloops: only some spawns make a sound.
   if (sim.bubbles.length > prevBubbles && Math.random() < 0.25)
