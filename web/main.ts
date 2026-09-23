@@ -158,6 +158,16 @@ function spawnFish(sheetIdx: number, species: string, pack?: string,
   return f;
 }
 
+/** A drop-time spawn: splash on success, say why on refusal — after
+ * the idx guard, spawnFish only declines a full tank. Drops have no
+ * panel to ack, so the explanation goes to the console. */
+function spawnFromDrop(idx: number, species: string): void {
+  if (idx < 0) return;
+  if (spawnFish(idx, species)) audio.splash();
+  else console.warn(`Tank is full — ${FISH_CAP} fish max. ` +
+    "Release one from Tank Overview first.");
+}
+
 // Biggest pack image large enough to matter becomes the tank backdrop —
 // tiny fish portraits/icons are skipped. Wide, short images (Aquazone
 // .grv beds are ~6:1) become the gravel strip instead.
@@ -962,10 +972,7 @@ window.addEventListener("drop", (e) => {
     if (flat.has("manifest.json")) {
       const pack = await loadAzpack(readFile);
       const idx = usePack(pack, readFile);
-      if (idx >= 0 && !spawnFish(idx, pack.manifest.tag))
-        console.warn(`Tank is full — ${FISH_CAP} fish max. ` +
-          "Release one from Tank Overview first.");
-      else if (idx >= 0) audio.splash();
+      spawnFromDrop(idx, pack.manifest.tag);
       const imgs: IndexedImage[] = [];
       for (const c of pack.manifest.chunks) {
         if (!c.image) continue;
@@ -1008,10 +1015,7 @@ window.addEventListener("drop", (e) => {
       const sheets = fshToSheets(data);
       if (!sheets.size) continue;
       const idx = usePack({ sheets });
-      if (idx >= 0 && !spawnFish(idx, name.replace(/\.[^.]*$/, "")))
-        console.warn(`Tank is full — ${FISH_CAP} fish max. ` +
-          "Release one from Tank Overview first.");
-      else if (idx >= 0) audio.splash();
+      spawnFromDrop(idx, name.replace(/\.[^.]*$/, ""));
       pickBackdrop(packImages(data).values());
       if (fishSheets.length) {
         console.info(`${name}: pack imported`);
