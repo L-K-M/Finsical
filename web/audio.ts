@@ -67,7 +67,9 @@ export class TankAudio {
     }
   }
 
-  /** Browsers gate audio behind a user gesture; call from pointerdown. */
+  /** Browsers gate audio behind a user gesture; call from pointerdown,
+   * a keydown handler, or any other activation path (native menu JS
+   * still needs a prior gesture on some WebKit builds). */
   unlock(): void {
     if (!this.ctx) return;
     void this.ctx.resume().then(() => this.startAmbient());

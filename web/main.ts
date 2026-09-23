@@ -792,12 +792,18 @@ postState();
 
 // Native-menu / keyboard entry points (macos/Finsical.swift calls these).
 function feedFish(): void {
+  // Bare F and Tank ▸ Feed Fish are gestures too — without this the
+  // context stays suspended until the first tank click and play()'s
+  // resume() rejects silently.
+  audio.unlock();
   sim.dropFood(TANK.width / 2);
   audio.feed();
 }
 (window as unknown as { finsical?: unknown }).finsical =
   { openImport: () => importPanel.open(), feedFish,
-    toggleCrt: () => setCrt(!crtOn) };
+    // Menu clicks land here via evaluateJavaScript — not always a
+    // user activation, but unlock() is harmless if resume is blocked.
+    toggleCrt: () => { audio.unlock(); setCrt(!crtOn); } };
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
 // path. Touch fallback: hover-less devices have no keyboard or native menu.
@@ -823,6 +829,9 @@ const syncTrigger = (show: boolean): void => {
 syncTrigger(hoverNone.matches);
 hoverNone.addEventListener("change", (e) => syncTrigger(e.matches));
 window.addEventListener("keydown", (e) => {
+  // Any key is a user gesture for WebAudio — unlock before the F/C
+  // handlers so the first keyboard action also starts ambient sound.
+  audio.unlock();
   const k = e.key.toLowerCase();
   if ((e.metaKey || e.ctrlKey) && k === "i") {
     importPanel.open(); e.preventDefault();
