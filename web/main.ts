@@ -567,6 +567,7 @@ function useScenery(url: string): void {
   if (bd) { backdropCv = bd; backdropSrc = url; }
   if (gr) { gravelCv = gr; gravelSrc = url; }
   saveTank();
+  postState(); // retag the panel's row now, not on the next tick
 }
 
 /** Uninstall an add-on: drops it from the saved list (it won't restore
