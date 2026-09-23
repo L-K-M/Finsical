@@ -17,6 +17,6 @@
     "vitest": "2.1.9"
   },
   "dependencies": {
-    "osmium-ui": "github:L-K-M/osmium-ui#v0.1.0"
+    "osmium-ui": "github:L-K-M/osmium-ui#688dccc"
   }
 }

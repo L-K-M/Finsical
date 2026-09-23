@@ -35,3 +35,8 @@ jobs:
           persist-credentials: false
       - run: scripts/build.sh --clean --install
       - run: test -x /Applications/Finsical.app/Contents/MacOS/Finsical
+      # Swift 6 language mode: its data-race checks cover Osmium UI's
+      # window host too, which the app compiles in. Warnings fail the
+      # build: a delegate method that only nearly matches its
+      # requirement is a warning, and WebKit would never call it.
+      - run: make -C macos SWIFT_VERSION=6 SWIFTFLAGS=-warnings-as-errors

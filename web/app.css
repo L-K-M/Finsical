@@ -57,14 +57,15 @@ body.crt canvas#tank { opacity: 0; }
 /* ---- Preferences (web/prefs.ts) ----------------------------------------
    A fixed-size control panel, 564 x 456 (native window 565 x 457 with
    the shadow). Pane buttons down an 80px strip on the left, parted from
-   the pane by a gray/black/white line, as in Desktop Pictures. */
+   the pane by a gray/black/white line, as in Desktop Pictures, and
+   sized like its pane buttons: 54 x 40, on a 70px pitch. */
 #pwin:not(.osm-shaded) .osm-content { display: flex; }
 #pfstrip {
   flex: none; width: 80px; padding-top: 12px;
   box-shadow: inset -1px 0 #888;
 }
-.pfpanebtn { width: 40px; margin: 0 20px 18px; }
-.pfpanebtn .osm-bevel-caption { width: 40px; }
+.pfpanebtn { width: 54px; margin: 0 13px 18px; }
+.pfpanebtn .osm-bevel, .pfpanebtn .osm-bevel-caption { width: 54px; }
 #pfpanes {
   position: relative; flex: 1; min-width: 0;
   border-left: 1px solid #000; box-shadow: inset 1px 0 #fff;

@@ -9,7 +9,7 @@ import { fetchAddon, mountImportPanel, qualifySoundItemName,
          COLLECTIONS } from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { sndsGet, sndsMerge } from "./store.js";
-import { imageCanvas, previewOf, swimCanvas } from "./render.js";
+import { imageCanvas, previewOf, soundIcon, swimCanvas } from "./render.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
@@ -463,6 +463,10 @@ function addonThumb(url: string): string | null {
   }
   cv ??= gravelByPack.get(url) ?? backdropByPack.get(url)
     ?? decors.find((d) => d.pack === url)?.cv ?? null;
+  // Sound add-ons have no art: they list with the sound icon.
+  if (!cv && installedAddons.some((a) => a.url === url &&
+                                         a.section === "sounds"))
+    cv = soundIcon();
   if (!cv) return null;
   const data = scaledThumb(cv);
   if (data) thumbMemo.set(key, data);

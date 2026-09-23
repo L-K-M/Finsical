@@ -19,6 +19,7 @@ import { metaGet, metaPut, packDelete, packGet, packPut }
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
+import { soundIcon } from "./render.js";
 import { bindDialogKeys, mountList, mountPopup, mountWindow, pushButton,
          setButtonTitle } from "osmium-ui";
 
@@ -683,7 +684,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     r.append(box, el("span", "irowname", it.inner),
              el("span", "icheck", "✓"));
     r.classList.toggle("done", installed.has(it.url));
-    const th = thumbs.get(it.url);
+    const th = it.section === "sounds" ? soundIcon() : thumbs.get(it.url);
     if (th) paintThumb(r, th);
     return r;
   }
@@ -704,7 +705,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     list.setRows(rows.map(rowFor));
     for (const r of list.rows) {
       const it = byUrl.get(r.dataset.url ?? "");
-      if (!it) continue;
+      // Sounds show their icon: there's no art to download for them.
+      if (!it || it.section === "sounds") continue;
       if (io) io.observe(r); else wantThumb(it);
     }
     count.textContent = `${rows.length} add-on${rows.length === 1 ? "" : "s"}`;
@@ -802,8 +804,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       // the next assignment) or touch the pane: the ref object
       // identifies this showing.
       if (detailRef !== ref) return;
-      if (pv) placePreview(pv);
       const snds = usable.flatMap((x) => x.sounds);
+      if (pv) placePreview(pv);
+      else if (snds.length) placePreview(soundIcon());
       if (snds.length) {
         // Sound add-ons preview with a real player — the payload is
         // already-decoded WAV or a browser-decodable encoded stream.
