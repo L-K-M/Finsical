@@ -93,7 +93,7 @@ fi
 # Info.plist/package.json/README/package-lock.json half-bumped.
 # Restore package-lock.json separately: a combined pathspec fails
 # entirely when one path is missing (repos without a lockfile).
-trap 'git checkout -- "$INFO_PLIST" package.json "$README" 2>/dev/null || echo "release.sh rollback failed; version files may be half-bumped" >&2; git checkout -- package-lock.json 2>/dev/null || true; rm -f "$README.bak"' EXIT
+trap 'git checkout -- "$INFO_PLIST" package.json "$README" 2>/dev/null || echo "release.sh rollback failed; version files may be half-bumped" >&2; git checkout -- package-lock.json 2>/dev/null || git clean -f -- package-lock.json 2>/dev/null || true; rm -f "$README.bak"' EXIT
 "$PLIST_BUDDY" -c "Set :CFBundleShortVersionString $version" "$INFO_PLIST"
 "$PLIST_BUDDY" -c "Set :CFBundleVersion $next_build" "$INFO_PLIST"
 npm version "$version" --no-git-tag-version --allow-same-version
