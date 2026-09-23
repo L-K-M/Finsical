@@ -172,7 +172,9 @@ export class TankAudio {
     const dx = Math.min(x, w - x), dy = Math.min(y, h - y);
     let sub = "center";
     if (dx < w / 4 || dy < h / 4)
-      sub = dx < dy ? "side" : (y < h - y ? "top" : "bottom");
+      // Compare normalized distances — the tank is wider than tall,
+      // so raw pixels call near-side taps "top"/"bottom".
+      sub = dx / w < dy / h ? "side" : (y < h - y ? "top" : "bottom");
     this.play(this.find(sub) ?? this.find("center", "side"), 0.8);
   }
 

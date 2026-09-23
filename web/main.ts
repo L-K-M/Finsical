@@ -88,9 +88,45 @@ const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
   [0, 1, 2, 3].map((i) =>
     ({ x: 40 + i * 60, y: 50 + i * 30, facing: (i % 2 ? -1 : 1) as 1 | -1,
        hunger: SPAWN_HUNGER }));
-const roster = (saved?.fish ?? []).filter(
-  (f): f is Partial<Fish> & { x: number; y: number } =>
-    !!f && Number.isFinite(f.x) && Number.isFinite(f.y));
+/** Saved fish fields are untrusted input: a corrupted hunger or
+ * heading enters the sim (NaN hunger ⇒ fish can never seek food) and
+ * then re-persists. Clamp each numeric field; keep x/y finite-or-drop
+ * as the hard filter. */
+function sanitizeSavedFish(f: Partial<Fish> & { x: number; y: number }):
+    Partial<Fish> & { x: number; y: number } {
+  const num = (v: number | undefined, lo: number, hi: number,
+               dflt: number): number =>
+    typeof v === "number" && Number.isFinite(v)
+      ? Math.min(hi, Math.max(lo, v)) : dflt;
+  // bandY's fallback must reuse the clamped y — the raw value only
+  // passed the finite check, so a corrupt save could seed an
+  // out-of-bounds band and re-persist it.
+  const y = num(f.y, 0, TANK.height - 1, TANK.height / 2);
+  const out = {
+    ...f,
+    x: num(f.x, 0, TANK.width - 1, TANK.width / 2),
+    y,
+    facing: f.facing === -1 ? -1 as const : 1 as const,
+    heading: num(f.heading, -2 * Math.PI, 2 * Math.PI, 0),
+    speed: num(f.speed, 0.1, 8, 1),
+    cruise: num(f.cruise, 0.1, 8, 1),
+    vy: num(f.vy, -8, 8, 0),
+    bandY: num(f.bandY, 0, TANK.height - 1, y),
+    hunger: num(f.hunger, 0, 1, 0.2),
+    species: typeof f.species === "string" ? f.species : "",
+  };
+  // Optional fields drop rather than zero out — a bogus sheetIdx or
+  // pack must read as "no binding", not bind to slot 0.
+  if (!Number.isInteger(out.sheetIdx) || out.sheetIdx! < 0)
+    delete out.sheetIdx;
+  if (typeof out.pack !== "string") delete out.pack;
+  if (!Number.isInteger(out.id) || out.id! < 0) delete out.id;
+  return out;
+}
+const roster = (saved?.fish ?? [])
+  .filter((f): f is Partial<Fish> & { x: number; y: number } =>
+    !!f && Number.isFinite(f.x) && Number.isFinite(f.y))
+  .map(sanitizeSavedFish);
 for (const f of roster?.length ? roster : DEFAULT_FISH) sim.addFish(f);
 
 function saveTank(): void {
@@ -112,6 +148,11 @@ function saveTank(): void {
   postState(); // panel keeps fresh state even if persistence is off
 }
 window.addEventListener("pagehide", saveTank);
+// WKWebView doesn't reliably deliver pagehide on quit; it does
+// deliver visibilitychange.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") saveTank();
+});
 setInterval(saveTank, 10_000);
 
 // Click near the surface drops food; deeper clicks knock on the glass.
@@ -859,7 +900,9 @@ postState();
 
 // Native-menu / keyboard entry points (macos/Finsical.swift calls these).
 function feedFish(): void {
-  sim.dropFood(TANK.width / 2);
+  // Scatter menu-feeds across the surface — always dead-center piles
+  // pellets in one spot and never moves the school.
+  sim.dropFood(30 + Math.random() * (TANK.width - 60));
   audio.feed();
   requestPaint();
 }
