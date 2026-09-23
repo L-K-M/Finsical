@@ -74,13 +74,18 @@ export class TankAudio {
     if (!this.ctx) return;
     // Menu-driven unlock can resume() without a user activation and
     // reject — expected while suspended, quiet. startAmbient() is
-    // already idempotent (ambientSrc guard). Anything after a
-    // successful resume (state "running") is a real failure: log it
-    // so an ambient-start regression stays diagnosable.
+    // already idempotent (ambientSrc guard). Log only failures after
+    // *this* chain resumed (startAmbient threw, or a later step failed);
+    // do not infer success from ctx.state — a concurrent resume() can
+    // race this one and flip the state without this chain succeeding.
+    let resumed = false;
     void this.ctx.resume()
-      .then(() => this.startAmbient())
+      .then(() => {
+        resumed = true;
+        this.startAmbient();
+      })
       .catch((err) => {
-        if (this.ctx?.state === "running") console.warn("audio unlock failed:", err);
+        if (resumed) console.warn("audio unlock failed:", err);
       });
   }
 
