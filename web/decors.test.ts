@@ -24,10 +24,17 @@ describe("upsertDecor", () => {
     expect(list[0]!.pack).toBe("https://example/p.plt");
   });
 
-  it("keeps distinct packs as separate entries", () => {
+  it("keeps distinct packs separate and preserves slot order on replace", () => {
     const list: DecorEntry[] = [];
     upsertDecor(list, "https://example/a.plt", fakeCanvas());
     upsertDecor(list, "https://example/b.acc", fakeCanvas());
+    const replacement = fakeCanvas();
+    upsertDecor(list, "https://example/a.plt", replacement);
     expect(list).toHaveLength(2);
+    expect(list.map((d) => d.pack)).toEqual([
+      "https://example/a.plt",
+      "https://example/b.acc",
+    ]);
+    expect(list[0]!.cv).toBe(replacement);
   });
 });
