@@ -640,6 +640,12 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     setButtonTitle(play, "Play");
   };
   audio.addEventListener("ended", stopSound);
+  // The Import Add-ons window hides on close instead of unloading, and
+  // close() only handles the overlay: without this a preview
+  // would keep playing with no window left to stop it from.
+  if (!ov) document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stopSound();
+  });
   pushButton(play, () => {
     if (!audio.paused) { stopSound(); return; }
     void audio.play().then(() => setButtonTitle(play, "Stop"),
