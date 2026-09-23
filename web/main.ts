@@ -100,6 +100,10 @@ function saveTank(): void {
 window.addEventListener("pagehide", saveTank);
 setInterval(saveTank, 10_000);
 
+// Food splash animations — brief circles when a fish eats.
+let splashState: { x: number; y: number; life: number }[] = [];
+let prevEaten = new Set<string>();
+
 // Click near the surface drops food; deeper clicks knock on the glass.
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) { e.preventDefault(); return; } // ignore right/middle clicks
@@ -1112,6 +1116,35 @@ function render(): void {
                   TANK.height - 6 - d.height);
   }
 
+  // Brief splash animation when food is eaten — tracked without
+  // mutating the live sim state.
+  const eatenNow = new Set(sim.food.filter((f) => f.eaten && f.settled < 2)
+                                  .map((f) => `${Math.round(f.x)},${Math.round(f.y)}`));
+  for (const fd of sim.food) {
+    if (fd.eaten && fd.settled >= 0 && fd.settled < 2) {
+      const key = `${Math.round(fd.x)},${Math.round(fd.y)}`;
+      if (!prevEaten.has(key)) {
+        splashState.push({ x: fd.x, y: fd.y, life: 12 });
+      }
+    }
+  }
+  prevEaten = new Set([...prevEaten, ...eatenNow].filter((k) =>
+    sim.food.some((f) => f.eaten && `${Math.round(f.x)},${Math.round(f.y)}` === k)));
+
+  // Render splashes (stored in a module-level array for persistence)
+  for (const s of splashState) {
+    s.life--;
+    const alpha = Math.max(0, s.life / 10);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "#e8f8ff";
+    ctx.beginPath();
+    ctx.arc(Math.round(s.x), Math.round(s.y), 4 * alpha, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  splashState = splashState.filter((s) => s.life > 0);
+
   for (const fd of sim.food) {
     // Rotting pellets dissolve — fade them out over their rot lifetime.
     ctx.globalAlpha = 1 - 0.65 * Math.min(1, fd.settled / FOOD_ROT_TICKS);
@@ -1123,8 +1156,13 @@ function render(): void {
 
   ctx.fillStyle = "#cfe8ff";
   for (const b of sim.bubbles) {
-    ctx.fillRect(Math.round(b.x), Math.round(b.y), 2, 2);
+    // Bubbles: small circles with transparency for a realistic look.
+    ctx.globalAlpha = 0.6 + 0.4 * (b.y / 200);
+    ctx.beginPath();
+    ctx.arc(Math.round(b.x), Math.round(b.y), 2.5, 0, Math.PI * 2);
+    ctx.fill();
   }
+  ctx.globalAlpha = 1;
   // Sparse bloops: only some spawns make a sound.
   if (sim.bubbles.length > prevBubbles && Math.random() < 0.25)
     audio.bubble();
