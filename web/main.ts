@@ -111,6 +111,7 @@ syncLight(new Date());
 function applyLighting(raw: unknown): void {
   lighting = sanitizeLighting(raw, lighting);
   syncLight(new Date());
+  requestPaint(); // shows at once, even while no tick runs
   try { localStorage.setItem(LIGHTING_KEY, JSON.stringify(lighting)); }
   catch { /* storage unavailable */ }
   postState();

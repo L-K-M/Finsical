@@ -18,8 +18,8 @@ export interface Lighting {
   off: number;
 }
 
-/** The fast cycle stays the default: existing tanks keep the day and
- * night they know until the user opts in to the timer. */
+/** The fast demo cycle stays the default; following the Mac's clock
+ * is opt-in. */
 export const LIGHTING_DEFAULTS: Lighting = { mode: "demo", on: 8, off: 22 };
 
 export const MINUTES_PER_DAY = 24 * 60;
