@@ -157,6 +157,25 @@ describe("Sim", () => {
     expect(max - min).toBeGreaterThan(0.5);
   });
 
+  it("fish bed down for the night and wake at dawn", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 160, y: 60, cruise: 1.4 });
+    // Fish only sleep after the tank has seen a dawn — a fresh sim
+    // starts at midnight, so tick through the first daylight first.
+    for (let i = 0; i < DAY_TICKS && sim.light < 0.55; i++) sim.tick();
+    // Tick until dark (light < 0.45), then let the fish settle —
+    // it sinks at ≤0.4 px/tick, so give it room to reach the bed.
+    for (let i = 0; i < DAY_TICKS && sim.light >= 0.45; i++) sim.tick();
+    for (let i = 0; i < 600; i++) sim.tick();
+    expect(f.state).toBe("sleep");
+    // It idles on the gravel, not mid-water.
+    expect(f.y).toBeGreaterThan(200 - 12 - 12);
+    // Dawn (light >= 0.55) sends it wandering again.
+    for (let i = 0; i < DAY_TICKS && sim.light < 0.55; i++) sim.tick();
+    for (let i = 0; i < 60; i++) sim.tick();
+    expect(f.state).not.toBe("sleep");
+  });
+
   it("darts out of each decision — quadratic ramp capped at cruise", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const f = sim.addFish({ x: 60, y: 100, cruise: 1.4 });

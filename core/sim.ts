@@ -5,7 +5,7 @@ export interface Tank {
   height: number;
 }
 
-export type FishState = "drift" | "seek" | "startle" | "turn";
+export type FishState = "drift" | "seek" | "startle" | "turn" | "sleep";
 
 export interface Fish {
   /** Stable identity — overview display and removal target. */
@@ -127,6 +127,11 @@ export const TURN_TICKS = 10;
 const BUBBLE_CHANCE = 0.004;
 /** One full day/night cycle in ticks (~13 min at 30 tps). */
 export const DAY_TICKS = 24000;
+/** Fish bed down below this light; wake again past the higher
+ * threshold — the hysteresis keeps a fish on the dusk edge from
+ * fluttering between states. */
+const SLEEP_LIGHT = 0.45;
+const WAKE_LIGHT = 0.55;
 
 /** Fixed-step aquarium simulation. Advance with `tick()` — one step per call. */
 export class Sim {
@@ -139,6 +144,10 @@ export class Sim {
   waterQuality = 1;
   private rand: () => number;
   private nextId = 0;
+  /** Fish only bed down after the tank has seen daylight once — a
+   * sim created or restored mid-night keeps its fish awake until
+   * the first dawn rather than knocking them out on tick one. */
+  private seenDay = false;
 
   constructor(tank: Tank, seed = 1) {
     this.tank = tank;
@@ -204,6 +213,7 @@ export class Sim {
 
   tick(): void {
     this.tickCount++;
+    if (this.light >= WAKE_LIGHT) this.seenDay = true;
     for (const f of this.fish) this.tickFish(f);
     // Panic propagates: a freshly darting fish startles close
     // neighbors — fish-on-fish reaction on the same distance falloff.
@@ -252,7 +262,28 @@ export class Sim {
     // Foul water makes fish sluggish; panic (startle) ignores it.
     const vigor = 0.5 + 0.5 * this.waterQuality;
 
-    if (f.state === "startle") {
+    // Night falls: any unpanicked fish beds down. A sleeping fish
+    // wakes at dawn; a knock on the glass wakes it instantly (the
+    // startle branch runs its course, then it beds back down while
+    // it's still dark).
+    if (f.state === "sleep") {
+      if (this.light >= WAKE_LIGHT) {
+        this.setState(f, "drift");
+        this.decide(f);
+      }
+    } else if (f.state !== "startle" && this.seenDay &&
+               this.light < SLEEP_LIGHT) {
+      this.setState(f, "sleep");
+    }
+
+    if (f.state === "sleep") {
+      // Slide slowly down onto the gravel and idle: a weak stroke
+      // keeps the tail wafting without wandering; food is ignored.
+      const floor = this.tank.height - BOTTOM_PAD - 4;
+      if (f.y < floor) f.y += Math.min(0.4, floor - f.y);
+      f.x += f.cruise * 0.04 * f.facing;
+      f.speed = Math.max(f.speed * 0.98, f.cruise * 0.04);
+    } else if (f.state === "startle") {
       f.x += f.speed * f.facing;
       f.y += f.vy;
       f.speed *= 0.94;
