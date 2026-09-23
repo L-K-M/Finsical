@@ -1005,7 +1005,10 @@ window.addEventListener("drop", (e) => {
       // useful this run. The catch is belt-and-braces: packPut's
       // contract is never-fail, but a rejection here would throw out
       // of the whole drop handler and skip the remaining files.
-      const stored = await packPut(url, data).catch(() => null);
+      const stored = await packPut(url, data).catch((err) => {
+        console.warn(`drop: ${name} packPut rejected`, err);
+        return null;
+      });
       if (!stored)
         console.warn(`drop: ${name} could not be stored — it won't ` +
           "survive a relaunch");
