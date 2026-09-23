@@ -1259,13 +1259,14 @@ window.addEventListener("drop", (e) => {
   void (async () => {
     const files = new Map<string, File>();
     for (const ent of entries) await walkEntry(ent, "", files);
-    // No webkitGetAsEntry (Firefox): fall back to the flat file list —
-    // single .fsh/.REZ/audio drops still import; .azpack folders need
-    // a Chromium-style entries API.
+    // Items that expose no filesystem entry (webkitGetAsEntry missing
+    // or returning null, as for items a script created): fall back to
+    // the flat file list. Single .fsh/.REZ/audio drops still import;
+    // an .azpack folder needs its entries.
     if (!files.size && droppedFiles.length) {
       for (const f of droppedFiles) files.set(f.name, f);
       if (files.size)
-        console.info("drop: flat files only — folder drops need Chromium");
+        console.info("drop: no folder entries; importing the files alone");
     }
     if (!files.size) {
       console.warn("drop: nothing readable in the drop");
