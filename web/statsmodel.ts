@@ -75,7 +75,9 @@ export function deriveStats(s: StatsInput): TankStats {
     food: fin(s.food, 0),
     foodSettled: fin(s.foodSettled, 0),
     bubbles: fin(s.bubbles, 0),
-    phase: light > 0.5 ? "day" : "night",
+    // Mirrors sim.light: 0.3 night floor, 1 noon. 0.5 splits the
+  // cosine cycle near its shoulders (~36% of ticks are night).
+  phase: light > 0.5 ? "day" : "night",
     uptimeMin: Math.floor(fin(s.tickCount, 0) / 30 / 60),
     advice: [],
   };

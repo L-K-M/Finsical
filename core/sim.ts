@@ -196,10 +196,12 @@ export class Sim {
     }
   }
 
-  /** 0.3 = night, 1 = full daylight. */
+  /** 0.3 = night, 1 = full daylight. Cosine over the full cycle: night
+   * floor holds near midnight (t≈0 and t≈1) for a real stretch, not a
+   * single tick — half-wave sine only grazed 0.3 at the endpoints. */
   get light(): number {
     const t = (this.tickCount % DAY_TICKS) / DAY_TICKS;
-    return 0.3 + 0.7 * Math.max(0, Math.sin(t * Math.PI));
+    return 0.3 + 0.7 * (0.5 - 0.5 * Math.cos(t * Math.PI * 2));
   }
 
   tick(): void {

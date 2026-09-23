@@ -144,17 +144,20 @@ describe("Sim", () => {
     expect(df).toBeLessThan(dc * 0.7); // vigor 0.5 vs 1.0
   });
 
-  it("day/night light oscillates in [0,1]", () => {
+  it("day/night light oscillates in [0,1] with sustained night", () => {
     const sim = new Sim({ width: 100, height: 100 }, 1);
-    let min = 1, max = 0;
+    let min = 1, max = 0, nightTicks = 0;
     for (let i = 0; i < DAY_TICKS; i++) {
       sim.tick();
       min = Math.min(min, sim.light);
       max = Math.max(max, sim.light);
+      // Stats phase uses light > 0.5 as day — night must hold that
+      // band for a meaningful stretch of the cycle, not a blip.
+      if (sim.light <= 0.5) nightTicks++;
     }
-    expect(min).toBeGreaterThanOrEqual(0.15);
-    expect(max).toBeLessThanOrEqual(1);
-    expect(max - min).toBeGreaterThan(0.5);
+    expect(min).toBeCloseTo(0.3, 5);
+    expect(max).toBeCloseTo(1, 5);
+    expect(nightTicks).toBeGreaterThan(DAY_TICKS * 0.2);
   });
 
   it("darts out of each decision — quadratic ramp capped at cruise", () => {
