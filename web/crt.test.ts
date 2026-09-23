@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { CRT_DEFAULTS, sanitizeCrtConfig } from "./crt.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { CRT_DEFAULTS, initCrt, sanitizeCrtConfig } from "./crt.js";
 
 // sanitizeCrtConfig is the trust boundary for localStorage payloads and
 // bus messages from the prefs window — anything odd must fall back to
@@ -34,5 +34,71 @@ describe("sanitizeCrtConfig", () => {
     const c = sanitizeCrtConfig(CRT_DEFAULTS);
     expect(c).toEqual(CRT_DEFAULTS);
     expect(c).not.toBe(CRT_DEFAULTS); // a copy — defaults stay frozen
+  });
+});
+
+// initCrt needs just enough DOM + WebGL to count the expensive calls.
+// The tank repaints at the 30 Hz sim rate while the CRT redraws every
+// rAF for flicker/grain — texture uploads must follow the sim, not rAF.
+describe("initCrt", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function fakeGl() {
+    const calls = { texSubImage2D: 0, drawArrays: 0 };
+    const gl = new Proxy({} as Record<string | symbol, unknown>, {
+      get(_t, prop) {
+        if (prop === "getShaderParameter" || prop === "getProgramParameter")
+          return () => true;
+        if (prop === "texSubImage2D")
+          return () => { calls.texSubImage2D++; };
+        if (prop === "drawArrays")
+          return () => { calls.drawArrays++; };
+        return () => ({});
+      },
+    });
+    return { gl, calls };
+  }
+
+  function setup() {
+    const { gl, calls } = fakeGl();
+    const el = {
+      getContext: () => gl, addEventListener: () => {},
+      clientWidth: 640, clientHeight: 400, width: 0, height: 0,
+    } as unknown as HTMLCanvasElement;
+    vi.stubGlobal("document", {
+      getElementById: () => el,
+      body: { classList: { toggle: () => {}, remove: () => {} } },
+    });
+    vi.stubGlobal("window", { devicePixelRatio: 1 });
+    const crt = initCrt(el);
+    if (!crt) throw new Error("initCrt returned null under the GL stub");
+    return { crt, calls };
+  }
+
+  it("uploads the texture only for fresh frames, but always draws", () => {
+    const { crt, calls } = setup();
+    crt.setEnabled(true);
+    crt.render(true);            // sim ticked — new tank bitmap
+    crt.render(false);           // no tick — same bitmap, skip upload
+    crt.render(false);
+    expect(calls.texSubImage2D).toBe(1);
+    expect(calls.drawArrays).toBe(3); // flicker/grain still animate
+  });
+
+  it("re-uploads once after re-enable, even on a stale frame", () => {
+    const { crt, calls } = setup();
+    crt.setEnabled(true);
+    crt.render(true);
+    crt.setEnabled(false);
+    crt.setEnabled(true);
+    crt.render(false);
+    expect(calls.texSubImage2D).toBe(2);
+  });
+
+  it("does nothing while disabled", () => {
+    const { crt, calls } = setup();
+    crt.render(true);
+    expect(calls.texSubImage2D).toBe(0);
+    expect(calls.drawArrays).toBe(0);
   });
 });

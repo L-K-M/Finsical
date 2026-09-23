@@ -213,8 +213,10 @@ export interface CrtFilter {
   /** Live-update shader params; `config` reflects the merged result. */
   configure(cfg: Partial<CrtConfig>): void;
   readonly config: CrtConfig;
-  /** Upload the latest tank frame and re-run the shader (no-op off). */
-  render(): void;
+  /** Re-run the shader every frame; upload the tank bitmap only when
+   * `fresh` (the sim ticks at 30 Hz — between ticks the 2D canvas is
+   * unchanged and re-uploading it buys nothing). No-op when off. */
+  render(fresh?: boolean): void;
 }
 
 export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
@@ -228,6 +230,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   // would just hide the tank again. (Reload the page to retry.)
   let enabled = false;
   let lost = false;
+  let dirtyTex = true; // first render uploads the tank bitmap
   out.addEventListener("webglcontextlost", (e) => {
     e.preventDefault();
     lost = true;
@@ -325,7 +328,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       if (on && lost) return; // dead context — stay on the plain path
       enabled = on;
       document.body.classList.toggle("crt", on);
-      if (on) resize();
+      if (on) { resize(); dirtyTex = true; }
     },
     configure(p: Partial<CrtConfig>): void {
       // Merge onto the current config, then sanitize: unknown keys
@@ -336,7 +339,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       cfg = sanitizeCrtConfig(merged);
       upload();
     },
-    render(): void {
+    render(fresh = true): void {
       if (!enabled) return;
       resize(); // cheap check — catches zoom/fullscreen/dpr changes
       // Same math as object-fit: contain, in buffer pixels (y-up).
@@ -347,8 +350,11 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       // Bound the clock: mediump floats lose sin() precision fast once
       // uTime*61 grows — wrap every 100s (flicker is noise-like anyway).
       gl.uniform1f(uTime, (performance.now() / 1000) % 100);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA,
-        gl.UNSIGNED_BYTE, src);
+      if (fresh || dirtyTex) {
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA,
+          gl.UNSIGNED_BYTE, src);
+        dirtyTex = false;
+      }
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     },
   };

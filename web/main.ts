@@ -1123,20 +1123,30 @@ function render(): void {
   }
 }
 
-// Fixed-step sim; render on rAF.
+// Fixed-step sim; render on rAF, but repaint only when a tick ran —
+// between ticks nothing in the 2D scene can move, so unticked repaints
+// (about half at 60 Hz) redraw the identical frame. Non-tick changes
+// (feeding, imports, decor swaps) show on the next tick, <=33ms later.
 const TICKS_PER_SECOND = 30;
 let acc = 0;
 let last = performance.now();
+let painted = false;
 function frame(now: number): void {
   acc += Math.min(now - last, 200);
   last = now;
   const step = 1000 / TICKS_PER_SECOND;
+  let ticked = false;
   while (acc >= step) {
     sim.tick();
     acc -= step;
+    ticked = true;
   }
-  render();
-  if (crtOn) crt?.render();
+  const fresh = ticked || !painted;
+  if (fresh) {
+    render();
+    painted = true;
+  }
+  if (crtOn) crt?.render(fresh);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
