@@ -1039,7 +1039,7 @@ window.addEventListener("drop", (e) => {
       // would throw "stored pack missing" on every future launch.
       if (stored)
         recordInstall({ section: "fish", inner: name, url });
-      console.info(`${name}: pack imported`);
+      console.info(`${name}: pack imported${stored ? "" : " (session only)"}`);
       return;
     }
     if (!recs.length)

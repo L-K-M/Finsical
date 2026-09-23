@@ -350,6 +350,9 @@ export async function importAddon(url: string): Promise<PackResult[]> {
     const d = await packGet(url);
     if (!d) throw new Error(`${url}: stored pack missing`);
     if (!isPack(d)) throw new Error(`${url}: stored data is not a pack`);
+    // Same shape as the remote isPack branch: a pack blob yields no
+    // sound records — dropped loose audio already persisted via
+    // handleSounds/sndsPut at drop time.
     return [{ sheets: fshToSheets(d), images: packImages(d),
               sounds: [] }];
   }
