@@ -1118,10 +1118,12 @@ function render(): void {
   }
   for (const f of sim.fish) drawFish(f);
 
+  // Wall-clock wobble — matches the old tick-based 4.5 rad/s
+  // (0.15 rad/tick × 30 tps), computed once per frame for the loop.
+  const wobblePhase = performance.now() * 0.0045;
   for (const b of sim.bubbles) {
-    // Wall-clock wobble phased by depth — no per-bubble state needed.
-    const wx = b.x +
-      Math.sin(performance.now() * 0.0045 + b.y * 0.4) * 1.2;
+    // Phased by depth — no per-bubble state needed.
+    const wx = b.x + Math.sin(wobblePhase + b.y * 0.4) * 1.2;
     ctx.drawImage(bubbleSprite, Math.round(wx) - 2, Math.round(b.y) - 2);
   }
   // Sparse bloops: only some spawns make a sound.
