@@ -171,6 +171,17 @@ describe("Sim", () => {
     expect(night / DAY_TICKS).toBeLessThan(0.45);
   });
 
+  it("keeps mean daylight near the old curve's budget", () => {
+    // The full sine runs mean 0.65 vs ~0.75 for the old half-wave —
+    // a deliberate trade for a real night, pinned so it can't drift
+    // further without notice.
+    const sim = new Sim({ width: 100, height: 100 }, 1);
+    let sum = 0;
+    for (let i = 0; i < DAY_TICKS; i++) { sim.tick(); sum += sim.light; }
+    expect(sum / DAY_TICKS).toBeGreaterThan(0.6);
+    expect(sum / DAY_TICKS).toBeLessThan(0.7);
+  });
+
   it("darts out of each decision — quadratic ramp capped at cruise", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const f = sim.addFish({ x: 60, y: 100, cruise: 1.4 });
