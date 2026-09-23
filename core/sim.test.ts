@@ -279,6 +279,19 @@ describe("Sim", () => {
     expect(f.facing).toBe(-1);       // ends facing the new way
   });
 
+  it("never mirrors a wall-side target back onto the fish", () => {
+    // At the right wall facing right, the ahead mirror of any target
+    // clamps to the wall, where the fish already is; every draw there
+    // lies behind it, so the target must stay short of the wall.
+    for (let seed = 1; seed <= 40; seed++) {
+      const sim = new Sim({ width: 300, height: 100 }, seed);
+      const f = sim.addFish({ x: 284, y: 50, facing: 1, heading: 0 });
+      f.tx = 284; f.ty = 50; f.phase = 32; // decide fires on this tick
+      sim.tick();
+      expect(f.tx).toBeLessThan(284);
+    }
+  });
+
   it("rolls once toward food dropped behind it, then seeks", () => {
     const sim = new Sim({ width: 300, height: 100 }, 7);
     const f = sim.addFish({ x: 280, y: 50, facing: 1, heading: 0,

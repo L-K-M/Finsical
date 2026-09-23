@@ -149,6 +149,10 @@ const TURN_SLACK = 12;
  * of it instead: about 70% of moves carry on the way the fish faces,
  * so it rolls every few seconds rather than on most decisions. */
 const AHEAD_BIAS = 0.4;
+/** A mirrored target closer than this to the fish is no move at all
+ * (the mirror clamped onto a wall the fish is already at), so the
+ * original draw behind it stands. */
+const MIRROR_MIN = 4;
 /** Half-height of a fish's preferred depth band. */
 const BAND_HALF = 24;
 /** Chance per decision of picking a new depth band. */
@@ -465,8 +469,10 @@ export class Sim {
     }
     const minX = MARGIN, maxX = this.tank.width - MARGIN;
     f.tx = minX + this.rand() * (maxX - minX);
-    if ((f.tx - f.x) * f.facing < 0 && this.rand() < AHEAD_BIAS)
-      f.tx = Math.min(maxX, Math.max(minX, 2 * f.x - f.tx));
+    if ((f.tx - f.x) * f.facing < 0 && this.rand() < AHEAD_BIAS) {
+      const mx = Math.min(maxX, Math.max(minX, 2 * f.x - f.tx));
+      if (Math.abs(mx - f.x) > MIRROR_MIN) f.tx = mx;
+    }
     f.ty = Math.min(
       maxY,
       Math.max(SURFACE + MARGIN,
