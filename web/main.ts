@@ -929,16 +929,15 @@ window.addEventListener("drop", (e) => {
   // Snapshot the flat list now: the DataTransfer item list is cleared
   // once the drop event finishes dispatching, so reading .files after
   // an await sees nothing.
-  const droppedFiles = e.dataTransfer?.files;
+  const droppedFiles = Array.from(e.dataTransfer?.files ?? []);
   void (async () => {
     const files = new Map<string, File>();
     for (const ent of entries) await walkEntry(ent, "", files);
     // No webkitGetAsEntry (Firefox): fall back to the flat file list —
     // single .fsh/.REZ/audio drops still import; .azpack folders need
     // a Chromium-style entries API.
-    if (!files.size && droppedFiles?.length) {
-      for (let i = 0; i < droppedFiles.length; i++)
-        files.set(droppedFiles[i]!.name, droppedFiles[i]!);
+    if (!files.size && droppedFiles.length) {
+      for (const f of droppedFiles) files.set(f.name, f);
       if (files.size)
         console.info("drop: flat files only — folder drops need Chromium");
     }
