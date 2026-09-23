@@ -448,8 +448,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 NSLog("Finsical: togglePause JS failed: \(error.localizedDescription)")
                 return
             }
-            // setPaused returns the new flag — keep the menu label in sync
-            // even if the state push races the completion handler.
+            // togglePause returns the new paused flag — sync the menu now
+            // so the label is correct even if the state push races this handler.
             if let paused = result as? Bool {
                 self.syncPauseMenu(paused: paused)
             }
