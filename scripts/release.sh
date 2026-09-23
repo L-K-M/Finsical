@@ -82,9 +82,18 @@ if [[ ! -f "$README" ]] ||
 fi
 
 next_build=$((current_build + 1))
-# Roll back the mutation set on any later abort (npm version, build, …)
-# so a failed release never leaves Info.plist/package.json/README half-bumped.
-trap 'git checkout -- "$INFO_PLIST" package.json "$README" 2>/dev/null || true; rm -f "$README.bak"' EXIT
+# Require a clean mutation set first so the rollback below never
+# clobbers pre-existing unstaged edits (git checkout would).
+if [[ -n "$(git status --porcelain -- "$INFO_PLIST" package.json package-lock.json "$README")" ]]; then
+  echo "release.sh aborting — uncommitted changes in version files" >&2
+  exit 1
+fi
+# Roll back the mutation set if any step in this block aborts
+# (PlistBuddy, npm version, sed) so a failed release never leaves
+# Info.plist/package.json/README/package-lock.json half-bumped.
+# Restore package-lock.json separately: a combined pathspec fails
+# entirely when one path is missing (repos without a lockfile).
+trap 'git checkout -- "$INFO_PLIST" package.json "$README" 2>/dev/null || echo "release.sh rollback failed; version files may be half-bumped" >&2; git checkout -- package-lock.json 2>/dev/null || true; rm -f "$README.bak"' EXIT
 "$PLIST_BUDDY" -c "Set :CFBundleShortVersionString $version" "$INFO_PLIST"
 "$PLIST_BUDDY" -c "Set :CFBundleVersion $next_build" "$INFO_PLIST"
 npm version "$version" --no-git-tag-version --allow-same-version
