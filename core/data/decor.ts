@@ -80,14 +80,6 @@ export function pickDecorArt(images: Iterable<IndexedImage>):
   return best ?? (anyImg ? { img: anyImg, key: 0, guessed: true } : null);
 }
 
-/** Alpha mask (1 = opaque): every pixel of the key index is transparent. */
-export function keyMask(img: IndexedImage, key: number): Uint8Array {
-  const { idx } = img;
-  const opaque = new Uint8Array(idx.length);
-  for (let i = 0; i < idx.length; i++) opaque[i] = idx[i] === key ? 0 : 1;
-  return opaque;
-}
-
 /** The longest animation an item plays; longer runs are cut here to
  * bound the canvases each item keeps (most packs ship 10 frames). */
 export const MAX_DECOR_FRAMES = 16;
@@ -165,7 +157,8 @@ export function decorPhase(src: string, copy: number, n: number): number {
 /**
  * The same art with palette index `key` moved to index 0 (entries and
  * pixels swapped), so code built on the sprite convention (index 0 is
- * transparent) keys it like keyMask does. Key-0 art comes back as is.
+ * transparent) keys every key pixel out, enclosed pockets included
+ * (no flood fill). Key-0 art comes back as is.
  */
 export function keyToZero(img: IndexedImage, key: number): IndexedImage {
   if (key === 0) return img;

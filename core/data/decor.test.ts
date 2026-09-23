@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { borderKey, cornerKey, DECOR_TICKS_PER_FRAME, decorFrame,
-         decorPhase, keyMask, keyToZero, MAX_DECOR_FRAMES, pickDecorArt,
+         decorPhase, keyToZero, MAX_DECOR_FRAMES, pickDecorArt,
          pickDecorFrames } from "./decor.js";
 import type { IndexedImage } from "./azpack.js";
 
@@ -16,19 +16,6 @@ function framed(w: number, h: number, bg: number, art: number,
   if (pocket) // enclosed region of key-colored pixels inside the art
     for (let y = 4; y < 7; y++)
       for (let x = 4; x < 7; x++) idx[y * w + x] = bg;
-  return { w, h, palette: PAL, idx };
-}
-
-/** Sparse line art: thin `art` outline enclosing key-colored interior. */
-function outlined(w: number, h: number, bg: number,
-                  art: number): IndexedImage {
-  const idx = new Uint8Array(w * h).fill(bg);
-  for (let x = 2; x < w - 2; x++) {
-    idx[2 * w + x] = art; idx[(h - 3) * w + x] = art;
-  }
-  for (let y = 2; y < h - 2; y++) {
-    idx[y * w + 2] = art; idx[y * w + w - 3] = art;
-  }
   return { w, h, palette: PAL, idx };
 }
 
@@ -145,6 +132,13 @@ describe("keyToZero", () => {
     expect(img.idx[0]).toBe(255);
     expect(img.palette[0]).toEqual([0, 0, 0]);
   });
+  it("keys enclosed pockets too, not just the border", () => {
+    // Line art encloses background that no flood fill reaches; every
+    // key pixel must still end up transparent.
+    const out = keyToZero(framed(12, 12, 255, 3, /*pocket*/ true), 255);
+    expect(out.idx[5 * 12 + 5]).toBe(0);         // enclosed key
+    expect(out.idx[3 * 12 + 3]).toBe(3);         // art stays opaque
+  });
   it("returns key-0 art unchanged", () => {
     const img = framed(6, 6, 0, 3);
     expect(keyToZero(img, 0)).toBe(img);
@@ -203,26 +197,3 @@ describe("pickDecorArt", () => {
   });
 });
 
-describe("keyMask", () => {
-  it("clears every key-index pixel, edge or enclosed", () => {
-    const art = framed(12, 12, 255, 3, /*pocket*/ true);
-    const m = keyMask(art, 255);
-    expect(m[0]).toBe(0);                    // corner: transparent
-    expect(m[3 * 12 + 3]).toBe(1);           // art: opaque
-    expect(m[5 * 12 + 5]).toBe(0);           // enclosed key: transparent
-    expect(m[11 * 12 + 5]).toBe(0);          // bottom edge: transparent
-  });
-  it("clears enclosed background inside sparse line art", () => {
-    // Silver Reed-style: frond strokes enclose background that must
-    // still key out — no flood fill can reach it.
-    const art = outlined(12, 12, 0, 3);
-    const m = keyMask(art, 0);
-    expect(m[0]).toBe(0);                    // corner: transparent
-    expect(m[2 * 12 + 4]).toBe(1);           // outline stroke: opaque
-    expect(m[5 * 12 + 5]).toBe(0);           // enclosed key: transparent
-  });
-  it("clears a uniform image entirely", () => {
-    const m = keyMask(framed(6, 6, 0, 0), 0);
-    expect([...m].every((v) => v === 0)).toBe(true);
-  });
-});

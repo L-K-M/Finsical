@@ -42,21 +42,17 @@ export function soundIcon(): HTMLCanvasElement {
 /** Rasterize an indexed image to a canvas. opaque=false makes index 0
  * transparent (sprite convention); opaque=true keeps every pixel. A
  * mask overrides both — 0 = transparent, 1 = opaque. */
-export function imageCanvas(img: IndexedImage, opaque: boolean,
-                            mask?: Uint8Array): HTMLCanvasElement {
+export function imageCanvas(img: IndexedImage,
+                            opaque: boolean): HTMLCanvasElement {
   const cv = document.createElement("canvas");
   cv.width = img.w; cv.height = img.h;
   const c = cv.getContext("2d")!;
-  if (mask && mask.length !== img.idx.length)
-    throw new Error(
-      `mask length ${mask.length} != pixel count ${img.idx.length}`);
   const im = c.createImageData(img.w, img.h);
   for (let i = 0; i < img.idx.length; i++) {
     const pi = img.idx[i] ?? 0;
     const [r, g, b] = img.palette[pi] ?? [0, 0, 0];
     im.data[i * 4] = r; im.data[i * 4 + 1] = g; im.data[i * 4 + 2] = b;
-    im.data[i * 4 + 3] = mask ? mask[i]! * 255
-                            : (opaque || pi !== 0 ? 255 : 0);
+    im.data[i * 4 + 3] = opaque || pi !== 0 ? 255 : 0;
   }
   c.putImageData(im, 0, 0);
   return cv;
