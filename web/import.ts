@@ -1267,7 +1267,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
               // Restores refresh the saved record's sound provenance —
               // legacy installs recorded before it existed heal after
               // one launch, so uninstall can drop their records too.
-              h.onInstall?.(it, applyPack(it, rs, false));
+              // applyPack must run unconditionally — inside the ?.()
+              // call a missing onInstall would skip the whole restore.
+              const names = applyPack(it, rs, false);
+              h.onInstall?.(it, names);
             })
             .catch((e) =>
               console.warn(`add-on restore failed for ${it.inner}:`, e));
