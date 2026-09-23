@@ -1,8 +1,10 @@
 import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
-import { fishPose, pitch } from "../core/pose.js";
+import { fishPose, pitch, restPose } from "../core/pose.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
+import { pickSwimSheet } from "../core/data/swimsheet.js";
+import { ART_SCALE } from "./artscale.js";
 import { TankAudio } from "./audio.js";
 import { pushButton } from "osmium-ui";
 import { fetchAddon, mountImportPanel, qualifySoundItemName,
@@ -114,22 +116,19 @@ canvas.addEventListener("pointerdown", (e) => {
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
 // drag the folder onto the window, and real Aquazone sprites replace the
 // placeholder fish.
-// Best sheet per imported pack; fish get sheets round-robin so a tank can
-// mix species.
+// The adult swim ring per imported pack; fish get sheets round-robin so
+// a tank can mix species.
 let fishSheets: SpriteSheet[] = [];
 function usePack(pack: { sheets: Map<string, SpriteSheet>;
                          manifest?: AzpackManifest },
                  read?: (path: string) => Promise<Uint8Array>): number {
-  // Most orientation groups wins; tiebreak toward the crunchier cell.
-  const sheets = [...pack.sheets.values()];
-  sheets.sort((a, b) =>
-    b.meta.groups - a.meta.groups || a.meta.cellH - b.meta.cellH);
-  if (sheets[0]) fishSheets.push(sheets[0]);
+  const sheet = pickSwimSheet(pack.sheets.values());
+  if (sheet) fishSheets.push(sheet);
   if (pack.manifest && read)
     void audio.load(read, pack.manifest)
       .then(() => audio.startAmbient())
       .catch((e) => console.warn("audio load failed:", e));
-  return sheets[0] ? fishSheets.length - 1 : -1;
+  return sheet ? fishSheets.length - 1 : -1;
 }
 
 /** A newly installed fish pack adds one fish bound to its sheet —
@@ -445,12 +444,18 @@ function fishThumb(f: Fish): string | null {
   const sheet = sheetOf(f);
   if (!sheet) return null; // placeholder fish — nothing to render
   let url: string | null = null;
-  try {
-    const pose = fishPose(sheet, f);
-    url = scaledThumb(swimCanvas(sheet, 0, pose.mir, pose.g));
-  } catch { /* sheet can't render that pose */ }
+  // Always the level profile, never whatever pose the fish was in at
+  // the moment of the ask: the thumb is memoized for its lifetime.
+  try { url = scaledThumb(thumbFrame(sheet)); }
+  catch { /* sheet can't render that pose */ }
   if (url) thumbMemo.set(key, url);
   return url;
+}
+/** A sheet's right-facing profile, box-filtered down to thumb size. */
+function thumbFrame(sheet: SpriteSheet): HTMLCanvasElement {
+  const pose = restPose(sheet, 1);
+  const s = Math.min(1, THUMB_W / sheet.meta.cellH, THUMB_H / sheet.meta.cellW);
+  return swimCanvas(sheet, 0, pose.mir, pose.g, s);
 }
 function addonThumb(url: string): string | null {
   const key = `a:${url}`;
@@ -459,7 +464,7 @@ function addonThumb(url: string): string | null {
   let cv: HTMLCanvasElement | null = null;
   const i = sheetByPack.get(url);
   if (i !== undefined && fishSheets[i]) {
-    try { cv = swimCanvas(fishSheets[i]!, 0, 1); } catch { /* scenery below */ }
+    try { cv = thumbFrame(fishSheets[i]!); } catch { /* scenery below */ }
   }
   cv ??= gravelByPack.get(url) ?? backdropByPack.get(url)
     ?? decors.find((d) => d.pack === url)?.cv ?? null;
@@ -1024,22 +1029,33 @@ function animFrame(f: Fish, nf: number): number {
   return Math.floor(ph);
 }
 
-// Sprite cells run large (the angelfish is 170px tall); scale big
-// sheets down to a share of the tank rather than clipping them.
+// Adult art draws at the shared art scale, so species keep their
+// original sizes relative to each other; a safety cap keeps an
+// unusually large sheet from filling the tank.
 const MAX_FISH_W = TANK.width * 0.6, MAX_FISH_H = TANK.height * 0.6;
+/** Frames are stored vertically: a profile is cellH wide once rotated. */
+function sheetScale(sheet: SpriteSheet): number {
+  return Math.min(ART_SCALE, MAX_FISH_W / sheet.meta.cellH,
+                  MAX_FISH_H / sheet.meta.cellW);
+}
 
 function drawFish(f: Fish): void {
   const sheet = sheetOf(f);
-  if (!sheet) return drawPlaceholder(f.x, f.y, f.facing, pitch(f));
+  if (!sheet) {
+    delete f.halfW; delete f.halfH;
+    return drawPlaceholder(f.x, f.y, f.facing, pitch(f));
+  }
+  const s = sheetScale(sheet);
+  // The sim keeps big bodies inside the glass by these extents.
+  f.halfW = sheet.meta.cellH * s / 2;
+  f.halfH = sheet.meta.cellW * s / 2;
   const pose = fishPose(sheet, f);
   const cv = swimCanvas(sheet, animFrame(f, sheet.meta.framesPerGroup),
-                        pose.mir, pose.g);
-  const s = Math.min(1, MAX_FISH_W / cv.width, MAX_FISH_H / cv.height);
-  const w = cv.width * s, h = cv.height * s;
+                        pose.mir, pose.g, s);
   ctx.save();
   ctx.translate(Math.round(f.x), Math.round(f.y));
   ctx.rotate(pitch(f));
-  ctx.drawImage(cv, -w / 2, -h / 2, w, h);
+  ctx.drawImage(cv, -cv.width / 2, -cv.height / 2);
   ctx.restore();
 }
 

@@ -54,6 +54,12 @@ export interface Fish {
   /** Hops this panic wave has traveled from the tapped fish — caps
    * how far a startle cascade can spread. */
   panicHops: number;
+  /** Half the drawn sprite's width and height, reported by the
+   * renderer once a sheet binds (runtime only, never saved). Big
+   * adults keep their bodies inside the glass by these; unset means a
+   * sprite small enough for the fixed margins. */
+  halfW?: number;
+  halfH?: number;
 }
 
 export interface Food {
@@ -72,6 +78,9 @@ export interface Bubble {
 const MARGIN = 16;
 const SURFACE = 10;
 export const BOTTOM_PAD = 12;
+/** Share of a big sprite's half-extent kept inside the glass; the rest
+ * may pass behind the frame, the way fish reach a real tank's edge. */
+const EDGE_KEEP = 0.8;
 
 /** Smallest signed angle delta, wrapped to [−π, π). */
 export function wrapAngle(d: number): number {
@@ -333,7 +342,9 @@ export class Sim {
 
       if (food) {
         const d = Math.max(Math.hypot(food.x - f.x, food.y - f.y), 1);
-        if (d < EAT_DIST) {
+        // A big fish can't sink to a settled pellet's depth; it eats
+        // what comes within reach of its body.
+        if (d < Math.max(EAT_DIST, (f.halfH ?? 0) / 2)) {
           food.eaten = true;
           f.hunger = 0;
           this.setState(f, "drift");
@@ -342,31 +353,33 @@ export class Sim {
       }
     }
 
-    const maxY = this.tank.height - BOTTOM_PAD;
+    const { x0, x1, y0, y1 } = this.room(f);
     let hit = false;
-    if (f.x < MARGIN) {
-      f.x = MARGIN; hit = true;
+    if (f.x < x0) {
+      f.x = x0; hit = true;
       // Glance off the wall instead of keeping a heading into it.
       if (Math.cos(f.heading) < 0) f.heading = wrapAngle(Math.PI - f.heading);
     }
-    if (f.x > this.tank.width - MARGIN) {
-      f.x = this.tank.width - MARGIN; hit = true;
+    if (f.x > x1) {
+      f.x = x1; hit = true;
       if (Math.cos(f.heading) > 0) f.heading = wrapAngle(Math.PI - f.heading);
     }
-    if (f.y < SURFACE + MARGIN) {
-      f.y = SURFACE + MARGIN; hit = true;
+    if (f.y < y0) {
+      f.y = y0; hit = true;
       if (Math.sin(f.heading) < 0) f.heading = -f.heading;
     }
-    if (f.y > maxY) {
-      f.y = maxY; hit = true;
+    if (f.y > y1) {
+      f.y = y1; hit = true;
       if (Math.sin(f.heading) > 0) f.heading = -f.heading;
     }
     // A hard clamp means the movement ran out of room — decide early.
     if (hit && f.state !== "startle") f.phase = Math.max(f.phase, MOVE_TICKS);
 
     // Fish gasp in foul water — bubbles come up to twice as often.
+    // Bubbles leave from the mouth, not the middle of a big body.
     if (this.rand() < BUBBLE_CHANCE * (2 - this.waterQuality)) {
-      this.bubbles.push({ x: f.x + f.facing * 6, y: f.y - 3 });
+      this.bubbles.push({
+        x: f.x + f.facing * Math.max(6, (f.halfW ?? 0) - 3), y: f.y - 3 });
     }
   }
 
@@ -376,16 +389,11 @@ export class Sim {
    * the original's per-tick swim-bound jitter.
    */
   private decide(f: Fish): void {
-    const maxY = this.tank.height - BOTTOM_PAD;
-    if (this.rand() < BAND_SHIFT) {
-      f.bandY = SURFACE + MARGIN +
-                this.rand() * (maxY - SURFACE - MARGIN);
-    }
-    f.tx = MARGIN + this.rand() * (this.tank.width - MARGIN * 2);
+    const { x0, x1, y0, y1 } = this.room(f);
+    if (this.rand() < BAND_SHIFT) f.bandY = y0 + this.rand() * (y1 - y0);
+    f.tx = x0 + this.rand() * (x1 - x0);
     f.ty = Math.min(
-      maxY,
-      Math.max(SURFACE + MARGIN,
-               f.bandY + (this.rand() - 0.5) * 2 * BAND_HALF));
+      y1, Math.max(y0, f.bandY + (this.rand() - 0.5) * 2 * BAND_HALF));
     f.phase = 0;
     f.latch = -1;
     // Rest speed — the pulse rebuilds it from here.
@@ -406,6 +414,17 @@ export class Sim {
       return true;
     }
     return false;
+  }
+
+  /** Where a fish's centre may go: MARGIN from the walls for small
+   * sprites, most of the body's half-extent for big ones. */
+  private room(f: Fish): { x0: number; x1: number; y0: number; y1: number } {
+    const { width: w, height: h } = this.tank;
+    const kx = (f.halfW ?? 0) * EDGE_KEEP, ky = (f.halfH ?? 0) * EDGE_KEEP;
+    const x0 = Math.min(Math.max(MARGIN, kx), w / 2);
+    const y0 = Math.min(SURFACE + Math.max(MARGIN, ky), h / 2);
+    return { x0, x1: w - x0, y0,
+             y1: Math.max(y0, h - Math.max(BOTTOM_PAD, ky)) };
   }
 
   private setState(f: Fish, s: FishState): void {

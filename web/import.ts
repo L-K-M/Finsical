@@ -923,40 +923,21 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
 
   // Thumbnails persist across launches as PNG bytes in the IndexedDB
   // pack cache so the add-on list doesn't re-download every pack each
-  // run. The "thumb:{url}" keys ride the same LRU budget as pack bytes
+  // run. The "thumb2:{url}" keys ride the same LRU budget as pack bytes
   // (they're derived data — eviction just re-fetches). Kept out of
   // localStorage deliberately: that quota also holds the tank save,
   // and a full thumb set could starve it. Best-effort: storage
   // failures (private mode, quota) fall back to the fetch path.
-  const THUMB_PREFIX = "thumb:";
+  // "thumb2:" since previews show each species' adult swim ring: older
+  // "thumb:" entries can hold the shared fry art, and the LRU trims them.
+  const THUMB_PREFIX = "thumb2:";
   const thumbKey = (it: Importable): string => THUMB_PREFIX + it.url;
-  // One-time migration of the retired localStorage thumbs: URL-keyed
-  // PNG data-URLs decode straight into the IDB cache. Keys without a
-  // scheme were pre-URL "section:name" entries — delete those.
+  // The retired localStorage thumbs predate that too: drop them rather
+  // than migrate stale art into the cache.
   try {
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const k = localStorage.key(i);
-      if (!k?.startsWith("finsical:thumb:")) continue;
-      const v = localStorage.getItem(k);
-      if (!k.includes("://") || !v?.startsWith("data:image/png;base64,")) {
-        localStorage.removeItem(k); // non-migratable legacy entry
-        continue;
-      }
-      let bytes: Uint8Array | null = null;
-      try {
-        const bin = atob(v.slice(v.indexOf(",") + 1));
-        bytes = new Uint8Array(bin.length);
-        for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
-      } catch { /* decode failure is deterministic */ }
-      if (!bytes) {
-        localStorage.removeItem(k); // corrupt entry can never migrate
-        continue;
-      }
-      // Remove only after the IDB write lands — a quota failure keeps
-      // the entry so migration retries on next mount.
-      void packPut(THUMB_PREFIX + k.slice(15), bytes)
-        .then(() => localStorage.removeItem(k))
-        .catch(() => {});
+      if (k?.startsWith("finsical:thumb:")) localStorage.removeItem(k);
     }
   } catch { /* storage unavailable */ }
   // Stored thumbs only ever feed <=96px tiles — cap them so thumb churn

@@ -31,6 +31,44 @@ describe("Sim", () => {
     expect(f.y).toBeLessThanOrEqual(188); // height - BOTTOM_PAD
   });
 
+  it("keeps a big fish's body inside the glass", () => {
+    // An adult ryukin at the tank's art scale: 100 x 67.
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    sim.addFish({ x: 160, y: 100, speed: 2, halfW: 50, halfH: 33 });
+    for (let i = 0; i < 5000; i++) {
+      sim.tick();
+      const f = sim.fish[0]!;
+      expect(f.x).toBeGreaterThanOrEqual(40);    // 0.8 * halfW
+      expect(f.x).toBeLessThanOrEqual(280);
+      expect(f.y).toBeGreaterThanOrEqual(36.4);  // SURFACE + 0.8 * halfH
+      expect(f.y).toBeLessThanOrEqual(173.6);    // height - 0.8 * halfH
+    }
+  });
+
+  it("lets a big fish eat a settled pellet it can't sink to", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 5);
+    sim.addFish({ x: 60, y: 120, hunger: 1, halfW: 50, halfH: 33 });
+    sim.dropFood(200);
+    let eaten = false;
+    for (let i = 0; i < 3000 && !eaten; i++) {
+      sim.tick();
+      eaten = sim.food.length === 0 && sim.fish[0]!.hunger < 0.5;
+    }
+    expect(eaten).toBe(true);
+  });
+
+  it("blows bubbles from a big fish's mouth", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 11);
+    const f = sim.addFish({ x: 160, y: 100, halfW: 40, halfH: 20 });
+    for (let i = 0; i < 4000 && !sim.bubbles.length; i++) {
+      sim.tick();
+      if (sim.bubbles.length) {
+        expect(Math.abs(sim.bubbles[0]!.x - f.x)).toBeGreaterThanOrEqual(36);
+      }
+    }
+    expect(sim.bubbles.length).toBeGreaterThan(0);
+  });
+
   it("turns around at the walls", () => {
     const sim = new Sim({ width: 100, height: 100 }, 3);
     sim.addFish({ x: 76, y: 50, facing: 1, speed: 2 });
