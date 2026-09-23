@@ -30,7 +30,7 @@ export interface Item {
   rank: number;
   remove: BusMsg;
   /** "Use" intent for scenery packs not currently on display. */
-  use?: BusMsg;
+  use?: BusMsg | undefined;
 }
 
 export type Column = "name" | "kind" | "status";
