@@ -159,7 +159,7 @@ describe("Sim", () => {
 
   it("darts out of each decision — quadratic ramp capped at cruise", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
-    const f = sim.addFish({ x: 60, y: 100, cruise: 1.4 });
+    const f = sim.addFish({ x: 60, y: 100, cruise: 1.4, speed: 0 });
     // Pin a distant target so the whole tick is the acceleration stroke.
     f.tx = 300; f.ty = 100; f.phase = 0; f.latch = -1;
     const speeds = [f.speed];
@@ -192,17 +192,33 @@ describe("Sim", () => {
     const turn = f.heading - h0;
     expect(turn).toBeGreaterThan(0);                 // rotating toward π
     expect(turn).toBeLessThanOrEqual(Math.PI / 20 + 1e-9); // rate-capped
-    // and facing only flips once the heading passes vertical
     expect(f.facing).toBe(1);
+    // Steering never carries the heading round to the other side; only
+    // a roll turns the fish to face the target.
+    for (let i = 0; i < 40 && f.state === "drift"; i++) {
+      sim.tick();
+      if (f.state === "drift") {
+        expect(f.facing).toBe(1);
+        expect(Math.abs(f.heading))
+          .toBeLessThanOrEqual(Math.PI * 7 / 12 + 1e-9); // MAX_PITCH
+      }
+    }
+    expect(f.state).toBe("turn");
   });
 
-  it("re-decides when the movement budget expires", () => {
+  it("strokes on toward a far target, then re-decides", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const f = sim.addFish({ x: 60, y: 100 });
     f.tx = 300; f.ty = 30; f.phase = 0; f.latch = -1;
     for (let i = 0; i < 40; i++) sim.tick();
-    // After 32 ticks the phase must have wrapped — a new decision ran.
+    // After 32 ticks the phase wrapped: a new stroke, same destination.
     expect(f.phase).toBeLessThan(32);
+    expect(f.strokes).toBe(1);
+    expect(f.tx).toBe(300);
+    // Out of strokes before arriving (~130 ticks at cruise 1 for ~250
+    // px), the fish picks a new destination.
+    for (let i = 0; i < 100; i++) sim.tick();
+    expect(f.tx).not.toBe(300);
   });
 
   it("tap startle fades with distance and panic propagates", () => {
@@ -261,6 +277,19 @@ describe("Sim", () => {
     expect(f.state).toBe("drift");   // roll completed
     expect(seen.size).toBe(2);       // facing flipped at edge-on
     expect(f.facing).toBe(-1);       // ends facing the new way
+  });
+
+  it("never mirrors a wall-side target back onto the fish", () => {
+    // At the right wall facing right, the ahead mirror of any target
+    // clamps to the wall, where the fish already is; every draw there
+    // lies behind it, so the target must stay short of the wall.
+    for (let seed = 1; seed <= 40; seed++) {
+      const sim = new Sim({ width: 300, height: 100 }, seed);
+      const f = sim.addFish({ x: 284, y: 50, facing: 1, heading: 0 });
+      f.tx = 284; f.ty = 50; f.phase = 32; // decide fires on this tick
+      sim.tick();
+      expect(f.tx).toBeLessThan(284);
+    }
   });
 
   it("rolls once toward food dropped behind it, then seeks", () => {
@@ -345,5 +374,145 @@ describe("Sim", () => {
     // ids stay unique across removal
     const c = sim.addFish({ x: 30, y: 30 });
     expect(c.id).not.toBe(a.id);
+  });
+
+  it("keeps chasing a sinking pellet instead of crawling after it", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 42);
+    sim.addFish({ x: 60, y: 120, cruise: 1.4, hunger: 0.9 });
+    sim.dropFood(200);
+    const fd = sim.food[0]!;
+    for (let i = 0; i < 300 && !fd.eaten; i++) sim.tick();
+    expect(fd.eaten).toBe(true);
+    expect(fd.settled).toBe(0); // caught mid-water, not off the gravel
+  });
+
+  it("drops a wander brake when food appears far away", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 60, y: 100, cruise: 1.4, hunger: 0.9,
+                            speed: 1.2, phase: 12, latch: 8, peak: 1.4 });
+    f.tx = 70; f.ty = 100; // braking into a wander target
+    sim.dropFood(260);     // ~200 px ahead
+    let top = 0;
+    for (let i = 0; i < 20; i++) { sim.tick(); top = Math.max(top, f.speed); }
+    expect(top).toBeGreaterThanOrEqual(0.9 * 1.4);
+  });
+
+  it("swims calmly: few rolls and no one-tick stops", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 3);
+    for (let i = 0; i < 6; i++) {
+      const facing = i % 2 ? -1 : 1;
+      sim.addFish({ x: 50 + i * 40, y: 40 + i * 25, facing,
+                    heading: facing > 0 ? 0 : Math.PI,
+                    cruise: 1.1 + i * 0.14, hunger: 0 });
+    }
+    let rolls = 0, halts = 0;
+    const minutes = 10;
+    for (let t = 0; t < 30 * 60 * minutes; t++) {
+      const prev = sim.fish.map((f) => ({ state: f.state, speed: f.speed }));
+      sim.tick();
+      sim.fish.forEach((f, i) => {
+        const p = prev[i]!;
+        if (f.state === "turn" && p.state !== "turn") rolls++;
+        if ((f.state === "drift" || f.state === "seek") &&
+            p.state !== "startle" && p.speed - f.speed > 0.35 * f.cruise)
+          halts++;
+      });
+    }
+    expect(rolls / (6 * minutes)).toBeLessThan(18);
+    expect(halts).toBe(0);
+  });
+
+  it("changes facing only by rolling, even around feeding", () => {
+    let pops = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const sim = new Sim({ width: 320, height: 200 }, seed);
+      for (let i = 0; i < 6; i++) {
+        const facing = (seed + i) % 2 ? -1 : 1;
+        sim.addFish({ x: 40 + i * 45, y: 40 + ((seed * 37 + i * 53) % 130),
+                      facing, heading: facing > 0 ? 0 : Math.PI,
+                      cruise: 1.1 + i * 0.14, hunger: 0.9 });
+      }
+      for (let t = 0; t < 1200; t++) {
+        if (t % 600 === 0)
+          for (let k = 0; k < 4; k++)
+            sim.dropFood(30 + ((seed * 71 + k * 83) % 260));
+        const prev =
+          sim.fish.map((f) => ({ state: f.state, facing: f.facing }));
+        sim.tick();
+        sim.fish.forEach((f, i) => {
+          const p = prev[i]!;
+          const calm = (s: string) => s === "drift" || s === "seek";
+          if (calm(p.state) && calm(f.state) && p.facing !== f.facing) pops++;
+        });
+      }
+    }
+    expect(pops).toBe(0);
+  });
+
+  it("eats a pellet just below without rolling for it", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 160.5, y: 40, facing: 1, heading: 0,
+                            hunger: 0.9 });
+    sim.food.push({ x: 160, y: 100, eaten: false, settled: 0 });
+    const fd = sim.food[0]!;
+    for (let i = 0; i < 200 && !fd.eaten; i++) {
+      sim.tick();
+      expect(f.state).not.toBe("turn");
+    }
+    expect(fd.eaten).toBe(true);
+  });
+
+  it("a peckish fish snaps up a pellet drifting past it", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 100, y: 100, facing: 1, heading: 0,
+                            speed: 1, hunger: 0.2 }); // below HUNGER_SEEK
+    f.tx = 220; f.ty = 100;
+    sim.food.push({ x: 130, y: 96, eaten: false, settled: 0 });
+    const fd = sim.food[0]!;
+    for (let i = 0; i < 90 && !fd.eaten; i++) sim.tick();
+    expect(fd.eaten).toBe(true);
+    expect(f.hunger).toBeLessThan(0.1);
+  });
+
+  it("a weak startle never slows a fish below cruise", () => {
+    const sim = new Sim({ width: 300, height: 200 }, 9);
+    const fish = [10, 20, 30, 40, 45].map((d, i) =>
+      sim.addFish({ x: 150 + d, y: 100, cruise: 1.1 + i * 0.15,
+                    speed: 0.3 + i * 0.3 }));
+    sim.tap(150, 100);
+    for (const f of fish) {
+      expect(f.state).toBe("startle");
+      expect(f.speed).toBeGreaterThanOrEqual(f.cruise);
+      expect(f.speed).toBeLessThanOrEqual(3.5);
+    }
+  });
+
+  it("a fish startled into the glass bounces off it", () => {
+    const sim = new Sim({ width: 300, height: 200 }, 9);
+    const f = sim.addFish({ x: 22, y: 100, cruise: 1.5 });
+    sim.tap(36, 100); // scares it toward the left wall (MARGIN 16)
+    expect(f.state).toBe("startle");
+    let touched = false;
+    for (let i = 0; i < 12; i++) {
+      sim.tick();
+      touched ||= f.x <= 16;
+    }
+    expect(touched).toBe(true);
+    expect(f.x).toBeGreaterThan(16 + 5);
+  });
+
+  it("stops seeking once another fish ate the pellet", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    // b ticks first, so it sets off for the pellet before a eats it.
+    const b = sim.addFish({ x: 300, y: 180, facing: -1, hunger: 0.9 });
+    const a = sim.addFish({ x: 150, y: 60, hunger: 0.9 });
+    sim.food.push({ x: 152, y: 60, eaten: false, settled: 0 });
+    const fd = sim.food[0]!;
+    sim.tick(); // a is within EAT_DIST; b starts toward it
+    expect(fd.eaten).toBe(true);
+    expect(b.state).toBe("seek");
+    expect(a.state).not.toBe("seek");
+    sim.tick();
+    expect(b.state).not.toBe("seek");
   });
 });
