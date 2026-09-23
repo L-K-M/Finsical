@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FEEDBACK_MAX_S, SOUND_DEFAULTS, sanitizeSoundConfig, TankAudio }
   from "./audio.js";
+import type { AzpackManifest } from "../core/data/azpack.js";
 
 // A minimal stand-in for WebAudio: records connections, gain values,
 // scheduled fades and start()/stop() calls so the routing can be read
@@ -130,6 +131,29 @@ describe("TankAudio master gain", () => {
     expect(master.gain.value).toBe(before); // no instant write
     const [v, t] = master.gain.targets.at(-1)!;
     expect([v, t]).toEqual([0, ac.currentTime]);
+  });
+});
+
+describe("TankAudio.load", () => {
+  it("decodes a pack's sounds concurrently, through the master", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const manifest: AzpackManifest = {
+      format: "azpack/1", tag: "T", version: 1, chunks: [], names: [],
+      sounds: [{ name: "bubble", file: "s/bubble.wav" },
+               { name: "bad", file: "s/bad.wav" }],
+    };
+    const audio = new TankAudio();
+    await audio.load(async (path) => {
+      if (path.includes("bad")) throw new Error("unreadable");
+      return wav(1);
+    }, manifest);
+    const ac = FakeContext.last!;
+    // A bare AudioContext here would leave no master for play() to use.
+    const master = ac.gains[0]!;
+    expect(master.out).toEqual([ac.destination]);
+    audio.bubble(); // the bad entry is skipped, the good one plays
+    expect(ac.sources).toHaveLength(1);
+    expect(sinkOf(ac.sources[0]!)).toBe(master);
   });
 });
 
