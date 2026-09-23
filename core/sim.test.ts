@@ -5,6 +5,23 @@ import { QUALITY_SEEK } from "./tuning.js";
 // States a fish may be in when it's not seeking food.
 const IDLE_STATES = ["drift", "turn"];
 
+/** Mean distance between two fish of the given species over ticks
+ * 2000-6000 (after the wander settles), from opposite corners. */
+function pairDistance(seed: number, a: string, b: string): number {
+  const sim = new Sim({ width: 320, height: 200 }, seed);
+  sim.addFish({ x: 60, y: 60, species: a });
+  sim.addFish({ x: 260, y: 160, species: b });
+  let sum = 0, n = 0;
+  for (let i = 0; i < 6000; i++) {
+    sim.tick();
+    if (i < 2000) continue;
+    const [p, q] = sim.fish;
+    sum += Math.hypot(p!.x - q!.x, p!.y - q!.y);
+    n++;
+  }
+  return sum / n;
+}
+
 describe("Sim", () => {
   it("is deterministic for a given seed", () => {
     const a = new Sim({ width: 320, height: 200 }, 42);
@@ -340,25 +357,23 @@ describe("Sim", () => {
   });
 
   it("same-species fish drift closer than strangers", () => {
-    const run = (same: boolean): number => {
-      const sim = new Sim({ width: 320, height: 200 }, 9);
-      sim.addFish({ x: 60, y: 60, species: "a" });
-      sim.addFish({ x: 260, y: 160, species: same ? "a" : "b" });
-      let sum = 0, n = 0;
-      for (let i = 0; i < 6000; i++) {
-        sim.tick();
-        if (i >= 2000) { // measure after the wander settles
-          const [p, q] = sim.fish;
-          sum += Math.hypot(p!.x - q!.x, p!.y - q!.y);
-          n++;
-        }
-      }
-      return sum / n;
-    };
-    const together = run(true), apart = run(false);
-    // Seed 9 measures ~33 vs ~62 — assert a 10 px gap, not just ordering,
-    // so weakened schooling fails while tuning noise still passes.
-    expect(apart - together).toBeGreaterThan(10);
+    // Every seed, not one lucky one: across seeds 1-30 the gap is
+    // 21-69 px. A 10 px floor fails weakened schooling while tuning
+    // noise still passes.
+    for (let seed = 1; seed <= 6; seed++) {
+      expect(pairDistance(seed, "a", "b") - pairDistance(seed, "a", "a"))
+        .toBeGreaterThan(10);
+    }
+  });
+
+  it("starter fish (species \"\") don't school", () => {
+    // Without schooling they sit as far apart as strangers: per seed
+    // the difference is noise (about -12 to 21 px); schooling starters
+    // would sit 27-60 px closer on every seed.
+    let gap = 0;
+    for (let seed = 1; seed <= 6; seed++)
+      gap += pairDistance(seed, "a", "b") - pairDistance(seed, "", "");
+    expect(gap / 6).toBeLessThan(15);
   });
 
   it("rolls through a turn when the destination is behind it", () => {

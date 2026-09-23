@@ -170,8 +170,10 @@ const BAND_HALF = 24;
 /** Chance per decision of picking a new depth band. */
 const BAND_SHIFT = 0.2;
 /** Chance per decision a wander anchors on a schoolmate's
- * neighborhood instead of the open water. */
-const SCHOOL_PULL = 0.35;
+ * neighborhood instead of the open water. PR #154's longer strokes
+ * dilute each anchor, so the pull is high enough to still read as a
+ * school. */
+const SCHOOL_PULL = 0.6;
 /** Loose scatter around a schoolmate, px — grouping, not lockstep. */
 const SCHOOL_RADIUS = 42;
 /**
@@ -522,8 +524,10 @@ export class Sim {
     f.ty = Math.min(
       y1, Math.max(y0, f.bandY + (this.rand() - 0.5) * 2 * BAND_HALF));
     // Schooling: a same-species wander sometimes anchors on a
-    // schoolmate's neighborhood — loose grouping, not lockstep.
-    if (this.rand() < SCHOOL_PULL) {
+    // schoolmate's neighborhood — loose grouping, not lockstep. Starter
+    // fish share species "" but take sprite sheets round-robin, so they
+    // look like different species: they don't school.
+    if (f.species && this.rand() < SCHOOL_PULL) {
       const mates = this.fish.filter(
         (m) => m !== f && m.species === f.species);
       if (mates.length) {
