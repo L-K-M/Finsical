@@ -78,7 +78,10 @@ export class TankAudio {
   /** Browsers gate audio behind a user gesture; call from pointerdown. */
   unlock(): void {
     if (!this.ctx) return;
-    void this.ctx.resume().then(() => this.startAmbient());
+    // Hidden, setHidden(false) resumes on return; waking the device
+    // now would undo the suspend for nothing.
+    if (!this.hidden)
+      void this.ctx.resume().then(() => this.startAmbient());
   }
 
   /** Suspend the audio device while the tank is hidden and resume it on

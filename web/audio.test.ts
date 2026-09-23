@@ -47,6 +47,16 @@ describe("TankAudio.setHidden", () => {
   beforeEach(() => vi.stubGlobal("AudioContext", FakeAudioContext));
   afterEach(() => vi.unstubAllGlobals());
 
+  it("keeps the device asleep when a gesture unlocks while hidden", async () => {
+    const [a, ac] = await tankWithAmbient();
+    a.setHidden(true);
+    await flush();
+    a.unlock();
+    await flush();
+    expect(ac.state).toBe("suspended");
+    expect(ac.loops()).toBe(0);
+  });
+
   it("suspends while hidden and resumes the same loop", async () => {
     const [a, ac] = await tankWithAmbient();
     a.startAmbient();

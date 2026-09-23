@@ -664,7 +664,7 @@ const crt = initCrt(canvas);
 let crtOn = false;
 // The loop only draws after a sim tick; this asks for one draw without
 // a tick, for changes the sim doesn't know about. Declared here, not by
-// frame(): setCrt runs during module eval (see MACHINE_KEY below).
+// frame(): setCrt runs during module evaluation (see MACHINE_KEY below).
 let frameDirty = true;
 let crtCfg: CrtConfig;
 try {
