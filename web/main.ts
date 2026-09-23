@@ -4,7 +4,7 @@ import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.j
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
 import { TankAudio } from "./audio.js";
-import { pushButton } from "./platinum/controls.js";
+import { pushButton } from "osmium-ui";
 import { fetchAddon, mountImportPanel, qualifySoundItemName,
          COLLECTIONS } from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
@@ -776,7 +776,7 @@ document.addEventListener("pointerdown", (e) => {
   // leftMouseDown from a touch tap has none and could hang it.
   if (e.button !== 0 || e.pointerType !== "mouse") return;
   if (!(e.target instanceof Element) || e.target.closest(
-      "#screen, .ov, .pt-menu, #opentrigger, button, a, input, textarea,"
+      "#screen, .ov, .osm-menu, #opentrigger, button, a, input, textarea,"
       + " select, label, [contenteditable]"))
     return;
   e.preventDefault();
@@ -802,7 +802,7 @@ const hoverNone = window.matchMedia("(hover: none)");
 const syncTrigger = (show: boolean): void => {
   document.getElementById("opentrigger")?.remove();
   if (!show) return;
-  // A 20px Platinum button is too small for a finger: a transparent
+  // A 20px Osmium push button is too small for a finger: a transparent
   // margin around it takes taps too (44px tall in all).
   const hit = document.createElement("div");
   hit.id = "opentrigger";
@@ -810,7 +810,7 @@ const syncTrigger = (show: boolean): void => {
     if (e.target === hit) importPanel.open();
   });
   const trigger = document.createElement("button");
-  trigger.className = "pt-button";
+  trigger.className = "osm-button";
   trigger.textContent = "Add-ons\u2026";
   hit.appendChild(trigger);
   document.body.appendChild(hit);

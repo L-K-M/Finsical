@@ -4,7 +4,7 @@ html, body { margin: 0; height: 100%; background: #000; }
    outside it. Dev browsers keep the dark backdrop. */
 .tankroot.native, .tankroot.native body.tankpage { background: transparent; }
 /* The add-on browser over the tank (browser and touch use): its own
-   Platinum window on a transparent layer; a press outside closes it. */
+   Osmium window on a transparent layer; a press outside closes it. */
 .ov { position: fixed; inset: 0; z-index: 10; cursor: default; }
 .ov .iwin { position: absolute; }
 /* Only exists on hover-less (touch) devices — see web/main.ts. */
@@ -13,7 +13,7 @@ html, body { margin: 0; height: 100%; background: #000; }
   right: calc(-4px + env(safe-area-inset-right, 0px));
   bottom: calc(-4px + env(safe-area-inset-bottom, 0px));
 }
-#opentrigger .pt-button { display: block; }
+#opentrigger .osm-button { display: block; }
 /* Machine shell: the machine art SVG fills the window (letterboxed if
    the aspect ever drifts) and paints ON TOP of the tank, so its
    transparent glass and baked reflections overlay the water. Behind
@@ -49,26 +49,22 @@ canvas#crt {
 body.crt canvas#crt { display: block; }
 body.crt canvas#tank { opacity: 0; }
 
-/* ---- Platinum client windows -------------------------------------------
+/* ---- client windows --------------------------------------------------
    Preferences, Tank Overview, Import Add-ons and Tank Stats are Mac OS
-   8 windows (web/platinum.css). The native windows are borderless and
-   shadowless, so the page draws the whole look — including the 1px
-   drop shadow, which is why the window stops 1px short of the
-   viewport's right and bottom. In a browser tab it fills the tab. */
-.ptroot, .ptroot body { margin: 0; background: transparent; }
-.pt-page-window { position: fixed; left: 0; top: 0; right: 1px; bottom: 1px; }
+   8 windows drawn by Osmium UI (osmium.css), each page one borderless
+   native window (.osm-page, .osm-page-window). */
 
 /* ---- Preferences (web/prefs.ts) ----------------------------------------
    A fixed-size control panel, 564 x 456 (native window 565 x 457 with
    the shadow). Pane buttons down an 80px strip on the left, parted from
    the pane by a gray/black/white line, as in Desktop Pictures. */
-#pwin:not(.pt-shaded) .pt-content { display: flex; }
+#pwin:not(.osm-shaded) .osm-content { display: flex; }
 #pfstrip {
   flex: none; width: 80px; padding-top: 12px;
   box-shadow: inset -1px 0 #888;
 }
 .pfpanebtn { width: 40px; margin: 0 20px 18px; }
-.pfpanebtn .pt-bevel-caption { width: 40px; }
+.pfpanebtn .osm-bevel-caption { width: 40px; }
 #pfpanes {
   position: relative; flex: 1; min-width: 0;
   border-left: 1px solid #000; box-shadow: inset 1px 0 #fff;
@@ -78,7 +74,7 @@ body.crt canvas#tank { opacity: 0; }
 
 /* Machine: the cases in a list box beside a preview well. */
 #pfmachines { position: absolute; left: 0; top: 0; width: 190px; height: 322px; }
-#pfmachines .pt-row { padding-left: 4px; font: var(--pt-font-system); }
+#pfmachines .osm-row { padding-left: 4px; font: var(--osm-font-system); }
 #pfpreview {
   position: absolute; left: 204px; right: 0; top: 0; height: 322px;
   display: flex; align-items: center; justify-content: center;
@@ -109,7 +105,7 @@ body.crt canvas#tank { opacity: 0; }
 #pffoot { position: absolute; left: 14px; right: 14px; bottom: 10px; height: 52px; }
 #pfdesc {
   position: absolute; left: 0; right: 0; top: 8px;
-  font: var(--pt-font-small); line-height: 13px;
+  font: var(--osm-font-small); line-height: 13px;
   max-height: 39px; overflow: hidden;
 }
 #pffoot.pfdefaults #pfdesc { right: 76px; }
@@ -118,11 +114,11 @@ body.crt canvas#tank { opacity: 0; }
 
 /* ---- Tank Stats window (web/stats.ts) ----------------------------------
    Laid out like a Get Info window. */
-#swin .pt-content { padding: 4px 12px 0; }
+#swin .osm-content { padding: 4px 12px 0; }
 /* Bar, right-aligned percentage, trend arrow; the bar sits on rows
    1..14 of its 17px field row, centered on the text's cap height. */
 .smeter { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
-.smeter .pt-progress { flex: 1; min-width: 16px; margin-top: 1px; }
+.smeter .osm-progress { flex: 1; min-width: 16px; margin-top: 1px; }
 .spct { flex: none; width: 31px; text-align: right; }
 .strend { flex: none; width: 9px; text-align: center; }
 .sval { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -137,7 +133,7 @@ body.crt canvas#tank { opacity: 0; }
    A Finder list-view window: header placard, column headers, rows with
    the sort column shaded dd and the others ee over white rules, and a
    bottom strip with Remove clear of the grow box. */
-#owin:not(.pt-shaded) .pt-content { display: flex; flex-direction: column; }
+#owin:not(.osm-shaded) .osm-content { display: flex; flex-direction: column; }
 #osummary, #oheads, #obar { flex: none; }
 .ohead-name { flex: 1; min-width: 150px; padding-left: 50px; }
 .ohead-kind { flex: none; width: 96px; }
@@ -148,7 +144,7 @@ body.crt canvas#tank { opacity: 0; }
 /* Edge to edge in the window, a focus ring would only show top and
    bottom; the selection already marks the keyboard's place. */
 #olist:focus-visible { outline: none; }
-#olist .pt-row { display: flex; background: #fff; color: #000; font: var(--pt-font-small); }
+#olist .osm-row { display: flex; background: #fff; color: #000; font: var(--osm-font-small); }
 .ocell {
   box-sizing: border-box; height: 31px; padding: 9px 4px 0;
   background: #eee;
@@ -171,9 +167,9 @@ body.crt canvas#tank { opacity: 0; }
 }
 .othumb img { position: absolute; image-rendering: pixelated; }
 /* Selected, the Finder way: the name inverts, the icon darkens. */
-#olist .pt-row.pt-selected { background: #fff; color: #000; }
-.pt-selected .oname { background: #000; color: #fff; box-shadow: 1px 0 #000, -1px 0 #000; }
-.pt-selected .othumb img { filter: brightness(0.5); }
+#olist .osm-row.osm-selected { background: #fff; color: #000; }
+.osm-selected .oname { background: #000; color: #fff; box-shadow: 1px 0 #000, -1px 0 #000; }
+.osm-selected .othumb img { filter: brightness(0.5); }
 #obar { position: relative; height: 31px; border-top: 1px solid #000; }
 #oremove { position: absolute; right: 22px; top: 5px; }
 
@@ -182,12 +178,12 @@ body.crt canvas#tank { opacity: 0; }
    add-ons in a list on the left, the chosen one's preview and details on
    the right, the credit and the default button along the bottom. The
    same markup fills the Import Add-ons window and the overlay window. */
-.imp { font: var(--pt-font-small); }
+.imp { font: var(--osm-font-small); }
 .ihead {
   position: absolute; left: 12px; right: 12px; top: 10px; height: 19px;
   display: flex; align-items: flex-start;
 }
-.ishow { font: var(--pt-font-system); margin: 1px 6px 0 0; }
+.ishow { font: var(--osm-font-system); margin: 1px 6px 0 0; }
 .ipop { flex: none; width: 180px; }
 .icount {
   flex: 0 1 auto; min-width: 0; margin: 3px 0 0 auto;
@@ -195,11 +191,11 @@ body.crt canvas#tank { opacity: 0; }
 }
 /* import.ts sets the list's width and the detail column's left edge. */
 .ilist { position: absolute; left: 12px; top: 40px; bottom: 50px; }
-.irow { display: flex; font: var(--pt-font-small); }
+.irow { display: flex; font: var(--osm-font-small); }
 .ithumb { position: relative; flex: none; width: 38px; height: 28px; margin: 2px 6px 0 4px; overflow: hidden; }
 .ithumb canvas { position: absolute; image-rendering: pixelated; }
 .irowname { flex: 1; min-width: 0; padding-top: 9px; overflow: hidden; text-overflow: ellipsis; }
-.icheck { flex: none; width: 18px; padding-top: 7px; font: var(--pt-font-system); visibility: hidden; }
+.icheck { flex: none; width: 18px; padding-top: 7px; font: var(--osm-font-system); visibility: hidden; }
 .irow.done .icheck { visibility: visible; }
 .idetail {
   position: absolute; top: 40px; right: 12px; bottom: 50px;
@@ -208,7 +204,7 @@ body.crt canvas#tank { opacity: 0; }
 .ipreview { position: relative; overflow: hidden; }
 .ipreview[hidden] { display: none; }
 .ipreview canvas { position: absolute; image-rendering: pixelated; }
-.iname { margin-top: 8px; font: var(--pt-font-system); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iname { margin-top: 8px; font: var(--osm-font-system); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .imeta { margin-top: 2px; color: #555; }
 .istatus { margin-top: 6px; overflow-wrap: anywhere; }
 .iplay { margin-top: 8px; }
@@ -217,7 +213,7 @@ body.crt canvas#tank { opacity: 0; }
   position: absolute; left: 12px; right: 12px; bottom: 10px; height: 30px;
   display: flex; align-items: flex-start;
 }
-.ifoot .pt-separator { position: absolute; left: 0; right: 0; top: 0; }
+.ifoot .osm-separator { position: absolute; left: 0; right: 0; top: 0; }
 /* The credit gives way first; Donate and the default button never meet
    (the default button stays clear of the grow box). */
 .icredit {

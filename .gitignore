@@ -7,8 +7,9 @@ macos/Finsical.iconset/
 *.azpack
 az-data/
 web/pack/
-# esbuild bundles from `npm run dev` (no hand-written .js lives there)
+# esbuild bundles and Osmium UI's stylesheet, copied in by `npm run dev`
 /web/*.js
+/web/osmium.css
 az-src/
 /packs/
 __pycache__/

@@ -2,6 +2,9 @@
 APP := Finsical.app
 ICON_SRC := ../media-sources/icon-finsical.png
 ICONSET := Finsical.iconset
+# Osmium UI (npm dependency): the stylesheet and the native window host.
+OSMIUM := ../node_modules/osmium-ui
+SOURCES := Finsical.swift $(OSMIUM)/macos/OsmiumWindows.swift
 # Oldest macOS the app runs on; keep in step with LSMinimumSystemVersion in
 # Info.plist. swiftc ignores MACOSX_DEPLOYMENT_TARGET and would otherwise
 # target the build host's macOS, so pass it explicitly through -target.
@@ -9,14 +12,18 @@ MACOS_MIN := 12.0
 
 all: $(APP)
 
-$(APP): bundle Finsical.swift Info.plist Finsical.icns
+# Osmium UI comes from npm: say so rather than "No rule to make target".
+$(OSMIUM)/%:
+	@echo "$@ is missing: run npm install in the repository root" >&2; exit 1
+
+$(APP): bundle $(SOURCES) Info.plist Finsical.icns
 	rm -rf $(APP).staging
 	mkdir -p $(APP).staging/Contents/MacOS $(APP).staging/Contents/Resources/web
 	cp Info.plist $(APP).staging/Contents/
 	cp Finsical.icns $(APP).staging/Contents/Resources/
 	cp ../web/index.html ../web/overview.html ../web/addons.html \
 	   ../web/prefs.html ../web/stats.html ../web/app.css \
-	   ../web/platinum.css \
+	   $(OSMIUM)/osmium.css \
 	   ../dist/bundle.js ../dist/overview.js ../dist/addons.js \
 	   ../dist/prefs.js ../dist/stats.js \
 	   $(APP).staging/Contents/Resources/web/
@@ -25,7 +32,7 @@ $(APP): bundle Finsical.swift Info.plist Finsical.icns
 	# the build rather than ship an empty silhouette.
 	cp -r ../web/assets $(APP).staging/Contents/Resources/web/
 	swiftc -O -target $(shell uname -m)-apple-macos$(MACOS_MIN) \
-		-o $(APP).staging/Contents/MacOS/Finsical Finsical.swift
+		-o $(APP).staging/Contents/MacOS/Finsical $(SOURCES)
 	# The linked binary is what the OS enforces, so fail the build if its
 	# minimum macOS differs from the one Info.plist promises.
 	@minos="$$(vtool -show-build $(APP).staging/Contents/MacOS/Finsical | awk '$$1 == "minos" { print $$2 }')"; \

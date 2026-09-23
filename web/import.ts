@@ -19,9 +19,8 @@ import { metaGet, metaPut, packDelete, packGet, packPut }
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
-import { bindDialogKeys, mountList, mountPopup, pushButton, setButtonTitle }
-  from "./platinum/controls.js";
-import { mountWindow } from "./platinum/window.js";
+import { bindDialogKeys, mountList, mountPopup, mountWindow, pushButton,
+         setButtonTitle } from "osmium-ui";
 
 const BASE = "https://archive.org/download";
 export const DEFAULT_ITEM = "aquazonewithguppiesandaddons";
@@ -540,7 +539,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   let detailRef: { url: string; status: HTMLElement } | null = null;
 
   // Over the tank (browser, touch) the browser opens as its own
-  // Platinum window in a layer over the page; in the Import Add-ons
+  // Osmium window in a layer over the page; in the Import Add-ons
   // window it fills the window's content.
   const ov = opts?.host ? null : el("div", "ov");
   let card: HTMLElement;
@@ -551,20 +550,19 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     win.setAttribute("aria-label", "Import add-ons");
     ov.appendChild(win);
     document.body.appendChild(ov);
-    mountWindow(win, {
+    card = mountWindow(win, {
       title: "Import Add-ons",
       onClose: () => close(),
       onDrag: (e) => dragOverlay(win, e),
-    });
-    card = win.querySelector<HTMLElement>(":scope > .pt-content")!;
+    }).content;
   } else {
     card = opts!.host!;
   }
   card.classList.add("imp");
 
   const head = el("div", "ihead");
-  const showLabel = el("label", "pt-popup-title ishow", "Show:");
-  const popBtn = el("button", "pt-popup ipop");
+  const showLabel = el("label", "osm-popup-title ishow", "Show:");
+  const popBtn = el("button", "osm-popup ipop");
   popBtn.type = "button";
   popBtn.id = "imp-show";
   showLabel.htmlFor = popBtn.id;
@@ -573,13 +571,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
 
   const listHost = el("div", "ilist");
   const detail = el("div", "idetail");
-  const pvBox = el("div", "pt-well ipreview");
+  const pvBox = el("div", "osm-well ipreview");
   pvBox.setAttribute("aria-hidden", "true");
   const dname = el("div", "iname");
   const dmeta = el("div", "imeta");
   const status = el("div", "istatus");
   status.setAttribute("aria-live", "polite");
-  const play = el("button", "pt-button iplay", "Play");
+  const play = el("button", "osm-button iplay", "Play");
   play.type = "button";
   play.hidden = true;
   // The narrow layout makes room for Play beside the name while it
@@ -593,12 +591,12 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   const foot = el("div", "ifoot");
   const credit = el("div", "icredit",
                     "Add-ons come from the Internet Archive.");
-  const donate = el("button", "pt-button idonate", "Donate…");
+  const donate = el("button", "osm-button idonate", "Donate…");
   donate.type = "button";
-  const add = el("button", "pt-button pt-default iadd", "Add to Tank");
+  const add = el("button", "osm-button osm-default iadd", "Add to Tank");
   add.type = "button";
   add.disabled = true;
-  foot.append(el("div", "pt-separator"), credit, donate, add);
+  foot.append(el("div", "osm-separator"), credit, donate, add);
   card.append(head, listHost, detail, foot);
 
   // ---- layout ---------------------------------------------------------
@@ -664,7 +662,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   });
   function setShowEnabled(on: boolean): void {
     popBtn.disabled = !on;
-    showLabel.classList.toggle("pt-disabled", !on);
+    showLabel.classList.toggle("osm-disabled", !on);
   }
   setShowEnabled(false);
 

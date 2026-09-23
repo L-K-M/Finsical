@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The Mac OS 8 look now comes from Osmium UI
+  (https://github.com/L-K-M/osmium-ui), a separate library extracted
+  from Finsical: the stylesheet, windows, controls, bitmap fonts and
+  the native window host. Every window looks and behaves as before.
 - The app is now compiled for macOS 12.0, the minimum it promises.
   Earlier builds targeted the build machine's macOS, so binaries from
   the macOS 15 release runner declared macOS 15 as their minimum and
@@ -25,6 +29,5 @@
   and Geneva 10 bitmap text, the real close/zoom/collapse boxes with
   their pressed states, the grow box, inactive and windowshade looks,
   and Platinum progress bars. The chrome and controls live in a
-  reusable module (`web/platinum/`, `web/platinum.css`) for other
-  windows. Earlier history lives in the commit log and any GitHub
-  releases.
+  reusable module for other windows (since moved to Osmium UI).
+  Earlier history lives in the commit log and any GitHub releases.
