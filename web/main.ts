@@ -814,8 +814,9 @@ const wantTrigger = (): boolean =>
 // press mid-gesture), while a removal by other code or a failed
 // build still recovers on the next sync.
 const syncTrigger = (show: boolean): void => {
-  if (show === !!document.getElementById("opentrigger")) return;
-  document.getElementById("opentrigger")?.remove();
+  const el = document.getElementById("opentrigger");
+  if (show === !!el) return;
+  el?.remove();
   if (!show) return;
   // A 20px Osmium push button is too small for a finger: a transparent
   // margin around it takes taps too (44px tall in all).
