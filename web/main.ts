@@ -828,10 +828,11 @@ const COMPANIONS: Record<string, [string, string]> = {
   p: ["prefs.html", "finsical-prefs"],
 };
 window.addEventListener("keydown", (e) => {
-  // Never steal keys from a text field — the tank page has none
-  // today, but a future field shouldn't fight the shortcuts.
+  // Never steal bare keys from a text field — the tank page has none
+  // today, but a future field shouldn't fight the shortcuts. Modifier
+  // chords still work: ⌘I has no meaning inside a plain field.
   const t = e.target;
-  if (t instanceof HTMLElement &&
+  if (!e.metaKey && !e.ctrlKey && t instanceof HTMLElement &&
       (t.isContentEditable || t.tagName === "INPUT" ||
        t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
   const k = e.key.toLowerCase();
