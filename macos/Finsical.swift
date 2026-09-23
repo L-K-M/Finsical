@@ -443,7 +443,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     @objc func togglePause() {
         let js = "window.finsical?.togglePause ? window.finsical.togglePause()" +
                  " : (() => { throw new Error('window.finsical.togglePause missing') })()"
-        webView?.evaluateJavaScript(js) { result, error in
+        guard let webView else {
+            NSLog("Finsical: togglePause skipped — webView unavailable")
+            return
+        }
+        webView.evaluateJavaScript(js) { result, error in
             if let error {
                 NSLog("Finsical: togglePause JS failed: \(error.localizedDescription)")
                 return
