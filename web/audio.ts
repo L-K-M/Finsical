@@ -18,15 +18,20 @@ export class TankAudio {
   // Muted silences every source and stops the ambient loop; unmuting
   // restarts it through the normal path (ambientWanted survives).
   private muted = false;
+  // Everything currently scheduled, so muting can silence mid-flight
+  // one-shots (imported records can run long), not just the ambient
+  // loop.
+  private active = new Set<AudioBufferSourceNode>();
 
   setMuted(m: boolean): void {
     if (m === this.muted) return;
     this.muted = m;
     if (!m) { this.startAmbient(); return; }
-    if (this.ambientSrc) {
-      try { this.ambientSrc.stop(); } catch { /* already ended */ }
-      this.ambientSrc = null;
+    for (const src of this.active) {
+      try { src.stop(); } catch { /* already ended */ }
     }
+    this.active.clear();
+    this.ambientSrc = null;
   }
 
   async load(read: (path: string) => Promise<Uint8Array>,
@@ -135,6 +140,8 @@ export class TankAudio {
     g.gain.value = gain;
     src.connect(g).connect(this.ctx.destination);
     src.start();
+    this.active.add(src);
+    src.onended = () => { this.active.delete(src); };
     return src;
   }
 
