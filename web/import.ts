@@ -14,7 +14,7 @@ import { zipEntries, zipRead } from "../core/data/zip.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
 import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
-import { metaGet, metaPut, packDelete, packGet, packPut }
+import { isLocalPack, metaGet, metaPut, packDelete, packGet, packPut }
   from "./store.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
@@ -432,6 +432,18 @@ export function qualifySoundItemName(
  * the caller can pick each one's best sheet. Sound-bearing entries
  * (audio files, 'snd ' resource forks) come back as sound records. */
 export async function importAddon(url: string): Promise<PackResult[]> {
+  // Dropped packs persist as raw bytes under a `local:` key — nothing
+  // to download; decode them like any other pack blob.
+  if (isLocalPack(url)) {
+    const d = await packGet(url);
+    if (!d) throw new Error(`${url}: stored pack missing`);
+    if (!isPack(d)) throw new Error(`${url}: stored data is not a pack`);
+    // Same shape as the remote isPack branch: a pack blob yields no
+    // sound records — dropped loose audio already persisted via
+    // handleSounds/sndsPut at drop time.
+    return [{ sheets: fshToSheets(d), images: packImages(d),
+              sounds: [] }];
+  }
   const blobs = await fetchInnerBlobs(url);
   const out: PackResult[] = [];
   for (const b of blobs) {

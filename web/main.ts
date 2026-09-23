@@ -18,7 +18,8 @@ import { pushButton } from "osmium-ui";
 import { fetchAddon, mountImportPanel, orphanedSounds, recordAddon,
          qualifySoundItemName, COLLECTIONS } from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
-import { sndsGet, sndsMerge, sndsRemove } from "./store.js";
+import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
+         sndsMerge, sndsRemove } from "./store.js";
 import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
          swimCanvas } from "./render.js";
 import { containPoint, feedZoneLineY, isFeedZoneY } from "./feedzone.js";
@@ -836,6 +837,10 @@ function removeAddon(url: string): void {
   if (slot !== undefined && packBySheet.get(slot) === url)
     packBySheet.delete(slot);
   sheetByPack.delete(url);
+  // A dropped pack's stored bytes are the only copy — uninstall
+  // deletes them (archive packs keep their cache entries).
+  if (isLocalPack(url)) void packDelete(url)
+    .catch((e) => console.warn("pack delete failed:", e));
   // Drop thumb state that can only rot: this pack's own memo and any
   // queued ask, plus entries for fish that no longer exist anywhere.
   thumbMemo.delete(`a:${url}`);
@@ -1339,14 +1344,44 @@ window.addEventListener("drop", (e) => {
         console.warn(`drop: skipping unreadable ${name}:`, e);
         continue;
       }
-      for (const p of decodeDroppedPacks([[name, data]])) {
-        if (p.sheets.size) spawnFromDrop(usePack({ sheets: p.sheets }), p.name);
-        // Keyed by file name, not "": a drop mustn't replace the
-        // bundled pack's art entry.
-        if (p.images.size) handleImages(p.images.values(), name, p.section);
-        imported++;
-        console.info(`${name}: pack imported`);
+      const [p] = decodeDroppedPacks([[name, data]]);
+      if (!p) continue;
+      // A full tank takes no new fish: say so rather than store and
+      // record a pack whose fish never spawns.
+      const refusal = p.sheets.size ? fishRefusal("fish") : null;
+      if (refusal) {
+        console.warn(`drop: ${name}: ${refusal}`);
+        continue;
       }
+      // A dropped pack has no home URL — mint a local: identity so the
+      // bytes persist (the only copy lives in IndexedDB) and the pack
+      // restores next launch like an installed add-on. Same-named
+      // drops reuse the record and overwrite the stored bytes.
+      const url = `${LOCAL_PREFIX}${name}`;
+      // Await the write: a quota/private-mode failure should be logged
+      // now, not discovered as a missing pack on next launch. The
+      // catch is belt-and-braces: packPut's contract is never-fail,
+      // but a rejection here would skip the remaining files.
+      const stored = await packPut(url, data).catch((err) => {
+        console.warn(`drop: ${name} packPut rejected`, err);
+        return null;
+      });
+      if (!stored)
+        console.warn(`drop: ${name} could not be stored — it won't ` +
+          "survive a relaunch");
+      // The archive install path: handleSheets binds the sheet to the
+      // url and spawns the fish; scenery keys by url so Overview's
+      // Remove clears it.
+      if (p.sheets.size) handleSheets(p.sheets, p.name, url, "fish", true);
+      if (p.images.size) handleImages(p.images.values(), url, p.section);
+      // Only when the bytes persisted — a dangling record would throw
+      // "stored pack missing" on every launch. A pack with fish records
+      // as fish (a .REZ's scenery then stays session-only).
+      if (stored)
+        recordInstall({ section: p.sheets.size ? "fish" : p.section,
+                        inner: p.name, url });
+      imported++;
+      console.info(`${name}: pack imported${stored ? "" : " (session only)"}`);
     }
     if (!imported && !recs.length)
       console.warn("drop: no manifest.json, pack file, or 'snd ' found");
