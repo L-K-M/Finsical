@@ -400,6 +400,7 @@ export class Sim {
         const m = mates[(this.rand() * mates.length) | 0]!;
         f.tx = Math.min(this.tank.width - MARGIN, Math.max(MARGIN,
           m.x + (this.rand() - 0.5) * 2 * SCHOOL_RADIUS));
+        // Half the x-spread vertically — schools sit flat in a band.
         f.ty = Math.min(maxY, Math.max(SURFACE + MARGIN,
           m.y + (this.rand() - 0.5) * SCHOOL_RADIUS));
       }
