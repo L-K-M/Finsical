@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { BAND_HALF, BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, MARGIN, Sim,
          SLEEP_LIGHT, SURFACE, TURN_TICKS, WAKE_LIGHT } from "./sim.js";
 import { QUALITY_SEEK } from "./tuning.js";
+import { CLOCK_NIGHT_LIGHT } from "./light.js";
+import { pitch } from "./pose.js";
 
 // States a fish may be in when it's not seeking food.
 const IDLE_STATES = ["drift", "turn"];
@@ -356,8 +358,8 @@ describe("Sim", () => {
   it("fish bed down for the night and wake at dawn", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const f = sim.addFish({ x: 160, y: 60, cruise: 1.4 });
-    // Fish only sleep after the tank has seen a dawn — a fresh sim
-    // starts at midnight, so tick through the first daylight first.
+    // Fish only sleep after the tank has seen daylight; a fresh demo
+    // cycle opens at 10:00, so this loop is a guard, not a wait.
     for (let i = 0; i < DAY_TICKS && sim.light < WAKE_LIGHT; i++)
       sim.tick();
     // Tick until dark, then let the fish settle — it sinks at
@@ -377,6 +379,29 @@ describe("Sim", () => {
       sim.tick();
     for (let i = 0; i < 60; i++) sim.tick();
     expect(f.state).not.toBe("sleep");
+  });
+
+  it("sleeps through a light-timer night and gets up for food", () => {
+    // Timer nights hold exactly CLOCK_NIGHT_LIGHT; a strict
+    // `light < SLEEP_LIGHT` at 0.45 never fired there.
+    expect(SLEEP_LIGHT).toBeGreaterThan(CLOCK_NIGHT_LIGHT);
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 160, y: 60, cruise: 1.4 });
+    sim.setLight(1);
+    sim.tick(); // the tank has seen daylight
+    sim.setLight(CLOCK_NIGHT_LIGHT);
+    for (let i = 0; i < 600; i++) sim.tick();
+    expect(f.state).toBe("sleep");
+    // Rests level on the gravel, whatever its heading at bedtime.
+    expect(Math.abs(pitch(f))).toBeLessThan(1e-9);
+    // A hungry fish wakes for a pellet, eats, then beds back down.
+    f.hunger = 0.6;
+    sim.dropFood(160);
+    let ate = false;
+    for (let i = 0; i < 3000 && !ate; i++) { sim.tick(); ate = f.hunger < 0.1; }
+    expect(ate).toBe(true);
+    for (let i = 0; i < 100; i++) sim.tick();
+    expect(f.state).toBe("sleep");
   });
 
   it("darts out of each decision — quadratic ramp capped at cruise", () => {

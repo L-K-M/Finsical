@@ -1,6 +1,6 @@
 import { makeRng } from "./rng.js";
 import { HUNGER_SEEK, QUALITY_SEEK } from "./tuning.js";
-import { demoLight } from "./light.js";
+import { demoLight, DUSK_LIGHT } from "./light.js";
 
 export interface Tank {
   width: number;
@@ -203,8 +203,8 @@ export const DAY_TICKS = 24000;
 /** Fish bed down below this light; wake again past the higher
  * threshold — the hysteresis keeps a fish on the dusk edge from
  * fluttering between states. Exported for the sleep test. */
-export const SLEEP_LIGHT = 0.45;
-export const WAKE_LIGHT = 0.55;
+export const SLEEP_LIGHT = DUSK_LIGHT;
+export const WAKE_LIGHT = 0.6;
 
 /** Pitch off the facing axis, limited to MAX_PITCH either way. */
 function clampPitch(p: number): number {
@@ -388,13 +388,18 @@ export class Sim {
     // wakes at dawn; a knock on the glass wakes it instantly (the
     // startle branch runs its course, then it beds back down while
     // it's still dark).
+    // A hungry fish gets up for food dropped at night rather than
+    // starve until dawn with pellets rotting under its nose.
+    const peckish = f.hunger > HUNGER_SEEK &&
+      this.waterQuality > QUALITY_SEEK && this.nearestFood(f) !== null;
     if (f.state === "sleep") {
-      if (this.light >= WAKE_LIGHT) {
+      if (this.light >= WAKE_LIGHT || peckish) {
         this.setState(f, "drift");
         this.decide(f);
+        this.maybeTurn(f); // like the startle exit: roll, don't pitch over
       }
     } else if (f.state !== "startle" && this.seenDay &&
-               this.light < SLEEP_LIGHT) {
+               this.light < SLEEP_LIGHT && !peckish) {
       this.setState(f, "sleep");
     }
 
@@ -406,6 +411,12 @@ export class Sim {
       const floor = this.tank.height - BOTTOM_PAD - 4;
       f.y += Math.max(-0.4, Math.min(0.4, floor - f.y));
       f.speed = Math.max(f.speed * 0.98, f.cruise * 0.04);
+      // Level out: a fish that bedded down mid-climb or mid-dive
+      // would otherwise rest tilted (up to pitch()'s 45° clamp).
+      const level = wrapAngle((f.facing > 0 ? 0 : Math.PI) - f.heading);
+      f.heading = wrapAngle(f.heading +
+        Math.min(TURN_RATE, Math.max(-TURN_RATE, level)));
+      f.vy = 0;
     } else if (f.state === "startle") {
       f.x += f.speed * f.facing;
       f.y += f.vy;

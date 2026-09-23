@@ -23,6 +23,10 @@ export interface Lighting {
 export const LIGHTING_DEFAULTS: Lighting = { mode: "demo", on: 8, off: 22 };
 
 export const MINUTES_PER_DAY = 24 * 60;
+/** Light below which the tank counts as night: Stats' Day/Night reads
+ * it, and fish go to sleep below it. Above both nights' floors
+ * (DEMO_NIGHT_LIGHT, CLOCK_NIGHT_LIGHT), inside the short ramps. */
+export const DUSK_LIGHT = 0.5;
 /** Darkest the demo night gets (1 = full daylight). */
 export const DEMO_NIGHT_LIGHT = 0.3;
 /** Darkest a timer night gets. People watch a desk toy in the evening,

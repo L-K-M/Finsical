@@ -5,7 +5,7 @@
  * thresholds come from core/tuning.ts, which the sim uses too, so the
  * advice tracks what the sim actually does.
  */
-import { hourLabel, sanitizeLighting } from "../core/light.js";
+import { DUSK_LIGHT, hourLabel, sanitizeLighting } from "../core/light.js";
 import { HUNGER_SEEK, QUALITY_SEEK } from "../core/tuning.js";
 
 export interface StatsFish {
@@ -68,7 +68,7 @@ export function deriveStats(s: StatsInput): TankStats {
     : null;
   const water = Math.min(1, Math.max(0, fin(s.waterQuality, 1)));
   const light = fin(s.light, 1);
-  const phase = light > 0.5 ? "day" : "night";
+  const phase = light > DUSK_LIGHT ? "day" : "night";
   const stats: TankStats = {
     fishCount: fish.length,
     avgHunger,
