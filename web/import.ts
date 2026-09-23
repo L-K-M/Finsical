@@ -1252,8 +1252,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     // gravel backdrop). Sequential so slot/backdrop assignment matches
     // the original install order; failures skip that add-on. Shares
     // applyPack's dispatch so the two install paths can't diverge;
-    // skips onInstall so restores don't re-record, and skips add-ons
-    // already installed while the chain was in flight.
+    // fires onInstall only to refresh sound provenance — recordInstall
+    // dedupes by url so the record merges rather than re-adding.
+    // Skips add-ons already installed while the chain was in flight.
     restore(list: Importable[]): Promise<void> {
       if (remote) return Promise.resolve(); // the tank page owns the sim
       let p: Promise<void> = Promise.resolve();
@@ -1262,7 +1263,11 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
           if (installed.has(it.url)) return;
           return fetchPack(it.url)
             .then((rs) => {
-              if (!installed.has(it.url)) applyPack(it, rs, false);
+              if (installed.has(it.url)) return;
+              // Restores refresh the saved record's sound provenance —
+              // legacy installs recorded before it existed heal after
+              // one launch, so uninstall can drop their records too.
+              h.onInstall?.(it, applyPack(it, rs, false));
             })
             .catch((e) =>
               console.warn(`add-on restore failed for ${it.inner}:`, e));

@@ -187,6 +187,12 @@ describe("orphanedSounds", () => {
     expect(orphanedSounds([addon("a.zip")], [addon("b.zip")]))
       .toEqual([]);
   });
+  it("keeps everything when the leaving add-on still sits in rest", () => {
+    // Pins the caller contract: `rest` must already exclude `gone`,
+    // otherwise removeAddon silently drops nothing.
+    const a = addon("a.zip", ["tap"]);
+    expect(orphanedSounds([a], [a, addon("b.zip")])).toEqual([]);
+  });
 });
 
 describe("browserGeometry", () => {

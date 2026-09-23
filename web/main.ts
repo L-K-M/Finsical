@@ -655,12 +655,15 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     // stem installed separately mustn't overwrite under the basename.
     const sounds = usable.flatMap(
       (r) => qualifySoundItemName(r.sounds, it.inner));
+    let storedNames: string[] = [];
     if (sounds.length)
       await handleSounds(sounds)
+        // handleSounds dedupes colliding names in place — record the
+        // final ones, and only on success: a failed decode must not
+        // claim provenance over records never written.
+        .then(() => { storedNames = sounds.map((s) => s.name); })
         .catch((e) => console.warn("sound install skipped:", e));
-    // handleSounds dedupes colliding names in place — record the final
-    // ones so uninstall drops what was actually stored.
-    recordInstall(it, sounds.map((s) => s.name));
+    recordInstall(it, storedNames);
     bus.post({ op: "installed", url: it.url });
     postState();
   } catch (e) { fail(String(e)); }
