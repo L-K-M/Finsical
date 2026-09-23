@@ -69,8 +69,8 @@ export interface Bubble {
   y: number;
 }
 
-const MARGIN = 16;
-const SURFACE = 10;
+export const MARGIN = 16;
+export const SURFACE = 10;
 export const BOTTOM_PAD = 12;
 
 /** Smallest signed angle delta, wrapped to [−π, π). */
@@ -116,7 +116,7 @@ const BRAKE_DIST = 24;
 /** Heading steer rate, rad/tick — a 180° reversal takes ~19 ticks. */
 const TURN_RATE = Math.PI / 20;
 /** Half-height of a fish's preferred depth band. */
-const BAND_HALF = 24;
+export const BAND_HALF = 24;
 /** Chance per decision of picking a new depth band. */
 const BAND_SHIFT = 0.2;
 /** Above this hunger a fish begs near the surface between meals. */
@@ -329,8 +329,12 @@ export class Sim {
       }
       // Curiosity: the fish that noticed the pointer drifts toward it
       // — hunger (food, above) outranks it, and inside the standoff
-      // it just hovers there.
-      if (f === this.noticeFish && this.notice && dist > NOTICE_STANDOFF) {
+      // it just hovers there. The guard measures fish-to-pointer, not
+      // fish-to-target: a fresh decide() re-rolls tx/ty, so `dist`
+      // alone would re-pin a hovering fish to the cursor forever.
+      if (f === this.noticeFish && this.notice &&
+          Math.hypot(this.notice.x - f.x, this.notice.y - f.y) >
+            NOTICE_STANDOFF) {
         f.tx = this.notice.x;
         f.ty = this.notice.y;
         dist = Math.hypot(f.tx - f.x, f.ty - f.y);

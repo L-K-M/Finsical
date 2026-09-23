@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DAY_TICKS, FOOD_ROT_TICKS, Sim, TURN_TICKS } from "./sim.js";
+import { BAND_HALF, DAY_TICKS, FOOD_ROT_TICKS, MARGIN, Sim, SURFACE,
+         TURN_TICKS } from "./sim.js";
 
 // States a fish may be in when it's not seeking food.
 const IDLE_STATES = ["drift", "turn"];
@@ -121,7 +122,7 @@ describe("Sim", () => {
     const f = sim.addFish({ x: 100, y: 170, hunger: 0.95 });
     for (let i = 0; i < 600; i++) sim.tick();
     // Every decide clamps the depth band to just under the surface.
-    expect(f.bandY).toBeLessThanOrEqual(10 + 16 + 24);
+    expect(f.bandY).toBeLessThanOrEqual(SURFACE + MARGIN + BAND_HALF);
     // and the fish actually lives up there
     expect(f.y).toBeLessThan(90);
   });

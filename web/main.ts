@@ -121,6 +121,7 @@ canvas.addEventListener("pointerdown", (e) => {
 // The nearest calm fish notices the hovering pointer and drifts over
 // to look — hunger and panic still outrank curiosity in the sim.
 canvas.addEventListener("pointermove", (e) => {
+  if (!e.isPrimary) return; // one pointer drives curiosity
   sim.notice = tankPoint(e.clientX, e.clientY);
 });
 canvas.addEventListener("pointerleave", () => { sim.notice = null; });
