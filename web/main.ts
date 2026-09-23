@@ -1119,8 +1119,9 @@ function render(): void {
   for (const f of sim.fish) drawFish(f);
 
   for (const b of sim.bubbles) {
-    // Wobble derived from position + tick — no sim state needed.
-    const wx = b.x + Math.sin(sim.tickCount * 0.15 + b.y * 0.4) * 1.2;
+    // Wall-clock wobble phased by depth — no per-bubble state needed.
+    const wx = b.x +
+      Math.sin(performance.now() * 0.0045 + b.y * 0.4) * 1.2;
     ctx.drawImage(bubbleSprite, Math.round(wx) - 2, Math.round(b.y) - 2);
   }
   // Sparse bloops: only some spawns make a sound.
