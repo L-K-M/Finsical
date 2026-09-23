@@ -38,7 +38,8 @@ export class TankAudio {
         const buf = raw.buffer.slice(raw.byteOffset,
                                      raw.byteOffset + raw.byteLength);
         return { name: s.name, data: await ac.decodeAudioData(buf) };
-      } catch {
+      } catch (e) {
+        console.warn(`audio skip ${s.file}:`, e);
         return null; // undecodable entry — keep the rest
       }
     }));
@@ -58,7 +59,8 @@ export class TankAudio {
           const buf = raw.buffer.slice(raw.byteOffset,
                                        raw.byteOffset + raw.byteLength);
           return { name: r.name, data: await ac.decodeAudioData(buf) };
-        } catch {
+        } catch (e) {
+          console.warn(`audio skip imported ${r.name}:`, e);
           return null; // undecodable entry — keep the rest
         }
       }));
