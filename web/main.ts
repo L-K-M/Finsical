@@ -105,6 +105,7 @@ canvas.addEventListener("pointerdown", (e) => {
   const x = (e.clientX - r.left - (r.width - TANK.width * s) / 2) / s;
   const y = (e.clientY - r.top - (r.height - TANK.height * s) / 2) / s;
   if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return; // letterbox bar
+  audio.unlock(); // an ⌥-click is a gesture too
   if (e.altKey) {
     // ⌥-click is "Get Info": open the card on the fish under the
     // pointer, or dismiss it when the water is empty.
@@ -112,7 +113,6 @@ canvas.addEventListener("pointerdown", (e) => {
     if (f) openInfo(f); else closeInfo();
     return;
   }
-  audio.unlock();
   if (y < TANK.height * 0.15) { sim.dropFood(x); audio.feed(); }
   else { sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height); }
 });
@@ -121,7 +121,7 @@ canvas.addEventListener("pointerdown", (e) => {
 // A tiny Mac window that follows the ⌥-clicked fish — its name, hunger
 // and mood. Closed by its close box, Escape, an ⌥-click on empty water,
 // or the fish leaving the tank.
-const INFO_MOODS: Record<string, string> = {
+const INFO_MOODS: Record<Fish["state"], string> = {
   drift: "wandering", seek: "looking for food",
   startle: "startled!", turn: "turning",
 };
@@ -181,9 +181,12 @@ function layoutInfo(): void {
   const f = card.fish;
   if (!sim.fish.includes(f)) { closeInfo(); return; }
   const r = canvas.getBoundingClientRect();
+  const sr = screenEl.getBoundingClientRect();
   const s = Math.min(r.width / TANK.width, r.height / TANK.height);
-  const ox = canvas.offsetLeft + (r.width - TANK.width * s) / 2;
-  const oy = canvas.offsetTop + (r.height - TANK.height * s) / 2;
+  // Card space is screenEl-relative — rect deltas stay right under
+  // scroll and regardless of which ancestor is positioned.
+  const ox = r.left - sr.left + (r.width - TANK.width * s) / 2;
+  const oy = r.top - sr.top + (r.height - TANK.height * s) / 2;
   const cw = card.root.offsetWidth, ch = card.root.offsetHeight;
   let px = ox + f.x * s - cw / 2;
   let py = oy + f.y * s - ch - 8;
@@ -193,7 +196,7 @@ function layoutInfo(): void {
   card.root.style.top =
     `${Math.max(0, Math.min(py, r.height - ch))}px`;
   const hunger = `Hunger  ${Math.round(f.hunger * 100)}%`;
-  const mood = INFO_MOODS[f.state] ?? f.state;
+  const mood = INFO_MOODS[f.state];
   if (card.hunger.textContent !== hunger)
     card.hunger.textContent = hunger;
   if (card.mood.textContent !== mood) card.mood.textContent = mood;

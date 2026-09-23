@@ -70,6 +70,9 @@ body.crt canvas#tank { opacity: 0; }
   padding: 0; background: #fff; border: 1px solid #000;
   cursor: pointer;
 }
+/* The 7px box is authentic but untappable — an invisible halo widens
+   its hit area without changing the look. */
+.finclose::before { content: ""; position: absolute; inset: -6px; }
 .finclose:active { background: #000; }
 .finname {
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
