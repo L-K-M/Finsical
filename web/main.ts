@@ -830,8 +830,9 @@ window.addEventListener("keydown", (e) => {
     // Ctrl+I hits the same branch — still prefer the native window.
     // Suppress the web-view default (e.g. contenteditable italic)
     // before deferring to the shell.
-    if (inNativeShell()) { e.preventDefault(); return; }
-    importPanel.open(); e.preventDefault();
+    e.preventDefault();
+    if (inNativeShell()) return;
+    importPanel.open();
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" &&
              !e.repeat && !importPanel.isOpen) {
     feedFish(); // bare F: Cmd-F is Find in browsers; the native menu owns ⌘F
