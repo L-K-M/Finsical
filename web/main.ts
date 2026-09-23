@@ -125,7 +125,11 @@ function usePack(pack: { sheets: Map<string, SpriteSheet>;
                          manifest?: AzpackManifest },
                  read?: (path: string) => Promise<Uint8Array>): number {
   const sheet = pickSwimSheet(pack.sheets.values());
-  if (sheet) fishSheets.push(sheet);
+  if (sheet) {
+    fishSheets.push(sheet);
+    // One more sheet re-deals every round-robin fish's art.
+    for (const f of sim.fish) bindExtents(f);
+  }
   if (pack.manifest && read)
     void audio.load(read, pack.manifest)
       .then(() => audio.startAmbient())
@@ -138,7 +142,7 @@ function usePack(pack: { sheets: Map<string, SpriteSheet>;
  * install URL: the precise identity when packs share a species name. */
 function spawnFish(sheetIdx: number, species: string, pack?: string): void {
   const facing = Math.random() < 0.5 ? 1 : -1;
-  sim.addFish({
+  const f = sim.addFish({
     x: 60 + Math.random() * (TANK.width - 120),
     y: 30 + Math.random() * (TANK.height - 90),
     facing: facing as 1 | -1,
@@ -148,6 +152,7 @@ function spawnFish(sheetIdx: number, species: string, pack?: string): void {
     sheetIdx, species,
     ...(pack !== undefined ? { pack } : {}),
   });
+  bindExtents(f);
   saveTank();
 }
 
@@ -323,6 +328,7 @@ function remapSheetIdx(): void {
     } else if (f.sheetIdx !== undefined &&
                (f.sheetIdx < 0 || f.sheetIdx >= fishSheets.length))
       delete f.sheetIdx;
+    bindExtents(f);
   }
 }
 
@@ -1072,21 +1078,30 @@ function sheetScale(sheet: SpriteSheet): number {
                   MAX_FISH_H / sheet.meta.cellW);
 }
 
-function drawFish(f: Fish): void {
+/** Report a fish's drawn half-extents to the sim, which keeps big
+ * bodies inside the glass by them. Called wherever the fish's sheet can
+ * change (spawn, a pack landing re-dealing round-robin sheets, restore
+ * remaps) rather than while drawing, so no tick runs on stale extents
+ * and a newly bound big fish doesn't snap inward on its next tick. */
+function bindExtents(f: Fish): void {
   const sheet = sheetOf(f);
   if (!sheet) {
     delete f.halfW; delete f.halfH;
-    return drawPlaceholder(f.x, f.y, f.facing, pitch(f));
+    return;
   }
   const s = sheetScale(sheet);
-  // The sim keeps big bodies inside the glass by these extents.
   f.halfW = sheet.meta.cellH * s / 2;
   f.halfH = sheet.meta.cellW * s / 2;
+}
+
+function drawFish(f: Fish): void {
+  const sheet = sheetOf(f);
+  if (!sheet) return drawPlaceholder(f.x, f.y, f.facing, pitch(f));
   let cv: HTMLCanvasElement;
   try {
     const pose = fishPose(sheet, f);
     cv = swimCanvas(sheet, animFrame(f, sheet.meta.framesPerGroup),
-                    pose.mir, pose.g, s);
+                    pose.mir, pose.g, sheetScale(sheet));
   } catch (e) {
     if (!(e instanceof RangeError)) throw e;
     // A truncated pack can legitimately lack this cell — an uncaught
