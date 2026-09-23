@@ -2,6 +2,7 @@
 <html lang="en" class="tankroot">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Finsical</title>
   <link rel="stylesheet" href="osmium.css" />
   <link rel="stylesheet" href="app.css" />
@@ -13,8 +14,9 @@
        the tank, or to the page body (a window drag) elsewhere. -->
   <div id="screenback"></div>
   <div id="screen">
-    <canvas id="tank" width="320" height="200"></canvas>
-    <canvas id="crt"></canvas>
+    <canvas id="tank" width="320" height="200" role="img"
+            aria-label="Aquarium. Click near the surface or press F to feed the fish, click deeper to tap the glass."></canvas>
+    <canvas id="crt" aria-hidden="true"></canvas>
   </div>
   <div id="machine">
     <svg id="shell" preserveAspectRatio="xMidYMid meet"
