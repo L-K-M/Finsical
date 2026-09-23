@@ -6,7 +6,8 @@
  * Sprites, tiles and gradients are built once on first use; the per-frame
  * draw calls allocate nothing beyond a few path points.
  */
-import { BOTTOM_PAD, FOOD_ROT_TICKS, SURFACE } from "../core/sim.js";
+import { BOTTOM_PAD, BUBBLE_RISE, FOOD_ROT_TICKS, SURFACE }
+  from "../core/sim.js";
 import type { Bubble, Food } from "../core/sim.js";
 
 const W = 320;
@@ -40,9 +41,6 @@ export function sunFactor(light: number): number {
 
 // ---- bubbles ---------------------------------------------------------------
 
-/** Bubble rise per tick in the sim; a bubble at or below SURFACE + this
- * is on its last tick and pops instead of drawing. */
-const BUBBLE_RISE = 0.8;
 
 /**
  * Bubble diameter in pixels by depth: gas expands as the pressure drops,

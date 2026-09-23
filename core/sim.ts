@@ -125,6 +125,8 @@ const BAND_SHIFT = 0.2;
  */
 export const TURN_TICKS = 10;
 const BUBBLE_CHANCE = 0.004;
+/** How far a bubble rises per tick. */
+export const BUBBLE_RISE = 0.8;
 /** One full day/night cycle in ticks (~13 min at 30 tps). */
 export const DAY_TICKS = 24000;
 
@@ -240,7 +242,7 @@ export class Sim {
       Math.min(1, Math.max(0, this.waterQuality + FILTER_PER_TICK));
     for (let i = this.bubbles.length - 1; i >= 0; i--) {
       const b = this.bubbles[i]!;
-      b.y -= 0.8;
+      b.y -= BUBBLE_RISE;
       if (b.y <= SURFACE) this.bubbles.splice(i, 1);
     }
   }

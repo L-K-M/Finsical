@@ -1115,7 +1115,8 @@ function render(): void {
   prevBubbles = sim.bubbles.length;
 
   // Fouled water murks the whole scene.
-  drawMurk(ctx, sim.waterQuality, sim.tickCount);
+  drawMurk(ctx, sim.waterQuality,
+           waterMotion === "animated" ? sim.tickCount : 0);
 
   // day/night dimming
   const dark = 1 - sim.light;
