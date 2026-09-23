@@ -1,37 +1,44 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="ptroot">
 <head>
   <meta charset="utf-8" />
   <title>Preferences</title>
+  <link rel="stylesheet" href="platinum.css" />
   <link rel="stylesheet" href="app.css" />
 </head>
-<body class="panelpage prefpage">
-  <div class="pfhead">
-    <label class="pfmaster">
-      <input type="checkbox" id="crt-on" />
-      <span>
-        <span class="pftitle">CRT monitor effect</span>
-        <span class="pfsub">Re-draw the tank the way a 1990s tube monitor
-          showed it: scanlines, glow, curved glass. Off renders crisp
-          pixels on modern displays.</span>
-      </span>
-    </label>
-    <div class="pfwarn" id="crt-warn" hidden>
-      This system can't run the effect (WebGL unavailable or the GPU
-      context was lost) — the settings below still save for later.
+<body class="ptpage">
+  <!-- A Mac OS 8 control panel: pane buttons down the left (Desktop
+       Pictures style), the chosen pane on the right, and a caption
+       area along the bottom explaining whatever the pointer is on.
+       prefs.ts fills in the controls. -->
+  <div id="pwin" class="pt-page-window">
+    <div class="pt-content">
+      <div id="pfstrip" role="tablist" aria-orientation="vertical"
+           aria-label="Settings"></div>
+      <div id="pfpanes">
+        <section id="pane-machine" class="pfpane" role="tabpanel">
+          <div id="pfmachines"></div>
+          <div id="pfpreview" class="pt-well" aria-hidden="true"></div>
+        </section>
+        <section id="pane-monitor" class="pfpane" role="tabpanel" hidden>
+          <label class="pt-checkbox" id="pfcrt">
+            <input type="checkbox" id="crt-on" />Simulate a CRT monitor
+          </label>
+          <div class="pt-caption" id="crt-warn" hidden>This Mac can't show
+            the effect (WebGL is unavailable or the graphics context was
+            lost). Settings are kept for later.</div>
+          <div id="pftraits"></div>
+        </section>
+        <section id="pane-picture" class="pfpane" role="tabpanel" hidden>
+          <div id="pfpicture"></div>
+        </section>
+        <div id="pffoot">
+          <div class="pt-separator"></div>
+          <div id="pfdesc" aria-live="polite"></div>
+          <button type="button" class="pt-button" id="pfdefaults">Defaults</button>
+        </div>
+      </div>
     </div>
-  </div>
-  <div id="pfcontrols">
-    <div class="pfsec">Machine</div>
-    <div id="pfmachine"></div>
-    <div class="pfsec">CRT effect</div>
-    <div id="pftraits"></div>
-    <div class="pfsec">Picture controls</div>
-    <div id="pfpicture"></div>
-  </div>
-  <div class="pffoot">
-    <button id="pfreset">Reset to defaults</button>
-    <span class="pfhint">Changes apply to the tank instantly.</span>
   </div>
   <script src="prefs.js"></script>
 </body>

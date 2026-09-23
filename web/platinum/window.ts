@@ -6,6 +6,7 @@
 // box highlights while the mouse is down over it; releasing outside
 // cancels). What a box *does* is the host's business — see the
 // callbacks — because only the native shell can close or move a window.
+import { trackPress } from "./controls.js";
 import { installPlatinum } from "./install.js";
 
 export interface WindowOptions {
@@ -39,40 +40,6 @@ function part(tag: string, cls: string): HTMLElement {
   return e;
 }
 
-/** Highlight `box` while a primary-button press is over it; run
- * `action` if the press ends over it. Assistive tech "clicks" (no
- * pointer, detail 0) activate it directly. */
-function trackBox(box: HTMLElement, action: () => void): void {
-  box.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    box.setPointerCapture(e.pointerId);
-    const over = (ev: PointerEvent): boolean => {
-      const r = box.getBoundingClientRect();
-      return ev.clientX >= r.left && ev.clientX < r.right &&
-             ev.clientY >= r.top && ev.clientY < r.bottom;
-    };
-    const move = (ev: PointerEvent) => {
-      if (ev.pointerId === e.pointerId)
-        box.classList.toggle("pt-pressed", over(ev));
-    };
-    const end = (ev: PointerEvent) => {
-      if (ev.pointerId !== e.pointerId) return;
-      box.removeEventListener("pointermove", move);
-      box.removeEventListener("pointerup", end);
-      box.removeEventListener("pointercancel", end);
-      box.classList.remove("pt-pressed");
-      if (ev.type === "pointerup" && over(ev)) action();
-    };
-    box.classList.add("pt-pressed");
-    box.addEventListener("pointermove", move);
-    box.addEventListener("pointerup", end);
-    box.addEventListener("pointercancel", end);
-  });
-  box.addEventListener("click", (e) => { if (e.detail === 0) action(); });
-}
-
 /** Turn `el` into a Platinum window. Its `.pt-content` child (created
  * around the existing children if missing) becomes the content area. */
 export function mountWindow(el: HTMLElement,
@@ -102,7 +69,7 @@ export function mountWindow(el: HTMLElement,
     const box = part("button", `pt-box ${cls}`);
     box.setAttribute("aria-label", label);
     box.tabIndex = -1; // OS 8 boxes take no keyboard focus
-    trackBox(box, action);
+    trackPress(box, action);
     chrome.push(box);
   }
   el.classList.toggle("pt-no-zoom", !opts.onZoom);

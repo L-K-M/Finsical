@@ -10,10 +10,11 @@ $(APP): bundle Finsical.swift Info.plist Finsical.icns
 	mkdir -p $(APP).staging/Contents/MacOS $(APP).staging/Contents/Resources/web
 	cp Info.plist $(APP).staging/Contents/
 	cp Finsical.icns $(APP).staging/Contents/Resources/
-	cp ../web/index.html ../web/panel.html ../web/prefs.html \
-	   ../web/stats.html ../web/app.css ../web/platinum.css \
-	   ../dist/bundle.js ../dist/panel.js ../dist/prefs.js \
-	   ../dist/stats.js \
+	cp ../web/index.html ../web/overview.html ../web/addons.html \
+	   ../web/prefs.html ../web/stats.html ../web/app.css \
+	   ../web/platinum.css \
+	   ../dist/bundle.js ../dist/overview.js ../dist/addons.js \
+	   ../dist/prefs.js ../dist/stats.js \
 	   $(APP).staging/Contents/Resources/web/
 	@if [ -d ../web/pack ]; then cp -r ../web/pack $(APP).staging/Contents/Resources/web/; fi
 	# assets is required — the Plus machine's shell lives there; fail

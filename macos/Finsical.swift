@@ -66,10 +66,77 @@ final class DragStrip: NSView {
     }
 }
 
-/// Borderless NSWindows can't become key by default — the stats window
-/// needs key status for its Escape-to-close and menu shortcuts.
+/// The client windows are borderless: their pages draw the Mac OS 8
+/// frame. Borderless NSWindows can't become key by default, and with
+/// no close or zoom button AppKit's Window-menu actions beep — these
+/// overrides route them to the same behavior as the page's boxes.
 final class KeyableWindow: NSWindow {
+    /// The zoom box's frame toggle; nil for a fixed-size window.
+    var zoomAction: (() -> Void)?
     override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+    override func performClose(_ sender: Any?) {
+        if delegate?.windowShouldClose?(self) == false { return }
+        close()
+    }
+    override func performZoom(_ sender: Any?) { zoomAction?() }
+    override func performMiniaturize(_ sender: Any?) { miniaturize(sender) }
+    override func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        switch item.action {
+        case #selector(performClose(_:)), #selector(performMiniaturize(_:)):
+            return true
+        case #selector(performZoom(_:)):
+            return zoomAction != nil
+        default:
+            return super.validateMenuItem(item)
+        }
+    }
+}
+
+/// A client page draws its own title bar, so a press there on an
+/// inactive window has to reach the page: one gesture then activates
+/// and drags the window, as in Mac OS 8. WebKit would otherwise spend
+/// the first click on activation alone; content clicks still do.
+final class ClientWebView: WKWebView {
+    /// The Platinum title bar's height (web/platinum.css).
+    private let titleBarH: CGFloat = 22
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        // Only a left press drags; others just activate.
+        guard let e = event, e.type == .leftMouseDown else { return false }
+        let p = convert(e.locationInWindow, from: nil)
+        return (isFlipped ? p.y : bounds.height - p.y) < titleBarH
+    }
+}
+
+/// A window whose page draws all of it (web/winhost.ts): Preferences,
+/// Tank Overview, Import Add-ons, Tank Stats.
+struct ClientSpec {
+    let page: String
+    let title: String
+    /// Frame persistence key (see restoreOrCenter).
+    let frameKey: String
+    /// Standard content size — the page's window plus its 1px drop
+    /// shadow; the zoom box's standard state and the initial size.
+    let size: NSSize
+    /// Smallest expanded size; nil for a fixed-size window.
+    let minSize: NSSize?
+}
+
+/// A client window and its chrome state.
+final class ClientWindow {
+    let spec: ClientSpec
+    var window: KeyableWindow?
+    var view: WKWebView?
+    /// Frame height before a windowshade collapse — restored on expand.
+    var preShadeH: CGFloat?
+    var preShadeMinH: CGFloat?
+    /// Bumped on every shade/expand so a stale expand-completion can't
+    /// clear state a newer toggle already replaced.
+    var shadeGen = 0
+    /// The frame to go back to from the standard size (Mac OS 8 user
+    /// state); set when the zoom box zooms out.
+    var userFrame: NSRect?
+    init(_ spec: ClientSpec) { self.spec = spec }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
@@ -77,31 +144,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                          NSWindowDelegate {
     private var window: NSWindow!
     private var webView: WKWebView!
-    private var panelWindow: NSWindow?
-    private var panelView: WKWebView?
-    private var prefsWindow: NSWindow?
-    private var prefsView: WKWebView?
-    private var statsWindow: NSWindow?
-    private var statsView: WKWebView?
-    /// Frame height before a windowshade collapse — restored on open.
-    private var statsPreShadeH: CGFloat?
-    /// Bumped on every shade/expand so a stale expand-completion can't
-    /// clear state a newer toggle already replaced.
-    private var statsShadeGen = 0
-    private var statsPreShadeMinH: CGFloat?
-    /// The stats window's user-set frame — its zoom box toggles between
-    /// this and the default size (System 8 user/standard states).
-    private var statsUserFrame: NSRect?
-    /// Default stats-window size — the zoom box's "standard" state and
-    /// the window's initial content size share it.
-    private let statsStdSize = CGSize(width: 360, height: 320)
-    /// Smallest expanded stats window: the page clips rather than
-    /// scrolls (Platinum windows without scroll bars), so this keeps
-    /// every field and two care hints visible.
-    private let statsMinSize = NSSize(width: 300, height: 250)
+    private let prefs = ClientWindow(ClientSpec(
+        page: "prefs.html", title: "Preferences", frameKey: "FinsicalPrefs",
+        size: NSSize(width: 565, height: 457), minSize: nil))
+    private let overview = ClientWindow(ClientSpec(
+        page: "overview.html", title: "Tank Overview",
+        frameKey: "FinsicalOverview",
+        size: NSSize(width: 521, height: 381),
+        minSize: NSSize(width: 361, height: 201)))
+    private let addons = ClientWindow(ClientSpec(
+        page: "addons.html", title: "Import Add-ons",
+        frameKey: "FinsicalAddons",
+        size: NSSize(width: 621, height: 441),
+        minSize: NSSize(width: 441, height: 301)))
+    /// The stats page clips rather than scrolls (Platinum windows
+    /// without scroll bars), so its minimum keeps every field and two
+    /// care hints visible.
+    private let stats = ClientWindow(ClientSpec(
+        page: "stats.html", title: "Tank Stats", frameKey: "FinsicalStats",
+        size: NSSize(width: 360, height: 320),
+        minSize: NSSize(width: 300, height: 250)))
+    private var clients: [ClientWindow] { [prefs, overview, addons, stats] }
     /// Windowshaded height: the page's 22px collapsed Platinum window
     /// plus the 1px drop shadow it draws below itself.
-    private let statsShadedH: CGFloat = 23
+    private let shadedH: CGFloat = 23
 
     /// Which persistence key each window saves its frame under.
     private var frameKeys: [ObjectIdentifier: String] = [:]
@@ -152,7 +218,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     private func persistFrame(_ object: Any?) {
         guard let w = object as? NSWindow,
               let name = frameKeys[ObjectIdentifier(w)] else { return }
-        UserDefaults.standard.set(NSStringFromRect(w.frame),
+        var f = w.frame
+        // A windowshaded window saves its expanded frame: quitting while
+        // folded must not bring it back as a titlebar sliver.
+        if let h = clients.first(where: { $0.window === w })?.preShadeH {
+            f = NSRect(x: f.minX, y: f.maxY - h, width: f.width, height: h)
+        }
+        UserDefaults.standard.set(NSStringFromRect(f),
                                   forKey: "FinsicalFrame.\(name)")
     }
 
@@ -164,142 +236,184 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         return config
     }
 
-    /// The panel window hosts the tank overview and the add-on browser —
-    /// either would be squeezed inside the small tank window.
-    @objc func openImport() { showPanel("addons") }
-    @objc func openOverview() { showPanel("overview") }
+    @objc func openPrefs() { show(prefs) }
+    @objc func openOverview() { show(overview) }
+    @objc func openImport() { show(addons) }
+    @objc func openStats() { show(stats) }
 
-    private func showPanel(_ view: String) {
-        // view lands in both the URL hash and a JS string literal below —
-        // never let an unvalidated value through.
-        precondition(["addons", "overview"].contains(view),
-                     "unknown panel view: \(view)")
-        if panelWindow == nil {
-            let pv = WKWebView(frame: .init(x: 0, y: 0, width: 680, height: 520),
-                               configuration: makeWebConfig())
-            pv.uiDelegate = self
-            pv.navigationDelegate = self
-            let w = NSWindow(
-                contentRect: pv.frame,
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                backing: .buffered, defer: false)
-            w.title = "Finsical"
-            w.minSize = NSSize(width: 420, height: 360)
-            w.contentView = pv
-            w.isReleasedWhenClosed = false // reopen reuses the window
-            w.initialFirstResponder = pv
-            restoreOrCenter(w, "FinsicalPanel")
-            panelWindow = w
-            panelView = pv
-            pv.load(URLRequest(
-                url: URL(string: "finsical://app/panel.html#\(view)")!))
-        } else if let pv = panelView, pv.isLoading {
-            // Still loading: window.panelUI doesn't exist yet — reload
-            // with the requested hash instead of silently no-op'ing.
-            pv.load(URLRequest(
-                url: URL(string: "finsical://app/panel.html#\(view)")!))
-        } else {
-            panelView?.evaluateJavaScript(
-                "if (window.panelUI) { window.panelUI.show('\(view)') } " +
-                "else { throw new Error('panelUI missing') }") { [weak self] _, e in
-                guard let e else { return }
-                NSLog("Finsical: panel view switch failed: \(e)")
-                // Page loaded but panelUI is gone (script failed) —
-                // reload lands on the requested tab via the hash.
-                if let u = URL(string: "finsical://app/panel.html#\(view)") {
-                    self?.panelView?.load(URLRequest(url: u))
-                }
-            }
-        }
-        panelWindow?.makeKeyAndOrderFront(nil)
-    }
-
-    /// Preferences window — CRT effect controls (web/prefs.ts). Like
-    /// the panel it only ever talks to the tank page over the bus.
-    @objc func openPrefs() {
-        if prefsWindow == nil {
-            let pv = WKWebView(frame: .init(x: 0, y: 0, width: 440, height: 560),
-                               configuration: makeWebConfig())
-            pv.uiDelegate = self
-            pv.navigationDelegate = self
-            let w = NSWindow(
-                contentRect: pv.frame,
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                backing: .buffered, defer: false)
-            w.title = "Finsical Preferences"
-            w.minSize = NSSize(width: 380, height: 420)
-            w.contentView = pv
-            w.isReleasedWhenClosed = false // reopen reuses the window
-            w.initialFirstResponder = pv
-            restoreOrCenter(w, "FinsicalPrefs")
-            prefsWindow = w
-            prefsView = pv
-            pv.load(URLRequest(
-                url: URL(string: "finsical://app/prefs.html")!))
-        }
-        prefsWindow?.makeKeyAndOrderFront(nil)
-    }
-
-    /// Stats window — borderless, so the page's Mac OS 8 chrome
-    /// (web/platinum: frame, pinstripe titlebar, boxes, 1px drop
-    /// shadow) IS the window
-    /// (web/stats.ts). Chrome gestures arrive as bus ops: dragWindow
-    /// drags, closeStats closes, statsShade folds it up.
-    @objc func openStats() {
-        if statsWindow == nil {
-            let sv = WKWebView(frame: .init(origin: .zero,
-                                          size: statsStdSize),
-                               configuration: makeWebConfig())
-            sv.uiDelegate = self
-            sv.navigationDelegate = self
+    /// Open (or bring back) a client window. Borderless, so the page's
+    /// Mac OS 8 chrome (web/platinum: frame, pinstripe titlebar, boxes,
+    /// 1px drop shadow) IS the window; its gestures arrive as bus ops
+    /// (see userContentController).
+    private func show(_ c: ClientWindow) {
+        if c.window == nil {
+            let v = ClientWebView(frame: .init(origin: .zero,
+                                               size: c.spec.size),
+                                  configuration: makeWebConfig())
+            v.uiDelegate = self
+            v.navigationDelegate = self
             // Same transparency levers as the tank — the page's painted
             // window edge is the only visible surface.
-            sv.underPageBackgroundColor = .clear
-            if sv.responds(to: NSSelectorFromString("setDrawsBackground:")) {
-                sv.setValue(false, forKey: "drawsBackground")
+            v.underPageBackgroundColor = .clear
+            if v.responds(to: NSSelectorFromString("setDrawsBackground:")) {
+                v.setValue(false, forKey: "drawsBackground")
             }
-            let w = KeyableWindow(
-                contentRect: sv.frame,
-                styleMask: [.borderless, .resizable],
-                backing: .buffered, defer: false)
+            var style: NSWindow.StyleMask = [.borderless, .miniaturizable]
+            if c.spec.minSize != nil { style.insert(.resizable) }
+            let w = KeyableWindow(contentRect: v.frame, styleMask: style,
+                                  backing: .buffered, defer: false)
+            w.title = c.spec.title // Window menu, Mission Control
             w.isOpaque = false
             w.backgroundColor = .clear
             // Mac OS 8 windows cast a hard 1px shadow, which the page
             // draws; a soft AppKit shadow would ring it.
             w.hasShadow = false
-            w.minSize = statsMinSize
-            w.contentView = sv
+            if let m = c.spec.minSize {
+                w.minSize = m
+                w.zoomAction = { [weak self, unowned c] in self?.zoom(c) }
+            }
+            w.contentView = v
             w.isReleasedWhenClosed = false // reopen reuses the window
-            w.initialFirstResponder = sv
-            restoreOrCenter(w, "FinsicalStats")
-            statsWindow = w
-            statsView = sv
-            sv.load(URLRequest(
-                url: URL(string: "finsical://app/stats.html")!))
+            w.initialFirstResponder = v
+            restoreOrCenter(w, c.spec.frameKey)
+            if c.spec.minSize == nil {
+                // Fixed size: a saved frame only places it (the old
+                // titled Preferences window saved a different size).
+                let f = w.frame
+                w.setFrame(NSRect(x: f.minX, y: f.maxY - c.spec.size.height,
+                                  width: c.spec.size.width,
+                                  height: c.spec.size.height),
+                           display: false)
+            }
+            c.window = w
+            c.view = v
+            v.load(URLRequest(
+                url: URL(string: "finsical://app/\(c.spec.page)")!))
         }
-        // Reopening a window closed while shaded: expand it here —
-        // reopening is only knowable at the shell. The page clears its
-        // own `shaded` flag when the viewport grows past titlebar size.
-        if let w = statsWindow, let h = statsPreShadeH {
+        guard let w = c.window else { return }
+        if let h = c.preShadeH {
+            // Reopening a window closed while shaded: expand it here —
+            // reopening is only knowable at the shell. The page clears
+            // its own fold when the viewport grows past titlebar size.
             w.minSize = NSSize(width: w.minSize.width,
-                               height: statsPreShadeMinH ??
-                                   statsMinSize.height)
+                               height: c.preShadeMinH ?? w.minSize.height)
             let f = w.frame
             w.setFrame(NSRect(x: f.minX, y: f.maxY - h,
                               width: f.width, height: h), display: true)
-            statsPreShadeH = nil
-            statsPreShadeMinH = nil
-        } else if let w = statsWindow, w.frame.height < 40 {
-            // A frame autosaved while shaded restores as a titlebar
-            // sliver — with no pre-shade height after a relaunch it
-            // would stay stuck. Grow it back, top edge pinned.
-            let f = w.frame
-            let h = statsMinSize.height
+            c.preShadeH = nil
+            c.preShadeMinH = nil
+        } else if w.frame.height < 40 {
+            // A sliver saved by an older build while shaded: with no
+            // pre-shade height after a relaunch it would stay stuck.
+            // Grow it to the standard height, top edge pinned.
+            let f = w.frame, h = c.spec.size.height
             w.setFrame(NSRect(x: f.minX, y: f.maxY - h,
-                              width: f.width, height: h),
+                              width: f.width, height: h), display: true)
+        }
+        w.makeKeyAndOrderFront(nil)
+    }
+
+    /// Windowshade: fold the window to its titlebar and back.
+    private func shade(_ c: ClientWindow, _ on: Bool) {
+        guard let w = c.window else { return }
+        let f = w.frame
+        // Each shade/expand supersedes the previous animation — the
+        // expand's deferred clear must not fire for a state a newer
+        // toggle already replaced.
+        c.shadeGen += 1
+        let gen = c.shadeGen
+        if on {
+            // A page reload while shaded resends on:true — keep the
+            // first captured height or unshade restores 23. Clamp to
+            // minSize so a rapid toggle can't capture a mid-animation
+            // frame and shrink the restore.
+            if c.preShadeH == nil {
+                c.preShadeH = max(f.height, c.spec.minSize?.height ??
+                                             c.spec.size.height)
+            }
+            // Programmatic setFrame can clamp to minSize; drop the
+            // floor while folded and restore it on expand.
+            if c.preShadeMinH == nil { c.preShadeMinH = w.minSize.height }
+            w.minSize = NSSize(width: w.minSize.width, height: shadedH)
+            w.setFrame(NSRect(x: f.minX, y: f.maxY - shadedH,
+                              width: f.width, height: shadedH),
+                       display: true, animate: true)
+        } else if let h = c.preShadeH {
+            w.minSize = NSSize(width: w.minSize.width,
+                               height: c.preShadeMinH ?? w.minSize.height)
+            // Clear the saved height only when the expand actually
+            // lands — a shade clicked mid-animation must keep the real
+            // height, not the partial frame.
+            NSAnimationContext.runAnimationGroup({ _ in
+                w.animator().setFrame(
+                    NSRect(x: f.minX, y: f.maxY - h,
+                           width: f.width, height: h),
+                    display: true)
+            }, completionHandler: {
+                if gen == c.shadeGen && abs(w.frame.height - h) < 0.5 {
+                    c.preShadeH = nil
+                    c.preShadeMinH = nil
+                }
+            })
+        }
+    }
+
+    /// Zoom box, decided the way the Mac OS 8 Window Manager does it:
+    /// a window at its standard size goes back to the user state; any
+    /// other frame becomes the user state and zooms to standard. So a
+    /// move, an edge resize or tiling needs no bookkeeping.
+    private func zoom(_ c: ClientWindow) {
+        guard let w = c.window, c.preShadeH == nil,
+              c.spec.minSize != nil else { return }
+        let std = standardFrame(c, w)
+        let atStd = abs(w.frame.width - std.width) < 0.5 &&
+                    abs(w.frame.height - std.height) < 0.5
+        if atStd {
+            guard let uf = c.userFrame else { return } // nowhere to go
+            c.userFrame = nil
+            w.setFrame(uf, display: true, animate: true)
+        } else {
+            c.userFrame = w.frame
+            w.setFrame(std, display: true, animate: true)
+        }
+    }
+
+    /// The standard state: the standard size with the top-left corner
+    /// pinned, shifted onto the screen's visible area when it would run
+    /// under the Dock or off an edge (AppKit doesn't constrain
+    /// borderless windows).
+    private func standardFrame(_ c: ClientWindow, _ w: NSWindow) -> NSRect {
+        let f = w.frame, s = c.spec.size
+        var r = NSRect(x: f.minX, y: f.maxY - s.height,
+                       width: s.width, height: s.height)
+        guard let vis = (w.screen ?? NSScreen.main)?.visibleFrame
+        else { return r }
+        r.origin.x = max(vis.minX, min(r.minX, vis.maxX - r.width))
+        r.origin.y = min(vis.maxY - r.height, max(r.minY, vis.minY))
+        return r
+    }
+
+    /// Grow box: modal mouse-tracking loop like AppKit's own resize —
+    /// the bottom-right drag adjusts width/height with the top edge
+    /// pinned. Polls pressedMouseButtons so an already-released click
+    /// can't wedge the loop.
+    private func grow(_ c: ClientWindow) {
+        guard let w = c.window, c.spec.minSize != nil else { return }
+        let f0 = w.frame, p0 = NSEvent.mouseLocation
+        while NSEvent.pressedMouseButtons & 1 != 0 {
+            guard let ev = NSApp.nextEvent(
+                matching: [.leftMouseDragged, .leftMouseUp],
+                until: Date(timeIntervalSinceNow: 0.1),
+                inMode: .eventTracking, dequeue: true)
+            else { continue }
+            if ev.type == .leftMouseUp { break }
+            let p = NSEvent.mouseLocation
+            let nw = max(w.minSize.width, f0.width + p.x - p0.x)
+            let nh = max(w.minSize.height, f0.height - (p.y - p0.y))
+            w.setFrame(NSRect(x: f0.minX, y: f0.maxY - nh,
+                              width: nw, height: nh),
                        display: true)
         }
-        statsWindow?.makeKeyAndOrderFront(nil)
     }
 
     /// The tank window's shape follows the selected machine case.
@@ -511,131 +625,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         w.makeFirstResponder(firstResponder)
     }
 
-    /// Bus relay: posts from a client window (panel, prefs) go to the
-    /// tank page, which owns all state; the tank's posts fan out to
-    /// every open client window (web/bus.ts registers window.__bus).
+    /// Bus relay: posts from a client window (Preferences, Tank
+    /// Overview, Import Add-ons, Tank Stats) go to the tank page, which
+    /// owns all state; the tank's posts fan out to every open client
+    /// window (web/bus.ts registers window.__bus).
     func userContentController(_ ucc: WKUserContentController,
                                didReceive message: WKScriptMessage) {
-        // Window-close and window-drag intents are handled natively —
-        // JS can't perform either itself. Each is honored only from
-        // the view it's about.
+        // Window chrome (close, shade, zoom, grow, drag) is handled
+        // natively — JS can't move or close its own window. Each op is
+        // honored only for the view that sent it.
         if let body = message.body as? [String: Any] {
-            if body["op"] as? String == "closePanel",
-               message.webView === panelView {
-                panelWindow?.close()
+            let op = body["op"] as? String
+            // A press on the tank's case moves the tank window.
+            if op == "dragWindow", message.webView === webView {
+                dragWindow(window, firstResponder: webView)
                 return
             }
-            if body["op"] as? String == "closePrefs",
-               message.webView === prefsView {
-                prefsWindow?.close()
-                return
-            }
-            if body["op"] as? String == "closeStats",
-               message.webView === statsView {
-                statsWindow?.close()
-                return
-            }
-            // Windowshade: the collapse box folds the window down to
-            // its titlebar (System 8 style) and back.
-            if body["op"] as? String == "statsShade",
-               message.webView === statsView, let w = statsWindow {
-                let f = w.frame
-                // Each shade/expand supersedes the previous animation —
-                // the expand's deferred clear must not fire for a state
-                // a newer toggle already replaced.
-                statsShadeGen += 1
-                let gen = statsShadeGen
-                if body["on"] as? Bool == true {
-                    // A page reload while shaded resends on:true — keep
-                    // the first captured height or unshade restores 24.
-                    // Clamp to minSize so a rapid toggle can't capture
-                    // a mid-animation frame and shrink the restore.
-                    if statsPreShadeH == nil {
-                        statsPreShadeH = max(f.height, w.minSize.height)
-                    }
-                    let h = statsShadedH
-                    // Programmatic setFrame can clamp to minSize; drop
-                    // the floor while folded and restore it on expand.
-                    if statsPreShadeMinH == nil {
-                        statsPreShadeMinH = w.minSize.height
-                    }
-                    w.minSize = NSSize(width: w.minSize.width, height: h)
-                    w.setFrame(NSRect(x: f.minX, y: f.maxY - h,
-                                      width: f.width, height: h),
-                               display: true, animate: true)
-                } else if let h = statsPreShadeH {
-                    w.minSize = NSSize(width: w.minSize.width,
-                                       height: statsPreShadeMinH ??
-                                           statsMinSize.height)
-                    // Clear the saved height only when the expand
-                    // actually lands — a shade clicked mid-animation
-                    // must keep the real height, not the partial frame.
-                    NSAnimationContext.runAnimationGroup({ _ in
-                        w.animator().setFrame(
-                            NSRect(x: f.minX, y: f.maxY - h,
-                                   width: f.width, height: h),
-                            display: true)
-                    }, completionHandler: {
-                        if gen == self.statsShadeGen &&
-                           abs(w.frame.height - h) < 0.5 {
-                            self.statsPreShadeH = nil
-                            self.statsPreShadeMinH = nil
-                        }
-                    })
+            // A client window's chrome (web/winhost.ts), applied to the
+            // window whose page sent it.
+            if let c = clients.first(where: { $0.view === message.webView }),
+               let w = c.window {
+                switch op ?? "" {
+                case "winClose": w.close(); return
+                case "winShade": shade(c, body["on"] as? Bool == true); return
+                case "winZoom": zoom(c); return
+                case "winGrow": grow(c); return
+                case "dragWindow":
+                    dragWindow(w, firstResponder: c.view)
+                    return
+                default: break
                 }
-                return
-            }
-            // Zoom box: toggles between the user's frame and the
-            // standard (default-size) state, top edge pinned.
-            if body["op"] as? String == "statsZoom",
-               message.webView === statsView, let w = statsWindow,
-               statsPreShadeH == nil {
-                if let uf = statsUserFrame {
-                    w.setFrame(uf, display: true, animate: true)
-                    statsUserFrame = nil
-                } else {
-                    statsUserFrame = w.frame
-                    let f = w.frame
-                    w.setFrame(NSRect(x: f.minX,
-                                      y: f.maxY - statsStdSize.height,
-                                      width: statsStdSize.width,
-                                      height: statsStdSize.height),
-                               display: true, animate: true)
-                }
-                return
-            }
-            // Grow box: modal mouse-tracking loop like AppKit's own
-            // resize — the bottom-right drag adjusts width/height with
-            // the top edge pinned. Polls pressedMouseButtons so an
-            // already-released click can't wedge the loop.
-            if body["op"] as? String == "statsGrow",
-               message.webView === statsView, let w = statsWindow {
-                let f0 = w.frame, p0 = NSEvent.mouseLocation
-                while NSEvent.pressedMouseButtons & 1 != 0 {
-                    guard let ev = NSApp.nextEvent(
-                        matching: [.leftMouseDragged, .leftMouseUp],
-                        until: Date(timeIntervalSinceNow: 0.1),
-                        inMode: .eventTracking, dequeue: true)
-                    else { continue }
-                    if ev.type == .leftMouseUp { break }
-                    let p = NSEvent.mouseLocation
-                    let nw = max(w.minSize.width,
-                                 f0.width + p.x - p0.x)
-                    let nh = max(w.minSize.height,
-                                 f0.height - (p.y - p0.y))
-                    w.setFrame(NSRect(x: f0.minX, y: f0.maxY - nh,
-                                      width: nw, height: nh),
-                               display: true)
-                }
-                return
-            }
-            if body["op"] as? String == "dragWindow" {
-                if message.webView === webView {
-                    dragWindow(window, firstResponder: webView)
-                } else if message.webView === statsView {
-                    dragWindow(statsWindow, firstResponder: statsView)
-                }
-                return
             }
             // Tank state carries the machine's viewBox aspect —
             // retune the frame to the case outline. Falls through:
@@ -678,11 +697,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
               let text = String(data: data, encoding: .utf8) else { return }
         // Closed windows keep their webview alive (reopen reuses it)
         // but have no need for pushes — skip them until they're shown.
-        let clients = [panelView, prefsView, statsView]
-            .compactMap { $0 }
-            .filter { $0.window?.isVisible == true }
+        let open = clients.filter { $0.view?.window?.isVisible == true }
         let dests: [WKWebView] = message.webView === webView
-            ? clients
+            ? open.compactMap { $0.view }
             : [webView]
         if dests.isEmpty { return } // no client windows open
         // __bus is only registered once the page's script ran — surface
@@ -693,8 +710,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                      .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
         for dest in dests {
             let name = dest === webView ? "tank"
-                     : dest === panelView ? "panel"
-                     : dest === statsView ? "stats" : "prefs"
+                : clients.first(where: { $0.view === dest })?.spec.title
+                    ?? "client"
             dest.evaluateJavaScript(
                 "window.__bus ? (window.__bus(\(js)), undefined) : 'dropped'") {
                 result, error in
@@ -878,11 +895,11 @@ editItem.submenu = editMenu
 let windowItem = NSMenuItem()
 mainMenu.addItem(windowItem)
 let windowMenu = NSMenu(title: "Window")
-// nil target → responder chain → key window; covers tank and panel.
-// Both windows carry .closable in their styleMask — hiding the buttons
-// doesn't remove it — so performClose works and keeps the
-// windowShouldClose veto path for any future window that needs it.
-// Closing the tank quits the app (windowWillClose).
+// nil target → responder chain → key window. The tank carries
+// .closable in its styleMask (hiding the buttons doesn't remove it);
+// the borderless client windows answer through KeyableWindow's
+// overrides. Both keep the windowShouldClose veto path. Closing the
+// tank quits the app (windowWillClose).
 windowMenu.addItem(withTitle: "Close",
                    action: #selector(NSWindow.performClose(_:)),
                    keyEquivalent: "w")

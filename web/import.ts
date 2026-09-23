@@ -19,6 +19,9 @@ import { metaGet, metaPut, packDelete, packGet, packPut }
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
+import { bindDialogKeys, mountList, mountPopup, pushButton, setButtonTitle }
+  from "./platinum/controls.js";
+import { mountWindow } from "./platinum/window.js";
 
 const BASE = "https://archive.org/download";
 export const DEFAULT_ITEM = "aquazonewithguppiesandaddons";
@@ -446,15 +449,85 @@ export function fetchAddon(url: string): Promise<PackResult[]> {
 }
 
 export interface PanelOptions {
-  /** Mount point — renders the card inline (panel window) instead of
-   * inside a modal overlay. */
+  /** Mount point — the browser fills this element (the Import Add-ons
+   * window's content) instead of opening its own window over the
+   * tank. */
   host?: HTMLElement;
-  /** Set on the panel page: installs are posted to the tank page, which
-   * owns the sim; results come back through notify(). */
+  /** Set on the Import Add-ons page: installs are posted to the tank
+   * page, which owns the sim; results come back through notify(). */
   remote?: Bus;
 }
 
-/** Afterglow-style add-on browser: card grid -> detail w/ live preview. */
+/** Section names as the Show: pop-up lists them. */
+const SECTION_TITLES: Record<string, string> = {
+  fish: "Fish", gravel: "Gravel", plants: "Plants",
+  accessories: "Accessories", backgrounds: "Backgrounds", tanks: "Tanks",
+  sounds: "Sounds",
+};
+const KIND_NAMES: Record<string, string> = {
+  fish: "Fish", gravel: "Gravel", plants: "Plant",
+  accessories: "Accessory", backgrounds: "Background", tanks: "Tank",
+  sounds: "Sound",
+};
+const SECTION_KEY = "finsical:addonSection";
+/** List rows: 31px for a 38 x 28 thumbnail, and a white rule. */
+const ROW_H = 32;
+const MINI_W = 38, MINI_H = 28;
+/** The overlay window's size over the tank, when there's room. */
+const OVERLAY_W = 560, OVERLAY_H = 400;
+/** Height of the native tank window's drag strip, kept clear. */
+const TOP_CLEAR = 24;
+/** Below this viewport width the overlay stacks the details under the
+ * list and drops the preview. */
+const NARROW_W = 480;
+/** Detail-column height the preview must leave for the name, kind, a
+ * two-line status and the Play button. */
+const TEXT_ROOM = 99;
+/** A preview well shorter than this isn't worth showing. */
+const MIN_PREVIEW_H = 48;
+
+/** A thumbnail shrunk (never enlarged) into the list's 38 x 28 box,
+ * nearest-neighbor so the pixel art stays crisp. */
+function miniThumb(src: HTMLCanvasElement): HTMLCanvasElement {
+  const s = Math.min(1, MINI_W / src.width, MINI_H / src.height);
+  const cv = document.createElement("canvas");
+  cv.width = Math.max(1, Math.round(src.width * s));
+  cv.height = Math.max(1, Math.round(src.height * s));
+  const c = cv.getContext("2d")!;
+  c.imageSmoothingEnabled = false;
+  c.drawImage(src, 0, 0, cv.width, cv.height);
+  return cv;
+}
+
+/** The add-on browser, laid out like the Chooser: a Show: pop-up of
+ * sections, the section's add-ons in a list, the selected one's
+ * preview beside it, and Add to Tank as the default button. */
+/** The browser's split of its content box (w x h) in whole pixels —
+ * percentages in CSS would put the bitmap text on fractions of a pixel
+ * and blur it. The list takes 46% of the width; the preview 55% of the
+ * detail column's height (top 40, bottom 50), but never the room the
+ * text under it needs; null when what's left isn't worth a well. */
+export function browserGeometry(w: number, h: number):
+    { listW: number; previewH: number | null } {
+  const dh = h - 90;
+  const ph = Math.min(Math.floor(dh * 0.55), dh - TEXT_ROOM);
+  return { listW: Math.floor(w * 0.46),
+           previewH: ph < MIN_PREVIEW_H ? null : ph };
+}
+
+/** A failed add-on download as one short line for the status area (the
+ * full error, with its URL, goes to the console). */
+export function loadProblem(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  const http = /: (\d{3})$/.exec(msg);
+  if (http) return `archive.org answered with error ${http[1]}.`;
+  if (msg === "no pack inside")
+    return "The download has no add-on in it.";
+  if (msg.endsWith(": entry missing"))
+    return "The download is missing the add-on's file.";
+  return "Check the connection and try again.";
+}
+
 export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     { open(): void; close(): void; readonly isOpen: boolean;
       restore(list: Importable[]): Promise<void>;
@@ -463,67 +536,392 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   const installed = new Set<string>(); // add-on urls, not display names
   const thumbs = new Map<string, HTMLCanvasElement>();
   const fetchPack = fetchAddon;
-  // Open detail view — remote install acks update its status line.
-  let detailRef: { url: string; act: HTMLButtonElement;
-                   status: HTMLElement } | null = null;
+  // The add-on on show — remote install acks update its status line.
+  let detailRef: { url: string; status: HTMLElement } | null = null;
 
+  // Over the tank (browser, touch) the browser opens as its own
+  // Platinum window in a layer over the page; in the Import Add-ons
+  // window it fills the window's content.
   const ov = opts?.host ? null : el("div", "ov");
-  ov?.setAttribute("role", "dialog");
-  ov?.setAttribute("aria-modal", "true");
-  ov?.setAttribute("aria-label", "Import add-ons");
-  if (ov) ov.style.display = "none";
-  const card = el("div", "card");
-  (ov ?? (opts!.host!)).appendChild(card);
-
-  const hd = el("div", "hd");
-  const titles = el("div", "titles");
-  titles.appendChild(el("div", "title", "Internet Archive"));
-  titles.appendChild(el("div", "sub", "Aquazone add-ons"));
-  hd.appendChild(titles);
-  const close = ov ? el("button", "x", "✕") : null;
-  if (close) {
-    close.title = "Close";
-    hd.appendChild(close);
+  let card: HTMLElement;
+  if (ov) {
+    ov.style.display = "none";
+    const win = el("div", "iwin");
+    win.setAttribute("role", "dialog");
+    win.setAttribute("aria-label", "Import add-ons");
+    ov.appendChild(win);
+    document.body.appendChild(ov);
+    mountWindow(win, {
+      title: "Import Add-ons",
+      onClose: () => close(),
+      onDrag: (e) => dragOverlay(win, e),
+    });
+    card = win.querySelector<HTMLElement>(":scope > .pt-content")!;
+  } else {
+    card = opts!.host!;
   }
-  card.appendChild(hd);
+  card.classList.add("imp");
 
-  const body = el("div", "body");
-  card.appendChild(body);
-  const browse = el("div", "browse");
-  const detail = el("div", "detail");
-  detail.style.display = "none";
-  body.appendChild(browse);
-  body.appendChild(detail);
+  const head = el("div", "ihead");
+  const showLabel = el("label", "pt-popup-title ishow", "Show:");
+  const popBtn = el("button", "pt-popup ipop");
+  popBtn.type = "button";
+  popBtn.id = "imp-show";
+  showLabel.htmlFor = popBtn.id;
+  const count = el("div", "icount");
+  head.append(showLabel, popBtn, count);
 
-  const ft = el("div", "ft");
-  const donate = el("a", "", "♥ Support the Internet Archive");
-  donate.href = DONATE_URL;
-  donate.target = "_blank";
-  donate.rel = "noopener";
-  ft.appendChild(donate);
-  card.appendChild(ft);
-  if (ov) document.body.appendChild(ov);
+  const listHost = el("div", "ilist");
+  const detail = el("div", "idetail");
+  const pvBox = el("div", "pt-well ipreview");
+  pvBox.setAttribute("aria-hidden", "true");
+  const dname = el("div", "iname");
+  const dmeta = el("div", "imeta");
+  const status = el("div", "istatus");
+  status.setAttribute("aria-live", "polite");
+  const play = el("button", "pt-button iplay", "Play");
+  play.type = "button";
+  play.hidden = true;
+  // The narrow layout makes room for Play beside the name while it
+  // shows.
+  const showPlay = (on: boolean) => {
+    play.hidden = !on;
+    card.classList.toggle("isound", on);
+  };
+  detail.append(pvBox, dname, dmeta, status, play);
 
-  function paintThumb(tile: Element, th: HTMLCanvasElement): void {
-    if (tile.querySelector(".tthumb")) return;
-    const copy = el("canvas", "tthumb");
-    copy.width = th.width; copy.height = th.height;
-    copy.getContext("2d")!.drawImage(th, 0, 0);
-    tile.insertBefore(copy, tile.firstChild);
+  const foot = el("div", "ifoot");
+  const credit = el("div", "icredit",
+                    "Add-ons come from the Internet Archive.");
+  const donate = el("button", "pt-button idonate", "Donate…");
+  donate.type = "button";
+  const add = el("button", "pt-button pt-default iadd", "Add to Tank");
+  add.type = "button";
+  add.disabled = true;
+  foot.append(el("div", "pt-separator"), credit, donate, add);
+  card.append(head, listHost, detail, foot);
+
+  // ---- layout ---------------------------------------------------------
+  // See browserGeometry; a narrow overlay stacks the details under the
+  // list instead (app.css .inarrow).
+  function layout(): void {
+    const narrow = !!ov && window.innerWidth < NARROW_W;
+    card.classList.toggle("inarrow", narrow);
+    if (narrow) {
+      listHost.style.width = detail.style.left = pvBox.style.height = "";
+      return;
+    }
+    const g = browserGeometry(card.clientWidth, card.clientHeight);
+    listHost.style.width = `${g.listW}px`;
+    detail.style.left = `${g.listW + 24}px`; // list's 12px margin, then 12
+    pvBox.hidden = g.previewH === null;
+    pvBox.style.height = `${g.previewH ?? 0}px`;
+  }
+  new ResizeObserver(layout).observe(card);
+
+  // ---- the default button ---------------------------------------------
+  // One button carries the browser's next step: add the shown add-on,
+  // add it again, or retry whatever failed.
+  let addAction: (() => void) | null = null;
+  function setAdd(title: string, action: (() => void) | null): void {
+    addAction = action;
+    add.disabled = !action;
+    setButtonTitle(add, title);
+  }
+  pushButton(add, () => addAction?.());
+  bindDialogKeys(add, null, { ok: () => addAction?.() });
+  pushButton(donate, () => {
+    window.open(DONATE_URL, "_blank", "noopener");
+  });
+
+  // ---- sound preview ------------------------------------------------------
+  const audio = new Audio();
+  const stopSound = () => {
+    audio.pause();
+    setButtonTitle(play, "Play");
+  };
+  audio.addEventListener("ended", stopSound);
+  pushButton(play, () => {
+    if (!audio.paused) { stopSound(); return; }
+    void audio.play().then(() => setButtonTitle(play, "Stop"),
+                           () => setButtonTitle(play, "Play"));
+  });
+  function releaseSound(): void {
+    stopSound();
+    audio.removeAttribute("src");
+    if (sndObjUrl) { URL.revokeObjectURL(sndObjUrl); sndObjUrl = null; }
   }
 
-  // Tile thumbs fetch lazily: when a tile scrolls into view its pack is
-  // downloaded through the same memoized path as the detail view, decoded
-  // via h.preview, and painted back. Bounded concurrency keeps the fetch
-  // trickle polite to archive.org; failures leave a name-only tile.
+  // ---- sections and the list ----------------------------------------------
+  let all: Importable[] = [];
+  let sections: string[] = [];
+  let section = "";
+  let rows: Importable[] = [];
   const byUrl = new Map<string, Importable>();
+  const popup = mountPopup(popBtn, {
+    items: ["Fish"], selected: 0, label: "Show",
+    onChange: (i) => showSection(sections[i]!),
+  });
+  function setShowEnabled(on: boolean): void {
+    popBtn.disabled = !on;
+    showLabel.classList.toggle("pt-disabled", !on);
+  }
+  setShowEnabled(false);
+
+  const list = mountList(listHost, {
+    rowHeight: ROW_H,
+    label: "Add-ons",
+    onSelect: (i) => {
+      const it = rows[i];
+      if (it) showDetail(it); else clearDetail();
+    },
+  });
+
+  function rowFor(it: Importable): HTMLElement {
+    const r = el("div", "irow");
+    r.dataset.url = it.url;
+    r.dataset.name = it.inner;
+    const box = el("span", "ithumb");
+    r.append(box, el("span", "irowname", it.inner),
+             el("span", "icheck", "✓"));
+    r.classList.toggle("done", installed.has(it.url));
+    const th = thumbs.get(it.url);
+    if (th) paintThumb(r, th);
+    return r;
+  }
+
+  function rowOf(url: string): HTMLElement | undefined {
+    return list.rows.find((r) => r.dataset.url === url);
+  }
+
+  function showSection(sec: string): void {
+    section = sec;
+    try { localStorage.setItem(SECTION_KEY, sec); } catch { /* unavailable */ }
+    rows = all.filter((x) => x.section === sec);
+    // Drop still-pending thumbs from the previous section; in-flight
+    // fetches complete anyway and their results stay memoized.
+    thumbQueue.length = 0;
+    thumbQueued.clear();
+    io?.disconnect();
+    list.setRows(rows.map(rowFor));
+    for (const r of list.rows) {
+      const it = byUrl.get(r.dataset.url ?? "");
+      if (!it) continue;
+      if (io) io.observe(r); else wantThumb(it);
+    }
+    count.textContent = `${rows.length} add-on${rows.length === 1 ? "" : "s"}`;
+    clearDetail();
+  }
+
+  // ---- detail ---------------------------------------------------------------
+  // The preview on show, kept to re-place it when the well resizes.
+  let shownPreview: HTMLCanvasElement | null = null;
+  // A remote install awaiting the tank's ack: `retry` repeats it,
+  // `more` adds another copy once it landed.
+  let pending: { ref: object; retry: () => void; more: () => void } | null =
+    null;
+  // Sets the default button for the add-on on show from its install
+  // state; null until its pack has loaded.
+  let offer: (() => void) | null = null;
+  new ResizeObserver(() => {
+    if (shownPreview) placePreview(shownPreview);
+  }).observe(pvBox);
+
+  function clearDetail(): void {
+    releaseSound();
+    detailRef = null;
+    pending = null; // its ack still marks the row, not the pane
+    offer = null;
+    shownPreview = null;
+    pvBox.textContent = "";
+    dname.textContent = "";
+    dmeta.textContent = "";
+    showPlay(false);
+    status.textContent = section === "sounds"
+      ? "The game's own sound effects aren't on archive.org — drop its " +
+        ".rsrc, .bin or .hqx file on the tank or this window to add them."
+      : all.length ? "Select an add-on to preview it." : "";
+    if (all.length) setAdd("Add to Tank", null);
+  }
+
+  /** Show a preview canvas in the well: scaled by a whole factor to
+   * fill it, or shrunk to fit, on whole-pixel offsets. */
+  function placePreview(pv: HTMLCanvasElement): void {
+    shownPreview = pv;
+    pvBox.textContent = "";
+    const bw = pvBox.clientWidth - 8, bh = pvBox.clientHeight - 8;
+    if (bw < 1 || bh < 1) return; // hidden: placed once it has a size
+    let src = pv;
+    let s = Math.floor(Math.min(bw / pv.width, bh / pv.height, 4));
+    if (s < 1) { src = scaled(pv, Math.min(bw / pv.width, bh / pv.height)); s = 1; }
+    const cv = el("canvas", "");
+    cv.width = src.width; cv.height = src.height;
+    cv.getContext("2d")!.drawImage(src, 0, 0);
+    cv.style.width = `${src.width * s}px`;
+    cv.style.height = `${src.height * s}px`;
+    cv.style.left = `${Math.floor((pvBox.clientWidth - 2 - src.width * s) / 2)}px`;
+    cv.style.top = `${Math.floor((pvBox.clientHeight - 2 - src.height * s) / 2)}px`;
+    pvBox.appendChild(cv);
+  }
+  function scaled(src: HTMLCanvasElement, f: number): HTMLCanvasElement {
+    const cv = document.createElement("canvas");
+    cv.width = Math.max(1, Math.floor(src.width * f));
+    cv.height = Math.max(1, Math.floor(src.height * f));
+    const c = cv.getContext("2d")!;
+    c.imageSmoothingEnabled = false;
+    c.drawImage(src, 0, 0, cv.width, cv.height);
+    return cv;
+  }
+
+  function showDetail(it: Importable): void {
+    // The previous preview's Blob URL pins its bytes — release it now
+    // that the pane is rebuilt.
+    releaseSound();
+    pending = null;
+    offer = null;
+    shownPreview = null;
+    pvBox.textContent = "";
+    dname.textContent = it.inner;
+    dmeta.textContent =
+      `${KIND_NAMES[it.section] ?? it.section} · archive.org`;
+    status.textContent = "Fetching add-on…";
+    showPlay(false);
+    setAdd(installed.has(it.url) ? "Add Again" : "Add to Tank", null);
+    const ref = { url: it.url, status };
+    detailRef = ref;
+
+    void fetchPack(it.url).then((rs) => {
+      const usable = rs.filter(
+        (r) => r.sheets.size || r.images.size || r.sounds.length);
+      if (!usable.length) throw new Error("no pack inside");
+      const pv = h.preview(usable);
+      // Cache the thumb even if the selection moved on while the fetch
+      // was in flight; only the pane waits on it being current.
+      if (pv) { thumbs.set(it.url, pv); storeThumb(it, pv); }
+      const r = rowOf(it.url);
+      if (r && pv) paintThumb(r, pv);
+      // A stale resolve must not create a Blob URL (it would orphan on
+      // the next assignment) or touch the pane: the ref object
+      // identifies this showing.
+      if (detailRef !== ref) return;
+      if (pv) placePreview(pv);
+      const snds = usable.flatMap((x) => x.sounds);
+      if (snds.length) {
+        // Sound add-ons preview with a real player — the payload is
+        // already-decoded WAV or a browser-decodable encoded stream.
+        sndObjUrl = URL.createObjectURL(
+          new Blob([snds[0]!.wav], { type: audioType(snds[0]!.wav) }));
+        audio.src = sndObjUrl;
+        showPlay(true);
+        setButtonTitle(play, "Play");
+      }
+      const kinds = [...new Set(usable.map((x) =>
+        x.sheets.size ? "fish" : x.sounds.length ? "sound" : "scenery"))]
+        .join(" + ");
+      status.textContent = installed.has(it.url)
+        ? "Already in the tank."
+        : `${usable.length} pack${usable.length > 1 ? "s" : ""}, ${kinds}.`;
+      // `again` travels with the label the user reads: both install
+      // paths drop a first add of something already in the tank, which
+      // is what "Add to Tank" promises.
+      const addIt = (again: boolean) => {
+        try {
+          applyAddon(it, usable, again);
+        } catch (e) {
+          status.textContent = String(e);
+          return;
+        }
+        // Local installs are synchronous; remote ones flip on the ack.
+        if (!remote) {
+          status.textContent = "Added to the tank.";
+          setAdd("Add Again", () => addIt(true));
+          return;
+        }
+        setAdd("Adding…", null);
+        // The relay can drop the message if the tank page is
+        // mid-reload — recover the button if no ack comes back.
+        const p = { ref, retry: () => addIt(again), more: () => addIt(true) };
+        pending = p;
+        setTimeout(() => {
+          if (pending !== p || detailRef !== ref) return;
+          pending = null;
+          setAdd("Try Again", p.retry);
+          status.textContent = "No response from the tank — try again.";
+        }, 15_000);
+      };
+      // Offered again whenever the add-on's install state changes under
+      // the pane (a launch-time restore, another window's install).
+      offer = () => {
+        const again = installed.has(it.url);
+        setAdd(again ? "Add Again" : "Add to Tank", () => addIt(again));
+      };
+      offer();
+    }).catch((e) => {
+      if (detailRef !== ref) return;
+      console.warn(`add-on ${it.inner} failed to load:`, e);
+      status.textContent = `Couldn't load it. ${loadProblem(e)}`;
+      setAdd("Try Again", () => showDetail(it));
+    });
+  }
+
+  // ---- in-page window dragging (the overlay) --------------------------------
+  function dragOverlay(win: HTMLElement, e: PointerEvent): void {
+    e.preventDefault();
+    const r = win.getBoundingClientRect();
+    const dx = e.clientX - r.left, dy = e.clientY - r.top;
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return;
+      const x = Math.round(Math.min(window.innerWidth - 40,
+                                    Math.max(40 - r.width, ev.clientX - dx)));
+      const y = Math.round(Math.min(window.innerHeight - 20,
+                                    Math.max(TOP_CLEAR, ev.clientY - dy)));
+      win.style.left = `${x}px`;
+      win.style.top = `${y}px`;
+    };
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  }
+  // Centered on whole pixels, clear of the native shell's 22px drag
+  // strip along the top edge.
+  function placeOverlay(): void {
+    const win = ov!.firstElementChild as HTMLElement;
+    const w = Math.min(OVERLAY_W, window.innerWidth - 16);
+    const hh = Math.min(OVERLAY_H, window.innerHeight - TOP_CLEAR - 8);
+    win.style.width = `${w}px`;
+    win.style.height = `${hh}px`;
+    win.style.left = `${Math.floor((window.innerWidth - w) / 2)}px`;
+    win.style.top =
+      `${Math.max(TOP_CLEAR, Math.floor((window.innerHeight - hh) / 2))}px`;
+  }
+
+  function paintThumb(row: Element, th: HTMLCanvasElement): void {
+    const box = row.querySelector(".ithumb");
+    if (!box || box.firstChild) return;
+    const cv = miniThumb(th);
+    cv.style.left = `${Math.floor((MINI_W - cv.width) / 2)}px`;
+    cv.style.top = `${Math.floor((MINI_H - cv.height) / 2)}px`;
+    box.appendChild(cv);
+  }
+
+  // Row thumbs fetch lazily: when a row scrolls into view its pack is
+  // downloaded through the same memoized path as the detail view,
+  // decoded via h.preview, and painted back. Bounded concurrency keeps
+  // the fetch trickle polite to archive.org; failures leave a
+  // name-only row.
   const thumbQueued = new Set<string>();
   const thumbQueue: Importable[] = [];
   let thumbRunning = 0;
   const THUMB_PAR = 3;
 
   // Thumbnails persist across launches as PNG bytes in the IndexedDB
-  // pack cache so the browse grid doesn't re-download every pack each
+  // pack cache so the add-on list doesn't re-download every pack each
   // run. The "thumb:{url}" keys ride the same LRU budget as pack bytes
   // (they're derived data — eviction just re-fetches). Kept out of
   // localStorage deliberately: that quota also holds the tank save,
@@ -581,7 +979,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     }, "image/png");
   }
   function storedThumbPainted(it: Importable): void {
-    const t = browse.querySelector(`[data-url="${CSS.escape(it.url)}"]`);
+    const t = rowOf(it.url);
     const th = thumbs.get(it.url);
     if (t && th) paintThumb(t, th);
   }
@@ -648,8 +1046,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         if (!pv) return;
         thumbs.set(it.url, pv);
         storeThumb(it, pv);
-        const t =
-          browse.querySelector(`[data-url="${CSS.escape(it.url)}"]`);
+        const t = rowOf(it.url);
         if (t) paintThumb(t, pv);
       }).catch((e) => {
         console.warn(`add-on thumb failed for ${it.inner}:`, e);
@@ -679,17 +1076,6 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       })
       : null;
 
-  function showBrowse(): void {
-    detail.style.display = "none";
-    detailRef = null;
-    browse.style.display = "";
-    // Detail fetches populate thumbs lazily — back-fill tiles on return.
-    for (const [url, th] of thumbs) {
-      const t = browse.querySelector(`[data-url="${CSS.escape(url)}"]`);
-      if (t) paintThumb(t, th);
-    }
-  }
-
   // Shared fetch→dispatch→mark-installed core for applyAddon (manual
   // install) and restore (re-import on launch); only the onInstall
   // side effect differs. `live` marks user installs vs restores.
@@ -704,20 +1090,34 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       if (r.sounds.length)
         h.onSounds?.(qualifySoundItemName(r.sounds, it.inner), live);
     }
-    installed.add(it.url);
-    browse.querySelector(`[data-url="${CSS.escape(it.url)}"]`)
-      ?.classList.add("done");
+    markInstalled(it.url, true);
     const pv = h.preview(usable);
     if (pv) { thumbs.set(it.url, pv); storeThumb(it, pv); }
   }
 
+  function markInstalled(url: string, on: boolean): void {
+    if (on) installed.add(url); else installed.delete(url);
+    rowOf(url)?.classList.toggle("done", on);
+    if (detailRef?.url !== url) return;
+    // A state push can report the install before (or instead of) its
+    // ack: settle the pending add the same way.
+    if (on && pending?.ref === detailRef) ackInstalled();
+    else if (!pending) offer?.();
+  }
+  function ackInstalled(): void {
+    const p = pending!;
+    pending = null;
+    detailRef!.status.textContent = "Added to the tank.";
+    setAdd("Add Again", p.more);
+  }
+
   function applyAddon(it: Importable, rs: PackResult[],
                       again: boolean): void {
-    // Remote mode (panel window): the tank page owns the sim — send the
-    // request there and flip the UI when its ack comes back via notify().
-    // Note: the tank page re-reads the pack in its own JS context —
-    // decoded objects can't cross the bus, but both webviews share the
-    // IndexedDB pack cache so the second read stays local.
+    // Remote mode (Import Add-ons window): the tank page owns the sim —
+    // send the request there and flip the UI when its ack comes back
+    // via notify(). The tank page re-reads the pack in its own JS
+    // context — decoded objects can't cross the bus, but both webviews
+    // share the IndexedDB pack cache so the second read stays local.
     if (remote) {
       remote.post({ op: "install", item: it, again });
       return;
@@ -729,215 +1129,96 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     h.onInstall?.(it);
   }
 
-  function showDetail(it: Importable): void {
-    browse.style.display = "none";
-    detail.style.display = "";
-    // The previous preview's Blob URL pins its bytes — release it once
-    // the detail pane is being rebuilt (its element is gone).
-    if (sndObjUrl) { URL.revokeObjectURL(sndObjUrl); sndObjUrl = null; }
-    detail.textContent = "";
-    const back = el("button", "back", "‹ All add-ons");
-    back.addEventListener("click", () => {
-      if (sndObjUrl) { URL.revokeObjectURL(sndObjUrl); sndObjUrl = null; }
-      showBrowse();
-    });
-    detail.appendChild(back);
-    detail.appendChild(el("div", "dname", it.inner));
-    detail.appendChild(el("div", "dmeta", `${it.section} · archive.org`));
-    const pvBox = el("div", "pv");
-    detail.appendChild(pvBox);
-    const status = el("div", "dstatus", "Fetching add-on…");
-    detail.appendChild(status);
-    const act = el("button", "dact");
-    act.style.display = "none";
-    detail.appendChild(act);
-    detailRef = { url: it.url, act, status };
-
-    void fetchPack(it.url).then((rs) => {
-      const usable = rs.filter(
-        (r) => r.sheets.size || r.images.size || r.sounds.length);
-      if (!usable.length) throw new Error("no pack inside");
-      const pv = h.preview(usable);
-      // Cache the thumb even if this view was navigated away from while
-      // the fetch was in flight; only pane mutation is gated below.
-      if (pv) { thumbs.set(it.url, pv); storeThumb(it, pv); }
-      // A stale resolve must not create a Blob URL (it would orphan on
-      // the next assignment) or touch the detached pane's nodes. The
-      // captured status element identifies this build — reopening the
-      // same URL mid-fetch replaces it, rejecting the older callback.
-      if (!detailRef || detailRef.url !== it.url ||
-          detailRef.status !== status) return;
-      if (pv) pvBox.appendChild(pv);
-      const snds = usable.flatMap((r) => r.sounds);
-      if (snds.length) {
-        // Sound add-ons preview with a real player — the payload is
-        // already-decoded WAV or a browser-decodable encoded stream.
-        const au = el("audio", "dau");
-        au.controls = true;
-        sndObjUrl = URL.createObjectURL(
-          new Blob([snds[0]!.wav], { type: audioType(snds[0]!.wav) }));
-        au.src = sndObjUrl;
-        pvBox.appendChild(au);
-      }
-      const kinds = [...new Set(usable.map((r) =>
-        r.sheets.size ? "fish" : r.sounds.length ? "sound" : "scenery"))]
-        .join(" + ");
-      status.textContent =
-        `${usable.length} pack${usable.length > 1 ? "s" : ""} · ${kinds}`;
-      act.style.display = "";
-      let again = installed.has(it.url);
-      act.textContent = again ? "Add again" : "Add to tank";
-      act.addEventListener("click", () => {
-        try {
-          applyAddon(it, usable, again);
-          again = true; // later clicks on this button mean "add again"
-          // Local installs are synchronous; remote ones flip on the ack.
-          if (remote) {
-            act.disabled = true;
-            act.dataset.pending = "1";
-            act.textContent = "Adding…";
-            // The relay can drop the message if the tank page is
-            // mid-reload — recover the button if no ack comes back.
-            setTimeout(() => {
-              if (act.dataset.pending === "1" && detailRef?.act === act) {
-                delete act.dataset.pending;
-                act.disabled = false;
-                act.textContent = "Retry";
-                detailRef.status.textContent =
-                  "No response from the tank page — try again";
-              }
-            }, 15_000);
-          } else act.textContent = "In tank ✓ — add again?";
-        } catch (e) { status.textContent = String(e); }
-      });
-    }).catch((e) => {
-      status.textContent = `Couldn't load: ${e instanceof Error ? e.message : e}`;
-      const retry = el("button", "dact", "Retry");
-      retry.addEventListener("click", () => showDetail(it));
-      detail.appendChild(retry);
-    });
-  }
-
-  function buildBrowse(items: Importable[]): void {
-    browse.textContent = "";
-    byUrl.clear();
-    // Drop still-pending items from the previous view; in-flight fetches
-    // complete anyway and their results stay memoized in packCache.
-    thumbQueue.length = 0;
-    thumbQueued.clear();
-    io?.disconnect();
-    let section = "";
-    let grid: HTMLElement | null = null;
-    for (const it of items) {
-      byUrl.set(it.url, it);
-      if (it.section !== section) {
-        section = it.section;
-        browse.appendChild(el("div", "sec",
-          `${section} · ${items.filter((x) => x.section === section).length}`));
-        if (section === "sounds")
-          browse.appendChild(el("div", "sechint",
-            "The game's own effects aren't on archive.org — drop its " +
-            ".rsrc, .bin, or .hqx file on the tank or this window to " +
-            "add them."));
-        grid = el("div", "grid");
-        browse.appendChild(grid);
-      }
-      const t = el("button", "tile");
-      t.dataset.url = it.url;
-      if (installed.has(it.url)) t.classList.add("done");
-      // Audio packs have no sprite art to thumb — a note glyph keeps
-      // the tile from reading as an empty/broken card.
-      if (it.section === "sounds" && !thumbs.get(it.url))
-        t.appendChild(el("span", "tnote", "♪"));
-      const th = thumbs.get(it.url);
-      if (th) paintThumb(t, th);
-      t.appendChild(el("span", "tname", it.inner));
-      t.appendChild(el("span", "tick", "✓"));
-      t.addEventListener("click", () => showDetail(it));
-      grid!.appendChild(t);
-      // No IntersectionObserver: trickle-fetch every thumb instead.
-      if (io) io.observe(t); else wantThumb(it);
-    }
-  }
-
   function loadListing(): void {
-    browse.textContent = "";
-    browse.appendChild(el("div", "dstatus", "Fetching archive.org listing…"));
+    all = [];
+    list.setRows([]);
+    list.setEmpty("Fetching the archive.org listing…");
+    count.textContent = "";
+    status.textContent = "";
+    setAdd("Add to Tank", null);
     void listAddons().then((items) => {
       if (!items.length) throw new Error("empty listing");
-      buildBrowse(items);
+      all = items;
+      byUrl.clear();
+      for (const it of items) byUrl.set(it.url, it);
+      sections = [...new Set(items.map((x) => x.section))];
+      let start = sections[0]!;
+      try {
+        const saved = localStorage.getItem(SECTION_KEY);
+        if (saved && sections.includes(saved)) start = saved;
+      } catch { /* storage unavailable */ }
+      popup.setItems(sections.map((s) => SECTION_TITLES[s] ?? s),
+                     sections.indexOf(start));
+      setShowEnabled(true);
+      list.setEmpty("");
+      showSection(start);
     }).catch((e) => {
       console.warn("add-on listing failed:", e);
-      browse.textContent = "";
-      browse.appendChild(el("div", "dstatus",
-        "Couldn't reach archive.org."));
-      const retry = el("button", "dact", "Retry");
-      retry.addEventListener("click", loadListing);
-      browse.appendChild(retry);
+      list.setEmpty("Couldn't reach archive.org.");
+      status.textContent = "Check the connection and try again.";
+      setAdd("Try Again", loadListing);
     });
   }
 
-  if (ov && close) {
-    close.addEventListener("click", () => { ov.style.display = "none"; });
+  function close(): void {
+    if (!ov || ov.style.display === "none") return;
+    ov.style.display = "none";
+    // Pause only: the pane still shows the sound and its Play button,
+    // which must work after a reopen. The Blob URL goes when the pane
+    // is rebuilt.
+    stopSound();
+  }
+  if (ov) {
     ov.addEventListener("pointerdown", (e) => {
-      if (e.target === ov) ov.style.display = "none";
+      if (e.target === ov) close();
     });
     window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && ov.style.display !== "none") {
-        ov.style.display = "none";
+      if (e.key === "Escape" && ov.style.display !== "none" &&
+          !e.defaultPrevented) {
+        close();
         e.preventDefault();
       }
+    });
+    window.addEventListener("resize", () => {
+      if (ov.style.display !== "none") placeOverlay();
     });
   }
 
   let loaded = false;
   return {
     open() {
-      if (ov) { ov.style.display = "flex"; close!.focus(); }
+      if (ov) {
+        ov.style.display = "block";
+        placeOverlay();
+      }
+      listHost.focus({ preventScroll: true });
       if (!loaded) { loaded = true; loadListing(); }
-      showBrowse();
     },
-    close() { if (ov) ov.style.display = "none"; },
+    close,
     get isOpen() { return ov ? ov.style.display !== "none" : true; },
     // Remote-mode replies from the tank page and state pushes land here.
     notify(m: BusMsg): void {
       const ackUrl = m.url;
       if (m.op === "installed" && typeof ackUrl === "string") {
-        installed.add(ackUrl);
-        browse.querySelector(`[data-url="${CSS.escape(ackUrl)}"]`)
-          ?.classList.add("done");
-        if (detailRef?.url === ackUrl) {
-          delete detailRef.act.dataset.pending;
-          detailRef.act.disabled = false;
-          detailRef.act.textContent = "In tank ✓ — add again?";
-          detailRef.status.textContent = "";
-        }
+        markInstalled(ackUrl, true); // settles the pending add
       } else if (m.op === "installFailed" && typeof ackUrl === "string") {
-        if (detailRef?.url === ackUrl) {
-          delete detailRef.act.dataset.pending;
-          detailRef.act.disabled = false;
-          detailRef.act.textContent = "Retry";
-          detailRef.status.textContent = `Install failed: ${m.error}`;
+        if (detailRef?.url === ackUrl && pending?.ref === detailRef) {
+          const p = pending;
+          pending = null;
+          detailRef.status.textContent = `Couldn't add it: ${m.error}`;
+          setAdd("Try Again", p.retry);
         }
       } else if (m.op === "state" && Array.isArray(m.addons)) {
-        // Tank's add-on list — sync install badges (covers restores that
-        // finished before this panel opened, and removals).
+        // Tank's add-on list — sync install marks (covers restores that
+        // finished before this window opened, and removals).
         const live = new Set(
           (m.addons as { url?: unknown }[])
             .map((a) => a.url)
             .filter((x): x is string => typeof x === "string"));
-        for (const url of installed) {
-          if (live.has(url)) continue;
-          installed.delete(url);
-          browse.querySelector(`[data-url="${CSS.escape(url)}"]`)
-            ?.classList.remove("done");
-        }
-        for (const url of live) {
-          if (installed.has(url)) continue;
-          installed.add(url);
-          browse.querySelector(`[data-url="${CSS.escape(url)}"]`)
-            ?.classList.add("done");
-        }
+        for (const url of [...installed])
+          if (!live.has(url)) markInstalled(url, false);
+        for (const url of live)
+          if (!installed.has(url)) markInstalled(url, true);
       }
     },
     // Re-install saved add-ons in order (restores fish sheets and the

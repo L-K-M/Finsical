@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emboldened, strikeGlyphs } from "./bitmapfont.js";
 import { CHARCOAL_12 } from "./fonts/charcoal12.js";
+import { GENEVA_9 } from "./fonts/geneva9.js";
 import { GENEVA_10 } from "./fonts/geneva10.js";
 import { buildPixelFont, glyphRects } from "./ttf.js";
 import type { PixelGlyph } from "./ttf.js";
@@ -58,6 +59,18 @@ const INFO_LABEL = [
   "..............................",
 ];
 
+// Geneva 9, the caption under Monitors & Sound's "Sound" bevel button.
+const SOUND_CAPTION = [
+  ".###....................#.",
+  "#...#...................#.",
+  "#......##..#..#.###...###.",
+  ".###..#..#.#..#.#..#.#..#.",
+  "....#.#..#.#..#.#..#.#..#.",
+  "#...#.#..#.#..#.#..#.#..#.",
+  ".###...##...###.#..#..###.",
+  "..........................",
+];
+
 describe("bitmap strikes", () => {
   it("reproduce a Charcoal 12 window title pixel for pixel", () => {
     expect(draw(strikeGlyphs(CHARCOAL_12), "Mac OS 8 full", 8, 2))
@@ -69,8 +82,12 @@ describe("bitmap strikes", () => {
       .toEqual(INFO_LABEL);
   });
 
+  it("draw Geneva 9 captions pixel for pixel", () => {
+    expect(draw(strikeGlyphs(GENEVA_9), "Sound", 6, 1)).toEqual(SOUND_CAPTION);
+  });
+
   it("keep code points unique and inside each strike's line box", () => {
-    for (const s of [CHARCOAL_12, GENEVA_10]) {
+    for (const s of [CHARCOAL_12, GENEVA_10, GENEVA_9]) {
       const cps = s.glyphs.map((g) => g[0]);
       expect(new Set(cps).size).toBe(cps.length);
       // A hex string that doesn't split into whole rows would decode a

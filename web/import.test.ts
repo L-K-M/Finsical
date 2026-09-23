@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { importAddon, listAddons, qualifySoundItemName }
-  from "./import.js";
+import { browserGeometry, importAddon, listAddons, loadProblem,
+         qualifySoundItemName } from "./import.js";
 
 const enc = new TextEncoder();
 
@@ -165,5 +165,35 @@ describe("qualifySoundItemName", () => {
     // Qualifier + extension both strip before the stem compare.
     expect(qualifySoundItemName([rec("dup")], "dup (2).mp3")
       .map((r) => r.name)).toEqual(["dup (2).mp3"]);
+  });
+});
+
+describe("browserGeometry", () => {
+  it("splits the Import Add-ons window on whole pixels", () => {
+    // The 621 x 441 window's content box: 46% would be 284.28.
+    expect(browserGeometry(618, 418)).toEqual({ listW: 284, previewH: 180 });
+  });
+  it("gives the preview's height to the text under it first", () => {
+    // 150px of detail column: 55% is 82, but the text needs 99.
+    expect(browserGeometry(560, 240)).toEqual({ listW: 257, previewH: 51 });
+  });
+  it("drops a preview too short to be worth a well", () => {
+    expect(browserGeometry(560, 220).previewH).toBeNull();
+  });
+});
+
+describe("loadProblem", () => {
+  it("names the HTTP status instead of the whole URL", () => {
+    expect(loadProblem(new Error(
+      "https://archive.org/download/x/y.zip: 404")))
+      .toBe("archive.org answered with error 404.");
+  });
+  it("explains a download without an add-on", () => {
+    expect(loadProblem(new Error("no pack inside")))
+      .toBe("The download has no add-on in it.");
+  });
+  it("falls back to the connection for network failures", () => {
+    expect(loadProblem(new TypeError("Failed to fetch")))
+      .toBe("Check the connection and try again.");
   });
 });

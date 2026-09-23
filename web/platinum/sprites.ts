@@ -9,10 +9,15 @@
 // The grids compile to crisp SVG data URIs (spriteUrl) that the
 // stylesheet reads through custom properties, so platinum.css never
 // hard-codes pixel art and every sprite stays reviewable as a picture.
+// Control bitmaps live in controlsprites.ts, pane icons in icons.ts.
+import { CONTROL_SPRITES } from "./controlsprites.js";
+import { ICON_SPRITES } from "./icons.js";
 
 const COLORS: Record<string, string> = {
   // Lavender accent — the default Mac OS 8 highlight ramp, dark to light.
   n: "#000055", l: "#333399", m: "#6666cc", p: "#9999ff", q: "#ccccff",
+  // Icon colors, from the Mac's standard 256-color palette.
+  y: "#ffcc00", o: "#ff9900", t: "#339999", u: "#66cccc",
 };
 
 /** Resolve one palette key to a CSS color, or null for transparent. */
@@ -192,10 +197,19 @@ export const SPRITES = {
 
 export type SpriteName = keyof typeof SPRITES;
 
+/** Every sprite by its custom-property name (kebab-case). */
+export function allSprites(): [string, readonly string[]][] {
+  return [
+    ...Object.entries(SPRITES).map(([name, rows]): [string, readonly string[]] =>
+      [name.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase()), rows]),
+    ...Object.entries(CONTROL_SPRITES),
+    ...Object.entries(ICON_SPRITES),
+  ];
+}
+
 /** `--pt-sprite-<kebab-name>: url(...)` declarations for every sprite,
  * ready to drop into a :root rule. */
 export function spriteCss(): string {
-  return Object.entries(SPRITES).map(([name, rows]) =>
-    `--pt-sprite-${name.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase())}:` +
-    ` ${spriteUrl(rows)};`).join("\n");
+  return allSprites().map(([name, rows]) =>
+    `--pt-sprite-${name}: ${spriteUrl(rows)};`).join("\n");
 }

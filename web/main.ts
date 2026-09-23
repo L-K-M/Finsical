@@ -4,6 +4,7 @@ import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.j
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
 import { TankAudio } from "./audio.js";
+import { pushButton } from "./platinum/controls.js";
 import { fetchAddon, mountImportPanel, qualifySoundItemName,
          COLLECTIONS } from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
@@ -236,9 +237,9 @@ function sheetOf(f: Fish): SpriteSheet | null {
 }
 // archive.org add-on import: Tank > Import Add-ons… (⌘I) opens the
 // browser of fish/gravel packs hosted as inner zip entries (web/import.ts).
-// In the app that browser lives in the panel window (web/panel.ts) and
-// its installs arrive over the bus; the in-DOM panel below stays as the
-// fallback for plain-browser use.
+// In the app that browser lives in the Import Add-ons window
+// (web/addons.ts) and its installs arrive over the bus; the in-page
+// window below stays as the fallback for plain-browser and touch use.
 // Species name → fishSheets slot, rebuilt as packs load. Saved fish
 // bind to sheets by position, which drifts if a pack fails to restore
 // or a drag-dropped pack isn't restorable — remap by species instead.
@@ -775,8 +776,8 @@ document.addEventListener("pointerdown", (e) => {
   // leftMouseDown from a touch tap has none and could hang it.
   if (e.button !== 0 || e.pointerType !== "mouse") return;
   if (!(e.target instanceof Element) || e.target.closest(
-      "#screen, .ov, #opentrigger, button, a, input, textarea, select,"
-      + " label, [contenteditable]"))
+      "#screen, .ov, .pt-menu, #opentrigger, button, a, input, textarea,"
+      + " select, label, [contenteditable]"))
     return;
   e.preventDefault();
   bus.post({ op: "dragWindow" }); // native shell → performDrag
@@ -801,11 +802,19 @@ const hoverNone = window.matchMedia("(hover: none)");
 const syncTrigger = (show: boolean): void => {
   document.getElementById("opentrigger")?.remove();
   if (!show) return;
+  // A 20px Platinum button is too small for a finger: a transparent
+  // margin around it takes taps too (44px tall in all).
+  const hit = document.createElement("div");
+  hit.id = "opentrigger";
+  hit.addEventListener("click", (e) => {
+    if (e.target === hit) importPanel.open();
+  });
   const trigger = document.createElement("button");
-  trigger.id = "opentrigger";
-  trigger.textContent = "+ add-ons";
-  trigger.addEventListener("click", () => importPanel.open());
-  document.body.appendChild(trigger);
+  trigger.className = "pt-button";
+  trigger.textContent = "Add-ons\u2026";
+  hit.appendChild(trigger);
+  document.body.appendChild(hit);
+  pushButton(trigger, () => importPanel.open());
 };
 syncTrigger(hoverNone.matches);
 hoverNone.addEventListener("change", (e) => syncTrigger(e.matches));
