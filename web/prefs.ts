@@ -344,7 +344,9 @@ for (const p of CRT_PRESETS) {
     if (describedPreset === p) describe(null);
   });
   btn.addEventListener("focus", () => {
-    if (pane === "monitor") describe(null, p);
+    // Same precedence as pointerenter: a live slider caption wins so
+    // Tab-through doesn't yank it and blur can't reset it to the hint.
+    if (pane === "monitor" && !described) describe(null, p);
   });
   btn.addEventListener("blur", () => {
     if (describedPreset === p) describe(null);
