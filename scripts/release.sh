@@ -105,13 +105,15 @@ if [ -e package-lock.json ]; then
     cp package-lock.json "$lockfile_backup"
   fi
 fi
-trap 'git checkout -- "$INFO_PLIST" package.json "$README" 2>/dev/null || echo "release.sh rollback failed; version files may be half-bumped" >&2; if ! git checkout -- package-lock.json 2>/dev/null; then if [ -n "$lockfile_backup" ]; then cp "$lockfile_backup" package-lock.json; elif [ "$had_lockfile" -eq 0 ]; then rm -f package-lock.json; fi; fi; rm -f "$README.bak" ${lockfile_backup:+"$lockfile_backup"}' EXIT
+trap 'git checkout -- "$INFO_PLIST" package.json "$README" 2>/dev/null || echo "release.sh rollback failed; version files may be half-bumped" >&2; if ! git checkout -- package-lock.json 2>/dev/null; then if [ -n "$lockfile_backup" ]; then cp "$lockfile_backup" package-lock.json || echo "release.sh: restoring untracked package-lock.json from backup failed" >&2; elif [ "$had_lockfile" -eq 0 ]; then rm -f package-lock.json; fi; fi; rm -f "$README.bak" ${lockfile_backup:+"$lockfile_backup"}' EXIT
+# Interrupts must run the EXIT trap so the temp lockfile backup is removed.
+trap 'exit 130' INT TERM HUP
 "$PLIST_BUDDY" -c "Set :CFBundleShortVersionString $version" "$INFO_PLIST"
 "$PLIST_BUDDY" -c "Set :CFBundleVersion $next_build" "$INFO_PLIST"
 npm version "$version" --no-git-tag-version --allow-same-version
 sed -i.bak -E "s|(<!-- version -->)[0-9]+\.[0-9]+\.[0-9]+(<!-- /version -->)|\\1$version\\2|" "$README"
 rm -f "$README.bak"
-trap - EXIT
+trap - EXIT INT TERM HUP
 rm -f ${lockfile_backup:+"$lockfile_backup"}
 
 "$SCRIPT_DIR/build.sh" --clean
