@@ -148,8 +148,10 @@ export class Sim {
    * leaves. */
   notice: { x: number; y: number } | null = null;
   /** The calm fish currently watching the pointer — the drift-state
-   * fish closest to `notice`, picked once per tick in tick(). */
-  noticeFish: Fish | null = null;
+   * fish closest to `notice`, picked once per tick in tick().
+   * Read-only view: tick() owns the pick. */
+  get noticeFish(): Fish | null { return this._noticeFish; }
+  private _noticeFish: Fish | null = null;
   private rand: () => number;
   private nextId = 0;
 
@@ -220,14 +222,14 @@ export class Sim {
     // The hovered pointer is noticed by the closest calm fish — only
     // drifters look up; seeking, turning and startled fish have other
     // business.
-    this.noticeFish = null;
+    this._noticeFish = null;
     const n = this.notice;
     if (n) {
       let bd = NOTICE_RADIUS * NOTICE_RADIUS;
       for (const f of this.fish) {
         if (f.state !== "drift") continue;
         const d = (f.x - n.x) ** 2 + (f.y - n.y) ** 2;
-        if (d < bd) { bd = d; this.noticeFish = f; }
+        if (d < bd) { bd = d; this._noticeFish = f; }
       }
     }
     for (const f of this.fish) this.tickFish(f);

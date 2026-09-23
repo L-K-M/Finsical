@@ -124,7 +124,10 @@ canvas.addEventListener("pointermove", (e) => {
   if (!e.isPrimary) return; // one pointer drives curiosity
   sim.notice = tankPoint(e.clientX, e.clientY);
 });
-canvas.addEventListener("pointerleave", () => { sim.notice = null; });
+canvas.addEventListener("pointerleave", (e) => {
+  if (!e.isPrimary) return; // don't clear the primary's curiosity
+  sim.notice = null;
+});
 
 // ---- sprite loading ----------------------------------------------------
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
