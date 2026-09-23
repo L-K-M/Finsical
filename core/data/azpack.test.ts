@@ -193,7 +193,7 @@ describe("loadAzpack", () => {
     ["non-numeric cell width", { cellW: "1" }],
     ["non-finite cell height", { cellH: Infinity }],
     ["missing frame dimensions", { dims: undefined }],
-    ["an incomplete frame table", { dims: meta.dims.slice(0, 3) }],
+    ["an empty frame table", { dims: [] }],
     ["an extra frame", { dims: [...meta.dims, [2, 0, 1, 1]] }],
     ["an invalid frame record", { dims: [null, ...meta.dims.slice(1)] }],
     ["out-of-order frame coordinates", { dims: [[0, 1, 1, 1], ...meta.dims.slice(1)] }],
@@ -221,6 +221,13 @@ describe("loadAzpack", () => {
     for (let g = 0; g < meta.groups; g++)
       for (let f = 0; f < meta.framesPerGroup; f++)
         expect(sheet.frame(g, f).idx).toEqual(new Uint8Array(1));
+  });
+
+  it("accepts a dims prefix truncated by a corrupt sprite stream", async () => {
+    const pack = await loadSheet({ ...meta, dims: meta.dims.slice(0, 3) });
+    const sheet = pack.sheets.get("chunks/a.bin")!;
+    expect(sheet.frame(1, 0).idx).toEqual(new Uint8Array(1));
+    expect(() => sheet.frame(1, 1)).toThrow(RangeError);
   });
 
   it("loads manifest + sprite sheets through a reader", async () => {

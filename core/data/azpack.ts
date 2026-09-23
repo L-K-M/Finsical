@@ -178,8 +178,10 @@ export class SpriteSheet {
 }
 
 /**
- * Validate sheet metadata from an untrusted manifest. dims must list every
- * frame in group-major emission order and fit inside the decoded image.
+ * Validate sheet metadata from an untrusted manifest. emit.py writes dims
+ * as a prefix of the group-major grid (a corrupt stream truncates late
+ * cells), so entries must be ordered and complete but may be fewer than
+ * groups*framesPerGroup; frame() reports absent cells at use time.
  */
 function checkSheetMeta(s: SpriteSheetMeta, img: IndexedImage, file: string): void {
   const bad = (what: string) => new Error(`manifest: ${file}: ${what}`);
@@ -189,7 +191,8 @@ function checkSheetMeta(s: SpriteSheetMeta, img: IndexedImage, file: string): vo
     throw bad("bad framesPerGroup");
   if (!Number.isInteger(cellW) || cellW < 1 ||
       !Number.isInteger(cellH) || cellH < 1) throw bad("bad cell size");
-  if (!Array.isArray(dims) || dims.length !== groups * framesPerGroup)
+  if (!Array.isArray(dims) || dims.length < 1 ||
+      dims.length > groups * framesPerGroup)
     throw bad("dims length mismatch");
   for (let i = 0; i < dims.length; i++) {
     const d = dims[i];
