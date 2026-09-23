@@ -63,6 +63,11 @@ let rosterComplete = saved?.v !== 1;
 
 const sim = new Sim(TANK, 0x9003);
 const audio = new TankAudio();
+// Hidden (Cmd-H, minimized, background tab): rAF stops and the sim
+// freezes, so the ambient loop and the audio device pause with it.
+const syncAudioVisibility = (): void => audio.setHidden(document.hidden);
+document.addEventListener("visibilitychange", syncAudioVisibility);
+syncAudioVisibility();
 if (saved) {
   if (Number.isFinite(saved.tickCount)) sim.tickCount = saved.tickCount;
   if (Number.isFinite(saved.waterQuality))
