@@ -14,10 +14,15 @@ beforeAll(() => {
   cpSync(join(root, "package.json"), join(fixture, "package.json"));
   for (const directory of ["web", "core", "node_modules"])
     symlinkSync(join(root, directory), join(fixture, directory), "junction");
+  // execFileSync blocks the worker — the beforeAll timeout can never
+  // fire mid-build, so the child needs its own kill budget. A failing
+  // build still reports via stdout/stderr attached to the thrown error;
+  // WEB_BUILD_DEBUG streams logs live when needed.
   execFileSync("npm", ["run", "build"], {
     cwd: fixture,
-    stdio: "inherit",
+    stdio: process.env.WEB_BUILD_DEBUG ? "inherit" : "pipe",
     shell: process.platform === "win32",
+    timeout: 25_000,
   });
 }, 30_000);
 
