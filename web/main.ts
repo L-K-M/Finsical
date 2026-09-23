@@ -1,8 +1,8 @@
 import { BOTTOM_PAD, DAY_TICKS, Sim } from "../core/sim.js";
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
-         sanitizeLighting, twilightTint } from "../core/light.js";
+         nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
-import { FISH_CAP, SPAWN_HUNGER } from "../core/tuning.js";
+import { FISH_CAP, HUNGER_SEEK, SPAWN_HUNGER } from "../core/tuning.js";
 import { planFrame } from "../core/loop.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
@@ -997,7 +997,8 @@ function feedFish(): void {
   // always dead-center piles pellets in one spot and never moves the
   // school.
   const x = 30 + Math.random() * (TANK.width - 60);
-  for (const p of feedPinch(Math.random))
+  const hungry = sim.fish.filter((f) => f.hunger > HUNGER_SEEK).length;
+  for (const p of feedPinch(Math.random, hungry))
     setTimeout(() => sim.dropFood(x + p.dx), p.delay);
   audio.feed();
   requestPaint();
@@ -1355,7 +1356,7 @@ function render(): void {
                   TANK.height - 6 - d.height);
   }
 
-  drawLight(ctx, sim.light, sim.tickCount, waterMotion);
+  drawLight(ctx, sim.light, sim.tickCount, waterMotion, nightFloor(lighting));
 
   drawFood(ctx, sim.food);
   for (const f of sim.fish) drawFish(f);

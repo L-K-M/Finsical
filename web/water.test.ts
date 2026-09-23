@@ -4,7 +4,7 @@ import { makeRng } from "../core/rng.js";
 import {
   bubbleOffset, bubblePops, bubbleSize, CAUSTIC_TILE_H, CAUSTIC_TILE_W,
   causticTile, causticValue, feedPinch, murkParams, MURK_BOTTOM, MURK_TOP,
-  pelletDrift, PINCH_SPREAD, sunFactor,
+  pelletDrift, PINCH_MAX, PINCH_SPREAD, sunFactor,
 } from "./water.js";
 
 describe("bubbles", () => {
@@ -37,12 +37,10 @@ describe("bubbles", () => {
 });
 
 describe("feedPinch", () => {
-  it("drops 3-5 pellets within the spread, the first at once", () => {
+  it("drops pellets within the spread, the first at once", () => {
     const rand = makeRng(7);
-    const counts = new Set<number>();
     for (let i = 0; i < 500; i++) {
-      const p = feedPinch(rand);
-      counts.add(p.length);
+      const p = feedPinch(rand, PINCH_MAX);
       expect(p[0]!.delay).toBe(0);
       for (const q of p) {
         expect(Math.abs(q.dx)).toBeLessThanOrEqual(PINCH_SPREAD);
@@ -50,14 +48,20 @@ describe("feedPinch", () => {
         expect(q.delay).toBeLessThan(1000);
       }
     }
-    expect([...counts].sort()).toEqual([3, 4, 5]);
+  });
+
+  it("drops one pellet per hungry fish, at least one, at most a few", () => {
+    const rand = makeRng(7);
+    // A sated tank still gets a pellet; a crowd doesn't flood it.
+    expect(feedPinch(rand, 0)).toHaveLength(1);
+    expect(feedPinch(rand, 3)).toHaveLength(3);
+    expect(feedPinch(rand, 24)).toHaveLength(PINCH_MAX);
   });
 
   it("stays in bounds at the extremes of the random source", () => {
     for (const r of [0, 0.999999]) {
-      const p = feedPinch(() => r);
-      expect(p.length).toBeGreaterThanOrEqual(3);
-      expect(p.length).toBeLessThanOrEqual(5);
+      const p = feedPinch(() => r, PINCH_MAX);
+      expect(p).toHaveLength(PINCH_MAX);
       for (const q of p)
         expect(Math.abs(q.dx)).toBeLessThanOrEqual(PINCH_SPREAD);
     }
@@ -102,6 +106,9 @@ describe("caustics", () => {
     expect(sunFactor(0.3)).toBe(0);
     expect(sunFactor(1)).toBe(1);
     expect(sunFactor(0.65)).toBeCloseTo(0.5);
+    // A light timer's night floor is brighter; it is still night.
+    expect(sunFactor(0.45, 0.45)).toBe(0);
+    expect(sunFactor(1, 0.45)).toBe(1);
   });
 });
 

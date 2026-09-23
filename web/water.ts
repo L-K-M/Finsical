@@ -6,6 +6,7 @@
  * Sprites, tiles and gradients are built once on first use; the per-frame
  * draw calls allocate nothing beyond a few path points.
  */
+import { DEMO_NIGHT_LIGHT } from "../core/light.js";
 import { BOTTOM_PAD, BUBBLE_RISE, FOOD_ROT_TICKS, SURFACE }
   from "../core/sim.js";
 import type { Bubble, Food } from "../core/sim.js";
@@ -33,10 +34,11 @@ function hash01(i: number): number {
   return s - Math.floor(s);
 }
 
-/** Sunlight strength for light effects: 0 at night, 1 at noon. The
- * sim's light bottoms out at 0.3, and moonlit water shouldn't sparkle. */
-export function sunFactor(light: number): number {
-  return clamp01((light - 0.3) / 0.7);
+/** Sunlight strength for light effects: 0 at night, 1 at noon.
+ * `floor` is the light the current night bottoms out at (the demo's
+ * 0.3, a light timer's brighter 0.45): moonlit water shouldn't sparkle. */
+export function sunFactor(light: number, floor = DEMO_NIGHT_LIGHT): number {
+  return clamp01((light - floor) / (1 - floor));
 }
 
 // ---- bubbles ---------------------------------------------------------------
@@ -143,9 +145,8 @@ export function drawBubbles(ctx: CanvasRenderingContext2D,
 
 // ---- food ------------------------------------------------------------------
 
-/** Pellets per feed, inclusive. */
-const PINCH_MIN = 3;
-const PINCH_MAX = 5;
+/** Most pellets one feed drops. */
+export const PINCH_MAX = 5;
 /** Horizontal scatter of a pinch around the drop x, px. */
 export const PINCH_SPREAD = 24;
 /** Delay between pellets of one pinch, ms: they rain in, not as a row. */
@@ -158,9 +159,13 @@ export interface PinchPellet {
   delay: number;
 }
 
-/** A pinch of food: 3-5 pellets scattered around the drop point. */
-export function feedPinch(rand: () => number): PinchPellet[] {
-  const n = PINCH_MIN + Math.floor(rand() * (PINCH_MAX - PINCH_MIN + 1));
+/** A pinch of food scattered around the drop point: one pellet per
+ * hungry fish, at least one and at most PINCH_MAX. A fixed 3-5 pellets
+ * a feed gave a sated tank enough rotting waste to foul it within
+ * minutes. */
+export function feedPinch(rand: () => number,
+                          hungry: number): PinchPellet[] {
+  const n = Math.min(PINCH_MAX, Math.max(1, Math.floor(hungry)));
   const out: PinchPellet[] = [];
   for (let i = 0; i < n; i++) {
     out.push({
@@ -292,8 +297,9 @@ const SHAFT_SWAY_TICKS = 1800;
  * the fish, and scaled by daylight so nights stay dark.
  */
 export function drawLight(ctx: CanvasRenderingContext2D, light: number,
-                          tick: number, motion: WaterMotion): void {
-  const sun = sunFactor(light);
+                          tick: number, motion: WaterMotion,
+                          nightFloor = DEMO_NIGHT_LIGHT): void {
+  const sun = sunFactor(light, nightFloor);
   const t = motion === "animated" ? tick : 0;
 
   // Surface: moonlight keeps a trace of the line after dark.

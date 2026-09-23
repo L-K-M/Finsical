@@ -86,6 +86,13 @@ export function demoLight(cycle: number): number {
   return DEMO_NIGHT_LIGHT + (1 - DEMO_NIGHT_LIGHT) * level;
 }
 
+/** The light a night bottoms out at under these settings: a light
+ * timer's nights stay brighter than the demo's, and the lamp switched
+ * off holds the demo floor. */
+export function nightFloor(s: Lighting): number {
+  return s.lamp && s.mode === "timer" ? CLOCK_NIGHT_LIGHT : DEMO_NIGHT_LIGHT;
+}
+
 /** Clock-driven light, 0.45 night .. 1 day, at `minutes` past local
  * midnight. Null in demo mode, which the sim's tick cycle drives. */
 export function lightAt(minutes: number, s: Lighting): number | null {

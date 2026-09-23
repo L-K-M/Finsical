@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, demoLight, hourLabel,
          LIGHTING_DEFAULTS,
-         lightAt, moonIllumination, moonPhase, sanitizeLighting,
+         lightAt, moonIllumination, moonPhase, nightFloor, sanitizeLighting,
          twilightTint } from "./light.js";
 import type { Lighting } from "./light.js";
 
@@ -61,6 +61,14 @@ describe("lamp", () => {
     expect(twilightTint({ ...timer, lamp: false }, at(8, 15), 0)).toBeNull();
     expect(sanitizeLighting({ lamp: false }).lamp).toBe(false);
     expect(sanitizeLighting({ lamp: "off" }).lamp).toBe(true);
+  });
+});
+
+describe("nightFloor", () => {
+  it("is the timer's brighter floor only while the timer lights the tank", () => {
+    expect(nightFloor(timer)).toBe(CLOCK_NIGHT_LIGHT);
+    expect(nightFloor({ ...timer, mode: "demo" })).toBe(DEMO_NIGHT_LIGHT);
+    expect(nightFloor({ ...timer, lamp: false })).toBe(DEMO_NIGHT_LIGHT);
   });
 });
 
