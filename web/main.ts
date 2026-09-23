@@ -1071,18 +1071,43 @@ function drawFish(f: Fish): void {
 
 // Placeholder sprite until real Aquazone assets are imported.
 function drawPlaceholder(x: number, y: number, facing: number,
-                         dev = 0): void {
+                          dev = 0): void {
+  // Enhanced retro placeholder: a charming pixel fish with stripes
+  // and a little smile, more delightful than plain rectangles.
   ctx.save();
   ctx.translate(Math.round(x), Math.round(y));
   ctx.scale(-facing, 1);
-  // In the mirrored draw space the pitch angle flips sign.
   ctx.rotate(-facing * dev);
-  ctx.fillStyle = "#e8a33d";
-  ctx.fillRect(-8, -4, 14, 8);   // body
-  ctx.fillRect(6, -6, 6, 12);    // tail
-  ctx.fillRect(-2, -7, 6, 3);    // dorsal
+  // Body: rounded rectangle with a slight gradient feel via two colors
+  ctx.fillStyle = "#ffaa55";
+  ctx.fillRect(-9, -5, 18, 10);
+  // Stripe: a vertical bright stripe
+  ctx.fillStyle = "#ffeeaa";
+  ctx.fillRect(2, -4, 3, 8);
+  // Eye: black with a white highlight
   ctx.fillStyle = "#1a1a2e";
-  ctx.fillRect(-6, -2, 2, 2);    // eye
+  ctx.fillRect(-6, -2, 2, 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(-5, -2, 1, 1);
+  // Tail: small triangular fan
+  ctx.fillStyle = "#ffaa55";
+  ctx.beginPath();
+  ctx.moveTo(7, -3);
+  ctx.lineTo(11, 0);
+  ctx.lineTo(7, 3);
+  ctx.fill();
+  // Dorsal fin: small triangle
+  ctx.beginPath();
+  ctx.moveTo(-2, -6);
+  ctx.lineTo(0, -9);
+  ctx.lineTo(2, -6);
+  ctx.fill();
+  // Small smile for charm
+  ctx.strokeStyle = "#1a1a2e";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(4, 1, 2, 0.2, Math.PI - 0.2);
+  ctx.stroke();
   ctx.restore();
 }
 
