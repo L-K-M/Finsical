@@ -1036,7 +1036,8 @@ function drawFish(f: Fish): void {
     const pose = fishPose(sheet, f);
     cv = swimCanvas(sheet, animFrame(f, sheet.meta.framesPerGroup),
                     pose.mir, pose.g);
-  } catch {
+  } catch (e) {
+    if (!(e instanceof RangeError)) throw e;
     // A truncated pack can legitimately lack this cell — an uncaught
     // RangeError here would kill the whole rAF loop, so fall back.
     return drawPlaceholder(f.x, f.y, f.facing, pitch(f));
