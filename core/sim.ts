@@ -157,8 +157,9 @@ export class Sim {
     if (!Number.isFinite(f.id)) f.id = this.nextId;
     // Loaded fish carry their saved id — never reissue it.
     this.nextId = Math.max(this.nextId, f.id + 1);
-    if (!fish.tx && !fish.ty) { f.tx = f.x; f.ty = f.y; }
-    if (!fish.bandY) f.bandY = f.y;
+    if (!Number.isFinite(fish.tx)) f.tx = f.x;
+    if (!Number.isFinite(fish.ty)) f.ty = f.y;
+    if (!Number.isFinite(fish.bandY)) f.bandY = f.y;
     this.fish.push(f);
     return f;
   }

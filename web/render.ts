@@ -58,6 +58,7 @@ export function imageCanvas(img: IndexedImage, opaque: boolean,
   return cv;
 }
 
+const SWIM_CACHE_MAX = 1024;
 const swimCache = new WeakMap<SpriteSheet, Map<string, HTMLCanvasElement>>();
 export function swimCanvas(sheet: SpriteSheet, f: number,
                            facing: 1 | -1, group = 0): HTMLCanvasElement {
@@ -65,7 +66,16 @@ export function swimCanvas(sheet: SpriteSheet, f: number,
   if (!cache) swimCache.set(sheet, (cache = new Map()));
   const key = `${group}:${f}:${facing}`;
   let cv = cache.get(key);
-  if (cv) return cv;
+  if (cv) {
+    cache.delete(key);
+    cache.set(key, cv);
+    return cv;
+  }
+  // Bound per-sheet cache to prevent unbounded memory growth.
+  if (cache.size >= SWIM_CACHE_MAX) {
+    const first = cache.keys().next().value;
+    if (first !== undefined) cache.delete(first);
+  }
   cv = imageCanvas(swimFrame(sheet, f, facing, group), false);
   cache.set(key, cv);
   return cv;
