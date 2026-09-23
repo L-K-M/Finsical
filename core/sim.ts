@@ -119,6 +119,12 @@ const TURN_RATE = Math.PI / 20;
 const BAND_HALF = 24;
 /** Chance per decision of picking a new depth band. */
 const BAND_SHIFT = 0.2;
+/** Above this hunger a fish begs near the surface between meals. */
+const BEG_HUNGER = 0.75;
+/** The hovered pointer is noticed inside this radius. */
+const NOTICE_RADIUS = 80;
+/** This close to the pointer a noticed fish just hovers nearby. */
+const NOTICE_STANDOFF = 16;
 /**
  * Roll duration. The original's turn steps half the 32-pose ring
  * (~16 poses at 60 tps ≈ 0.27 s); ~10 ticks here at 30 tps.
@@ -137,6 +143,13 @@ export class Sim {
   tickCount = 0;
   /** 1 = clean, 0 = foul. Rotted food fouls it; filtration recovers it. */
   waterQuality = 1;
+  /** Pointer position in tank px while the tank is hovered — the
+   * nearest calm fish notices it and drifts over. null when it
+   * leaves. */
+  notice: { x: number; y: number } | null = null;
+  /** The drift-state fish currently closest to `notice`, picked once
+   * per tick in tick(). */
+  private noticeFish: Fish | null = null;
   private rand: () => number;
   private nextId = 0;
 
@@ -204,6 +217,19 @@ export class Sim {
 
   tick(): void {
     this.tickCount++;
+    // The hovered pointer is noticed by the closest calm fish — only
+    // drifters look up; seeking, turning and startled fish have other
+    // business.
+    this.noticeFish = null;
+    const n = this.notice;
+    if (n) {
+      let bd = NOTICE_RADIUS * NOTICE_RADIUS;
+      for (const f of this.fish) {
+        if (f.state !== "drift") continue;
+        const d = (f.x - n.x) ** 2 + (f.y - n.y) ** 2;
+        if (d < bd) { bd = d; this.noticeFish = f; }
+      }
+    }
     for (const f of this.fish) this.tickFish(f);
     // Panic propagates: a freshly darting fish startles close
     // neighbors — fish-on-fish reaction on the same distance falloff.
@@ -301,6 +327,14 @@ export class Sim {
         dist = Math.hypot(f.tx - f.x, f.ty - f.y);
         turning = this.maybeTurn(f);
       }
+      // Curiosity: the fish that noticed the pointer drifts toward it
+      // — hunger (food, above) outranks it, and inside the standoff
+      // it just hovers there.
+      if (f === this.noticeFish && this.notice && dist > NOTICE_STANDOFF) {
+        f.tx = this.notice.x;
+        f.ty = this.notice.y;
+        dist = Math.hypot(f.tx - f.x, f.ty - f.y);
+      }
 
       // Steer the continuous heading toward the destination; the fish
       // curves instead of snapping around. A fish that just entered a
@@ -381,6 +415,10 @@ export class Sim {
       f.bandY = SURFACE + MARGIN +
                 this.rand() * (maxY - SURFACE - MARGIN);
     }
+    // A starving fish begs where the food lands — while the water is
+    // still clean enough to keep an appetite (the seek gate).
+    if (f.hunger > BEG_HUNGER && this.waterQuality > QUALITY_SEEK)
+      f.bandY = Math.min(f.bandY, SURFACE + MARGIN + BAND_HALF);
     f.tx = MARGIN + this.rand() * (this.tank.width - MARGIN * 2);
     f.ty = Math.min(
       maxY,
