@@ -47,6 +47,8 @@ export interface Fish {
   turnFrom: 1 | -1;
   /** Preferred depth band the fish wanders around. */
   bandY: number;
+  /** Render scale — juveniles spawn small, meals grow toward adult. */
+  scale: number;
   /** 0 = full, 1 = starving */
   hunger: number;
   state: FishState;
@@ -124,6 +126,13 @@ const BAND_SHIFT = 0.2;
  * (~16 poses at 60 tps ≈ 0.27 s); ~10 ticks here at 30 tps.
  */
 export const TURN_TICKS = 10;
+/** Juveniles spawn at 0.78–1.10 of adult scale. */
+const SPAWN_SCALE_MIN = 0.78;
+const SPAWN_SCALE_RANGE = 0.32;
+/** Each meal closes this share of the gap to full size — asymptotic,
+ * ~30 feedings to read as grown. */
+const GROWTH = 0.06;
+const MAX_SCALE = 1.35;
 const BUBBLE_CHANCE = 0.004;
 /** One full day/night cycle in ticks (~13 min at 30 tps). */
 export const DAY_TICKS = 24000;
@@ -150,7 +159,7 @@ export class Sim {
       id: this.nextId, species: "",
       facing: 1, heading: 0, phase: 0, latch: -1, peak: 0, cruise: 1,
       speed: 1, vy: 0, tx: 0, ty: 0, turnDir: 1, turnFrom: 1,
-      bandY: 0, hunger: 0.2,
+      bandY: 0, scale: 1, hunger: 0.2,
       state: "drift", stateTicks: 0, panicHops: 0, ...fish,
     };
     // A spread of {id: undefined} would poison the counter with NaN.
@@ -159,6 +168,10 @@ export class Sim {
     this.nextId = Math.max(this.nextId, f.id + 1);
     if (!fish.tx && !fish.ty) { f.tx = f.x; f.ty = f.y; }
     if (!fish.bandY) f.bandY = f.y;
+    // Saved/restored fish keep their size; new fish spawn as juveniles
+    // of varying size so a school doesn't read as clones.
+    if (fish.scale === undefined)
+      f.scale = SPAWN_SCALE_MIN + this.rand() * SPAWN_SCALE_RANGE;
     this.fish.push(f);
     return f;
   }
@@ -336,6 +349,8 @@ export class Sim {
         if (d < EAT_DIST) {
           food.eaten = true;
           f.hunger = 0;
+          // A meal puts a little size on — asymptotic toward adult.
+          f.scale += (MAX_SCALE - f.scale) * GROWTH;
           this.setState(f, "drift");
           this.decide(f);
         }

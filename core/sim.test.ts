@@ -334,6 +334,36 @@ describe("Sim", () => {
     expect(sim.removeFish(a.id)).toBe(true);
   });
 
+  it("spawns juveniles of varying size", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 7);
+    const sizes = new Set<number>();
+    for (let i = 0; i < 8; i++)
+      sizes.add(sim.addFish({ x: 50, y: 50 }).scale);
+    for (const s of sizes) {
+      expect(s).toBeGreaterThanOrEqual(0.78);
+      expect(s).toBeLessThan(1.10 + 1e-9);
+    }
+    expect(sizes.size).toBeGreaterThan(1); // a school isn't clones
+  });
+
+  it("keeps a restored fish's size", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 7);
+    expect(sim.addFish({ x: 50, y: 50, scale: 1.2 }).scale).toBe(1.2);
+  });
+
+  it("grows toward adult size as it eats, never past the cap", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 5);
+    const f = sim.addFish({ x: 40, y: 50, hunger: 0.9, scale: 0.8 });
+    for (let meal = 0; meal < 40; meal++) {
+      sim.dropFood(120);
+      for (let i = 0; i < 2000 && sim.food.length; i++) sim.tick();
+      f.hunger = 0.9;         // stay hungry for the next pellet
+      sim.waterQuality = 1;   // rot between meals mustn't dull appetite
+    }
+    expect(f.scale).toBeGreaterThan(1.0); // well past juvenile range
+    expect(f.scale).toBeLessThanOrEqual(1.35);
+  });
+
   it("removes a fish by id", () => {
     const sim = new Sim({ width: 300, height: 100 }, 7);
     const a = sim.addFish({ x: 10, y: 10 });

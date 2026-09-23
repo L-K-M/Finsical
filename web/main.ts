@@ -83,7 +83,7 @@ function saveTank(): void {
       fish: sim.fish.map((f) => ({
         id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
         heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
-        bandY: f.bandY, hunger: f.hunger,
+        bandY: f.bandY, hunger: f.hunger, scale: f.scale,
         ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
         ...(f.pack !== undefined ? { pack: f.pack } : {}),
       })),
@@ -1030,11 +1030,15 @@ const MAX_FISH_W = TANK.width * 0.6, MAX_FISH_H = TANK.height * 0.6;
 
 function drawFish(f: Fish): void {
   const sheet = sheetOf(f);
-  if (!sheet) return drawPlaceholder(f.x, f.y, f.facing, pitch(f));
+  if (!sheet) return drawPlaceholder(f.x, f.y, f.facing, pitch(f), f.scale);
   const pose = fishPose(sheet, f);
   const cv = swimCanvas(sheet, animFrame(f, sheet.meta.framesPerGroup),
                         pose.mir, pose.g);
-  const s = Math.min(1, MAX_FISH_W / cv.width, MAX_FISH_H / cv.height);
+  // A grown fish may fill more of the tank than the spawn cap — but
+  // never all of it.
+  const s = Math.min(
+    Math.min(1, MAX_FISH_W / cv.width, MAX_FISH_H / cv.height) * f.scale,
+    TANK.width * 0.8 / cv.width, TANK.height * 0.8 / cv.height);
   const w = cv.width * s, h = cv.height * s;
   ctx.save();
   ctx.translate(Math.round(f.x), Math.round(f.y));
@@ -1045,10 +1049,10 @@ function drawFish(f: Fish): void {
 
 // Placeholder sprite until real Aquazone assets are imported.
 function drawPlaceholder(x: number, y: number, facing: number,
-                         dev = 0): void {
+                         dev = 0, scale = 1): void {
   ctx.save();
   ctx.translate(Math.round(x), Math.round(y));
-  ctx.scale(-facing, 1);
+  ctx.scale(-facing * scale, scale);
   // In the mirrored draw space the pitch angle flips sign.
   ctx.rotate(-facing * dev);
   ctx.fillStyle = "#e8a33d";
