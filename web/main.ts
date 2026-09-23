@@ -103,7 +103,7 @@ const FEED_ZONE = TANK.height * 0.15;
 /** Drag-feed leaves one pellet per this many px of travel (~13 per
  * full-width swipe — one gesture mustn't crash water quality). */
 const FEED_STEP = 24;
-let lastFeedX: number | null = null;
+let feedDrag: { id: number; x: number } | null = null;
 let lastFeedSnd = 0;
 // Tap rings on the glass — expanding, fading circles at the knock.
 const ripples: { x: number; y: number; t0: number }[] = [];
@@ -127,26 +127,29 @@ canvas.addEventListener("pointerdown", (e) => {
   audio.unlock();
   if (p.y < FEED_ZONE) {
     sim.dropFood(p.x); audio.feed();
-    lastFeedX = p.x;
+    feedDrag = { id: e.pointerId, x: p.x };
     lastFeedSnd = performance.now();
   } else {
+    // a glass press neither starts nor stops a feed drag
     sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
     ripples.push({ x: p.x, y: p.y, t0: performance.now() });
     if (ripples.length > 12) ripples.shift();
-    lastFeedX = null; // a glass press isn't a feed drag
   }
 });
 canvas.addEventListener("pointermove", (e) => {
-  if (!(e.buttons & 1) || lastFeedX === null) return;
+  if (feedDrag === null || e.pointerId !== feedDrag.id || !(e.buttons & 1))
+    return;
   const p = tankPoint(e);
-  if (!p || p.y >= FEED_ZONE || Math.abs(p.x - lastFeedX) < FEED_STEP)
+  if (!p || p.y >= FEED_ZONE || Math.abs(p.x - feedDrag.x) < FEED_STEP)
     return;
   sim.dropFood(p.x);
   const now = performance.now();
   if (now - lastFeedSnd > 120) { audio.feed(); lastFeedSnd = now; }
-  lastFeedX = p.x;
+  feedDrag.x = p.x;
 });
-const endFeedDrag = () => { lastFeedX = null; };
+const endFeedDrag = (e: PointerEvent) => {
+  if (feedDrag?.id === e.pointerId) feedDrag = null;
+};
 canvas.addEventListener("pointerup", endFeedDrag);
 canvas.addEventListener("pointercancel", endFeedDrag);
 canvas.addEventListener("lostpointercapture", endFeedDrag);

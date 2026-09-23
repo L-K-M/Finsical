@@ -3,6 +3,8 @@ import { DAY_TICKS, FOOD_ROT_TICKS, MARGIN, Sim, SURFACE, TURN_TICKS } from "./s
 
 // States a fish may be in when it's not seeking food.
 const IDLE_STATES = ["drift", "turn"];
+const GASP_SLACK = 8; // per-fish id offset at full gasp (see sim.ts)
+const TRANSIT = 8;    // ~1 tick of upward travel while converging
 
 describe("Sim", () => {
   it("is deterministic for a given seed", () => {
@@ -164,16 +166,17 @@ describe("Sim", () => {
       sim.waterQuality = 0; // pinned — filtration would creep it up
       sim.tick();
     }
-    // Full-gasp ceiling is SURFACE + MARGIN + per-fish slack (≤8);
-    // bound by that + transit tolerance, not an id-specific pixel row.
-    expect(f.y).toBeLessThanOrEqual(SURFACE + MARGIN + 16);
+    // Full-gasp ceiling is SURFACE + MARGIN + slack; bound by that +
+    // transit tolerance, not an id-specific pixel row.
+    expect(f.y).toBeLessThanOrEqual(SURFACE + MARGIN + GASP_SLACK + TRANSIT);
     let maxY = 0;
     for (let i = 0; i < 500; i++) {
       sim.waterQuality = 0;
       sim.tick();
       maxY = Math.max(maxY, f.y);
     }
-    expect(maxY).toBeLessThanOrEqual(SURFACE + MARGIN + 20); // under the waterline
+    // max over 500 ticks tolerates a few px of bob past the ceiling
+    expect(maxY).toBeLessThanOrEqual(SURFACE + MARGIN + GASP_SLACK + TRANSIT + 4);
   });
 
   it("day/night light oscillates in [0,1]", () => {
