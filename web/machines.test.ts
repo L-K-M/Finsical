@@ -152,7 +152,7 @@ describe("previewMarkup", () => {
       const mk = previewMarkup(m);
       expect(mk, m.id).toContain(
         `<rect x="${m.sx}" y="${m.sy}" width="${m.sw}" height="${m.sh}"` +
-        ` fill="url(#pvwater)"/>`);
+        ` fill="url(#pvwater-${m.id})"/>`);
       if (m.image)
         expect(mk.endsWith(shellMarkup(m)), m.id).toBe(true);
     }
@@ -174,7 +174,10 @@ describe("previewMarkup", () => {
   it("stocks every preview with swimmers, gravel, and bubbles", () => {
     for (const m of MACHINES) {
       const mk = previewMarkup(m);
-      expect((mk.match(/<g transform=/g) ?? []).length, m.id).toBe(3);
+      // previewMarkup ends with shellMarkup — strip it so a future
+      // transformed shell group can't trip the swimmer count.
+      const tank = mk.slice(0, mk.length - shellMarkup(m).length);
+      expect((tank.match(/<g transform=/g) ?? []).length, m.id).toBe(3);
       expect(mk, m.id).toContain('fill="#8a6d3b"');
       expect(mk, m.id).toContain('fill="#cfe8ff"');
     }

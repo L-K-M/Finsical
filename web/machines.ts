@@ -75,15 +75,17 @@ export function previewMarkup(m: Machine): string {
     parts.push(`<rect x="${m.hole.x}" y="${m.hole.y}" width="${m.hole.w}"` +
       ` height="${m.hole.h}" fill="${PV_BACKPLATE}"/>`);
   parts.push(
-    `<defs><linearGradient id="pvwater" x1="0" y1="0" x2="0" y2="1">` +
+    // ids are document-global across inline SVGs — suffix per machine
+    `<defs><linearGradient id="pvwater-${m.id}" x1="0" y1="0" x2="0" y2="1">` +
       `<stop offset="0" stop-color="${PV_WATER_TOP}"/>` +
       `<stop offset="1" stop-color="${PV_WATER_BOT}"/>` +
       `</linearGradient></defs>`,
     `<rect x="${m.sx}" y="${m.sy}" width="${m.sw}" height="${m.sh}"` +
-      ` fill="url(#pvwater)"/>`,
-    // Gravel strip — the tank's bottom 12 logical px.
-    `<rect x="${m.sx}" y="${ty(188)}" width="${m.sw}" height="${12 * k}"` +
-      ` fill="${PV_GRAVEL}"/>`);
+      ` fill="url(#pvwater-${m.id})"/>`,
+    // Gravel strip — the tank's bottom 12 logical px, anchored to the
+    // screen bottom (screen rects are ~16:10 but not exactly).
+    `<rect x="${m.sx}" y="${m.sy + m.sh - 12 * k}" width="${m.sw}"` +
+      ` height="${12 * k}" fill="${PV_GRAVEL}"/>`);
   // Placeholder swimmers — drawPlaceholder's rects, mirrored to face.
   const fish = (x: number, y: number, facing: 1 | -1, s = 1): string =>
     `<g transform="translate(${tx(x)} ${ty(y)})` +
