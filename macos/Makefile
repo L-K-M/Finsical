@@ -2,6 +2,10 @@
 APP := Finsical.app
 ICON_SRC := ../media-sources/icon-finsical.png
 ICONSET := Finsical.iconset
+# Oldest macOS the app runs on; keep in step with LSMinimumSystemVersion in
+# Info.plist. swiftc ignores MACOSX_DEPLOYMENT_TARGET and would otherwise
+# target the build host's macOS, so pass it explicitly through -target.
+MACOS_MIN := 12.0
 
 all: $(APP)
 
@@ -20,7 +24,8 @@ $(APP): bundle Finsical.swift Info.plist Finsical.icns
 	# assets is required — the Plus machine's shell lives there; fail
 	# the build rather than ship an empty silhouette.
 	cp -r ../web/assets $(APP).staging/Contents/Resources/web/
-	MACOSX_DEPLOYMENT_TARGET=12.0 swiftc -O -o $(APP).staging/Contents/MacOS/Finsical Finsical.swift
+	swiftc -O -target $(shell uname -m)-apple-macos$(MACOS_MIN) \
+		-o $(APP).staging/Contents/MacOS/Finsical Finsical.swift
 	# The linked binary is what the OS enforces, so fail the build if its
 	# minimum macOS differs from the one Info.plist promises.
 	@minos="$$(vtool -show-build $(APP).staging/Contents/MacOS/Finsical | awk '$$1 == "minos" { print $$2 }')"; \
