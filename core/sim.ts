@@ -397,7 +397,10 @@ export class Sim {
     // waterline — fish hang just under it until filtration recovers.
     const gasp =
       Math.max(0, (GASP_QUALITY - this.waterQuality) / GASP_QUALITY);
-    const shallow = maxY - gasp * (maxY - SURFACE - MARGIN);
+    // A little gasp-scaled slack keeps a full-gasp school from
+    // collapsing onto one exact row.
+    const shallow = maxY - gasp * (maxY - SURFACE - MARGIN) +
+                    gasp * this.rand() * 8;
     f.ty = Math.min(
       shallow,
       Math.max(SURFACE + MARGIN,

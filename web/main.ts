@@ -100,9 +100,11 @@ setInterval(saveTank, 10_000);
 // A press-drag along the surface scatters a trail of pellets — shaking
 // the food tin.
 const FEED_ZONE = TANK.height * 0.15;
-/** Drag-feed leaves one pellet per this many px of travel. */
-const FEED_STEP = 14;
+/** Drag-feed leaves one pellet per this many px of travel (~13 per
+ * full-width swipe — one gesture mustn't crash water quality). */
+const FEED_STEP = 24;
 let lastFeedX: number | null = null;
+let lastFeedSnd = 0;
 // Tap rings on the glass — expanding, fading circles at the knock.
 const ripples: { x: number; y: number; t0: number }[] = [];
 const RIPPLE_MS = 1200;
@@ -116,14 +118,17 @@ function tankPoint(e: PointerEvent): { x: number; y: number } | null {
          x >= 0 && x < TANK.width && y >= 0 && y < TANK.height
     ? { x, y } : null;
 }
+canvas.style.touchAction = "none"; // touch drags feed; they don't scroll
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return; // ignore right/middle clicks
   const p = tankPoint(e);
   if (!p) return;
+  canvas.setPointerCapture(e.pointerId); // feed drags survive leaving the canvas
   audio.unlock();
   if (p.y < FEED_ZONE) {
     sim.dropFood(p.x); audio.feed();
     lastFeedX = p.x;
+    lastFeedSnd = performance.now();
   } else {
     sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
     ripples.push({ x: p.x, y: p.y, t0: performance.now() });
@@ -136,7 +141,9 @@ canvas.addEventListener("pointermove", (e) => {
   const p = tankPoint(e);
   if (!p || p.y >= FEED_ZONE || Math.abs(p.x - lastFeedX) < FEED_STEP)
     return;
-  sim.dropFood(p.x); audio.feed();
+  sim.dropFood(p.x);
+  const now = performance.now();
+  if (now - lastFeedSnd > 120) { audio.feed(); lastFeedSnd = now; }
   lastFeedX = p.x;
 });
 const endFeedDrag = () => { lastFeedX = null; };
@@ -1122,7 +1129,7 @@ function render(): void {
     ctx.drawImage(d, Math.round(TANK.width * (i + 0.5) / dn - d.width / 2),
                   TANK.height - 6 - d.height);
   }
-  // Waterline: a soft glint marks the surface (and the feeding zone).
+  // Waterline: a soft glint marks the surface; feeding works down to FEED_ZONE.
   ctx.fillStyle = "rgba(220,240,255,0.30)";
   ctx.fillRect(0, SURFACE, TANK.width, 1);
   ctx.fillStyle = "rgba(220,240,255,0.12)";

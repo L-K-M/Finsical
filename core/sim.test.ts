@@ -146,6 +146,8 @@ describe("Sim", () => {
 
   it("ambient bubbles rise from the gravel on their own", () => {
     const sim = new Sim({ width: 320, height: 200 }, 13);
+    sim.fish.length = 0;    // isolate ambient spawning from fish-blown bubbles
+    sim.bubbles.length = 0;
     let seen = 0;
     for (let i = 0; i < 3000; i++) {
       sim.tick();
