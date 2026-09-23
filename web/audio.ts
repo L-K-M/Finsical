@@ -82,7 +82,7 @@ export class TankAudio {
     void this.ctx.resume()
       .then(() => {
         resumed = true;
-        this.startAmbient();
+        return this.startAmbient();
       })
       .catch((err) => {
         if (resumed) console.warn("audio unlock failed:", err);
