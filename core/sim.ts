@@ -169,6 +169,11 @@ const MIRROR_MIN = 4;
 const BAND_HALF = 24;
 /** Chance per decision of picking a new depth band. */
 const BAND_SHIFT = 0.2;
+/** Chance per decision a wander anchors on a schoolmate's
+ * neighborhood instead of the open water. */
+const SCHOOL_PULL = 0.35;
+/** Loose scatter around a schoolmate, px — grouping, not lockstep. */
+const SCHOOL_RADIUS = 42;
 /**
  * Roll duration. The original's turn steps half the 32-pose ring
  * (~16 poses at 60 tps ≈ 0.27 s); ~10 ticks here at 30 tps.
@@ -516,6 +521,20 @@ export class Sim {
     }
     f.ty = Math.min(
       y1, Math.max(y0, f.bandY + (this.rand() - 0.5) * 2 * BAND_HALF));
+    // Schooling: a same-species wander sometimes anchors on a
+    // schoolmate's neighborhood — loose grouping, not lockstep.
+    if (this.rand() < SCHOOL_PULL) {
+      const mates = this.fish.filter(
+        (m) => m !== f && m.species === f.species);
+      if (mates.length) {
+        const m = mates[(this.rand() * mates.length) | 0]!;
+        f.tx = Math.min(x1, Math.max(x0,
+          m.x + (this.rand() - 0.5) * 2 * SCHOOL_RADIUS));
+        // Half the x-spread vertically — schools sit flat in a band.
+        f.ty = Math.min(y1, Math.max(y0,
+          m.y + (this.rand() - 0.5) * SCHOOL_RADIUS));
+      }
+    }
     f.phase = 0;
     f.latch = -1;
     f.strokes = 0;
