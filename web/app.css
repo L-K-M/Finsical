@@ -49,6 +49,36 @@ canvas#crt {
 body.crt canvas#crt { display: block; }
 body.crt canvas#tank { opacity: 0; }
 
+/* ---- browser menu bar (web/menubar.ts) ---------------------------------
+   The browser tank page is the whole desktop, so it gets the desktop's
+   menu bar: Platinum bar, pull-downs, a clock in the corner. Sits
+   above the machine art (z 2), below the overlay windows (z 10). */
+#menubar { position: fixed; top: 0; left: 0; right: 0; z-index: 6; }
+#menubar .mbclock {
+  position: absolute; right: 12px; top: 2px;
+  font: var(--osm-font-system); color: #000;
+  pointer-events: none;
+}
+/* ---- document windows (About, Shortcuts) ------------------------------- */
+.dbwin { width: 344px; }
+.dbdoc { padding: 4px 14px 12px; font: var(--osm-font-small); }
+.dbabout { text-align: center; }
+.dbabout canvas {
+  display: block; margin: 10px auto 6px;
+  image-rendering: pixelated;
+}
+.dbtitle { font: var(--osm-font-system); font-weight: bold; }
+.dbblurb { margin-top: 8px; text-align: left; line-height: 15px; }
+.dbcredit { margin-top: 8px; text-align: left; color: #555; }
+.dbfoot {
+  display: flex; justify-content: center; gap: 12px; margin-top: 12px;
+}
+.dbkeys .dbkeyrow { display: flex; margin-top: 6px; line-height: 15px; }
+.dbkeys .dbkey {
+  flex: none; width: 92px; font: var(--osm-font-system); font-weight: bold;
+}
+.dbkeys .osm-button { margin-top: 14px; }
+
 /* ---- client windows --------------------------------------------------
    Preferences, Tank Overview, Import Add-ons and Tank Stats are Mac OS
    8 windows drawn by Osmium UI (osmium.css), each page one borderless
