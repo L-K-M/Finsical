@@ -210,17 +210,19 @@ function tankPoint(clientX: number, clientY: number):
                       TANK);
 }
 
-// Feed-zone affordance: a crosshair over the strip, and a brighter
-// boundary line while the pointer is parked there (see render()).
-// Hover is re-evaluated each frame from the last client point so a
-// resize under a stationary pointer can't leave the state stale, and
-// getBoundingClientRect runs once per frame instead of per move.
+// Feed-zone affordance: while the pointer is over the tank, a faint
+// line marks where feeding stops, brightening with a crosshair cursor
+// over the strip itself (see render()). Hover is re-evaluated every
+// frame from the last client point (see frame()), so a resize under a
+// stationary pointer can't leave it stale, and getBoundingClientRect
+// runs once per frame instead of per move.
 let overFeedZone = false;
 let lastClient: { x: number; y: number } | null = null;
 function setFeedHover(on: boolean): void {
   if (on === overFeedZone) return;
   overFeedZone = on;
   canvas.style.cursor = on ? "crosshair" : "";
+  requestPaint();
 }
 function syncFeedHover(): void {
   if (!lastClient) { setFeedHover(false); return; }
@@ -247,6 +249,7 @@ canvas.addEventListener("pointerdown", (e) => {
 // The nearest calm fish notices the hovering pointer and drifts over
 // to look — hunger and panic still outrank curiosity in the sim.
 canvas.addEventListener("pointermove", (e) => {
+  if (!lastClient) requestPaint(); // the zone line appears
   lastClient = { x: e.clientX, y: e.clientY };
   if (!e.isPrimary) return; // one pointer drives curiosity
   sim.notice = tankPoint(e.clientX, e.clientY);
@@ -254,6 +257,7 @@ canvas.addEventListener("pointermove", (e) => {
 canvas.addEventListener("pointerleave", (e) => {
   lastClient = null;
   setFeedHover(false); // pointer is definitionally off the tank — clear now
+  requestPaint(); // and the zone line goes
   if (!e.isPrimary) return; // don't clear the primary's curiosity
   sim.notice = null;
 });
@@ -1405,22 +1409,21 @@ function render(): void {
   drawRipples(ctx, ripples);
   drawSplashes(ctx, splashes);
 
+  // Feed-zone boundary, only while the pointer is over the tank: a
+  // permanent line read as a second waterline. Under the murk and night
+  // overlays, so it dims with the water instead of glowing at night.
+  if (lastClient) {
+    ctx.fillStyle = overFeedZone
+      ? "rgba(255,255,255,0.45)"
+      : "rgba(255,255,255,0.14)";
+    ctx.fillRect(0, feedZoneLineY(TANK.height), TANK.width, 1);
+  }
+
   // Fouled water murks the whole scene.
   drawMurk(ctx, sim.waterQuality,
            waterMotion === "animated" ? sim.tickCount : 0);
 
   drawNight(new Date());
-
-  // Feed-zone boundary: after the night/murk overlays so the affordance
-  // stays visible. Faint at rest; brightens while the pointer is there.
-  // Re-check hover here so a resize under a stationary pointer updates
-  // the cursor/line on the next frame (setFeedHover early-returns).
-  syncFeedHover();
-  const zoneY = feedZoneLineY(TANK.height);
-  ctx.fillStyle = overFeedZone
-    ? "rgba(255,255,255,0.45)"
-    : "rgba(255,255,255,0.14)";
-  ctx.fillRect(0, zoneY, TANK.width, 1);
 }
 
 /** Night's blue, multiplied over the scene at the darkest demo night:
@@ -1508,6 +1511,9 @@ function frame(now: number): void {
   // The light timer follows the Mac's clock; hand the sim this
   // frame's light before it ticks.
   syncLight(new Date());
+  // Ahead of the tick gate: hover must update (and repaint) even
+  // while no tick runs.
+  syncFeedHover();
   for (let i = 0; i < plan.ticks; i++) tickSim();
   if (plan.ticks === 0 && !frameDirty) return;
   frameDirty = false;
