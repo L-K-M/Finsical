@@ -1,6 +1,6 @@
 import { openBus } from "./bus.js";
 import { CRT_DEFAULTS, sanitizeCrtConfig } from "./crt.js";
-import { MACHINES, shellMarkup } from "./machines.js";
+import { MACHINES, previewMarkup } from "./machines.js";
 import type { CrtConfig } from "./crt.js";
 import { centerText, hostWindow, mountList, pushButton, registerSprites,
          setEnabled, trackHighlight, trackPress } from "osmium-ui";
@@ -299,7 +299,7 @@ function paintPreview(): void {
   if (!m) return;
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
-  svg.innerHTML = shellMarkup(m);
+  svg.innerHTML = previewMarkup(m);
   preview.appendChild(svg);
 }
 function showMachine(id: string): void {

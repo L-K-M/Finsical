@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
-import { MACHINES, SCREENBACK_HOLE_PAD } from "./machines.js";
+import { MACHINES, SCREENBACK_HOLE_PAD, previewMarkup, shellMarkup } from "./machines.js";
 
 // Each machine's `shape` is hand-synced to the outer <rect> geometry
 // of its svg — the native shell unions it into the window's layer
@@ -142,6 +142,44 @@ describe("machine silhouettes", () => {
       for (const [px, py] of points)
         expect(inShape(px, py), `${m.id} screen point ${px},${py}`)
           .toBe(true);
+    }
+  });
+});
+
+describe("previewMarkup", () => {
+  it("fills exactly the screen rect with water, shell painted last", () => {
+    for (const m of MACHINES) {
+      const mk = previewMarkup(m);
+      expect(mk, m.id).toContain(
+        `<rect x="${m.sx}" y="${m.sy}" width="${m.sw}" height="${m.sh}"` +
+        ` fill="url(#pvwater-${m.id})"/>`);
+      if (m.image)
+        expect(mk.endsWith(shellMarkup(m)), m.id).toBe(true);
+    }
+  });
+
+  it("backs the glass aperture only where a hole exists", () => {
+    for (const m of MACHINES) {
+      const mk = previewMarkup(m);
+      if (m.hole) {
+        expect(mk, m.id).toContain(
+          `<rect x="${m.hole.x}" y="${m.hole.y}" width="${m.hole.w}"` +
+          ` height="${m.hole.h}" fill="#050508"/>`);
+      } else {
+        expect(mk, m.id).not.toContain('fill="#050508"');
+      }
+    }
+  });
+
+  it("stocks every preview with swimmers, gravel, and bubbles", () => {
+    for (const m of MACHINES) {
+      const mk = previewMarkup(m);
+      // previewMarkup ends with shellMarkup — strip it so a future
+      // transformed shell group can't trip the swimmer count.
+      const tank = mk.slice(0, mk.length - shellMarkup(m).length);
+      expect((tank.match(/<g transform=/g) ?? []).length, m.id).toBe(3);
+      expect(mk, m.id).toContain('fill="#8a6d3b"');
+      expect(mk, m.id).toContain('fill="#cfe8ff"');
     }
   });
 });
