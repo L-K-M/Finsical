@@ -12,6 +12,10 @@ MACOS_MIN := 12.0
 
 all: $(APP)
 
+# Osmium UI comes from npm: say so rather than "No rule to make target".
+$(OSMIUM)/%:
+	@echo "$@ is missing: run npm install in the repository root" >&2; exit 1
+
 $(APP): bundle $(SOURCES) Info.plist Finsical.icns
 	rm -rf $(APP).staging
 	mkdir -p $(APP).staging/Contents/MacOS $(APP).staging/Contents/Resources/web

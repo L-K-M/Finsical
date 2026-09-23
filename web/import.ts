@@ -550,12 +550,11 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     win.setAttribute("aria-label", "Import add-ons");
     ov.appendChild(win);
     document.body.appendChild(ov);
-    mountWindow(win, {
+    card = mountWindow(win, {
       title: "Import Add-ons",
       onClose: () => close(),
       onDrag: (e) => dragOverlay(win, e),
-    });
-    card = win.querySelector<HTMLElement>(":scope > .osm-content")!;
+    }).content;
   } else {
     card = opts!.host!;
   }

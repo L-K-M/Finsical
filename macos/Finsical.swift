@@ -519,7 +519,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         frames.restore(window, key: "FinsicalTank")
         window.makeKeyAndOrderFront(nil)
 
-        webView.load(URLRequest(url: URL(string: "finsical://app/index.html")!))
+        webView.load(URLRequest(url: page("index.html")))
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
