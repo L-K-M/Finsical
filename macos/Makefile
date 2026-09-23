@@ -21,6 +21,15 @@ $(APP): bundle Finsical.swift Info.plist Finsical.icns
 	# the build rather than ship an empty silhouette.
 	cp -r ../web/assets $(APP).staging/Contents/Resources/web/
 	MACOSX_DEPLOYMENT_TARGET=12.0 swiftc -O -o $(APP).staging/Contents/MacOS/Finsical Finsical.swift
+	# The linked binary is what the OS enforces, so fail the build if its
+	# minimum macOS differs from the one Info.plist promises.
+	@minos="$$(vtool -show-build $(APP).staging/Contents/MacOS/Finsical | awk '$$1 == "minos" { print $$2 }')"; \
+	promised="$$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' Info.plist)"; \
+	if [ "$$minos" != "$$promised" ]; then \
+		echo "Binary minos '$$minos' does not match LSMinimumSystemVersion '$$promised'" >&2; \
+		exit 1; \
+	fi; \
+	echo "Binary minos $$minos matches LSMinimumSystemVersion"
 	rm -rf $(APP) && mv $(APP).staging $(APP)
 	codesign --force --sign - $(APP)
 	@echo "Built $(APP)"
