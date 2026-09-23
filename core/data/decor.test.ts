@@ -86,7 +86,7 @@ describe("pickDecorArts", () => {
   it("keeps the single-frame fallback for keyless packs", () => {
     const only = thumbnail(50);
     expect(pickDecorArts([only], 3))
-      .toEqual({ img: only, key: 0, guessed: true });
+      .toEqual([{ img: only, key: 0, guessed: true }]);
   });
   it("honors max=0 by returning no frames", () => {
     expect(pickDecorArts([framed(30, 30, 255, 3)], 0)).toEqual([]);
