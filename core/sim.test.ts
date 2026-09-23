@@ -46,7 +46,7 @@ describe("Sim", () => {
   it("keeps a big fish's body inside the glass", () => {
     // An adult ryukin at the tank's art scale: 100 x 67.
     const sim = new Sim({ width: 320, height: 200 }, 7);
-    sim.addFish({ x: 160, y: 100, speed: 2, halfW: 50, halfH: 33 });
+    sim.addFish({ x: 160, y: 100, speed: 2, scale: 1, halfW: 50, halfH: 33 });
     for (let i = 0; i < 5000; i++) {
       sim.tick();
       const f = sim.fish[0]!;
@@ -62,7 +62,8 @@ describe("Sim", () => {
     // a fish get: its floor clamp sits farthest above the gravel.
     for (const halfH of [33, 45, 60]) {
       const sim = new Sim({ width: 320, height: 200 }, 5);
-      const f = sim.addFish({ x: 60, y: 120, hunger: 0, halfW: 50, halfH });
+      const f = sim.addFish({ x: 60, y: 120, hunger: 0, scale: 1,
+                              halfW: 50, halfH });
       sim.dropFood(200);
       // Sated until the pellet has settled on the gravel.
       let wait = 0;
@@ -83,7 +84,8 @@ describe("Sim", () => {
     // dropped at the wall; the reach has to span that gap too.
     for (const drop of [0, 320]) {
       const sim = new Sim({ width: 320, height: 200 }, 5);
-      sim.addFish({ x: 160, y: 100, hunger: 1, halfW: 90, halfH: 30 });
+      sim.addFish({ x: 160, y: 100, hunger: 1, scale: 1,
+                    halfW: 90, halfH: 30 });
       sim.dropFood(drop);
       let eaten = false;
       for (let i = 0; i < 3000 && !eaten; i++) {
@@ -96,7 +98,7 @@ describe("Sim", () => {
 
   it("blows bubbles from a big fish's mouth", () => {
     const sim = new Sim({ width: 320, height: 200 }, 11);
-    const f = sim.addFish({ x: 160, y: 100, halfW: 40, halfH: 20 });
+    const f = sim.addFish({ x: 160, y: 100, scale: 1, halfW: 40, halfH: 20 });
     for (let i = 0; i < 4000 && !sim.bubbles.length; i++) {
       sim.tick();
       if (sim.bubbles.length) {
@@ -444,15 +446,15 @@ describe("Sim", () => {
     for (let i = 0; i < 8; i++)
       sizes.add(sim.addFish({ x: 50, y: 50 }).scale);
     for (const s of sizes) {
-      expect(s).toBeGreaterThanOrEqual(0.78);
-      expect(s).toBeLessThan(1.10 + 1e-9);
+      expect(s).toBeGreaterThanOrEqual(0.7);
+      expect(s).toBeLessThan(0.95 + 1e-9);
     }
     expect(sizes.size).toBeGreaterThan(1); // a school isn't clones
   });
 
   it("keeps a restored fish's size", () => {
     const sim = new Sim({ width: 300, height: 100 }, 7);
-    expect(sim.addFish({ x: 50, y: 50, scale: 1.2 }).scale).toBe(1.2);
+    expect(sim.addFish({ x: 50, y: 50, scale: 0.9 }).scale).toBe(0.9);
   });
 
   it("sanitizes a corrupt saved scale", () => {
@@ -461,21 +463,35 @@ describe("Sim", () => {
     expect(sim.addFish({ x: 50, y: 50, scale: -2 }).scale).toBe(1);
     expect(sim.addFish({ x: 50, y: 50, scale: NaN }).scale).toBe(1);
     expect(sim.addFish({ x: 50, y: 50, scale: Infinity }).scale).toBe(1);
-    expect(sim.addFish({ x: 50, y: 50, scale: 9 }).scale).toBe(1.35);
-    expect(sim.addFish({ x: 50, y: 50, scale: 1e-9 }).scale).toBe(0.78);
+    expect(sim.addFish({ x: 50, y: 50, scale: 9 }).scale).toBe(1);
+    expect(sim.addFish({ x: 50, y: 50, scale: 1e-9 }).scale).toBe(0.7);
   });
 
-  it("grows toward adult size as it eats, never past the cap", () => {
+  it("grows toward adult size as it eats, never past it", () => {
     const sim = new Sim({ width: 300, height: 100 }, 5);
-    const f = sim.addFish({ x: 40, y: 50, hunger: 0.9, scale: 0.8 });
+    const f = sim.addFish({ x: 40, y: 50, hunger: 0.9, scale: 0.7 });
     for (let meal = 0; meal < 40; meal++) {
       sim.dropFood(120);
       for (let i = 0; i < 2000 && sim.food.length; i++) sim.tick();
       f.hunger = 0.9;         // stay hungry for the next pellet
       sim.waterQuality = 1;   // rot between meals mustn't dull appetite
     }
-    expect(f.scale).toBeGreaterThan(1.0); // well past juvenile range
-    expect(f.scale).toBeLessThanOrEqual(1.35);
+    expect(f.scale).toBeGreaterThan(0.95); // past the juvenile range
+    expect(f.scale).toBeLessThanOrEqual(1);
+  });
+
+  it("scales a fish's body extents by its growth", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 3);
+    // The renderer reports the sheet's extents at growth 1; a juvenile
+    // at half size keeps only half as much body inside the glass.
+    const adult = sim.addFish({ x: 160, y: 20, scale: 1,
+                                halfW: 20, halfH: 50 });
+    const young = sim.addFish({ x: 160, y: 20, scale: 0.7,
+                                halfW: 20, halfH: 50 });
+    sim.tick();
+    // EDGE_KEEP holds 80% of the half-height below the surface (y 10).
+    expect(adult.y).toBeCloseTo(10 + 50 * 0.8);
+    expect(young.y).toBeCloseTo(10 + 50 * 0.7 * 0.8);
   });
 
   it("removes a fish by id", () => {

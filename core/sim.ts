@@ -62,10 +62,11 @@ export interface Fish {
   /** Hops this panic wave has traveled from the tapped fish — caps
    * how far a startle cascade can spread. */
   panicHops: number;
-  /** Half the drawn sprite's width and height, reported by the
-   * renderer once a sheet binds (runtime only, never saved). Big
-   * adults keep their bodies inside the glass by these; unset means a
-   * sprite small enough for the fixed margins. */
+  /** Half the drawn sprite's width and height at growth scale 1,
+   * reported by the renderer once a sheet binds (runtime only, never
+   * saved); the sim scales them by `scale`. Big adults keep their
+   * bodies inside the glass by these; unset means a sprite small
+   * enough for the fixed margins. */
   halfW?: number;
   halfH?: number;
 }
@@ -173,13 +174,15 @@ const BAND_SHIFT = 0.2;
  * (~16 poses at 60 tps ≈ 0.27 s); ~10 ticks here at 30 tps.
  */
 export const TURN_TICKS = 10;
-/** Juveniles spawn at 0.78–1.10 of adult scale. */
-const SPAWN_SCALE_MIN = 0.78;
-const SPAWN_SCALE_RANGE = 0.32;
-/** Each meal closes this share of the gap to the cap — asymptotic:
- * crosses 1.0 after ~8 meals from minimum spawn, ~90% grown after ~37. */
+/** Juveniles spawn at 0.70–0.95 of adult size. Adult (1) is the art
+ * scale the renderer draws a species at, so growth never makes a fish
+ * bigger than its own art. */
+const SPAWN_SCALE_MIN = 0.7;
+const SPAWN_SCALE_RANGE = 0.25;
+/** Each meal closes this share of the gap to adult size — asymptotic:
+ * ~90% of the way after ~37 meals. */
 const GROWTH = 0.06;
-const MAX_SCALE = 1.35;
+const MAX_SCALE = 1;
 const BUBBLE_CHANCE = 0.004;
 /** One full day/night cycle in ticks (~13 min at 30 tps). */
 export const DAY_TICKS = 24000;
@@ -437,7 +440,7 @@ export class Sim {
         // corner the two gaps sum to more than their hypotenuse).
         const { x0, x1 } = this.room(f);
         const wallGap = Math.max(0, x0 - food.x, food.x - x1);
-        if (d < Math.max(EAT_DIST, (f.halfH ?? 0) * EDGE_KEEP) + wallGap) {
+        if (d < Math.max(EAT_DIST, this.halfH(f) * EDGE_KEEP) + wallGap) {
           food.eaten = true;
           f.hunger = 0;
           // A meal puts a little size on — asymptotic toward adult.
@@ -494,7 +497,7 @@ export class Sim {
     // Bubbles leave from the mouth, not the middle of a big body.
     if (this.rand() < BUBBLE_CHANCE * (2 - this.waterQuality)) {
       this.bubbles.push({
-        x: f.x + f.facing * Math.max(6, (f.halfW ?? 0) - 3), y: f.y - 3 });
+        x: f.x + f.facing * Math.max(6, this.halfW(f) - 3), y: f.y - 3 });
     }
   }
 
@@ -561,11 +564,15 @@ export class Sim {
     return false;
   }
 
+  /** Half the body's drawn width and height at its current growth. */
+  private halfW(f: Fish): number { return (f.halfW ?? 0) * f.scale; }
+  private halfH(f: Fish): number { return (f.halfH ?? 0) * f.scale; }
+
   /** Where a fish's centre may go: MARGIN from the walls for small
    * sprites, most of the body's half-extent for big ones. */
   private room(f: Fish): { x0: number; x1: number; y0: number; y1: number } {
     const { width: w, height: h } = this.tank;
-    const kx = (f.halfW ?? 0) * EDGE_KEEP, ky = (f.halfH ?? 0) * EDGE_KEEP;
+    const kx = this.halfW(f) * EDGE_KEEP, ky = this.halfH(f) * EDGE_KEEP;
     const x0 = Math.min(Math.max(MARGIN, kx), w / 2);
     const y0 = Math.min(SURFACE + Math.max(MARGIN, ky), h / 2);
     return { x0, x1: w - x0, y0,

@@ -1206,13 +1206,9 @@ function bindExtents(f: Fish): void {
 /** The scale a fish draws at: its sheet's art scale times its growth.
  * swimCanvas caches a shrunk frame per exact scale, so growth rounds
  * to 0.05 steps (finer than a pixel for most fish) to keep that cache
- * bounded. A grown fish may outgrow the spawn cap, never 80% of the
- * tank. */
+ * bounded. */
 function drawScale(sheet: SpriteSheet, f: Fish): number {
-  const grown = Math.round(f.scale * 20) / 20;
-  return Math.min(sheetScale(sheet) * grown,
-                  TANK.width * 0.8 / sheet.meta.cellH,
-                  TANK.height * 0.8 / sheet.meta.cellW);
+  return sheetScale(sheet) * Math.round(f.scale * 20) / 20;
 }
 
 function drawFish(f: Fish): void {
