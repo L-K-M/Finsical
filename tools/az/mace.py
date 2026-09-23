@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # Ported from FFmpeg libavcodec/mace.c (Copyright (c) 2002 Laszlo Torok,
-# adapted by Francois Revol); see THIRD_PARTY_NOTICES.md. The browser
-# port in core/data/mace.ts ships inside the app bundle.
+# adapted by Francois Revol) to Python for Finsical in 2026; licensed
+# under the GNU LGPL 2.1 or later (LICENSES/LGPL-2.1.txt). See
+# THIRD_PARTY_NOTICES.md. The browser port in core/data/mace.ts ships
+# inside the app bundle.
 """MACE 3:1 mono decoder, ported from FFmpeg libavcodec/mace.c (LGPL).
 
 The coefficient tables live in the sibling mace_tab.bin (MACEtab2, 128

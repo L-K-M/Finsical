@@ -12,11 +12,18 @@ The files below contain third-party code under their own licenses.
   Copyright (c) 2002 Laszlo Torok, adapted to libavcodec by Francois
   Revol.
 - License: GNU Lesser General Public License, version 2.1 or later
-  (`LGPL-2.1-or-later`), https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+  (`LGPL-2.1-or-later`). The full text is in `LICENSES/LGPL-2.1.txt`
+  and at https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+- Changes: ported from C to TypeScript (`core/data/mace.ts`) and
+  Python (`tools/az/mace.py`) in 2026, with the tables stored as base64
+  and as the two `.bin` files.
 
 The MACE 3:1 algorithm (`read_table`, `chomp3`, the clipping and sample
 expansion) and the coefficient tables `MACEtab1` to `MACEtab4` are
 ported from that file. `core/data/mace.ts` is compiled into the app's
-JavaScript bundle (`bundle.js`). Its readable source is that file in
-this repository, and `npm run build` rebuilds the bundle from it, so
-you can modify or replace the LGPL-covered decoder and relink it.
+JavaScript bundles (`bundle.js` for the tank, `addons.js` for Import
+Add-ons), which carry its license header. Its readable source is that
+file in this repository, and `npm run build` rebuilds the bundles from
+it, so you can modify or replace the LGPL-covered decoder and relink
+it. The macOS app ships this file and the license text in
+`Finsical.app/Contents/Resources`.

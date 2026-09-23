@@ -1,10 +1,15 @@
-// SPDX-License-Identifier: LGPL-2.1-or-later
-/**
- * MACE 3:1 mono decoder, ported from FFmpeg libavcodec/mace.c
- * (Copyright (c) 2002 Laszlo Torok, adapted by Francois Revol) like
- * tools/az/mace.py; see THIRD_PARTY_NOTICES.md. Kept apart from snd.ts
- * so the LGPL code and tables stay in one file.
+/*!
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ * MACE 3:1 mono decoder from FFmpeg libavcodec/mace.c, Copyright (c)
+ * 2002 Laszlo Torok, adapted to libavcodec by Francois Revol. Ported to
+ * TypeScript for Finsical in 2026 (modified: C to TypeScript, tables
+ * embedded as base64). Licensed under the GNU LGPL 2.1 or later; see
+ * LICENSES/LGPL-2.1.txt and THIRD_PARTY_NOTICES.md at
+ * https://github.com/L-K-M/Finsical for the source.
  */
+// A "/*!" legal comment: esbuild keeps it in the bundles this file is
+// compiled into (bundle.js, addons.js). Kept apart from snd.ts so the
+// LGPL code and tables stay in one file, like tools/az/mace.py.
 
 // MACEtab2 and MACEtab4: the same big-endian u16s as tools/az/mace_tab.bin
 // (128x4) and tools/az/mace_tab4.bin (128x2), base64 so the tables ship
