@@ -84,8 +84,8 @@ export interface Bubble {
   y: number;
 }
 
-const MARGIN = 16;
-const SURFACE = 10;
+export const MARGIN = 16;
+export const SURFACE = 10;
 export const BOTTOM_PAD = 12;
 /** Share of a big sprite's half-extent kept inside the glass; the rest
  * may pass behind the frame, the way fish reach a real tank's edge. */
@@ -166,7 +166,7 @@ const AHEAD_BIAS = 0.4;
  * original draw behind it stands. */
 const MIRROR_MIN = 4;
 /** Half-height of a fish's preferred depth band. */
-const BAND_HALF = 24;
+export const BAND_HALF = 24;
 /** Chance per decision of picking a new depth band. */
 const BAND_SHIFT = 0.2;
 /** Chance per decision a wander anchors on a schoolmate's
@@ -176,6 +176,12 @@ const BAND_SHIFT = 0.2;
 const SCHOOL_PULL = 0.6;
 /** Loose scatter around a schoolmate, px — grouping, not lockstep. */
 const SCHOOL_RADIUS = 42;
+/** Above this hunger a fish begs near the surface between meals. */
+const BEG_HUNGER = 0.75;
+/** The hovered pointer is noticed inside this radius. */
+const NOTICE_RADIUS = 80;
+/** This close to the pointer a noticed fish just hovers nearby. */
+const NOTICE_STANDOFF = 16;
 /**
  * Roll duration. The original's turn steps half the 32-pose ring
  * (~16 poses at 60 tps ≈ 0.27 s); ~10 ticks here at 30 tps.
@@ -208,6 +214,15 @@ export class Sim {
   tickCount = 0;
   /** 1 = clean, 0 = foul. Rotted food fouls it; filtration recovers it. */
   waterQuality = 1;
+  /** Pointer position in tank px while the tank is hovered — the
+   * nearest calm fish notices it and drifts over. null when it
+   * leaves. */
+  notice: { x: number; y: number } | null = null;
+  /** The calm fish currently watching the pointer — the drift-state
+   * fish closest to `notice`, picked once per tick in tick().
+   * Read-only view: tick() owns the pick. */
+  get noticeFish(): Fish | null { return this._noticeFish; }
+  private _noticeFish: Fish | null = null;
   private rand: () => number;
   private nextId = 0;
 
@@ -288,6 +303,19 @@ export class Sim {
 
   tick(): void {
     this.tickCount++;
+    // The hovered pointer is noticed by the closest calm fish — only
+    // drifters look up; seeking, turning and startled fish have other
+    // business.
+    this._noticeFish = null;
+    const n = this.notice;
+    if (n) {
+      let bd = NOTICE_RADIUS * NOTICE_RADIUS;
+      for (const f of this.fish) {
+        if (f.state !== "drift") continue;
+        const d = (f.x - n.x) ** 2 + (f.y - n.y) ** 2;
+        if (d < bd) { bd = d; this._noticeFish = f; }
+      }
+    }
     for (const f of this.fish) this.tickFish(f);
     // Panic propagates: a freshly darting fish startles close
     // neighbors — fish-on-fish reaction on the same distance falloff.
@@ -398,6 +426,18 @@ export class Sim {
       // A brake latched on an earlier target, or on a pellet that has
       // since sunk away, would leave the fish crawling after the food.
       if (food && f.latch >= 0 && dist > BRAKE_DIST) this.resumeStroke(f);
+      // Curiosity: the fish that noticed the pointer drifts toward it
+      // — hunger (food, above) outranks it, and inside the standoff
+      // it just hovers there. The guard measures fish-to-pointer, not
+      // fish-to-target: a fresh decide() re-rolls tx/ty, so `dist`
+      // alone would re-pin a hovering fish to the cursor forever.
+      if (f === this.noticeFish && this.notice &&
+          Math.hypot(this.notice.x - f.x, this.notice.y - f.y) >
+            NOTICE_STANDOFF) {
+        f.tx = this.notice.x;
+        f.ty = this.notice.y;
+        dist = Math.hypot(f.tx - f.x, f.ty - f.y);
+      }
 
       // Steer the continuous heading toward the destination; the fish
       // curves instead of snapping around. A fish that just entered a
@@ -521,6 +561,10 @@ export class Sim {
       const mx = Math.min(x1, Math.max(x0, 2 * f.x - f.tx));
       if (Math.abs(mx - f.x) > MIRROR_MIN) f.tx = mx;
     }
+    // A starving fish begs where the food lands — while the water is
+    // still clean enough to keep an appetite (the seek gate).
+    if (f.hunger > BEG_HUNGER && this.waterQuality > QUALITY_SEEK)
+      f.bandY = Math.min(f.bandY, y0 + BAND_HALF);
     f.ty = Math.min(
       y1, Math.max(y0, f.bandY + (this.rand() - 0.5) * 2 * BAND_HALF));
     // Schooling: a same-species wander sometimes anchors on a

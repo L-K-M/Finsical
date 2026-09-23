@@ -160,19 +160,38 @@ document.addEventListener("visibilitychange", () => {
 });
 setInterval(saveTank, 10_000);
 
+/** CSS-pixel pointer coords → tank-space point; null in the
+ * letterbox bars (object-fit: contain inside the element box). */
+function tankPoint(clientX: number, clientY: number):
+    { x: number; y: number } | null {
+  const r = canvas.getBoundingClientRect();
+  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
+  const x = (clientX - r.left - (r.width - TANK.width * s) / 2) / s;
+  const y = (clientY - r.top - (r.height - TANK.height * s) / 2) / s;
+  if (!Number.isFinite(x) || !Number.isFinite(y) ||
+      x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return null;
+  return { x, y };
+}
+
 // Click near the surface drops food; deeper clicks knock on the glass.
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return; // ignore right/middle clicks
-  // object-fit: contain letterboxes the bitmap inside the element box.
-  const r = canvas.getBoundingClientRect();
-  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
-  const x = (e.clientX - r.left - (r.width - TANK.width * s) / 2) / s;
-  const y = (e.clientY - r.top - (r.height - TANK.height * s) / 2) / s;
-  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return; // letterbox bar
+  const p = tankPoint(e.clientX, e.clientY);
+  if (!p) return;
   audio.unlock();
-  if (y < TANK.height * 0.15) { sim.dropFood(x); audio.feed(); }
-  else { sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height); }
+  if (p.y < TANK.height * 0.15) { sim.dropFood(p.x); audio.feed(); }
+  else { sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height); }
   requestPaint();
+});
+// The nearest calm fish notices the hovering pointer and drifts over
+// to look — hunger and panic still outrank curiosity in the sim.
+canvas.addEventListener("pointermove", (e) => {
+  if (!e.isPrimary) return; // one pointer drives curiosity
+  sim.notice = tankPoint(e.clientX, e.clientY);
+});
+canvas.addEventListener("pointerleave", (e) => {
+  if (!e.isPrimary) return; // don't clear the primary's curiosity
+  sim.notice = null;
 });
 
 // ---- sprite loading ----------------------------------------------------

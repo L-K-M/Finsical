@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DAY_TICKS, FOOD_ROT_TICKS, Sim, TURN_TICKS } from "./sim.js";
+import { BAND_HALF, DAY_TICKS, FOOD_ROT_TICKS, MARGIN, Sim, SURFACE,
+         TURN_TICKS } from "./sim.js";
 import { QUALITY_SEEK } from "./tuning.js";
 
 // States a fish may be in when it's not seeking food.
@@ -208,6 +209,40 @@ describe("Sim", () => {
     for (let i = 0; i < 8; i++) sim.dropFood(20 + i * 30);
     for (let i = 0; i < FOOD_ROT_TICKS + 600; i++) sim.tick();
     expect(sim.waterQuality).toBeGreaterThanOrEqual(0);
+  });
+
+  it("a starving fish begs near the surface", () => {
+    const sim = new Sim({ width: 200, height: 200 }, 5);
+    const f = sim.addFish({ x: 100, y: 170, hunger: 0.95 });
+    for (let i = 0; i < 600; i++) sim.tick();
+    // Every decide clamps the depth band to just under the surface.
+    expect(f.bandY).toBeLessThanOrEqual(SURFACE + MARGIN + BAND_HALF);
+    // and the fish actually lives up there
+    expect(f.y).toBeLessThan(90);
+  });
+
+  it("the nearest calm fish drifts toward the hovered pointer", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const near = sim.addFish({ x: 40, y: 60 });
+    sim.addFish({ x: 280, y: 170 }); // outside the notice radius
+    sim.notice = { x: 80, y: 80 }; // inside notice radius of `near`
+    sim.tick();
+    // Curiosity picks the close fish, never the far one — asserting
+    // identity, not where a free fish happened to wander.
+    expect(sim.noticeFish).toBe(near);
+    for (let i = 0; i < 500; i++) sim.tick();
+    expect(Math.hypot(near.x - 80, near.y - 80)).toBeLessThan(60);
+  });
+
+  it("hunger outranks curiosity", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 60, y: 60, hunger: 0.9 });
+    sim.notice = { x: 60, y: 60 };   // fish sits on the pointer
+    sim.dropFood(300);               // but food is across the tank
+    for (let i = 0; i < 10; i++) sim.tick();
+    // It goes for the pellet rather than hovering by the pointer.
+    expect(f.state).toBe("seek");
+    expect(f.tx).toBe(300);
   });
 
   it("fish lose their appetite in foul water", () => {
