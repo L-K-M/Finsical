@@ -200,6 +200,10 @@ function pickGravel(images: Iterable<IndexedImage>, src: string): void {
 const DECOR_FRAMES = 3;
 const decors: { cv: HTMLCanvasElement; pack: string; front: boolean }[] = [];
 function addDecor(images: Iterable<IndexedImage>, src: string): void {
+  // A re-import of the same pack replaces its frames rather than
+  // stacking up to three more slots per pack.
+  for (let i = decors.length - 1; i >= 0; i--)
+    if (decors[i]!.pack === src) decors.splice(i, 1);
   // Art frames share one corner key index (0 or 255 depending on the
   // pack); catalog thumbnails have textured corners and are skipped.
   const picks = pickDecorArts(images, DECOR_FRAMES);
@@ -209,7 +213,10 @@ function addDecor(images: Iterable<IndexedImage>, src: string): void {
     const cv = pick.guessed
       ? imageCanvas(pick.img, false) // legacy: global index-0 clear
       : imageCanvas(pick.img, false, keyMask(pick.img, pick.key));
-    const s = Math.min(1, TANK.height * 0.8 / cv.height,
+    const front = picks.length > 1 && i === 1;
+    // Foreground pieces read as depth cues, not walls — cap them lower
+    // so they can't cover most of the swim area.
+    const s = Math.min(1, TANK.height * (front ? 0.5 : 0.8) / cv.height,
                        TANK.width * 0.5 / cv.width);
     let use = cv;
     if (s < 1) {
@@ -221,7 +228,7 @@ function addDecor(images: Iterable<IndexedImage>, src: string): void {
       c2.drawImage(cv, 0, 0, use.width, use.height);
     }
     // Sorted largest first: the middle-size frame plays foreground.
-    decors.push({ cv: use, pack: src, front: picks.length > 1 && i === 1 });
+    decors.push({ cv: use, pack: src, front });
   }
 }
 const fishSlot = new WeakMap<Fish, number>();
@@ -1107,6 +1114,9 @@ function render(): void {
     ctx.drawImage(d.cv, decorX(i, d.cv), gravelTop + bury - d.cv.height);
   }
 
+  // Pellets share the fish's mid-water layer: foreground plants
+  // occlude them on the way down, same as the fish — that occlusion
+  // is the depth effect, not a bug.
   for (const fd of sim.food) {
     // Rotting pellets dissolve — fade them out over their rot lifetime.
     ctx.globalAlpha = 1 - 0.65 * Math.min(1, fd.settled / FOOD_ROT_TICKS);

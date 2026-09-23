@@ -43,8 +43,9 @@ export function pickDecorArts(images: Iterable<IndexedImage>, max: number):
     if (key !== null) keyed.push({ img, key });
   }
   keyed.sort((a, b) => b.img.w * b.img.h - a.img.w * a.img.h);
-  if (keyed.length) return keyed.slice(0, Math.max(1, max));
-  return anyImg ? [{ img: anyImg, key: 0, guessed: true }] : [];
+  if (keyed.length) return keyed.slice(0, Math.max(0, max));
+  return anyImg && max > 0 ? [{ img: anyImg, key: 0, guessed: true }]
+                           : [];
 }
 
 /** The decor art frame: largest image with a uniform corner key. */
