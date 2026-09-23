@@ -1,6 +1,6 @@
 # Finsical Analysis — Shovel-Ready Improvements
 
-Consolidates four independent review passes plus follow-up review
+Consolidates five independent review passes plus follow-up review
 responses. Nothing below is dropped: implemented items stay listed
 with their branch/PR so future work can see what landed, and every
 open idea is written so an LLM can pick it up cold.
@@ -187,6 +187,66 @@ open idea is written so an LLM can pick it up cold.
   tap and hover; edge-clamped, touch-skipped, and the frame loop
   re-hides it once the fish swims off a parked cursor.
 
+## Completed (fifth pass, PRs open for review, all at steady state)
+
+- **PR #94** (`fix/multi-pack-drop`): a multi-file drop of pack
+  containers imports *every* decodable pack — the inline loop
+  `return`ed after the first success whenever any earlier sheet
+  existed. The pass now lives in `web/drop.ts`
+  (`decodeDroppedPacks`, red-green regression test), reads each
+  file once (the sound pass collects pack candidates via the head
+  it already slices), skips packs that throw mid-decode (corrupt
+  file cannot cost the rest of the drop — pinned by a truncated-
+  directory test), and warns only when nothing at all landed.
+  Overlaps the round-2 fix inside PR #93 — pick one at merge.
+- **PR #102** (`feat/web-menubar-bar`): a Mac OS 8 menu bar for
+  the browser shell (never mounted in native — AppKit owns that):
+  Tank / Window / Help menus plus an app-glyph menu (About
+  Finsical window, Shortcuts window, donate, archive.org links)
+  and a System 8 clock that repaints per second and on
+  visibilitychange. `openClientWindow` generalizes the stats-tab
+  focus/reuse dance for Preferences, Tank Overview and Tank Stats,
+  fixing the browser dead end where both were native-menu-only.
+  Bare keys (F/C/S) stand down while a menu or doc window is open.
+  Overlaps #103 (their menubar: also adds Change Water/Take a
+  Picture) and #126 (o/p keys) — complementary; reconcile at
+  merge.
+- **PR #129** (`feat/water-feedback`): tap ripples and feed
+  splashes as whole-pixel effects ticked on the 30 tps sim clock
+  (`web/fx.ts`, tested): double-pulse ring where the glass is
+  knocked, three ballistic droplets where food (or a newly
+  installed fish) enters at `FOOD_ENTRY_Y` (exported from the sim
+  so the splash sits where pellets actually spawn). Overlaps
+  #106/#107 — three ripple PRs now; pick one at merge.
+- **PR #131** (`feat/first-run-hint`): a raised-Platinum first-run
+  note at the foot of the tank pointing at Import Add-ons (auto-
+  hides on the first install; dismissed once, never returns) and a
+  hand-drawn 24x14 pixel guppy placeholder with a two-frame tail
+  wag replacing the colored rectangles (grid integrity, body-
+  still and tail-wags assertions via `spriteSvg`). Overlaps the
+  other placeholder-fish branches — reconcile at merge.
+- **PR #132** (`feat/tank-lights`): lamp toggle — off pins the
+  tank at `LIGHT_NIGHT` (the cycle's own night floor), on restores
+  the automatic cycle; bare L, native Tank > Toggle Lights
+  (window.finsical.toggleLights), persisted in the tank save with
+  finite/clamped restores (tickCount and waterQuality gained the
+  same hardening); Tank Stats' Day/Night follows the same push.
+  Partially lands the "Lighting switch" item below — dimmer and
+  real-clock sync remain open.
+- **PR #133** (`feat/sound-controls`): Sound pane in Preferences —
+  Play sounds switch (mute remembers levels), Overall volume and
+  Water ambience sliders with Balloon-Help captions and per-pane
+  Defaults; `TankAudio` routes everything through a master gain
+  bus (ambient loop keeps its own node), ramps level changes over
+  20 ms instead of snapping (clicks), retires displaced ambient
+  loops and their gain nodes, defers AudioContext creation until a
+  buffer actually plays, and flags `usable:false` when creation
+  fails (pane note, like the CRT-unavailable one). Persists via
+  `finsical:sound`, bus op `soundConfig`, state carries
+  {master, ambient, muted, available}. Overlaps #101 (their Sound
+  pane: mute + active-source tracking) — reconcile at merge; the
+  volume-slider half of the open item below lands here.
+
 ## Bugs / Reliability (open)
 
 - `core/sim.ts`: `nearestFood()` can briefly target food that was just eaten if called with a slightly stale snapshot. Confirm removal order in `tick()`.
@@ -203,6 +263,9 @@ open idea is written so an LLM can pick it up cold.
 - Saved fish fields aren't validated beyond `x`/`y` (`loadTank` roster filter in `web/main.ts`). A hand-corrupted `hunger: "x"` or `null` enters the sim, poisons `Math.min` results, and re-persists (the `scale` field got this guard in PR #110 — extend the same pattern to the other numeric fields).
 - `remoteInstall` calls `recordInstall` (→ `saveTank` → `postState`) and then `postState()` again — one redundant broadcast per install.
 - Drop-path stem logic: `name.replace(/\.[^.]*$/, "")` strips the last dot-suffix only; keep it aligned with the remote path's stem logic (`replace(/\.[^.]+$/, "")`) — same regex, noted so future edits don't diverge.
+- `web/audio.ts` `tap()` zone pick compares raw pixel distances (`dx < dy`) on a 320x200 tank — normalize by w/2 and h/2 so corner taps pick the right knock variant.
+- Native quit can drop the last ≤10 s of tank state: `pagehide` is unreliable in WKWebView on termination; also save on `visibilitychange → hidden`.
+- `pickBackdrop` keys art by source (`""` for bundled *and* drag-dropped packs): a drop silently rebinds the bundled art and `removeAddon` can never restore it. Synthetic source keys fix it.
 
 ## Performance / Engineering (open)
 
@@ -214,6 +277,8 @@ open idea is written so an LLM can pick it up cold.
 - Four client windows each `hello`-poll every 2–10 s, each answered by a full state push. Push-on-change + slow heartbeat instead.
 - Bounded thumbnail memory: confirm `thumbMemo` LRU stays within budget under all session lengths.
 - Cache eviction metrics: temporary log counter for `swimCache`/`thumbMemo` evictions; verify near-zero in normal use.
+- Idle-time pre-rasterization: each new (group, frame, facing) pose pays a `putImageData` on first draw — a fish's first turn hitches through ~16 cells. Prewarm the pose ring via `requestIdleCallback` after a pack installs.
+- Native `frames.save` runs on every resize tick (UserDefaults write per frame during live resize); debounce to ~100 ms.
 - Audio overlap: `startAmbient()` may briefly overlap previous loops; verify no audible stutter during rapid load/restart.
 - Optional GLM follow-up (declined as a stop-rule nit, still valid): extract `fitBackdrop`'s round+clamp into a pure tested helper next to `coverCrop`.
 - The whole JPN collection zip is downloaded to *list* entries: `listCollection` nested-zip mode fetches `AQUAZONE (JPN) SET.zip` — the entire item library, likely tens–hundreds of MB — into memory and IndexedDB (150 MB LRU budget). First JPN section open stalls; `packPut` failures are swallowed so it degrades to "no persistence". archive.org offers no central-directory-only fetch; keep the budget trim, warn in docs, and monitor quota.
@@ -223,15 +288,15 @@ open idea is written so an LLM can pick it up cold.
 
 - **Click-a-fish info card (highest value).** Per-species names + descriptions (`FsTH`) are decoded but never shown; clicks only scare. ⌥-click (or plain click) should open a Get-Info fish card: name, description, hunger/mood, species params.
 - **Fish lifecycle stage 1.** No sickness (`SicH` unused), death, birth/eggs (`Egg*` unused) — growth landed in PR #110 but hunger still has no *adverse* consequence. Start with lethargy at hunger ≥ ~0.9 + recovery on feed, wired to the decoded birth/sick/dead `snd` events.
-- **Lighting switch.** `sim.light` auto-runs a 13-min cycle with ~6.5 min pinned at flat night. Add day/night/auto + dimmer; `LigH` data already decoded. Optional real-clock sync (local-time day/night) is a classic relaxation-toy touch and would fit the same prefs pane.
+- **Lighting switch — partially landed** (PR #132: lamp off pins `LIGHT_NIGHT`, on restores the cycle; L key + native menu; persisted). Still open: a dimmer (continuous level, `LigH` data already decoded) and real-clock sync (local-time day/night), both natural fits for the same prefs pane.
 - **More foods.** `FdHd` data decoded and ignored; flakes/pellets/live food with different sink rates is one `sink` field on `Food`.
 - **Import search/filter.** JPN sections are long; add a name-substring filter box.
 - **Starter reef bundle.** One-click curated set (6 fish + gravel + plant) + first-run card ("Your tank is empty. [Import Add-ons…] [Stock a starter reef]") — fixes asset-failure silence and cold-start discoverability together.
 - **Overview actions.** Click row → spotlight fish in tank (ring highlight); rename (persist in save); state icons. Sort-column choice isn't persisted either.
 - **Stats history.** Sparklines for water/hunger from the existing 90 s `history` samples.
 - **Pause/sleep.** Freeze `tick()` (render continues) for screenshots/benchmarks.
-- ~~**No mute/volume.**~~ Mute landed via PR #101 (Sound pane, persisted pref, `m` key, native menu). Still open: volume sliders (ambient/one-shot) — `TankAudio` has fixed gains.
-- **In-app help.** The browser menu bar now exposes the features, but F/feed, surface-feed, tap-scare, C/CRT shortcuts exist nowhere in the app. One "About / Shortcuts" card (or Balloon Help, below).
+- ~~**No mute/volume.**~~ Landed: PR #101 (mute + active-source tracking) and PR #133 (master/ambient volume sliders, master gain bus, live ramps). Two Sound panes exist (#101/#133) — reconcile at merge; native-menu mute wiring from #101 still applies.
+- **In-app help — partially landed** (PR #102's Shortcuts window lists F/C/S/⌘I in-browser). Still open: the same list inside the native app (its menu bar has no Help menu) and the feed-vs-tap gesture hint; a Balloon Help mode (below) would subsume both.
 - **Per-species swim params.** `FsTI` (speed, depth band, hunger rate) is decoded and unused; all fish share behavior constants.
 - **`feedFish` drops at tank center** — menu feed could drop at a random x for variety.
 - **Backdrop/gravel chooser.** Partially landed: the Overview's "Use" action (PR #118) swaps among installed scenery packs and persists the pick. Still open: `pickBackdrop` newest-wins on *install*, and a prefs-side chooser/preview.
@@ -245,7 +310,7 @@ open idea is written so an LLM can pick it up cold.
 - **Scene life, ranked:** plant sway (sine x-shear by height on static decor) → light rays/godrays → caustic dapple on gravel (pre-rendered noise, slow scroll) → fish drop shadows → tumbling food crumbs. One effect per PR. (Light-rays/night-blue and round-bubble variants exist in other-pass branches — check them before reimplementing. Surface line, tap ripples, and ambient bubble vents landed in PR #106.)
 - ~~**Moonlight, not black overlay.**~~ Landed via PR #113 (full-sine valley + deep-blue tint) and PR #128 (fish settle on the gravel). Still open: keep sparkles visible, darken sleeping fish sprites.
 - **Gravel finish.** Feather the strip's top edge 1–2 px into the water; seat decor roots *in* it; consider subtle noise texture over flat `#8a6d3b`.
-- **Procedural placeholder fish.** Offline users live with orange rectangles; a tiny two-colorway pixel fish keeps the crunch without shipping art. (Another pass has a pixel-placeholder branch — reconcile. Placeholder fish also get no overview thumbnail — the pending-thumbs key stays alive by design; consider a placeholder thumb so the list never looks broken.)
+- ~~**Procedural placeholder fish.**~~ Landed via PR #131 (24x14 pixel guppy, two-frame wag; other placeholder branches exist — reconcile). Still open: placeholder fish get no overview thumbnail — the pending-thumbs key stays alive by design; consider a placeholder thumb so the list never looks broken.
 - **Machine preview with tank.** Render the 320×200 gradient inside the prefs preview glass (`sx/sy/sw/sh` all exist) so cases aren't picked blind.
 - **Decor anchors to `TANK.height - 6`, not the gravel top** — tall `.grv` strips leave plants looking sunken, thin ones leave them floating. Anchor to the rendered gravel height (`gh`).
 - ~~**Bubble variety.**~~ Landed via PR #108 (highlight pixel + wall-clock wobble). Still open: a 1 px size range.
@@ -268,7 +333,7 @@ open idea is written so an LLM can pick it up cold.
 - Stale badges: grey client-window numbers until the first fresh push after wake.
 - **Cursor awareness:** the nearest fish idly faces the pointer when it hovers the tank (no click) — subtle "it notices you". Cheap: in `decide()` occasionally target near last pointer pos.
 - ~~**Fish sleep mode**~~ — landed via PR #128 as a real `sleep` state: fish settle on the gravel at dusk, idle with a weak stroke, wake at dawn or on a knock.
-- Keyboard shortcut cheat sheet — `?`/`H` overlay or an About-box pane documenting F/C/S/⌘I in-browser.
+- Keyboard shortcut cheat sheet — landed in-browser via PR #102's Shortcuts window; `?`/`H` overlay or a native-app equivalent still open.
 - Fish Diary (`⌘⇧H`): age, pellets eaten, favorite depth band per fish.
 - Captain's Log: SimpleText-styled auto-diary of tank events from stats history + sim events.
 - Tank Age milestones: floating messages at 1 h / 1 day / 1 week uptime.
@@ -282,6 +347,11 @@ open idea is written so an LLM can pick it up cold.
 - Dinner bell + feeding frenzy; overuse fouls faster.
 - Tank weather: rain rings + dim + filter gurgle, cosmetic and cozy.
 - Laser-pointer toy (hold L, fish chase the light). Useless, irresistible.
+- Snail on the glass: a tiny snail inches across the front pane every few hours, leaving a faint clean streak (subtle lighter band). Pure aquarium truth.
+- Begging fish: hunger > ~0.75 biases the wander band toward the surface and hovers under a cursor parked on the top strip — sells the sim instantly.
+- Party mode: playing a music add-on keys fish tail-wag rate to the AudioContext clock. Silly, delightful, one constant away from `animFrame`.
+- CRT power-on animation: enabling the effect plays a ~400 ms tube warm-up (horizontal line bloom to full raster) — one uniform + timestamp in the shader.
+- Save Picture with bezel: composite the machine-case PNG over the tank canvas exactly as on screen; a shareable postcard (the plain-tank snapshot landed in #103).
 - Time-lapse contact sheet (1 fps toDataURL for 60 s).
 - Vintage filter mode (sepia + reduced saturation + vignette).
 - Bubble trails: faint fading trails as fish swim.
@@ -324,17 +394,25 @@ open idea is written so an LLM can pick it up cold.
 - Review gaps: GLM failed twice consecutively on #105 and #107 (HTTP 429 / timeout) — reported as gaps, not approvals.
 - Cross-pass overlaps to reconcile at merge: #107 ↔ #106 (tap ripple), #125 ↔ #87 (backdrop cover-fit), #113 ↔ #109 fix/light-curve, #111 ↔ the cap idea inside the O(F·P) note, #120/#126 ↔ #103 browser menubar (complementary — button/keys vs menu bar).
 
+## Review-response log (fifth pass)
+
+- Applied: readonly-tuple widening + corrupt-pack try/catch + its truncated-directory test (#94); FOOD_ENTRY_Y for splash placement and the tickRipples doc fix (#129); `.finally` hint sync, frame count from the sprite module, tail-differs assertion (#131); save-field clamps (lightOverride/waterQuality/tickCount) and the falsy-zero lamp pin (#132); ambient-loop retirement + gain-node disconnect, buffer-before-context ordering, 20 ms gain ramps, 1 s clock tick, CRT-off dim scoped off Sound sliders, docOpen stand-down for bare keys (#102/#133).
+- Declined with reasons: "log only when usePack accepts" (#94, twice) — a pack with a sheet always gets a slot, the guarded form and its `else` are dead code; "derive body/tail split from frame data" (#131) — the test pins a fixture's contract against its known geometry, deriving the split from the data under test would assert the data against itself.
+- Stale anchors noted: several rounds re-anchored already-applied suggestions on newer commits (docOpen, Number.isFinite, wag assertion, LIGHT_NIGHT doc); verified via `original_commit_id` before acting.
+- Review gaps: PR #102's first GLM run died HTTP 429 (rate limits from concurrent passes); a manual rerun completed and its findings were applied. No PR ended in an unreported gap.
+- Steady state: #94 (rounds 4-5 clean), #102 (round 3 stale-only), #129 (round 2 clean), #131 (rounds 2-3 minor/stale only), #132 (rounds 2-4 minor, round 4's suggestion already present verbatim), #133 (rounds 2-3 minor, all applied). All six left open for human review per the task brief.
+
 ## Implementation Order (suggested for future work)
 
 1. Pellet cap + foul-rate sanity (fish cap landed in PR #111; sim test first, TDD).
 2. Fish info card (data already decoded; biggest feature win).
-3. First-run card + starter reef bundle.
+3. First-run card + starter reef bundle (hint note landed in PR #131; the curated bundle remains).
 4. Scene life, one effect per PR (check other-pass branches first).
-5. Volume sliders (mute landed in PR #101) + keep browser/native menu wiring in sync.
+5. Sound-pane reconciliation (#101 vs #133) at merge + keep browser/native menu wiring in sync (lights L vs ⌘L, CRT C vs ⌘R).
 6. Import search + install progress/parallelism.
 7. Fetch timeouts + thumb queue dedupe.
 8. Lifecycle stage 1 (sickness lethargy → eggs later).
-9. Lighting switch + real-clock sync (moonlight curve landed in PR #113).
+9. Light dimmer + real-clock sync (lamp toggle landed in PR #132; moonlight curve in PR #113).
 10. Food pellet animation + gravel texture + decor anchoring (quick visual wins).
 11. Night glow + darkened sleeping-fish sprites (sleep state landed in PR #128).
 12. Screen relaxation mode, fish diary, vintage filter + adaptive murk.
@@ -342,4 +420,4 @@ open idea is written so an LLM can pick it up cold.
 
 ---
 
-*Merged from four review passes (two other-pass tmp.md files already folded above; third- and fourth-pass swe.md/tmp.md folded with implemented items marked by PR). No entries removed; overlapping ideas consolidated and cross-referenced.*
+*Merged from five review passes (two other-pass tmp.md files already folded above; third- and fourth-pass swe.md/tmp.md and the fifth pass's swe.md folded with implemented items marked by PR). No entries removed; overlapping ideas consolidated and cross-referenced. Cross-pass overlaps to reconcile at merge: #107/#106/#129 (tap ripple), #125/#87 (backdrop cover-fit), #93/#94 (multi-pack drop), #101/#133 (Sound pane), #103/#102/#126 (browser menu bar + shortcuts), placeholder-fish branches vs #131.*
