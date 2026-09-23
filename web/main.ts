@@ -11,7 +11,8 @@ import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { sndsGet, sndsMerge } from "./store.js";
 import { imageCanvas, previewOf, soundIcon, swimCanvas } from "./render.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
-import { menuOpen, mountTankMenuBar, openClientWindow } from "./menubar.js";
+import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
+  from "./menubar.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
   from "./machines.js";
@@ -827,7 +828,7 @@ window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   // Bare keys stand down while a menu or the add-on window owns them.
   const bare = !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat &&
-    !importPanel.isOpen && !menuOpen();
+    !importPanel.isOpen && !menuOpen() && !docOpen();
   if ((e.metaKey || e.ctrlKey) && k === "i") {
     importPanel.open(); e.preventDefault();
   } else if (bare && k === "f") {

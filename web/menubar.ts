@@ -64,6 +64,12 @@ export function menuOpen(): boolean {
 /** The open document window, if any — one at a time, like the OS. */
 let docWin: HTMLElement | null = null;
 
+/** True while a document window (About, Shortcuts) is open — bare
+ * keys stand down behind its overlay, as they do for open menus. */
+export function docOpen(): boolean {
+  return docWin !== null;
+}
+
 /** A centered, closable Osmium window over a click-away layer, in the
  * same visual family as the add-on browser's overlay. */
 function showDocWindow(title: string,
@@ -232,7 +238,15 @@ function mountClock(bar: HTMLElement): () => void {
   };
   paint();
   const t = setInterval(paint, 30_000);
-  return () => { clearInterval(t); el.remove(); };
+  // Background tabs throttle the interval to ~1/min — snap the clock
+  // back to now the moment the page shows again.
+  const vis = () => { if (!document.hidden) paint(); };
+  document.addEventListener("visibilitychange", vis);
+  return () => {
+    clearInterval(t);
+    el.remove();
+    document.removeEventListener("visibilitychange", vis);
+  };
 }
 
 /** Mount the menu bar along the top of the browser page. A no-op
@@ -285,5 +299,5 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
   mountMenuBar(bar, menus);
   const stopClock = mountClock(bar);
   document.body.append(bar);
-  return () => { stopClock(); bar.remove(); };
+  return () => { closeDoc(); stopClock(); bar.remove(); };
 }
