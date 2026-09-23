@@ -1285,11 +1285,14 @@ function render(): void {
     ctx.fillRect(0, TANK.height - BOTTOM_PAD, TANK.width, BOTTOM_PAD);
   }
   // Decorations spread evenly across the floor, bottoms planted in gravel.
+  // Art keeps its authored width now (no 160 px cap), so a wide piece
+  // is pulled inside the glass rather than hanging past it.
   const dn = decors.length;
   for (let i = 0; i < dn; i++) {
     const { frames, phase } = decors[i]!;
     const d = frames[decorFrame(sim.tickCount, frames.length, phase)]!;
-    ctx.drawImage(d, Math.round(TANK.width * (i + 0.5) / dn - d.width / 2),
+    const x = Math.round(TANK.width * (i + 0.5) / dn - d.width / 2);
+    ctx.drawImage(d, Math.min(Math.max(x, 0), Math.max(0, TANK.width - d.width)),
                   TANK.height - 6 - d.height);
   }
 
