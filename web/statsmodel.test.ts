@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deriveStats, hungerLabel, trend, uptime } from "./statsmodel.js";
+import { DAY_TICKS, Sim } from "../core/sim.js";
 
 const base = {
   fish: [
@@ -94,6 +95,30 @@ describe("deriveStats", () => {
     const s = deriveStats({ ...base, light: 0.3, bubbles: 4 });
     expect(s.phase).toBe("night");
     expect(s.bubbles).toBe(4);
+  });
+
+  it("reads night for a real share of the demo cycle", () => {
+    const sim = new Sim({ width: 100, height: 100 }, 1);
+    let night = 0;
+    for (let i = 0; i < DAY_TICKS; i++) {
+      sim.tick();
+      if (deriveStats({ ...base, light: sim.light }).phase === "night")
+        night++;
+    }
+    expect(night / DAY_TICKS).toBeGreaterThanOrEqual(0.3);
+  });
+
+  it("names the next switch under the light timer", () => {
+    const timer = { mode: "timer", on: 8, off: 22 };
+    expect(deriveStats({ ...base, light: 0.45, lighting: timer }).lightLabel)
+      .toBe("Night (lights on at 08:00)");
+    expect(deriveStats({ ...base, light: 1, lighting: timer }).lightLabel)
+      .toBe("Day (lights off at 22:00)");
+    for (const lighting of [undefined, { ...timer, mode: "demo" },
+                            { ...timer, mode: "always" },
+                            { ...timer, on: 9, off: 9 }])
+      expect(deriveStats({ ...base, light: 0.3, lighting }).lightLabel)
+        .toBe("Night");
   });
 });
 

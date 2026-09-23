@@ -1,4 +1,6 @@
-import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
+import { BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
+import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
+         sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch } from "../core/pose.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
@@ -16,6 +18,7 @@ import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
   from "./machines.js";
 import type { CrtConfig } from "./crt.js";
 import type { Machine } from "./machines.js";
+import type { Lighting } from "../core/light.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
 import type { Fish } from "../core/sim.js";
@@ -66,6 +69,33 @@ if (saved) {
   if (Number.isFinite(saved.tickCount)) sim.tickCount = saved.tickCount;
   if (Number.isFinite(saved.waterQuality))
     sim.waterQuality = saved.waterQuality;
+}
+
+// ---- lighting -------------------------------------------------------------
+// The demo cycle runs inside the sim; the light timer follows this
+// Mac's clock (core/light.ts). The clock is read here and handed to
+// the sim, which stays tick-only. Declared this early because
+// postState() reads it and runs during module eval.
+const LIGHTING_KEY = "finsical:lighting";
+let lighting: Lighting = (() => {
+  try {
+    return sanitizeLighting(
+      JSON.parse(localStorage.getItem(LIGHTING_KEY) ?? "null"));
+  } catch { return sanitizeLighting(null); /* storage: defaults */ }
+})();
+const minutesOfDay = (d: Date): number =>
+  d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+function syncLight(now: Date): void {
+  sim.setLight(lightAt(minutesOfDay(now), lighting));
+}
+syncLight(new Date());
+/** Merge a partial schedule (prefs pop-up) onto the current one. */
+function applyLighting(raw: unknown): void {
+  lighting = sanitizeLighting(raw, lighting);
+  syncLight(new Date());
+  try { localStorage.setItem(LIGHTING_KEY, JSON.stringify(lighting)); }
+  catch { /* storage unavailable */ }
+  postState();
 }
 const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
   [0, 1, 2, 3].map((i) =>
@@ -407,6 +437,7 @@ function postState(): void {
     foodSettled: sim.food.reduce((n, f) => n + (f.settled > 0 ? 1 : 0), 0),
     bubbles: sim.bubbles.length,
     light: sim.light,
+    lighting,
     // Preferences window reads this — `on`/`available` reflect the
     // live GL state (a lost context reports off/unavailable even if
     // the stored preference says on).
@@ -528,6 +559,8 @@ function onBusMessage(m: BusMsg): void {
     setCrt(m.on === true);
   } else if (m.op === "crtConfig") {
     applyCrtConfig(m.cfg);
+  } else if (m.op === "lighting") {
+    applyLighting(m.lighting);
   } else if (m.op === "machine" && typeof m.id === "string") {
     const nm = machineById(m.id);
     if (nm && nm.id !== machine.id) { applyMachine(nm); postState(); }
@@ -1115,12 +1148,63 @@ function render(): void {
     ctx.fillRect(0, 0, TANK.width, TANK.height);
   }
 
-  // day/night dimming
-  const dark = 1 - sim.light;
-  if (dark > 0.01) {
-    ctx.fillStyle = `rgba(4,8,24,${(dark * 0.55).toFixed(3)})`;
-    ctx.fillRect(0, 0, TANK.width, TANK.height);
+  drawLight(new Date());
+}
+
+/** Night's blue, multiplied over the scene at the darkest demo night:
+ * the water keeps its blues while warm colors fade. A dim blue screen
+ * then lifts the shadows, so fish read as moonlit gray rather than
+ * sinking into black. */
+const NIGHT_TINT = { r: 70, g: 90, b: 150 };
+const NIGHT_LIFT = { r: 26, g: 34, b: 60 };
+/** Moonbeam strength under a full moon. */
+const MOONBEAM_ALPHA = 0.08;
+function drawLight(now: Date): void {
+  const k = Math.min(1, (1 - sim.light) / (1 - DEMO_NIGHT_LIGHT));
+  const W = TANK.width, H = TANK.height;
+  ctx.save();
+  if (k > 0.01) {
+    const mix = (c: number): number => Math.round(255 - (255 - c) * k);
+    ctx.globalCompositeOperation = "multiply";
+    ctx.fillStyle =
+      `rgb(${mix(NIGHT_TINT.r)},${mix(NIGHT_TINT.g)},${mix(NIGHT_TINT.b)})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "screen";
+    ctx.fillStyle = `rgb(${Math.round(NIGHT_LIFT.r * k)},` +
+      `${Math.round(NIGHT_LIFT.g * k)},${Math.round(NIGHT_LIFT.b * k)})`;
+    ctx.fillRect(0, 0, W, H);
   }
+  const cycle = (sim.tickCount % DAY_TICKS) / DAY_TICKS;
+  const tint = twilightTint(lighting, minutesOfDay(now), cycle);
+  if (tint) {
+    // Warmest at the surface, where the low sun comes in.
+    const rgb = `${tint.r},${tint.g},${tint.b}`;
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, `rgba(${rgb},${tint.a.toFixed(3)})`);
+    g.addColorStop(1, `rgba(${rgb},${(tint.a * 0.3).toFixed(3)})`);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+  // Timer nights get a faint slanted moonbeam that waxes and wanes
+  // with the real moon, so an evening tank has something to glow.
+  const night = lighting.mode === "timer"
+    ? Math.min(1, (1 - sim.light) / (1 - CLOCK_NIGHT_LIGHT)) : 0;
+  const beam = MOONBEAM_ALPHA * night * moonIllumination(now.getTime());
+  if (beam > 0.002) {
+    const x0 = W * 0.62, slant = 70, half = 20;
+    const g = ctx.createLinearGradient(x0 - half, 0, x0 + half, 0);
+    g.addColorStop(0, "rgba(200,220,255,0)");
+    g.addColorStop(0.5, `rgba(200,220,255,${beam.toFixed(3)})`);
+    g.addColorStop(1, "rgba(200,220,255,0)");
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = g;
+    // Skewed so the beam leans down and to the left; the gradient
+    // skews with it and stays centered across the beam.
+    ctx.transform(1, 0, -slant / H, 1, 0, 0);
+    ctx.fillRect(x0 - half, 0, half * 2, H);
+  }
+  ctx.restore();
 }
 
 // Fixed-step sim; render on rAF.
@@ -1131,6 +1215,7 @@ function frame(now: number): void {
   acc += Math.min(now - last, 200);
   last = now;
   const step = 1000 / TICKS_PER_SECOND;
+  syncLight(new Date());
   while (acc >= step) {
     sim.tick();
     acc -= step;

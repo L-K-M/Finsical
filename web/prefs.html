@@ -32,6 +32,28 @@
         <section id="pane-picture" class="pfpane" role="tabpanel" hidden>
           <div id="pfpicture"></div>
         </section>
+        <section id="pane-lighting" class="pfpane" role="tabpanel" hidden>
+          <div class="osm-group pfgroup" id="pflights" role="group"
+               aria-label="Lights">
+            <div class="osm-group-title">Lights</div>
+            <div class="pflrow">
+              <span class="pflctl" id="plc-mode">
+                <label class="osm-popup-title" for="pl-mode">Lighting:</label>
+                <button type="button" class="osm-popup" id="pl-mode"></button>
+              </span>
+            </div>
+            <div class="pflrow">
+              <span class="pflctl" id="plc-on">
+                <label class="osm-popup-title" for="pl-on">Lights on at:</label>
+                <button type="button" class="osm-popup pfhour" id="pl-on"></button>
+              </span>
+              <span class="pflctl" id="plc-off">
+                <label class="osm-popup-title" for="pl-off">Off at:</label>
+                <button type="button" class="osm-popup pfhour" id="pl-off"></button>
+              </span>
+            </div>
+          </div>
+        </section>
         <div id="pffoot">
           <div class="osm-separator"></div>
           <div id="pfdesc" aria-live="polite"></div>
