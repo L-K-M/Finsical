@@ -5,6 +5,9 @@ import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
 import { TankAudio } from "./audio.js";
 import { pushButton } from "osmium-ui";
+import { alertOpen, showAlert } from "./alert.js";
+import { recentTaps, shouldScold } from "./scold.js";
+import { showWelcome, wantsWelcome } from "./welcome.js";
 import { fetchAddon, mountImportPanel, qualifySoundItemName,
          COLLECTIONS } from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
@@ -73,7 +76,11 @@ const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
 const roster = (saved?.fish ?? []).filter(
   (f): f is Partial<Fish> & { x: number; y: number } =>
     !!f && Number.isFinite(f.x) && Number.isFinite(f.y));
-for (const f of roster?.length ? roster : DEFAULT_FISH) sim.addFish(f);
+// A fresh tank's stand-ins, which the starter set replaces when the
+// user accepts it on first launch (web/welcome.ts).
+const placeholderIds = new Set<number>();
+if (roster.length) for (const f of roster) sim.addFish(f);
+else for (const f of DEFAULT_FISH) placeholderIds.add(sim.addFish(f).id);
 
 function saveTank(): void {
   try {
@@ -105,10 +112,28 @@ canvas.addEventListener("pointerdown", (e) => {
   const x = (e.clientX - r.left - (r.width - TANK.width * s) / 2) / s;
   const y = (e.clientY - r.top - (r.height - TANK.height * s) / 2) / s;
   if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return; // letterbox bar
+  if (alertOpen()) return; // the alert's scrim covers the tank anyway
   audio.unlock();
   if (y < TANK.height * 0.15) { sim.dropFood(x); audio.feed(); }
-  else { sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height); }
+  else {
+    sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height);
+    noteGlassTap();
+  }
 });
+
+// A knocking spree gets the public aquarium's sign (web/scold.ts).
+let glassTaps: number[] = [];
+let scoldedAt: number | null = null;
+function noteGlassTap(): void {
+  const now = performance.now();
+  glassTaps = [...recentTaps(glassTaps, now), now];
+  if (!shouldScold(glassTaps, now, scoldedAt)) return;
+  scoldedAt = now;
+  glassTaps = [];
+  showAlert({ icon: "caution",
+              text: "Please don't tap on the glass. It frightens the fish.",
+              buttons: [{ title: "OK", default: true }] });
+}
 
 // ---- sprite loading ----------------------------------------------------
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
@@ -603,50 +628,68 @@ function removeAddon(url: string): void {
 
 // Bus messages cross a page boundary — validate before trusting them.
 const KNOWN_SECTIONS = new Set(COLLECTIONS.map((c) => c.section));
-const installsInFlight = new Set<string>();
+const installsInFlight = new Map<string, Promise<void>>();
 async function remoteInstall(it: Importable, again: boolean): Promise<void> {
-  const fail = (error: string) =>
-    bus.post({ op: "installFailed", url: it?.url ?? "", error });
   if (!it?.url || typeof it.url !== "string" ||
       !it.url.startsWith("https://archive.org/") ||
       !KNOWN_SECTIONS.has(it.section)) {
-    fail("invalid add-on item");
+    bus.post({ op: "installFailed", url: it?.url ?? "",
+               error: "invalid add-on item" });
     return;
   }
+  // installAddon reports the outcome to the panel itself.
+  await installAddon(it, again).catch(() => {});
+}
+
+/** Add an add-on to the tank: the one install path for the Import
+ * Add-ons window's requests and the first-run starter set. Acks the
+ * outcome over the bus either way (the panel may be waiting on this
+ * url), and rejects on failure. */
+function installAddon(it: Importable, again: boolean): Promise<void> {
   // The panel's retry timeout can fire while the original fetch is still
-  // running — a second request for the same url would double-install.
-  if (installsInFlight.has(it.url)) return; // original request will ack
+  // running, and a starter install can overlap a panel request: a second
+  // request for the same url rides the first instead of double-installing.
+  const running = installsInFlight.get(it.url);
+  if (running) return running;
   // A restore may have landed this add-on while the panel's detail fetch
   // was in flight — unless the user clicked "Add again", that's a dup.
   if (!again && installedAddons.some((a) => a.url === it.url)) {
     bus.post({ op: "installed", url: it.url });
-    return;
+    return Promise.resolve();
   }
-  installsInFlight.add(it.url);
-  try {
-    const rs = await fetchAddon(it.url);
-    const usable = rs.filter(
-      (r) => r.sheets.size || r.images.size || r.sounds.length);
-    if (!usable.length) throw new Error("no pack inside");
-    for (const r of usable) {
-      if (r.sheets.size)
-        handleSheets(r.sheets, it.inner, it.url, it.section, true);
-      if (r.images.size) handleImages(r.images.values(), it.url, it.section);
-    }
-    // One batch across resources: dedupes names globally, plays the
-    // feedback once, and a decode failure can't fail the install. The
-    // listing's qualified `inner` is the record identity — a sibling
-    // stem installed separately mustn't overwrite under the basename.
-    const sounds = usable.flatMap(
-      (r) => qualifySoundItemName(r.sounds, it.inner));
-    if (sounds.length)
-      await handleSounds(sounds)
-        .catch((e) => console.warn("sound install skipped:", e));
-    recordInstall(it);
+  const run = downloadAddon(it).then(() => {
+    // The in-page add-on window marks it too, so it offers Add Again.
+    importPanel.notify({ op: "installed", url: it.url });
     bus.post({ op: "installed", url: it.url });
     postState();
-  } catch (e) { fail(String(e)); }
-  finally { installsInFlight.delete(it.url); }
+  }, (e: unknown) => {
+    bus.post({ op: "installFailed", url: it.url, error: String(e) });
+    throw e;
+  }).finally(() => installsInFlight.delete(it.url));
+  installsInFlight.set(it.url, run);
+  return run;
+}
+
+async function downloadAddon(it: Importable): Promise<void> {
+  const rs = await fetchAddon(it.url);
+  const usable = rs.filter(
+    (r) => r.sheets.size || r.images.size || r.sounds.length);
+  if (!usable.length) throw new Error("no pack inside");
+  for (const r of usable) {
+    if (r.sheets.size)
+      handleSheets(r.sheets, it.inner, it.url, it.section, true);
+    if (r.images.size) handleImages(r.images.values(), it.url, it.section);
+  }
+  // One batch across resources: dedupes names globally, plays the
+  // feedback once, and a decode failure can't fail the install. The
+  // listing's qualified `inner` is the record identity — a sibling
+  // stem installed separately mustn't overwrite under the basename.
+  const sounds = usable.flatMap(
+    (r) => qualifySoundItemName(r.sounds, it.inner));
+  if (sounds.length)
+    await handleSounds(sounds)
+      .catch((e) => console.warn("sound install skipped:", e));
+  recordInstall(it);
 }
 
 // ---- CRT effect ------------------------------------------------------------
@@ -867,8 +910,12 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
+// web/pack/ is gitignored and no build ships one, so a missing
+// manifest means no bundled pack, not a failure worth a warning.
+class NoBundledPack extends Error {}
 const packFetch = async (p: string): Promise<Uint8Array> => {
   const r = await fetch(`pack/${p}`);
+  if (r.status === 404 && p === "manifest.json") throw new NoBundledPack();
   if (!r.ok) throw new Error(`${p}: ${r.status}`);
   return new Uint8Array(await r.arrayBuffer());
 };
@@ -884,7 +931,10 @@ void (async () => {
   }
   pickBackdrop(imgs);
 })()
-  .catch((e) => console.warn("azpack load failed; using placeholder fish:", e))
+  .catch((e) => {
+    if (e instanceof NoBundledPack) console.info("no bundled pack in pack/");
+    else console.warn("azpack load failed; using placeholder fish:", e);
+  })
   // Saved add-ons re-import after the bundled pack; once they've landed,
   // rebind saved fish to their species' actual sheet slot and heal
   // pre-spawning rosters that never gained their fish.
@@ -898,6 +948,22 @@ void (async () => {
   .then((recs) => recs?.length ? audio.addWavs(recs).catch((e) =>
     console.warn("snd decode failed:", e)) : undefined)
   .then(() => { remapSheetIdx(); reconcileFish(); });
+
+// First launch: offer to stock the tank (web/welcome.ts). Accepting
+// installs through the same path as the Import Add-ons window, and the
+// stand-ins leave once a real fish is in; declining keeps them.
+if (wantsWelcome(saved !== null)) {
+  showWelcome({
+    install: (it) => installAddon(it, false),
+    fishArrived: removePlaceholders,
+  });
+}
+function removePlaceholders(): void {
+  let gone = false;
+  for (const id of placeholderIds) gone = sim.removeFish(id) || gone;
+  placeholderIds.clear();
+  if (gone) { sweepThumbs(); saveTank(); }
+}
 
 // Drag an .azpack folder onto the window to import it.
 async function walkEntry(ent: FileSystemEntry, prefix: string,

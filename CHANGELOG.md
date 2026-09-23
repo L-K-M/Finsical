@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- On first launch, a Mac OS 8 alert welcomes you and offers to stock
+  the tank: Stock the Tank downloads three fish, a gravel, a plant and
+  a background (about 1 MB) from the Internet Archive, shows its
+  progress, and replaces the four stand-in fish. If the download
+  fails, the alert says so and offers Try Again. Knock on the glass
+  too often and you get the aquarium's sign: "Please don't tap on the
+  glass. It frightens the fish." The console no longer warns about the
+  missing bundled pack on every launch.
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview
