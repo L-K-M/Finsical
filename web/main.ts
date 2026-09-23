@@ -522,6 +522,8 @@ function onBusMessage(m: BusMsg): void {
   } else if (m.op === "removeAddon" &&
              typeof m.url === "string" && m.url !== "") {
     removeAddon(m.url);
+  } else if (m.op === "emptyTank") {
+    emptyTank();
   } else if (m.op === "wantThumbs" && Array.isArray(m.keys)) {
     serveThumbs(m.keys);
   } else if (m.op === "crtEnabled") {
@@ -599,6 +601,17 @@ function removeAddon(url: string): void {
   sweepThumbs();
   saveTank(); // persists and pushes fresh state to the panel
   bus.post({ op: "uninstalled", url });
+}
+
+/** The Overview's danger button: uninstall every add-on (removes its
+ * fish, decor and scenery) then release whatever fish remain —
+ * bundled-pack or legacy fish no add-on claimed. Preferences, water
+ * and the sound bank stay. */
+function emptyTank(): void {
+  for (const a of [...installedAddons]) removeAddon(a.url);
+  for (const f of [...sim.fish]) sim.removeFish(f.id);
+  sweepThumbs();
+  saveTank(); // persists the empty roster and resyncs the panel
 }
 
 // Bus messages cross a page boundary — validate before trusting them.

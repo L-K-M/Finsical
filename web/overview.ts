@@ -31,6 +31,7 @@ const thumbRequested = new Set<string>();     // asked once per page
 const summaryEl = document.getElementById("osummary")!;
 const headsEl = document.getElementById("oheads")!;
 const listEl = document.getElementById("olist")!;
+const emptyBtn = document.getElementById("oempty") as HTMLButtonElement;
 const removeBtn = document.getElementById("oremove") as HTMLButtonElement;
 
 let tankBoot: string | undefined;
@@ -106,6 +107,15 @@ function syncRemove(): void {
 pushButton(removeBtn, () => {
   const it = items[list.selected];
   if (it) bus.post(it.remove);
+});
+// The danger action: every fish and add-on leaves the tank. Kept
+// stateless — the next state push just lists an empty tank.
+pushButton(emptyBtn, () => {
+  const n = (tankState?.fish ?? []).length +
+    (tankState?.addons ?? []).length;
+  if (!n) return;
+  if (confirm("Release every fish and uninstall every add-on?"))
+    bus.post({ op: "emptyTank" });
 });
 // Delete (or Command-Delete, the Finder's Move to Trash) removes the
 // selected line.
