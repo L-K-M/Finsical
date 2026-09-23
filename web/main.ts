@@ -114,6 +114,10 @@ function sanitizeSavedFish(f: Partial<Fish> & { x: number; y: number }):
     vy: num(f.vy, -8, 8, 0),
     bandY: num(f.bandY, 0, TANK.height - 1, y),
     hunger: num(f.hunger, 0, 1, 0.2),
+    // Pre-growth saves carry no scale: those fish are grown, not
+    // juveniles. addFish clamps the value into the sim's range.
+    scale: typeof f.scale === "number" && Number.isFinite(f.scale)
+      ? f.scale : 1,
     species: typeof f.species === "string" ? f.species : "",
   };
   // Optional fields drop rather than zero out — a bogus sheetIdx or
@@ -138,7 +142,7 @@ function saveTank(): void {
       fish: sim.fish.map((f) => ({
         id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
         heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
-        bandY: f.bandY, hunger: f.hunger,
+        bandY: f.bandY, hunger: f.hunger, scale: f.scale,
         ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
         ...(f.pack !== undefined ? { pack: f.pack } : {}),
       })),
@@ -1199,19 +1203,31 @@ function bindExtents(f: Fish): void {
   f.halfH = sheet.meta.cellW * s / 2;
 }
 
+/** The scale a fish draws at: its sheet's art scale times its growth.
+ * swimCanvas caches a shrunk frame per exact scale, so growth rounds
+ * to 0.05 steps (finer than a pixel for most fish) to keep that cache
+ * bounded. A grown fish may outgrow the spawn cap, never 80% of the
+ * tank. */
+function drawScale(sheet: SpriteSheet, f: Fish): number {
+  const grown = Math.round(f.scale * 20) / 20;
+  return Math.min(sheetScale(sheet) * grown,
+                  TANK.width * 0.8 / sheet.meta.cellH,
+                  TANK.height * 0.8 / sheet.meta.cellW);
+}
+
 function drawFish(f: Fish): void {
   const sheet = sheetOf(f);
-  if (!sheet) return drawPlaceholder(f.x, f.y, f.facing, pitch(f));
+  if (!sheet) return drawPlaceholder(f.x, f.y, f.facing, pitch(f), f.scale);
   let cv: HTMLCanvasElement;
   try {
     const pose = fishPose(sheet, f);
     cv = swimCanvas(sheet, animFrame(f, sheet.meta.framesPerGroup),
-                    pose.mir, pose.g, sheetScale(sheet));
+                    pose.mir, pose.g, drawScale(sheet, f));
   } catch (e) {
     if (!(e instanceof RangeError)) throw e;
     // A truncated pack can legitimately lack this cell; an uncaught
     // RangeError here would abort the rest of every frame, so fall back.
-    return drawPlaceholder(f.x, f.y, f.facing, pitch(f));
+    return drawPlaceholder(f.x, f.y, f.facing, pitch(f), f.scale);
   }
   ctx.save();
   // finally: a throwing drawImage must not leave its transform behind
@@ -1228,10 +1244,10 @@ function drawFish(f: Fish): void {
 
 // Placeholder sprite until real Aquazone assets are imported.
 function drawPlaceholder(x: number, y: number, facing: number,
-                         dev = 0): void {
+                         dev = 0, scale = 1): void {
   ctx.save();
   ctx.translate(Math.round(x), Math.round(y));
-  ctx.scale(-facing, 1);
+  ctx.scale(-facing * scale, scale);
   // In the mirrored draw space the pitch angle flips sign.
   ctx.rotate(-facing * dev);
   ctx.fillStyle = "#e8a33d";

@@ -51,6 +51,8 @@ export interface Fish {
   turnFrom: 1 | -1;
   /** Preferred depth band the fish wanders around. */
   bandY: number;
+  /** Render scale — juveniles spawn small, meals grow toward adult. */
+  scale: number;
   /** 0 = full, 1 = starving */
   hunger: number;
   state: FishState;
@@ -171,6 +173,13 @@ const BAND_SHIFT = 0.2;
  * (~16 poses at 60 tps ≈ 0.27 s); ~10 ticks here at 30 tps.
  */
 export const TURN_TICKS = 10;
+/** Juveniles spawn at 0.78–1.10 of adult scale. */
+const SPAWN_SCALE_MIN = 0.78;
+const SPAWN_SCALE_RANGE = 0.32;
+/** Each meal closes this share of the gap to the cap — asymptotic:
+ * crosses 1.0 after ~8 meals from minimum spawn, ~90% grown after ~37. */
+const GROWTH = 0.06;
+const MAX_SCALE = 1.35;
 const BUBBLE_CHANCE = 0.004;
 /** One full day/night cycle in ticks (~13 min at 30 tps). */
 export const DAY_TICKS = 24000;
@@ -202,7 +211,7 @@ export class Sim {
       id: this.nextId, species: "",
       facing: 1, heading: 0, phase: 0, latch: -1, peak: 0, cruise: 1,
       speed: 1, vy: 0, tx: 0, ty: 0, turnDir: 1, turnFrom: 1,
-      strokes: 0, bandY: 0, hunger: 0.2,
+      strokes: 0, bandY: 0, scale: 1, hunger: 0.2,
       state: "drift", stateTicks: 0, startleLen: STARTLE_TICKS,
       panicHops: 0, ...fish,
     };
@@ -220,6 +229,15 @@ export class Sim {
     if (!Number.isFinite(fish.tx)) f.tx = f.x;
     if (!Number.isFinite(fish.ty)) f.ty = f.y;
     if (!Number.isFinite(fish.bandY)) f.bandY = f.y;
+    // Saved/restored fish keep their size; new fish spawn as juveniles
+    // of varying size so a school doesn't read as clones.
+    if (fish.scale === undefined)
+      f.scale = SPAWN_SCALE_MIN + this.rand() * SPAWN_SCALE_RANGE;
+    else if (!Number.isFinite(f.scale) || f.scale <= 0)
+      f.scale = 1; // 0/NaN/negative from a bad save mustn't render invisible
+    else
+      // Bad saves shouldn't render invisible or dwarf the tank.
+      f.scale = Math.min(Math.max(f.scale, SPAWN_SCALE_MIN), MAX_SCALE);
     this.fish.push(f);
     return f;
   }
@@ -422,6 +440,8 @@ export class Sim {
         if (d < Math.max(EAT_DIST, (f.halfH ?? 0) * EDGE_KEEP) + wallGap) {
           food.eaten = true;
           f.hunger = 0;
+          // A meal puts a little size on — asymptotic toward adult.
+          f.scale += (MAX_SCALE - f.scale) * GROWTH;
           this.setState(f, "drift");
           this.decide(f);
           // The next destination may lie behind: roll to it now rather
