@@ -1,4 +1,5 @@
-import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
+import { BOTTOM_PAD, FOOD_ROT_TICKS, LIGHT_NIGHT, Sim }
+  from "../core/sim.js";
 import { fishPose, pitch } from "../core/pose.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
@@ -39,6 +40,9 @@ interface SavedTank {
   v: 1 | 2;
   tickCount: number;
   waterQuality: number;
+  /** Lamp state: LIGHT_NIGHT while off, null to follow the day cycle.
+   * Absent in saves that predate the lamp. */
+  lightOverride?: number | null;
   fish: Partial<Fish>[];
   addons: Importable[];
 }
@@ -66,6 +70,9 @@ if (saved) {
   if (Number.isFinite(saved.tickCount)) sim.tickCount = saved.tickCount;
   if (Number.isFinite(saved.waterQuality))
     sim.waterQuality = saved.waterQuality;
+  // A save predating the lamp has no field: the cycle stays in charge.
+  if (typeof saved.lightOverride === "number")
+    sim.lightOverride = saved.lightOverride;
 }
 const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
   [0, 1, 2, 3].map((i) =>
@@ -80,6 +87,7 @@ function saveTank(): void {
     const s: SavedTank = {
       v: rosterComplete ? 2 : 1,
       tickCount: sim.tickCount, waterQuality: sim.waterQuality,
+      lightOverride: sim.lightOverride,
       fish: sim.fish.map((f) => ({
         id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
         heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
@@ -795,8 +803,13 @@ function feedFish(): void {
   sim.dropFood(TANK.width / 2);
   audio.feed();
 }
+/** Lamp switch: off pins the tank at night, on restores the cycle. */
+function toggleLights(): void {
+  sim.lightOverride = sim.lightOverride === null ? LIGHT_NIGHT : null;
+  saveTank(); // persists and pushes fresh state to the client windows
+}
 (window as unknown as { finsical?: unknown }).finsical =
-  { openImport: () => importPanel.open(), feedFish,
+  { openImport: () => importPanel.open(), feedFish, toggleLights,
     toggleCrt: () => setCrt(!crtOn) };
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
@@ -832,6 +845,9 @@ window.addEventListener("keydown", (e) => {
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "c" &&
              !e.repeat && !importPanel.isOpen) {
     setCrt(!crtOn); // bare C: ⌘C is Copy via the Edit menu
+  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "l" &&
+             !e.repeat && !importPanel.isOpen) {
+    toggleLights(); // bare L: the lamp — ⌘L belongs to the native menu
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "s" &&
              !e.repeat && !importPanel.isOpen && !inNativeShell()) {
     // Browser-only fallback — the app opens stats.html via Tank ▸

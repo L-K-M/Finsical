@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DAY_TICKS, FOOD_ROT_TICKS, Sim, TURN_TICKS } from "./sim.js";
+import { DAY_TICKS, FOOD_ROT_TICKS, LIGHT_NIGHT, Sim, TURN_TICKS }
+  from "./sim.js";
 
 // States a fish may be in when it's not seeking food.
 const IDLE_STATES = ["drift", "turn"];
@@ -345,5 +346,18 @@ describe("Sim", () => {
     // ids stay unique across removal
     const c = sim.addFish({ x: 30, y: 30 });
     expect(c.id).not.toBe(a.id);
+  });
+
+  it("light follows the day cycle until the lamp is switched off", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 7);
+    sim.tickCount = DAY_TICKS / 2; // midday
+    expect(sim.light).toBeCloseTo(1, 10);
+    sim.lightOverride = LIGHT_NIGHT; // lamp off
+    expect(sim.light).toBe(LIGHT_NIGHT);
+    sim.tickCount += 10_000; // the cycle moves on; the lamp still rules
+    expect(sim.light).toBe(LIGHT_NIGHT);
+    sim.lightOverride = null; // lamp on: the cycle's word is law again
+    sim.tickCount = DAY_TICKS / 2;
+    expect(sim.light).toBeCloseTo(1, 10);
   });
 });

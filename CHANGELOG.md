@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Tank lights: the lamp can be switched off for instant night (Tank ▸
+  Toggle Lights, ⌘L in the app, bare L in the browser) — the tank dims
+  to the cycle's night level and stays there until switched back. The
+  state persists with the tank save; Tank Stats' Day/Night line follows.
+
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview

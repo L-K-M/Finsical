@@ -127,6 +127,8 @@ export const TURN_TICKS = 10;
 const BUBBLE_CHANCE = 0.004;
 /** One full day/night cycle in ticks (~13 min at 30 tps). */
 export const DAY_TICKS = 24000;
+/** The lamp-off light level — the cycle's own night floor. */
+export const LIGHT_NIGHT = 0.3;
 
 /** Fixed-step aquarium simulation. Advance with `tick()` — one step per call. */
 export class Sim {
@@ -137,6 +139,8 @@ export class Sim {
   tickCount = 0;
   /** 1 = clean, 0 = foul. Rotted food fouls it; filtration recovers it. */
   waterQuality = 1;
+  /** The lamp: LIGHT_NIGHT while off, null to follow the day cycle. */
+  lightOverride: number | null = null;
   private rand: () => number;
   private nextId = 0;
 
@@ -198,8 +202,10 @@ export class Sim {
 
   /** 0.3 = night, 1 = full daylight. */
   get light(): number {
+    // Lamp off pins the tank at night; on (null) follows the cycle.
+    if (this.lightOverride !== null) return this.lightOverride;
     const t = (this.tickCount % DAY_TICKS) / DAY_TICKS;
-    return 0.3 + 0.7 * Math.max(0, Math.sin(t * Math.PI));
+    return LIGHT_NIGHT + (1 - LIGHT_NIGHT) * Math.max(0, Math.sin(t * Math.PI));
   }
 
   tick(): void {
