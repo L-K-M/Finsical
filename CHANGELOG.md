@@ -12,6 +12,15 @@
   slows fish down, and a fish scared into the glass bounces off it.
   Tank Overview and Stats call a fish peckish once it would go for
   food.
+- Fish look like their species. Every AquaZone fish pack carries a
+  generic hatchling set alongside the adult art, and the tank drew the
+  hatchlings: a clownfish, a comet and a ryukin were the same grey fry.
+  Each fish now swims as its adult, at half the art's original size so
+  species keep their sizes relative to each other, shrunk with a box
+  filter so fins and outlines stay whole. Big fish keep their bodies
+  inside the glass and blow bubbles from their mouths.
+  The Import Add-ons preview, its list and Tank Overview show the same
+  fish in its level profile, and cached previews are redrawn.
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview

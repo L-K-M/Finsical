@@ -31,6 +31,69 @@ describe("Sim", () => {
     expect(f.y).toBeLessThanOrEqual(188); // height - BOTTOM_PAD
   });
 
+  it("keeps a big fish's body inside the glass", () => {
+    // An adult ryukin at the tank's art scale: 100 x 67.
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    sim.addFish({ x: 160, y: 100, speed: 2, halfW: 50, halfH: 33 });
+    for (let i = 0; i < 5000; i++) {
+      sim.tick();
+      const f = sim.fish[0]!;
+      expect(f.x).toBeGreaterThanOrEqual(40);    // 0.8 * halfW
+      expect(f.x).toBeLessThanOrEqual(280);
+      expect(f.y).toBeGreaterThanOrEqual(36.4);  // SURFACE + 0.8 * halfH
+      expect(f.y).toBeLessThanOrEqual(173.6);    // height - 0.8 * halfH
+    }
+  });
+
+  it("lets a big fish eat a settled pellet it can't sink to", () => {
+    // A ryukin (67 tall), and a discus as tall as the height cap lets
+    // a fish get: its floor clamp sits farthest above the gravel.
+    for (const halfH of [33, 45, 60]) {
+      const sim = new Sim({ width: 320, height: 200 }, 5);
+      const f = sim.addFish({ x: 60, y: 120, hunger: 0, halfW: 50, halfH });
+      sim.dropFood(200);
+      // Sated until the pellet has settled on the gravel.
+      let wait = 0;
+      while (!sim.food[0]?.settled && ++wait < 5000) sim.tick();
+      expect(wait, `halfH ${halfH}: pellet settled`).toBeLessThan(5000);
+      f.hunger = 1;
+      let eaten = false;
+      for (let i = 0; i < 3000 && !eaten; i++) {
+        sim.tick();
+        eaten = sim.food.length === 0 && sim.fish[0]!.hunger < 0.5;
+      }
+      expect(eaten, `halfH ${halfH}`).toBe(true);
+    }
+  });
+
+  it("lets a wide fish eat a pellet against the side glass", () => {
+    // Its centre keeps 0.8 halfW off the glass, farther than a pellet
+    // dropped at the wall; the reach has to span that gap too.
+    for (const drop of [0, 320]) {
+      const sim = new Sim({ width: 320, height: 200 }, 5);
+      sim.addFish({ x: 160, y: 100, hunger: 1, halfW: 90, halfH: 30 });
+      sim.dropFood(drop);
+      let eaten = false;
+      for (let i = 0; i < 3000 && !eaten; i++) {
+        sim.tick();
+        eaten = sim.food.length === 0 && sim.fish[0]!.hunger < 0.5;
+      }
+      expect(eaten, `drop at ${drop}`).toBe(true);
+    }
+  });
+
+  it("blows bubbles from a big fish's mouth", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 11);
+    const f = sim.addFish({ x: 160, y: 100, halfW: 40, halfH: 20 });
+    for (let i = 0; i < 4000 && !sim.bubbles.length; i++) {
+      sim.tick();
+      if (sim.bubbles.length) {
+        expect(Math.abs(sim.bubbles[0]!.x - f.x)).toBeGreaterThanOrEqual(36);
+      }
+    }
+    expect(sim.bubbles.length).toBeGreaterThan(0);
+  });
+
   it("turns around at the walls", () => {
     const sim = new Sim({ width: 100, height: 100 }, 3);
     sim.addFish({ x: 76, y: 50, facing: 1, speed: 2 });
