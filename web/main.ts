@@ -647,7 +647,8 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     const rs = await fetchAddon(it.url);
     // The tank was emptied while this pack was fetching — applying
     // it now would repopulate the tank the user just cleared.
-    if (epoch !== tankEpoch) return;
+    if (epoch !== tankEpoch)
+      throw new Error("cancelled — the tank was emptied mid-install");
     const usable = rs.filter(
       (r) => r.sheets.size || r.images.size || r.sounds.length);
     if (!usable.length) throw new Error("no pack inside");
@@ -665,6 +666,10 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     if (sounds.length)
       await handleSounds(sounds)
         .catch((e) => console.warn("sound install skipped:", e));
+    // Re-check after the awaits: a wipe during sound decode would
+    // otherwise record an add-on whose fish are already gone.
+    if (epoch !== tankEpoch)
+      throw new Error("cancelled — the tank was emptied mid-install");
     recordInstall(it);
     bus.post({ op: "installed", url: it.url });
     postState();

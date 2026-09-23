@@ -114,6 +114,7 @@ pushButton(removeBtn, () => {
 // pages whose host never wires up the panel delegate (our WKWebView
 // shell included) — a two-click arm works everywhere.
 let emptyArmTimer = 0;
+let emptyArmedAt = 0;
 const disarmEmpty = (): void => {
   window.clearTimeout(emptyArmTimer);
   delete emptyBtn.dataset.armed;
@@ -122,13 +123,17 @@ const disarmEmpty = (): void => {
 pushButton(emptyBtn, () => {
   const n = (tankState?.fish ?? []).length +
     (tankState?.addons ?? []).length;
-  if (!n) return;
+  if (!n) { disarmEmpty(); return; }
   if (emptyBtn.dataset.armed !== "1") {
     emptyBtn.dataset.armed = "1";
     emptyBtn.textContent = "Really empty?";
+    emptyArmedAt = performance.now();
     emptyArmTimer = window.setTimeout(disarmEmpty, 4000);
     return;
   }
+  // A double-click would confirm within milliseconds of arming —
+  // that's an accident, not a decision. Require a beat between.
+  if (performance.now() - emptyArmedAt < 350) return;
   disarmEmpty();
   bus.post({ op: "emptyTank" });
 });
