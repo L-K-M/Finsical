@@ -79,6 +79,17 @@ describe("decodeDroppedPacks", () => {
     expect(packs[0]!.name).toBe("a/b/ANGEL");
   });
 
+  it("skips a corrupt pack without losing the rest of the drop", () => {
+    // Truncated mid-directory: isPack still sees the magic, decoding
+    // must not take the healthy sibling down with it.
+    const truncated = packA.slice(0, 0x120);
+    const packs = decodeDroppedPacks([
+      ["corrupt.fsh", truncated],
+      ["Guppy.fsh", packB],
+    ]);
+    expect(packs.map((p) => p.name)).toEqual(["Guppy"]);
+  });
+
   it("skips non-pack files and pack containers with no sprites", () => {
     const empty = buildPack(buildBmp8(PAL));
     const packs = decodeDroppedPacks([
