@@ -456,6 +456,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             // so the label is correct even if the state push races this handler.
             if let paused = result as? Bool {
                 self.syncPauseMenu(paused: paused)
+            } else {
+                NSLog("Finsical: togglePause returned non-boolean result: \(String(describing: result))")
             }
         }
     }
