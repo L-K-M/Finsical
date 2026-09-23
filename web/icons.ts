@@ -2,7 +2,8 @@
 // the spirit of Mac OS 8 control panel icons (drawn for Finsical, not
 // copied): a compact Mac with a fish tank on screen, a tube monitor
 // showing scanlines, and a brightness/contrast disc. Registered as
-// Osmium sprites (--osm-sprite-icon-*) by prefs.ts.
+// Osmium sprites (--osm-sprite-icon-*) by prefs.ts. Also the sound
+// add-ons' icon, a speaker, which the add-on lists draw on canvases.
 import type { Palette } from "osmium-ui";
 
 /** Icon colors beyond Osmium's built-in grays and lavender ramp, from
@@ -112,6 +113,36 @@ const ICON_PICTURE = [
   "...............00...............",
   "...............00...............",
   "................................",
+  "................................",
+  "................................",
+];
+
+/** Sound add-ons' icon, 32 x 24 so it sits unscaled in the add-on
+ * lists' 38 x 28 thumbnails: a speaker sending out sound waves. Drawn
+ * with grays and ICON_PALETTE only (render.ts rasterizes it). */
+export const SOUND_ICON: readonly string[] = [
+  "................................",
+  "................................",
+  "...............00........t......",
+  "..............0f0.........t.....",
+  ".............0ff0..........t....",
+  "............0fee0...........t...",
+  "...........0feee0.....t.....t...",
+  "..........0feeee0......t.....t..",
+  "....000000fddddd0.......t....t..",
+  "....0ffff0dddddd0..t....t.....t.",
+  "....0fcc80dddddd0...t....t....t.",
+  "....0fcc80dddddd0...t....t....t.",
+  "....0fcc80cccccc0...t....t....t.",
+  "....0fcc80cccccc0...t....t....t.",
+  "....0f8880cccccc0..t....t.....t.",
+  "....0000008bbbbb0.......t....t..",
+  "..........08bbbb0......t.....t..",
+  "...........08aaa0.....t.....t...",
+  "............08aa0...........t...",
+  ".............0890..........t....",
+  "..............080.........t.....",
+  "...............00........t......",
   "................................",
   "................................",
 ];
