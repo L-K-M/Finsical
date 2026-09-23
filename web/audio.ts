@@ -85,7 +85,7 @@ export class TankAudio {
         return this.startAmbient();
       })
       .catch((err) => {
-        if (resumed) console.warn("audio unlock failed:", err);
+        if (resumed) console.warn("audio start failed:", err);
       });
   }
 

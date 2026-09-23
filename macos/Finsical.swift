@@ -112,7 +112,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         // Menu actions run via evaluateJavaScript and do not grant the
         // page a user activation; without this, AudioContext.resume()
         // from Tank ▸ Feed Fish on a fresh window stays rejected.
-        config.mediaTypesRequiringUserActionForPlayback = []
+        // Exempt audio only — video still requires a user gesture.
+        config.mediaTypesRequiringUserActionForPlayback = [.video]
         config.setURLSchemeHandler(WebHandler(), forURLScheme: WebHandler.scheme)
         // "finsical" posts are relayed to the sibling webview (bus.ts).
         config.userContentController.add(self, name: "finsical")
