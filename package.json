@@ -12,7 +12,7 @@
     "dev": "cp node_modules/osmium-ui/osmium.css web/osmium.css && trap 'kill 0' INT TERM; esbuild web/overview.ts --bundle --format=iife --outfile=web/overview.js --watch & esbuild web/addons.ts --bundle --format=iife --outfile=web/addons.js --watch & esbuild web/prefs.ts --bundle --format=iife --outfile=web/prefs.js --watch & esbuild web/stats.ts --bundle --format=iife --outfile=web/stats.js --watch & esbuild web/main.ts --bundle --format=iife --outfile=web/bundle.js --servedir=web --serve=8080 --watch & wait"
   },
   "devDependencies": {
-    "esbuild": "0.24.2",
+    "esbuild": "0.28.2",
     "typescript": "5.6.3",
     "vitest": "2.1.9"
   },
