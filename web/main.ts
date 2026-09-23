@@ -1067,10 +1067,29 @@ const tankGradient = (() => {
   return g;
 })();
 
+// The backdrop is drawn 1:1 every frame — scale it once into a
+// tank-sized canvas, cover-fit so a non-1.6 source crops instead of
+// stretching. Rebuilt only when the source canvas changes.
+let backdropFit: { src: HTMLCanvasElement; cv: HTMLCanvasElement } | null = null;
+function fittedBackdrop(): HTMLCanvasElement {
+  if (backdropFit?.src === backdropCv) return backdropFit.cv;
+  const out = document.createElement("canvas");
+  out.width = TANK.width; out.height = TANK.height;
+  const c = out.getContext("2d")!;
+  // Smooth scaling: cover-fit almost always lands on a fractional
+  // factor, where nearest-neighbor would alias the art.
+  const s = Math.max(TANK.width / backdropCv!.width,
+                     TANK.height / backdropCv!.height);
+  const w = backdropCv!.width * s, h = backdropCv!.height * s;
+  c.drawImage(backdropCv!, (TANK.width - w) / 2, (TANK.height - h) / 2, w, h);
+  backdropFit = { src: backdropCv!, cv: out };
+  return out;
+}
+
 let prevBubbles = 0;
 function render(): void {
   if (backdropCv) {
-    ctx.drawImage(backdropCv, 0, 0, TANK.width, TANK.height);
+    ctx.drawImage(fittedBackdrop(), 0, 0);
   } else {
     ctx.fillStyle = tankGradient;
     ctx.fillRect(0, 0, TANK.width, TANK.height);
