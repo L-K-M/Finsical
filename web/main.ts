@@ -822,7 +822,18 @@ const syncTrigger = (show: boolean): void => {
 };
 syncTrigger(hoverNone.matches);
 hoverNone.addEventListener("change", (e) => syncTrigger(e.matches));
+const COMPANIONS: Record<string, [string, string]> = {
+  s: ["stats.html", "finsical-stats"],
+  o: ["overview.html", "finsical-overview"],
+  p: ["prefs.html", "finsical-prefs"],
+};
 window.addEventListener("keydown", (e) => {
+  // Never steal keys from a text field — the tank page has none
+  // today, but a future field shouldn't fight the shortcuts.
+  const t = e.target;
+  if (t instanceof HTMLElement &&
+      (t.isContentEditable || t.tagName === "INPUT" ||
+       t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
   const k = e.key.toLowerCase();
   if ((e.metaKey || e.ctrlKey) && k === "i") {
     importPanel.open(); e.preventDefault();
@@ -837,10 +848,8 @@ window.addEventListener("keydown", (e) => {
              (k === "s" || k === "o" || k === "p")) {
     // Browser-only fallbacks — the app opens companion windows via its
     // Tank menu; over BroadcastChannel the new tab finds the tank.
-    openNamedTab(
-      k === "s" ? "stats.html" : k === "o" ? "overview.html"
-                                           : "prefs.html",
-      `finsical-${k === "s" ? "stats" : k === "o" ? "overview" : "prefs"}`);
+    const [page, name] = COMPANIONS[k]!;
+    openNamedTab(page, name);
   }
 });
 
