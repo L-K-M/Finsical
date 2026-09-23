@@ -1184,9 +1184,14 @@ function frame(now: number): void {
   }
   render();
   // A parked cursor doesn't re-hit-test: hide the tip once the fish
-  // under it has swum off.
-  if (lastHover && fishTip.style.display !== "none" &&
-      !fishNear(lastHover)) fishTip.style.display = "none";
+  // under it has swum off, and refresh the label while it stays —
+  // the state word would otherwise go stale between pointermoves.
+  if (lastHover && fishTip.style.display !== "none") {
+    const best = fishNear(lastHover);
+    if (!best) fishTip.style.display = "none";
+    else fishTip.textContent = (best.species || "Fish") +
+      (best.state === "drift" ? "" : ` — ${stateLabel(best.state)}`);
+  }
   if (crtOn) crt?.render();
   requestAnimationFrame(frame);
 }
