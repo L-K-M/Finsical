@@ -265,7 +265,7 @@ describe("Sim", () => {
     const together = run(true), apart = run(false);
     // Seed 9 measures ~33 vs ~62 — assert a 10 px gap, not just ordering,
     // so weakened schooling fails while tuning noise still passes.
-    expect(together).toBeLessThan(apart - 10);
+    expect(apart - together).toBeGreaterThan(10);
   });
 
   it("rolls through a turn when the destination is behind it", () => {
