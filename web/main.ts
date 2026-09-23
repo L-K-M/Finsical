@@ -604,6 +604,9 @@ function removeAddon(url: string): void {
 // Bus messages cross a page boundary — validate before trusting them.
 const KNOWN_SECTIONS = new Set(COLLECTIONS.map((c) => c.section));
 const installsInFlight = new Set<string>();
+// "Add again" intents that arrived while the same url was installing —
+// run them right after so a fast second click isn't silently dropped.
+const queuedAgain = new Map<string, Importable>();
 async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   const fail = (error: string) =>
     bus.post({ op: "installFailed", url: it?.url ?? "", error });
@@ -615,7 +618,12 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   }
   // The panel's retry timeout can fire while the original fetch is still
   // running — a second request for the same url would double-install.
-  if (installsInFlight.has(it.url)) return; // original request will ack
+  if (installsInFlight.has(it.url)) {
+    // The in-flight request's ack covers a duplicate add; an explicit
+    // "Add again" means another fish/decor copy — queue it for after.
+    if (again) queuedAgain.set(it.url, it);
+    return;
+  }
   // A restore may have landed this add-on while the panel's detail fetch
   // was in flight — unless the user clicked "Add again", that's a dup.
   if (!again && installedAddons.some((a) => a.url === it.url)) {
@@ -646,7 +654,14 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     bus.post({ op: "installed", url: it.url });
     postState();
   } catch (e) { fail(String(e)); }
-  finally { installsInFlight.delete(it.url); }
+  finally {
+    installsInFlight.delete(it.url);
+    const next = queuedAgain.get(it.url);
+    if (next) {
+      queuedAgain.delete(it.url);
+      void remoteInstall(next, true);
+    }
+  }
 }
 
 // ---- CRT effect ------------------------------------------------------------
