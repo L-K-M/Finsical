@@ -1,6 +1,6 @@
 # Finsical
 
-**Latest release:** v<!-- version -->0.2.0<!-- /version --> · [Download](https://github.com/L-K-M/Finsical/releases/latest)
+**Latest release:** v<!-- version -->0.3.0<!-- /version --> · [Download](https://github.com/L-K-M/Finsical/releases/latest)
 
 ![Screenshot showing a Performa backdrop](media-sources/screenshot.png)
 
