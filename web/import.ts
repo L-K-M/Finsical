@@ -348,7 +348,8 @@ export async function importAddon(url: string): Promise<PackResult[]> {
   // to download; decode them like any other pack blob.
   if (isLocalPack(url)) {
     const d = await packGet(url);
-    if (!d || !isPack(d)) throw new Error(`${url}: stored pack missing`);
+    if (!d) throw new Error(`${url}: stored pack missing`);
+    if (!isPack(d)) throw new Error(`${url}: stored data is not a pack`);
     return [{ sheets: fshToSheets(d), images: packImages(d),
               sounds: [] }];
   }
