@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deriveStats, hungerLabel, trend, uptime } from "./statsmodel.js";
+import { HUNGER_SEEK } from "../core/tuning.js";
 
 const base = {
   fish: [
@@ -107,6 +108,9 @@ describe("labels", () => {
     expect(hungerLabel(0.1)).toBe("full");
     expect(hungerLabel(0.5)).toBe("peckish");
     expect(hungerLabel(0.9)).toBe("hungry");
+    // "peckish" starts where the sim's fish start looking for food.
+    expect(hungerLabel(HUNGER_SEEK - 0.01)).toBe("full");
+    expect(hungerLabel(HUNGER_SEEK)).toBe("peckish");
   });
   it("trend", () => {
     expect(trend(null, 0.5)).toBe("→");

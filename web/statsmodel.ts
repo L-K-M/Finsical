@@ -1,9 +1,12 @@
 /**
  * Tank-stats derivations for the optional stats window — pure functions
  * so vitest can pin the guidance rules without a DOM. Input is the
- * tank page's `state` bus payload (web/main.ts postState); thresholds
- * mirror core/sim.ts so the advice tracks what the sim actually does.
+ * tank page's `state` bus payload (web/main.ts postState); feeding
+ * thresholds come from core/tuning.ts, which the sim uses too, so the
+ * advice tracks what the sim actually does.
  */
+import { HUNGER_SEEK, QUALITY_SEEK } from "../core/tuning.js";
+
 export interface StatsFish {
   species?: string;
   hunger?: number; // 0 full .. 1 starving
@@ -37,10 +40,6 @@ export interface TankStats {
   advice: string[];
 }
 
-// Mirrored from core/sim.ts — kept local so the stats page can stay a
-// dumb renderer of the bus payload without importing the sim.
-/** Below this water quality fish lose their appetite (QUALITY_SEEK). */
-const QUALITY_SEEK = 0.3;
 /** Hunger where "hungry" becomes "starving" for the worst-off fish. */
 const HUNGER_STARVING = 0.85;
 /** Avg hunger that warrants a feeding hint. */
@@ -119,7 +118,8 @@ export function uptime(minutes: number): string {
 
 /** Compact hunger label — same bands as the overview's. */
 export function hungerLabel(h: number): string {
-  if (h < 0.33) return "full";
+  // "peckish" means the fish is looking for food.
+  if (h < HUNGER_SEEK) return "full";
   if (h < 0.66) return "peckish";
   return "hungry";
 }

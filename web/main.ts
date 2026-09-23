@@ -1,5 +1,6 @@
 import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
 import { fishPose, pitch } from "../core/pose.js";
+import { SPAWN_HUNGER } from "../core/tuning.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
@@ -69,7 +70,8 @@ if (saved) {
 }
 const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
   [0, 1, 2, 3].map((i) =>
-    ({ x: 40 + i * 60, y: 50 + i * 30, facing: (i % 2 ? -1 : 1) as 1 | -1 }));
+    ({ x: 40 + i * 60, y: 50 + i * 30, facing: (i % 2 ? -1 : 1) as 1 | -1,
+       hunger: SPAWN_HUNGER }));
 const roster = (saved?.fish ?? []).filter(
   (f): f is Partial<Fish> & { x: number; y: number } =>
     !!f && Number.isFinite(f.x) && Number.isFinite(f.y));
@@ -143,6 +145,7 @@ function spawnFish(sheetIdx: number, species: string, pack?: string): void {
     facing: facing as 1 | -1,
     heading: facing > 0 ? 0 : Math.PI,
     cruise: 1.1 + Math.random() * 0.7,
+    hunger: SPAWN_HUNGER,
     sheetIdx, species,
     ...(pack !== undefined ? { pack } : {}),
   });

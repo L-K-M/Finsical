@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Fish swim more calmly: they stroke and glide toward where they are
+  going instead of changing their minds every second, turn around less
+  than half as often, never stop dead between strokes, and only change
+  direction with a full roll, not a one-frame flip. Hungry fish now
+  catch food as it sinks instead of trailing it to the gravel, new fish
+  eat the first food you drop, and a fish that loses a pellet to
+  another stops showing as looking for food. A light tap no longer
+  slows fish down, and a fish scared into the glass bounces off it.
+  Tank Overview and Stats call a fish peckish once it would go for
+  food.
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview

@@ -1,4 +1,5 @@
 import { makeRng } from "./rng.js";
+import { HUNGER_SEEK, QUALITY_SEEK } from "./tuning.js";
 
 export interface Tank {
   width: number;
@@ -19,7 +20,8 @@ export interface Fish {
   sheetIdx?: number;
   x: number;
   y: number;
-  /** facing: +1 right, -1 left — derived from `heading` each tick. */
+  /** facing: +1 right, -1 left. Only a roll (turn) or a startle changes
+   * it; steering keeps `heading` on the facing side. */
   facing: 1 | -1;
   /**
    * Swim heading in radians (screen coords: 0 = right, +y is down).
@@ -28,6 +30,8 @@ export interface Fish {
   heading: number;
   /** Ticks since the current movement decision began (stroke phase). */
   phase: number;
+  /** Strokes spent on the current destination beyond the first. */
+  strokes: number;
   /** Tick at which the brake latched; -1 while still accelerating. */
   latch: number;
   /** Speed the fish carried when the brake latched. */
@@ -51,6 +55,8 @@ export interface Fish {
   hunger: number;
   state: FishState;
   stateTicks: number;
+  /** Ticks the current startle lasts; weak scares are brief flinches. */
+  startleLen: number;
   /** Hops this panic wave has traveled from the tapped fish — caps
    * how far a startle cascade can spread. */
   panicHops: number;
@@ -81,7 +87,10 @@ export function wrapAngle(d: number): number {
 /** Hunger rise per tick — a fish starves after ~20 min unfed (~1.5 day
  * cycles), keeping Aquazone's once-a-day feeding rhythm. */
 const HUNGER_PER_TICK = 1 / (30 * 1200);
-const HUNGER_SEEK = 0.4;
+/** Past this hunger a fish that isn't looking for food still takes a
+ * pellet that drifts within NOTICE_DIST of it. */
+const HUNGER_SNACK = 0.1;
+const NOTICE_DIST = 24;
 const EAT_DIST = 6;
 const FOOD_SINK = 0.35;
 /** Ticks a settled pellet takes to dissolve away (~45 s at 30 tps). */
@@ -90,10 +99,13 @@ export const FOOD_ROT_TICKS = 30 * 45;
 const WASTE_PER_TICK = 1 / 6000;
 /** Filtration: recovers a fouled tank over ~7 min of clean water. */
 const FILTER_PER_TICK = 1 / 12000;
-/** Below this fish lose their appetite and stop seeking food. */
-const QUALITY_SEEK = 0.3;
 const STARTLE_RADIUS = 48;
+/** Length of a full-strength startle; weaker ones last down to half. */
 const STARTLE_TICKS = 30;
+/** Dart speed cap, px/tick: what a point-blank tap produces. */
+const STARTLE_MAX_SPEED = 3.5;
+/** Speed kept when a startled fish bounces off a side wall. */
+const STARTLE_BOUNCE = 0.6;
 /** Reactions weaker than this read as frozen fish — trims the
  * effective radius to ~95% of STARTLE_RADIUS (taps) and ~90% of
  * PROP_RADIUS (propagated panic, whose strength is halved first). */
@@ -107,14 +119,36 @@ const MAX_PANIC_HOPS = 2;
  * every 64 ticks (~1.07 s); halved here for our 30 tps clock.
  */
 const MOVE_TICKS = 32;
+/**
+ * Extra strokes a fish may spend on a far destination before picking a
+ * new one. Wander targets are often two or three strokes away; cutting
+ * each move short after one stroke made fish re-aim (and so roll)
+ * about once a second.
+ */
+const MAX_STROKES = 3;
 /** Stroke ramp divisor: speed = cruise·(phase+1)²/64 while accelerating. */
 const RAMP_DIV = 64;
+/** Per-tick speed kept while a new stroke's ramp is still below it:
+ * the fish glides into the next stroke instead of stopping dead. */
+const GLIDE = 0.93;
 /** Brake decay divisor: speed = peak − (phase−latch)²·peak/128. */
 const BRAKE_DIV = 128;
 /** Approach radius around the destination where the brake latches. */
 const BRAKE_DIST = 24;
 /** Heading steer rate, rad/tick — a 180° reversal takes ~19 ticks. */
 const TURN_RATE = Math.PI / 20;
+/** Steepest heading off the facing axis (105 degrees): a little past
+ * straight up or down, so a fish can close on a pellet it is just
+ * overshooting without rolling. Anything steeper needs a roll. */
+const MAX_PITCH = Math.PI * 7 / 12;
+/** How far behind the fish a target may sit and still be reached by
+ * pitching over rather than rolling: about the turning circle at
+ * cruise, so diving onto a pellet right below never rolls. */
+const TURN_SLACK = 12;
+/** Chance a new destination drawn behind the fish is mirrored ahead
+ * of it instead: about 70% of moves carry on the way the fish faces,
+ * so it rolls every few seconds rather than on most decisions. */
+const AHEAD_BIAS = 0.4;
 /** Half-height of a fish's preferred depth band. */
 const BAND_HALF = 24;
 /** Chance per decision of picking a new depth band. */
@@ -127,6 +161,11 @@ export const TURN_TICKS = 10;
 const BUBBLE_CHANCE = 0.004;
 /** One full day/night cycle in ticks (~13 min at 30 tps). */
 export const DAY_TICKS = 24000;
+
+/** Pitch off the facing axis, limited to MAX_PITCH either way. */
+function clampPitch(p: number): number {
+  return Math.max(-MAX_PITCH, Math.min(MAX_PITCH, p));
+}
 
 /** Fixed-step aquarium simulation. Advance with `tick()` — one step per call. */
 export class Sim {
@@ -150,9 +189,15 @@ export class Sim {
       id: this.nextId, species: "",
       facing: 1, heading: 0, phase: 0, latch: -1, peak: 0, cruise: 1,
       speed: 1, vy: 0, tx: 0, ty: 0, turnDir: 1, turnFrom: 1,
-      bandY: 0, hunger: 0.2,
-      state: "drift", stateTicks: 0, panicHops: 0, ...fish,
+      strokes: 0, bandY: 0, hunger: 0.2,
+      state: "drift", stateTicks: 0, startleLen: STARTLE_TICKS,
+      panicHops: 0, ...fish,
     };
+    // Steering keeps heading on the facing side. A fish given only a
+    // facing, or saved mid-roll, would otherwise start swimming
+    // backwards; mirror its heading round instead.
+    if (Math.cos(f.heading) * f.facing < 0)
+      f.heading = wrapAngle(Math.PI - f.heading);
     // A spread of {id: undefined} would poison the counter with NaN.
     if (!Number.isFinite(f.id)) f.id = this.nextId;
     // Loaded fish carry their saved id — never reissue it.
@@ -186,12 +231,7 @@ export class Sim {
         const d = Math.max(Math.hypot(dx, dy), 1);
         const k = 1 - d / STARTLE_RADIUS;
         if (k < MIN_STARTLE_STRENGTH) continue;
-        f.state = "startle";
-        f.stateTicks = 0;
-        f.panicHops = 0;
-        f.facing = dx >= 0 ? 1 : -1;
-        f.speed = 3.5 * k;
-        f.vy = (dy / d) * 2.5 * k;
+        this.startle(f, dx, dy, d, k, 0);
       }
     }
   }
@@ -217,12 +257,7 @@ export class Sim {
         const d = Math.max(Math.hypot(dx, dy), 1);
         const k = 0.5 * (1 - d / PROP_RADIUS);
         if (k < MIN_STARTLE_STRENGTH) continue;
-        b.state = "startle";
-        b.stateTicks = 0;
-        b.panicHops = a.panicHops + 1;
-        b.facing = dx >= 0 ? 1 : -1;
-        b.speed = 3.5 * k;
-        b.vy = (dy / d) * 2.5 * k;
+        this.startle(b, dx, dy, d, k, a.panicHops + 1);
       }
     }
     for (let i = this.food.length - 1; i >= 0; i--) {
@@ -258,7 +293,7 @@ export class Sim {
       f.speed *= 0.94;
       f.vy *= 0.94;
       f.heading = Math.atan2(f.vy, f.speed * f.facing);
-      if (f.stateTicks > STARTLE_TICKS) {
+      if (f.stateTicks > f.startleLen) {
         this.setState(f, "drift");
         this.decide(f);
         this.maybeTurn(f);
@@ -277,51 +312,79 @@ export class Sim {
         f.facing = (-f.facing) as 1 | -1;
       }
       if (f.stateTicks >= TURN_TICKS) {
-        f.heading = wrapAngle(Math.atan2(f.ty - f.y, f.tx - f.x));
-        f.facing = Math.cos(f.heading) >= 0 ? 1 : -1;
+        // Facing already flipped mid-roll; head for the target on that
+        // side. The roll bled off most of the speed, and the new stroke
+        // builds it back from there.
+        const axis = f.facing > 0 ? 0 : Math.PI;
+        f.heading = wrapAngle(axis + clampPitch(
+          wrapAngle(Math.atan2(f.ty - f.y, f.tx - f.x) - axis)));
         this.setState(f, "drift");
-        // The new movement starts at rest — the pulse rebuilds.
         f.phase = 0;
         f.latch = -1;
-        f.speed = f.cruise * 0.15;
       }
     } else {
-      const food =
-          (f.hunger > HUNGER_SEEK && this.waterQuality > QUALITY_SEEK)
-            ? this.nearestFood(f) : null;
+      const food = this.foodFor(f);
       let turning = false;
       if (food) {
+        // Seeking carries the current speed on rather than restarting
+        // the stroke ramp from wherever the wander stroke left it.
+        if (f.state !== "seek") this.resumeStroke(f);
         this.setState(f, "seek");
         f.tx = food.x; f.ty = food.y;
         turning = this.maybeTurn(f);
-      }
-      let dist = Math.hypot(f.tx - f.x, f.ty - f.y);
-      if (!food && (f.phase >= MOVE_TICKS || dist < 4)) {
+      } else if (f.state === "seek") {
+        // The pellet is gone: eaten by another fish, rotted, or the
+        // water turned. Give up on it and wander off.
+        this.setState(f, "drift");
         this.decide(f);
-        dist = Math.hypot(f.tx - f.x, f.ty - f.y);
         turning = this.maybeTurn(f);
       }
+      let dist = Math.hypot(f.tx - f.x, f.ty - f.y);
+      if (!food && !turning && (f.phase >= MOVE_TICKS || dist < 4)) {
+        if (dist >= BRAKE_DIST && f.strokes < MAX_STROKES) {
+          f.strokes++;
+          f.phase = 0;
+          f.latch = -1;
+        } else {
+          this.decide(f);
+          dist = Math.hypot(f.tx - f.x, f.ty - f.y);
+        }
+        turning = this.maybeTurn(f);
+      }
+      // A brake latched on an earlier target, or on a pellet that has
+      // since sunk away, would leave the fish crawling after the food.
+      if (food && f.latch >= 0 && dist > BRAKE_DIST) this.resumeStroke(f);
 
       // Steer the continuous heading toward the destination; the fish
       // curves instead of snapping around. A fish that just entered a
       // turn keeps its old heading untouched — the roll drifts on it.
-      const want = turning ? f.heading
-                           : Math.atan2(f.ty - f.y, f.tx - f.x);
-      const turn = wrapAngle(want - f.heading);
-      f.heading = wrapAngle(f.heading +
-        Math.min(TURN_RATE, Math.max(-TURN_RATE, turn)));
+      // Steering works in pitch off the facing axis, clamped to
+      // MAX_PITCH, so the heading never swings round to the other side:
+      // facing changes only by rolling, never as a one-frame mirror.
+      const axis = f.facing > 0 ? 0 : Math.PI;
+      const cur = clampPitch(wrapAngle(f.heading - axis));
+      const want = turning ? cur : clampPitch(
+        wrapAngle(Math.atan2(f.ty - f.y, f.tx - f.x) - axis));
+      f.heading = wrapAngle(axis + cur +
+        Math.min(TURN_RATE, Math.max(-TURN_RATE, want - cur)));
 
       // Stroke pulse — the original's "fin push": quadratic acceleration
       // out of the decision, then quadratic braking once the destination
-      // region is reached (dart-and-glide, not linear cruise).
+      // region is reached (dart-and-glide, not linear cruise). A new
+      // stroke glides on the speed it still carries until the ramp
+      // catches up, so fish never stop dead between strokes.
       if (f.latch < 0) {
         if (dist < BRAKE_DIST) { f.latch = f.phase; f.peak = f.speed; }
-        else f.speed = Math.min(f.cruise,
-                                f.cruise * (f.phase + 1) ** 2 / RAMP_DIV);
+        else f.speed = Math.max(f.speed * GLIDE, Math.min(f.cruise,
+                                f.cruise * (f.phase + 1) ** 2 / RAMP_DIV));
       } else {
         const g = f.phase - f.latch;
-        f.speed = Math.max(f.cruise * 0.15,
-                           f.peak - g * g * f.peak / BRAKE_DIV);
+        // A seeking fish must still outswim the sinking pellet.
+        const floor = food
+          ? Math.min(f.cruise,
+                     Math.max(f.cruise * 0.15, FOOD_SINK * 1.5 / vigor))
+          : f.cruise * 0.15;
+        f.speed = Math.max(floor, f.peak - g * g * f.peak / BRAKE_DIV);
       }
 
       const vx = Math.cos(f.heading) * f.speed * vigor;
@@ -329,7 +392,6 @@ export class Sim {
       f.x += vx;
       f.y += vy;
       f.vy = vy;
-      f.facing = Math.cos(f.heading) >= 0 ? 1 : -1;
 
       if (food) {
         const d = Math.max(Math.hypot(food.x - f.x, food.y - f.y), 1);
@@ -338,31 +400,51 @@ export class Sim {
           f.hunger = 0;
           this.setState(f, "drift");
           this.decide(f);
+          // The next destination may lie behind: roll to it now rather
+          // than pitching against the clamp until the next decision.
+          this.maybeTurn(f);
         }
       }
     }
 
     const maxY = this.tank.height - BOTTOM_PAD;
     let hit = false;
-    if (f.x < MARGIN) {
-      f.x = MARGIN; hit = true;
-      // Glance off the wall instead of keeping a heading into it.
-      if (Math.cos(f.heading) < 0) f.heading = wrapAngle(Math.PI - f.heading);
-    }
-    if (f.x > this.tank.width - MARGIN) {
-      f.x = this.tank.width - MARGIN; hit = true;
-      if (Math.cos(f.heading) > 0) f.heading = wrapAngle(Math.PI - f.heading);
+    // Direction back into the tank from a side wall the fish reached.
+    const away = f.x < MARGIN ? 1 : f.x > this.tank.width - MARGIN ? -1 : 0;
+    if (away) {
+      f.x = away > 0 ? MARGIN : this.tank.width - MARGIN; hit = true;
+      if (f.state === "startle") {
+        // A startle rebuilds its heading from facing every tick, so
+        // bounce the facing itself or the fish stays pressed there.
+        if (f.facing !== away) {
+          f.facing = away;
+          f.speed *= STARTLE_BOUNCE;
+        }
+      } else if (f.state === "turn") {
+        // Glance off the wall instead of keeping a heading into it.
+        if (Math.cos(f.heading) * away < 0)
+          f.heading = wrapAngle(Math.PI - f.heading);
+      }
+      // Drift and seek keep their heading: mirroring it would swim the
+      // fish backwards. The early decision below rolls it around.
     }
     if (f.y < SURFACE + MARGIN) {
       f.y = SURFACE + MARGIN; hit = true;
       if (Math.sin(f.heading) < 0) f.heading = -f.heading;
+      if (f.vy < 0 && f.state === "startle") f.vy = -f.vy;
     }
     if (f.y > maxY) {
       f.y = maxY; hit = true;
       if (Math.sin(f.heading) > 0) f.heading = -f.heading;
+      if (f.vy > 0 && f.state === "startle") f.vy = -f.vy;
     }
     // A hard clamp means the movement ran out of room — decide early.
-    if (hit && f.state !== "startle") f.phase = Math.max(f.phase, MOVE_TICKS);
+    // Not while seeking: phase is also the brake's clock, and a fish
+    // waiting under the surface for a pellet would stall.
+    if (hit && f.state === "drift") {
+      f.phase = Math.max(f.phase, MOVE_TICKS);
+      f.strokes = MAX_STROKES;
+    }
 
     // Fish gasp in foul water — bubbles come up to twice as often.
     if (this.rand() < BUBBLE_CHANCE * (2 - this.waterQuality)) {
@@ -381,24 +463,53 @@ export class Sim {
       f.bandY = SURFACE + MARGIN +
                 this.rand() * (maxY - SURFACE - MARGIN);
     }
-    f.tx = MARGIN + this.rand() * (this.tank.width - MARGIN * 2);
+    const minX = MARGIN, maxX = this.tank.width - MARGIN;
+    f.tx = minX + this.rand() * (maxX - minX);
+    if ((f.tx - f.x) * f.facing < 0 && this.rand() < AHEAD_BIAS)
+      f.tx = Math.min(maxX, Math.max(minX, 2 * f.x - f.tx));
     f.ty = Math.min(
       maxY,
       Math.max(SURFACE + MARGIN,
                f.bandY + (this.rand() - 0.5) * 2 * BAND_HALF));
     f.phase = 0;
     f.latch = -1;
-    // Rest speed — the pulse rebuilds it from here.
-    f.speed = f.cruise * 0.15;
+    f.strokes = 0;
+  }
+
+  /** Re-arm the stroke ramp at the fish's current speed, so it keeps
+   * accelerating from there instead of dropping to the ramp's start. */
+  private resumeStroke(f: Fish): void {
+    f.latch = -1;
+    f.phase = Math.max(0,
+      Math.ceil(Math.sqrt(f.speed / f.cruise * RAMP_DIV)) - 1);
+  }
+
+  /** Scare a fish into a dart away from the scare, strength k in (0, 1].
+   * A scare only ever speeds a fish up: even a faint one reads as a
+   * flinch past its cruise, never as slowing down. The cap stops
+   * repeated taps from compounding. */
+  private startle(f: Fish, dx: number, dy: number, d: number, k: number,
+                  hops: number): void {
+    f.state = "startle";
+    f.stateTicks = 0;
+    f.startleLen = Math.round(STARTLE_TICKS * (0.5 + 0.5 * k));
+    f.panicHops = hops;
+    f.facing = dx >= 0 ? 1 : -1;
+    f.speed = Math.min(STARTLE_MAX_SPEED,
+                       Math.max(f.speed, f.cruise * (1 + 1.5 * k)));
+    f.vy = (dy / d) * 2.5 * k;
   }
 
   /** A target behind the fish needs a reversal — the original plays
    * the roll-through-edge-on turn rather than steering through it.
-   * A dead-vertical target (cos≈0) just pitches over.
+   * A near-vertical target only slightly behind just pitches over.
    * Returns whether the roll began. */
   private maybeTurn(f: Fish): boolean {
+    const back = (f.x - f.tx) * f.facing;
+    if (back <= 0) return false;
     const want = Math.atan2(f.ty - f.y, f.tx - f.x);
-    if (Math.cos(want) * f.facing < -1e-6) {
+    if (back > TURN_SLACK ||
+        Math.abs(wrapAngle(want - (f.facing > 0 ? 0 : Math.PI))) > MAX_PITCH) {
       this.setState(f, "turn");
       f.turnFrom = f.facing;
       // Both half-rings reach the opposite profile; pick randomly.
@@ -413,6 +524,16 @@ export class Sim {
       f.state = s;
       f.stateTicks = 0;
     }
+  }
+
+  /** The pellet this fish goes for this tick, if any. */
+  private foodFor(f: Fish): Food | null {
+    if (f.hunger <= HUNGER_SNACK || this.waterQuality <= QUALITY_SEEK)
+      return null;
+    const food = this.nearestFood(f);
+    if (!food || f.hunger > HUNGER_SEEK) return food;
+    const dx = food.x - f.x, dy = food.y - f.y;
+    return dx * dx + dy * dy < NOTICE_DIST * NOTICE_DIST ? food : null;
   }
 
   private nearestFood(f: Fish): Food | null {
