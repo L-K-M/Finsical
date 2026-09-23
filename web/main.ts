@@ -964,7 +964,10 @@ function applySoundConfig(raw: unknown): void {
   catch { /* storage unavailable */ }
   postState();
 }
-const toggleMute = (): void => applySoundConfig({ muted: !soundCfg.muted });
+const toggleMute = (): void => {
+  audio.unlock(); // Tank > Mute Sound can be the first gesture
+  applySoundConfig({ muted: !soundCfg.muted });
+};
 
 try { setCrt(localStorage.getItem(CRT_KEY) === "1"); }
 catch { /* storage unavailable — default off */ }
@@ -1081,6 +1084,7 @@ function feedFish(): void {
 /** Lamp switch: off holds the tank at night, on hands it back to the
  * Lighting mode. Persisted with the lighting settings. */
 function toggleLights(): void {
+  audio.unlock(); // Tank > Toggle Lights can be the first gesture
   applyLighting({ lamp: !lighting.lamp });
 }
 (window as unknown as { finsical?: unknown }).finsical =
