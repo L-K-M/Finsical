@@ -51,6 +51,8 @@ export interface Fish {
   hunger: number;
   state: FishState;
   stateTicks: number;
+  /** Optional friendly name for display. */
+  name?: string;
   /** Hops this panic wave has traveled from the tapped fish — caps
    * how far a startle cascade can spread. */
   panicHops: number;

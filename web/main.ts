@@ -69,7 +69,10 @@ if (saved) {
 }
 const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
   [0, 1, 2, 3].map((i) =>
-    ({ x: 40 + i * 60, y: 50 + i * 30, facing: (i % 2 ? -1 : 1) as 1 | -1 }));
+    ({ x: 40 + i * 60, y: 50 + i * 30,
+       facing: (i % 2 ? -1 : 1) as 1 | -1,
+       name: RETRO_NAMES[i % RETRO_NAMES.length],
+     }));
 const roster = (saved?.fish ?? []).filter(
   (f): f is Partial<Fish> & { x: number; y: number } =>
     !!f && Number.isFinite(f.x) && Number.isFinite(f.y));
@@ -86,6 +89,7 @@ function saveTank(): void {
         bandY: f.bandY, hunger: f.hunger,
         ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
         ...(f.pack !== undefined ? { pack: f.pack } : {}),
+        ...(f.name !== undefined ? { name: f.name } : {}),
       })),
       addons: installedAddons,
     };
@@ -135,6 +139,14 @@ function usePack(pack: { sheets: Map<string, SpriteSheet>;
 /** A newly installed fish pack adds one fish bound to its sheet —
  * "Add again" adds another of the same species. `pack` is the add-on's
  * install URL: the precise identity when packs share a species name. */
+const RETRO_NAMES = ["Bubbles", "Finley", "Guppy", "Splash", "Waverly",
+  "Coral", "Marlin", "Pebble", "Ripple", "Drift", "Nautilus",
+  "Ziggy", "Blip", "Flipper", "Swoosh", "Pip", "Tide", "Sandy"];
+
+function pickName(): string {
+  return RETRO_NAMES[Math.floor(Math.random() * RETRO_NAMES.length)]!;
+}
+
 function spawnFish(sheetIdx: number, species: string, pack?: string): void {
   const facing = Math.random() < 0.5 ? 1 : -1;
   sim.addFish({
@@ -144,6 +156,7 @@ function spawnFish(sheetIdx: number, species: string, pack?: string): void {
     heading: facing > 0 ? 0 : Math.PI,
     cruise: 1.1 + Math.random() * 0.7,
     sheetIdx, species,
+    name: pickName(),
     ...(pack !== undefined ? { pack } : {}),
   });
   saveTank();
@@ -396,9 +409,10 @@ function postState(): void {
     addons: installedAddons,
     // `pack` lets the panel tell pack-bound fish from loose ones —
     // a fish add-on with a living fish doesn't repeat in Add-ons.
-    fish: sim.fish.map(({ id, species, hunger, state, pack }) =>
+    fish: sim.fish.map(({ id, species, hunger, state, pack, name }) =>
       ({ id, species, hunger, state,
-         ...(pack !== undefined ? { pack } : {}) })),
+         ...(pack !== undefined ? { pack } : {}),
+         ...(name !== undefined ? { name } : {}) })),
     waterQuality: sim.waterQuality,
     tickCount: sim.tickCount,
     // The stats window reads these; kept as raw counts so it can derive

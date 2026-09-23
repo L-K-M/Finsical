@@ -7,7 +7,7 @@ import { hungerLabel, uptime } from "./statsmodel.js";
 
 export interface FishSnap {
   id: number; species: string; hunger: number; state: string;
-  pack?: string;
+  pack?: string; name?: string;
 }
 export interface TankState extends BusMsg {
   addons?: Importable[];
@@ -63,7 +63,7 @@ export function itemsOf(s: TankState): Item[] {
   const items: Item[] = fish.map((f) => ({
     key: fishThumbKey(f),
     thumb: fishThumbKey(f),
-    name: f.species || "Fish",
+    name: f.name ? `${f.name} (${f.species || "Fish"})` : (f.species || "Fish"),
     kind: "Fish",
     status: `${STATES[f.state] ?? "Swimming"}, ${hungerLabel(f.hunger)}`,
     rank: 0,
