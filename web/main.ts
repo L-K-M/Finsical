@@ -68,8 +68,8 @@ interface SavedTank {
   waterQuality: number;
   fish: Partial<Fish>[];
   addons: Importable[];
-  /** Explicitly chosen scenery (Overview's "Use") — add-on urls. */
-  scenery?: { backdrop?: string; gravel?: string };
+  /** The chosen scenery (see sceneryChoice) — add-on urls. */
+  scenery?: SceneryChoice;
 }
 function loadTank(): SavedTank | null {
   try {
@@ -84,6 +84,17 @@ function loadTank(): SavedTank | null {
 }
 const saved = loadTank();
 const installedAddons: Importable[] = [...(saved?.addons ?? [])];
+// The scenery the user chose: what their latest live install, "Use"
+// or Remove put on display. It is saved instead of what happens to be
+// showing, so a chosen pack that can't restore on one launch doesn't
+// lose its place to whatever the restore chain showed instead.
+type SceneryKind = "backdrop" | "gravel";
+type SceneryChoice = Partial<Record<SceneryKind, string>>;
+const sceneryChoice: SceneryChoice = {};
+for (const kind of ["backdrop", "gravel"] as const) {
+  const url: unknown = (saved?.scenery as SceneryChoice | undefined)?.[kind];
+  if (typeof url === "string" && url !== "") sceneryChoice[kind] = url;
+}
 // A v=1 save keeps writing v=1 until reconcileFish() has run once —
 // otherwise an offline first launch would stamp the roster "final"
 // before its fish packs could restore.
@@ -195,10 +206,7 @@ function saveTank(): void {
         ...(f.pack !== undefined ? { pack: f.pack } : {}),
       })),
       addons: installedAddons,
-      scenery: {
-        ...(backdropSrc ? { backdrop: backdropSrc } : {}),
-        ...(gravelSrc ? { gravel: gravelSrc } : {}),
-      },
+      scenery: sceneryChoice,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(s));
   } catch { /* storage unavailable — the tank still runs */ }
@@ -419,6 +427,26 @@ function pickGravel(images: Iterable<IndexedImage>, src: string): void {
                 gravelByPack.set(src, fitGravel(gravel)); }
   if (gravel) { gravelCv = gravelByPack.get(src)!; gravelSrc = src; }
 }
+/** Record what now shows as the user's choice ("" clears it). */
+function chooseScenery(kind: SceneryKind, src: string): void {
+  if (src) sceneryChoice[kind] = src;
+  else delete sceneryChoice[kind];
+}
+/** Put the chosen scenery back on display wherever its pack has
+ * loaded: after the launch restore chain, and after a retry lands a
+ * pack. A choice whose pack isn't loaded keeps the current art. */
+function applySceneryChoice(): void {
+  const bd = sceneryChoice.backdrop, gr = sceneryChoice.gravel;
+  if (bd !== undefined && backdropByPack.has(bd)) {
+    backdropCv = backdropByPack.get(bd)!;
+    backdropSrc = bd;
+  }
+  if (gr !== undefined && gravelByPack.has(gr)) {
+    gravelCv = gravelByPack.get(gr)!;
+    gravelSrc = gr;
+  }
+  requestPaint();
+}
 // Decorations (plants/accessories) sit on the gravel between the backdrop
 // and the fish, all at the fish's art scale; the set is re-spaced across
 // the tank floor whenever one is added. Animated packs loop their frames
@@ -571,6 +599,7 @@ function retryRestores(failed: Importable[], attempt = 0): void {
     void importPanel.restore(wanted).then((still) => {
       restoreFailed = still;
       if (still.length < wanted.length) {
+        applySceneryChoice(); // a landed pack must not override it
         remapSheetIdx(); reconcileFish(); postState();
       }
       retryRestores(still, attempt + 1);
@@ -579,7 +608,7 @@ function retryRestores(failed: Importable[], attempt = 0): void {
   }, RESTORE_RETRY_DELAYS[attempt]);
 }
 function handleImages(images: Iterable<IndexedImage>, src: string,
-                      section: string): void {
+                      section: string, live: boolean): void {
   // fish packs carry portraits too — only scenery sections touch the tank
   if (section === "gravel") pickGravel(images, src);
   else if (section === "plants" || section === "accessories")
@@ -587,6 +616,10 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
   else if (section === "backgrounds" || section === "tanks")
     pickBackdrop(images, src);
   else return;
+  // A live install shows its art and so becomes the choice; a restore
+  // only puts art back and leaves the choice alone.
+  if (live && backdropSrc === src) chooseScenery("backdrop", src);
+  if (live && gravelSrc === src) chooseScenery("gravel", src);
   console.info(`archive.org: imported scenery ${src}`);
   requestPaint();
   if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
@@ -838,10 +871,10 @@ function onBusMessage(m: BusMsg): void {
 function useScenery(url: string): void {
   const bd = backdropByPack.get(url), gr = gravelByPack.get(url);
   if (!bd && !gr) { postState(); return; }
-  if (bd) { backdropCv = bd; backdropSrc = url; }
-  if (gr) { gravelCv = gr; gravelSrc = url; }
-  saveTank();
-  postState(); // retag the panel's row now, not on the next tick
+  if (bd) chooseScenery("backdrop", url);
+  if (gr) chooseScenery("gravel", url);
+  applySceneryChoice();
+  saveTank(); // also retags the panel's row now, not on the next tick
 }
 
 /** Uninstall an add-on: drops it from the saved list (it won't restore
@@ -883,6 +916,9 @@ function removeAddon(url: string): void {
     backdropCv = prev !== undefined ? backdropByPack.get(prev)! : null;
     backdropSrc = prev ?? "";
   }
+  // Removing the chosen pack makes its stand-in the choice.
+  if (sceneryChoice.gravel === url) chooseScenery("gravel", gravelSrc);
+  if (sceneryChoice.backdrop === url) chooseScenery("backdrop", backdropSrc);
   // Sounds this add-on put in the bank leave it — unless a surviving
   // add-on claims the same record name.
   const dropSnds = orphanedSounds(gone, installedAddons);
@@ -949,7 +985,8 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     for (const r of usable) {
       if (r.sheets.size)
         handleSheets(r.sheets, it.inner, it.url, it.section, true);
-      if (r.images.size) handleImages(r.images.values(), it.url, it.section);
+      if (r.images.size)
+        handleImages(r.images.values(), it.url, it.section, true);
     }
     // One batch across resources: dedupes names globally, plays the
     // feedback once, and a decode failure can't fail the install. The
@@ -1296,16 +1333,8 @@ void (async () => {
   .then(() => {
     // The user's chosen scenery wins over install-recency — applied
     // once every pack has had its restore chance. A pack that failed
-    // to restore leaves whatever the chain picked.
-    const sc = saved?.scenery;
-    if (sc?.backdrop && backdropByPack.has(sc.backdrop)) {
-      backdropCv = backdropByPack.get(sc.backdrop)!;
-      backdropSrc = sc.backdrop;
-    }
-    if (sc?.gravel && gravelByPack.has(sc.gravel)) {
-      gravelCv = gravelByPack.get(sc.gravel)!;
-      gravelSrc = sc.gravel;
-    }
+    // to restore leaves whatever the chain picked, until a retry.
+    applySceneryChoice();
     remapSheetIdx(); reconcileFish();
     retryRestores(restoreFailed);
   });
@@ -1453,7 +1482,8 @@ window.addEventListener("drop", (e) => {
       // url and spawns the fish; scenery keys by url so Overview's
       // Remove clears it.
       if (p.sheets.size) handleSheets(p.sheets, p.name, url, "fish", true);
-      if (p.images.size) handleImages(p.images.values(), url, p.section);
+      if (p.images.size)
+        handleImages(p.images.values(), url, p.section, true);
       // Only when the bytes persisted — a dangling record would throw
       // "stored pack missing" on every launch. A pack with fish records
       // as fish (a .REZ's scenery then stays session-only).

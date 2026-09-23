@@ -502,7 +502,10 @@ export interface ImportHandlers {
    * must not spawn fish (the saved roster already holds them). */
   onSheets(sheets: Map<string, SpriteSheet>, name: string, url: string,
            section: string, live: boolean): void;
-  onImages(images: Iterable<IndexedImage>, src: string, section: string): void;
+  /** `live` as for onSheets: a restore must not change the choice of
+   * scenery on display. */
+  onImages(images: Iterable<IndexedImage>, src: string, section: string,
+           live: boolean): void;
   /** Sound records from a sound-bearing add-on — audio files and
    * 'snd ' resource forks alike arrive pre-flattened to {name, wav}.
    * `live` marks user installs vs restores (a restore must not play). */
@@ -1249,7 +1252,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     for (const r of usable) {
       if (r.sheets.size)
         h.onSheets(r.sheets, it.inner, it.url, it.section, live);
-      if (r.images.size) h.onImages(r.images.values(), it.url, it.section);
+      if (r.images.size)
+        h.onImages(r.images.values(), it.url, it.section, live);
       if (r.sounds.length) {
         const recs = qualifySoundItemName(r.sounds, it.inner);
         // The handler may rename colliding records in place — read the
