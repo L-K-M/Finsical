@@ -508,7 +508,9 @@ function lightControl(id: string, spec: LightSpec,
   });
   btn.addEventListener("focus", () => describe(spec));
   btn.addEventListener("blur", () => {
-    if (described === spec && !unit.matches(":hover")) describe(null);
+    // Opening the menu moves focus into it; the caption stays for it.
+    if (described === spec && !open() && !unit.matches(":hover"))
+      describe(null);
   });
   return { btn, pop, title: unit.querySelector("label")! };
 }
