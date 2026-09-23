@@ -122,7 +122,9 @@ body.crt canvas#tank { opacity: 0; }
 .smeter .osm-progress { flex: 1; min-width: 16px; margin-top: 1px; }
 .spct { flex: none; width: 31px; text-align: right; }
 .strend { flex: none; width: 9px; text-align: center; }
-.sspark { flex: none; width: 44px; height: 14px; margin-top: 1px; border: 1px solid #000; image-rendering: pixelated; }
+/* No CSS size — the canvas renders at its intrinsic 44x14 backing
+   store, so a border-box reset can't squeeze the 1-bit columns. */
+.sspark { flex: none; margin-top: 1px; border: 1px solid #000; image-rendering: pixelated; }
 .sval { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #srows { margin-bottom: 6px; }
 #scare { margin-top: 3px; }

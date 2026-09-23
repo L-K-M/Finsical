@@ -44,7 +44,10 @@ function meter(frac: number | null, pct: string, arrow: string,
   track.appendChild(el("div", "osm-progress-fill"));
   bar.appendChild(track);
   cell.append(bar, el("span", "spct", pct), el("span", "strend", arrow));
-  if (series) cell.appendChild(spark(series));
+  // No framed blank: an all-null history is "no data yet", so the
+  // sparkline waits for one usable sample.
+  if (series && series.some((v) => v !== null))
+    cell.appendChild(spark(series));
   return cell;
 }
 
@@ -63,7 +66,9 @@ function spark(series: (number | null)[]): HTMLCanvasElement {
   const off = W - pts.length;
   let py = -1;
   pts.forEach((v, i) => {
-    if (v === null) { py = -1; return; }
+    // NaN counts as a gap too — otherwise it would no-op the fillRect
+    // and poison the next sample's connector through py.
+    if (v === null || !Number.isFinite(v)) { py = -1; return; }
     const y = Math.round((1 - Math.min(1, Math.max(0, v))) * (H - 1));
     if (py < 0) c.fillRect(off + i, y, 1, 1);
     else {
