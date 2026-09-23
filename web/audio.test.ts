@@ -65,6 +65,9 @@ async function tank(names: Record<string, number>):
   return { audio, ac, master };
 }
 
+/** Where a gain is headed: its last glide target, else its value. */
+const level = (p: FakeParam): number => p.targets.at(-1)?.[0] ?? p.value;
+
 /** The master gain a source's chain ends in (source -> gain -> ?). */
 const sinkOf = (s: FakeSource): FakeNode => s.out[0]!.out[0]!;
 
@@ -83,9 +86,9 @@ describe("TankAudio master gain", () => {
     expect(ac.sources).toHaveLength(2);
     for (const s of ac.sources) expect(sinkOf(s)).toBe(master);
     audio.setVolume(0.25);
-    expect(master.gain.value).toBe(0.25);
+    expect(level(master.gain)).toBe(0.25);
     audio.setVolume(3);
-    expect(master.gain.value).toBe(1);
+    expect(level(master.gain)).toBe(1);
   });
 
   it("applies settings made before the context existed", async () => {
@@ -95,18 +98,27 @@ describe("TankAudio master gain", () => {
     await audio.addWavs([{ name: "bubble", wav: wav(1) }]);
     expect(FakeContext.last!.gains[0]!.gain.value).toBe(0);
     audio.setMuted(false);
-    expect(FakeContext.last!.gains[0]!.gain.value).toBe(0.4);
+    expect(level(FakeContext.last!.gains[0]!.gain)).toBe(0.4);
   });
 
   it("mute sets the master to 0 and unmute restores the volume", async () => {
     const { audio, master } = await tank({ bubble: 1 });
     audio.setVolume(0.5);
     audio.setMuted(true);
-    expect(master.gain.value).toBe(0);
+    expect(level(master.gain)).toBe(0);
     audio.setVolume(0.9); // adjusting while muted stays silent
-    expect(master.gain.value).toBe(0);
+    expect(level(master.gain)).toBe(0);
     audio.setMuted(false);
-    expect(master.gain.value).toBe(0.9);
+    expect(level(master.gain)).toBe(0.9);
+  });
+
+  it("glides a live level change instead of stepping it", async () => {
+    const { audio, ac, master } = await tank({ bubble: 1 });
+    const before = master.gain.value;
+    audio.setMuted(true);
+    expect(master.gain.value).toBe(before); // no instant write
+    const [v, t] = master.gain.targets.at(-1)!;
+    expect([v, t]).toEqual([0, ac.currentTime]);
   });
 });
 

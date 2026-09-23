@@ -514,7 +514,8 @@ function takeSound(s: SoundConfig): void {
 
 function syncSound(): void {
   if (!volDragging) volInput.value = String(Math.round(sound.volume * 100));
-  volInput.setAttribute("aria-valuetext", pct(sound.volume));
+  volInput.setAttribute("aria-valuetext",
+                        sound.muted ? "Muted" : pct(sound.volume));
   muteBox.checked = sound.muted;
   bubblesBox.checked = sound.bubbles;
   ambientBox.checked = sound.ambient;

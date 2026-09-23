@@ -39,6 +39,8 @@ export function sanitizeSoundConfig(raw: unknown): SoundConfig {
  * after this many seconds. */
 export const FEEDBACK_MAX_S = 4;
 const FEEDBACK_FADE_S = 0.6;
+/** Time constant of a master level change (about 3 tau to settle). */
+const LEVEL_GLIDE_S = 0.01;
 
 export class TankAudio {
   private ctx: AudioContext | null = null;
@@ -118,12 +120,19 @@ export class TankAudio {
     this.master = ac.createGain();
     this.master.connect(ac.destination);
     this.ctx = ac;
-    this.applyLevel();
+    // Nothing plays yet, so the first level can be set outright.
+    this.master.gain.value = this.level();
     return ac;
   }
 
+  private level(): number { return this.muted ? 0 : this.volume; }
+
+  /** Glide the live master to the current level: a hard step in the
+   * gain mid-waveform clicks on mute and zippers under a slider drag. */
   private applyLevel(): void {
-    if (this.master) this.master.gain.value = this.muted ? 0 : this.volume;
+    if (!this.master || !this.ctx) return;
+    this.master.gain.setTargetAtTime(this.level(), this.ctx.currentTime,
+                                     LEVEL_GLIDE_S);
   }
 
   /** Master level, clamped to 0..1. */
