@@ -129,9 +129,9 @@ const BUBBLE_CHANCE = 0.004;
 export const DAY_TICKS = 24000;
 /** Fish bed down below this light; wake again past the higher
  * threshold — the hysteresis keeps a fish on the dusk edge from
- * fluttering between states. */
-const SLEEP_LIGHT = 0.45;
-const WAKE_LIGHT = 0.55;
+ * fluttering between states. Exported for the sleep test. */
+export const SLEEP_LIGHT = 0.45;
+export const WAKE_LIGHT = 0.55;
 
 /** Fixed-step aquarium simulation. Advance with `tick()` — one step per call. */
 export class Sim {
@@ -277,11 +277,12 @@ export class Sim {
     }
 
     if (f.state === "sleep") {
-      // Slide slowly down onto the gravel and idle: a weak stroke
-      // keeps the tail wafting without wandering; food is ignored.
+      // Settle onto the gravel and idle in place: a weak stroke keeps
+      // the tail wafting without wandering; food is ignored. The
+      // settle is bidirectional — a fish startled below the resting
+      // line mid-night rises back to it.
       const floor = this.tank.height - BOTTOM_PAD - 4;
-      if (f.y < floor) f.y += Math.min(0.4, floor - f.y);
-      f.x += f.cruise * 0.04 * f.facing;
+      f.y += Math.max(-0.4, Math.min(0.4, floor - f.y));
       f.speed = Math.max(f.speed * 0.98, f.cruise * 0.04);
     } else if (f.state === "startle") {
       f.x += f.speed * f.facing;
