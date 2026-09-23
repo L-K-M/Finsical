@@ -1069,10 +1069,14 @@ const tankGradient = (() => {
 
 // The backdrop is drawn 1:1 every frame — scale it once into a
 // tank-sized canvas, cover-fit so a non-1.6 source crops instead of
-// stretching. Rebuilt only when the source canvas changes.
-let backdropFit: { src: HTMLCanvasElement; cv: HTMLCanvasElement } | null = null;
+// stretching. Rebuilt when the source canvas — or its size, in case
+// an element is ever reinitialized in place — changes.
+let backdropFit: { src: HTMLCanvasElement; sw: number; sh: number;
+                   cv: HTMLCanvasElement } | null = null;
 function fittedBackdrop(): HTMLCanvasElement {
-  if (backdropFit?.src === backdropCv) return backdropFit.cv;
+  if (backdropFit?.src === backdropCv &&
+      backdropFit.sw === backdropCv!.width &&
+      backdropFit.sh === backdropCv!.height) return backdropFit.cv;
   const out = document.createElement("canvas");
   out.width = TANK.width; out.height = TANK.height;
   const c = out.getContext("2d")!;
@@ -1082,7 +1086,8 @@ function fittedBackdrop(): HTMLCanvasElement {
                      TANK.height / backdropCv!.height);
   const w = backdropCv!.width * s, h = backdropCv!.height * s;
   c.drawImage(backdropCv!, (TANK.width - w) / 2, (TANK.height - h) / 2, w, h);
-  backdropFit = { src: backdropCv!, cv: out };
+  backdropFit = { src: backdropCv!, sw: backdropCv!.width,
+                  sh: backdropCv!.height, cv: out };
   return out;
 }
 
