@@ -6,6 +6,7 @@ set -euo pipefail
 readonly SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 readonly REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 readonly INFO_PLIST="$REPOSITORY_ROOT/macos/Info.plist"
+readonly README="$REPOSITORY_ROOT/README.md"
 readonly PLIST_BUDDY="/usr/libexec/PlistBuddy"
 readonly HOST_MACOS="Darwin"
 readonly VERSION_PATTERN='^[0-9]+\.[0-9]+\.[0-9]+$'
@@ -71,14 +72,22 @@ fi
 
 # The Info.plist is the version the shipped app reports; package.json is kept
 # in step in the same commit so npm tooling never disagrees with the app.
+# README's "Latest release" marker follows the same version so the badge
+# matches what ships.
 next_build=$((current_build + 1))
 "$PLIST_BUDDY" -c "Set :CFBundleShortVersionString $version" "$INFO_PLIST"
 "$PLIST_BUDDY" -c "Set :CFBundleVersion $next_build" "$INFO_PLIST"
 npm version "$version" --no-git-tag-version --allow-same-version
+if ! grep -qE '<!-- version -->[0-9]+\.[0-9]+\.[0-9]+<!-- /version -->' "$README"; then
+  echo "README version marker missing or malformed." >&2
+  exit 1
+fi
+sed -i.bak -E "s|(<!-- version -->)[0-9]+\.[0-9]+\.[0-9]+(<!-- /version -->)|\\1$version\\2|" "$README"
+rm -f "$README.bak"
 
 "$SCRIPT_DIR/build.sh" --clean
 
-git add "$INFO_PLIST" package.json package-lock.json
+git add "$INFO_PLIST" package.json package-lock.json "$README"
 git commit -s -m "Release Finsical $version" \
   -m "Prepare the native macOS release metadata."
 git tag -a "$tag" -m "Finsical $version"
