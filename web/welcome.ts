@@ -83,12 +83,13 @@ async function stock(alert: Alert, hooks: StarterHooks,
                          `${it.inner}…` });
     try {
       await hooks.install(it);
-      if (it.section === "fish") hooks.fishArrived();
     } catch (e) {
       console.warn(`starter set: couldn't add ${it.inner}:`, e);
       failed.push(it);
       problem ??= e;
+      continue;
     }
+    if (it.section === "fish") hooks.fishArrived();
   }
   if (!failed.length) { alert.close(); return; }
 

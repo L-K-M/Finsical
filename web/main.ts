@@ -132,7 +132,7 @@ function noteGlassTap(): void {
   glassTaps = [];
   showAlert({ icon: "caution",
               text: "Please don't tap on the glass. It frightens the fish.",
-              buttons: [{ title: "OK", default: true }] });
+              buttons: [{ title: "OK", default: true, cancel: true }] });
 }
 
 // ---- sprite loading ----------------------------------------------------
@@ -654,6 +654,7 @@ function installAddon(it: Importable, again: boolean): Promise<void> {
   // A restore may have landed this add-on while the panel's detail fetch
   // was in flight — unless the user clicked "Add again", that's a dup.
   if (!again && installedAddons.some((a) => a.url === it.url)) {
+    importPanel.notify({ op: "installed", url: it.url });
     bus.post({ op: "installed", url: it.url });
     return Promise.resolve();
   }

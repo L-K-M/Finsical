@@ -243,6 +243,9 @@ body.crt canvas#tank { opacity: 0; }
 .alertscrim { position: fixed; inset: 0; z-index: 20; cursor: default; }
 .alertwin {
   position: absolute; box-sizing: border-box;
+  /* A short window scrolls the alert rather than hiding its buttons
+   * (16px = alert.ts EDGE on both sides). */
+  max-height: calc(100vh - 16px); overflow-y: auto;
   display: grid; grid-template-columns: 32px minmax(0, 1fr);
   column-gap: 14px; padding: 14px 14px 13px;
   background: var(--osm-dialog);

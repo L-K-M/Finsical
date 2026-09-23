@@ -84,6 +84,9 @@ export function showAlert(spec: AlertSpec): Alert {
   const icon = div("alerticon");
   const text = div("alerttext");
   text.id = `alerttext${Math.random().toString(36).slice(2)}`;
+  // Mac OS alerts have no title; the app is the alert's name and its
+  // text the description.
+  win.setAttribute("aria-label", "Finsical");
   win.setAttribute("aria-describedby", text.id);
   const bar = div("osm-progress alertprogress");
   const track = div("osm-progress-track");
@@ -142,12 +145,15 @@ export function showAlert(spec: AlertSpec): Alert {
       }
       // One binding per set of buttons: bindDialogKeys has no unbind,
       // but it skips buttons no longer in the page, so replaced sets
-      // go quiet.
-      bindDialogKeys(ok, cancel, {
-        ok: () => ok?.click(),
-        cancel: () => cancel?.click(),
-        active: () => open,
-      });
+      // go quiet. Progress steps carry no buttons and bind nothing, so
+      // a download's ticks don't pile up window listeners.
+      if (ok || cancel) {
+        bindDialogKeys(ok, cancel, {
+          ok: () => ok?.click(),
+          cancel: () => cancel?.click(),
+          active: () => open,
+        });
+      }
       if (open) place();
     },
     close() {
