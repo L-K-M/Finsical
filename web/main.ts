@@ -825,6 +825,11 @@ hoverNone.addEventListener("change", (e) => syncTrigger(e.matches));
 window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if ((e.metaKey || e.ctrlKey) && k === "i") {
+    // Native shell owns Import via the Tank menu (⌘I); opening the
+    // in-page overlay here would put two import surfaces on screen.
+    // Ctrl+I on an external keyboard hits the same branch — still
+    // prefer the native window over the overlay.
+    if (inNativeShell()) return;
     importPanel.open(); e.preventDefault();
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" &&
              !e.repeat && !importPanel.isOpen) {
