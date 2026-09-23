@@ -9,7 +9,7 @@ import { fetchAddon, mountImportPanel, qualifySoundItemName,
          COLLECTIONS } from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { sndsGet, sndsMerge } from "./store.js";
-import { imageCanvas, previewOf, soundIcon, swimCanvas } from "./render.js";
+import { coverCrop, imageCanvas, previewOf, soundIcon, swimCanvas } from "./render.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
@@ -162,6 +162,36 @@ let backdropCv: HTMLCanvasElement | null = null;
 let backdropSrc = "";
 let gravelCv: HTMLCanvasElement | null = null;
 let gravelSrc = "";
+// Scenery is fitted once at import so render() stays a 1:1 blit:
+// backdrops cover-crop to the tank frame (no aspect distortion,
+// no per-frame scale), gravel pre-scales to tank width.
+// NOTE: these caches bake in the TANK dims (a fixed 320x200
+// logical resolution) — a dynamic TANK would need them rebuilt.
+function fitBackdrop(img: IndexedImage): HTMLCanvasElement {
+  const src = imageCanvas(img, true);
+  const r = coverCrop(src.width, src.height, TANK.width, TANK.height);
+  // Whole texels: a fractional source rect starts mid-texel and
+  // browsers disagree on sampling it with smoothing disabled.
+  const sx = Math.round(r.sx), sy = Math.round(r.sy);
+  const sw = Math.min(Math.round(r.sw), src.width - sx);
+  const sh = Math.min(Math.round(r.sh), src.height - sy);
+  const out = document.createElement("canvas");
+  out.width = TANK.width; out.height = TANK.height;
+  const c = out.getContext("2d")!;
+  c.imageSmoothingEnabled = false; // keep the crunch
+  c.drawImage(src, sx, sy, sw, sh, 0, 0, out.width, out.height);
+  return out;
+}
+function fitGravel(img: IndexedImage): HTMLCanvasElement {
+  const src = imageCanvas(img, false);
+  const out = document.createElement("canvas");
+  out.width = TANK.width;
+  out.height = Math.max(1, Math.round(src.height * TANK.width / src.width));
+  const c = out.getContext("2d")!;
+  c.imageSmoothingEnabled = false; // keep the crunch
+  c.drawImage(src, 0, 0, out.width, out.height);
+  return out;
+}
 function pickBackdrop(images: Iterable<IndexedImage>, src = ""): void {
   let best: IndexedImage | null = null;
   let gravel: IndexedImage | null = null;
@@ -174,9 +204,9 @@ function pickBackdrop(images: Iterable<IndexedImage>, src = ""): void {
   // delete-then-set: Map keeps an existing key's insertion position, so
   // re-picks must reinsert to keep key order == install recency.
   if (best) { backdropByPack.delete(src);
-              backdropByPack.set(src, imageCanvas(best, true)); }
+              backdropByPack.set(src, fitBackdrop(best)); }
   if (gravel) { gravelByPack.delete(src);
-                gravelByPack.set(src, imageCanvas(gravel, false)); }
+                gravelByPack.set(src, fitGravel(gravel)); }
   // A pack with no qualifying art leaves the current winner in place.
   if (best) { backdropCv = backdropByPack.get(src)!; backdropSrc = src; }
   if (gravel) { gravelCv = gravelByPack.get(src)!; gravelSrc = src; }
@@ -189,7 +219,7 @@ function pickGravel(images: Iterable<IndexedImage>, src: string): void {
         (!gravel || img.w > gravel.w)) gravel = img;
   }
   if (gravel) { gravelByPack.delete(src);
-                gravelByPack.set(src, imageCanvas(gravel, false)); }
+                gravelByPack.set(src, fitGravel(gravel)); }
   if (gravel) { gravelCv = gravelByPack.get(src)!; gravelSrc = src; }
 }
 // Decorations (plants/accessories) sit on the gravel between the backdrop
@@ -1070,14 +1100,13 @@ const tankGradient = (() => {
 let prevBubbles = 0;
 function render(): void {
   if (backdropCv) {
-    ctx.drawImage(backdropCv, 0, 0, TANK.width, TANK.height);
+    ctx.drawImage(backdropCv, 0, 0);
   } else {
     ctx.fillStyle = tankGradient;
     ctx.fillRect(0, 0, TANK.width, TANK.height);
   }
   if (gravelCv) {
-    const gh = Math.round(gravelCv.height * TANK.width / gravelCv.width);
-    ctx.drawImage(gravelCv, 0, TANK.height - gh, TANK.width, gh);
+    ctx.drawImage(gravelCv, 0, TANK.height - gravelCv.height);
   } else if (!backdropCv) {
     ctx.fillStyle = "#8a6d3b"; // gravel
     ctx.fillRect(0, TANK.height - BOTTOM_PAD, TANK.width, BOTTOM_PAD);
