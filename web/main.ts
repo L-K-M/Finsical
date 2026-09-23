@@ -999,24 +999,25 @@ window.addEventListener("drop", (e) => {
         : "fish"; // .fsh and unknown extensions
       let did = false;
       const sheets = fshToSheets(data);
-      // .rez holds the base library's scenery alongside its fish; .fsh
-      // and unknown extensions are treated as fish-only.
-      if (sheets.size && (section === "fish" || ext === "rez")) {
+      // Any section's sheets join the pool (remote usePack isn't
+      // section-gated); spawning is — fish packs and the base
+      // library .rez spawn, matching handleSheets' fish-only spawn.
+      // Tank-set .azn files are scenery, like the remote section.
+      if (sheets.size) {
         const idx = usePack({ sheets });
-        if (idx >= 0) {
+        if (idx >= 0 && (section === "fish" || ext === "rez")) {
           spawnFish(idx, name.replace(/\.[^.]*$/, ""));
           audio.splash();
+          did = true;
         }
+      }
+      const images = section === "fish" ? null : packImages(data);
+      if (images?.size) {
+        handleImages(images.values(), name, section);
         did = true;
       }
-      if (section !== "fish") {
-        handleImages(packImages(data).values(), name, section);
-        did = true;
-      }
-      if (did) {
-        console.info(`${name}: pack imported`);
-        return;
-      }
+      // Every pack file in the drop imports, not just the first.
+      if (did) console.info(`${name}: pack imported`);
     }
     if (!recs.length)
       console.warn("drop: no manifest.json, pack file, or 'snd ' found");
