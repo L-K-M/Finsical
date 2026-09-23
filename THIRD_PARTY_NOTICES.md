@@ -17,4 +17,6 @@ The files below contain third-party code under their own licenses.
 The MACE 3:1 algorithm (`read_table`, `chomp3`, the clipping and sample
 expansion) and the coefficient tables `MACEtab1` to `MACEtab4` are
 ported from that file. `core/data/mace.ts` is compiled into the app's
-JavaScript bundle.
+JavaScript bundle (`bundle.js`). Its readable source is that file in
+this repository, and `npm run build` rebuilds the bundle from it, so
+you can modify or replace the LGPL-covered decoder and relink it.
