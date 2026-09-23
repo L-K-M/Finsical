@@ -16,7 +16,8 @@ import { drawRipples, drawSplashes, newSplash, tickRipples,
 import type { Ripple, Splash } from "./fx.js";
 import { pushButton } from "osmium-ui";
 import { fetchAddon, mountImportPanel, orphanedSounds, recordAddon,
-         qualifySoundItemName, COLLECTIONS } from "./import.js";
+         qualifySoundItemName, stillInstalled, COLLECTIONS }
+  from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
          sndsMerge, sndsRemove } from "./store.js";
@@ -560,9 +561,10 @@ function retryRestores(failed: Importable[], attempt = 0): void {
     return;
   }
   setTimeout(() => {
-    void importPanel.restore(failed).then((still) => {
+    const wanted = stillInstalled(failed, installedAddons);
+    void importPanel.restore(wanted).then((still) => {
       restoreFailed = still;
-      if (still.length < failed.length) {
+      if (still.length < wanted.length) {
         remapSheetIdx(); reconcileFish(); postState();
       }
       retryRestores(still, attempt + 1);

@@ -411,6 +411,14 @@ export function recordAddon(list: Importable[], it: Importable,
   return true;
 }
 
+/** The failed restores still worth retrying: those whose add-on is
+ * still on the saved `list`. One removed since its restore failed
+ * (Remove, Empty Tank) stays out instead of coming back on a retry. */
+export function stillInstalled(failed: Importable[],
+                               list: Importable[]): Importable[] {
+  return failed.filter((it) => list.some((a) => a.url === it.url));
+}
+
 /** The listing qualifies colliding leaf names ("sub/dup", "dup (2)");
  * an audio-file record takes its name from the basename stem, so it
  * must carry the same qualification — otherwise installing the sibling

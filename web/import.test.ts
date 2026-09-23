@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { browserGeometry, importAddon, listAddons, loadProblem,
-         orphanedSounds, qualifySoundItemName, recordAddon } from "./import.js";
+         orphanedSounds, qualifySoundItemName, recordAddon, stillInstalled }
+  from "./import.js";
 import type { Importable } from "./import.js";
 
 const enc = new TextEncoder();
@@ -186,6 +187,19 @@ describe("recordAddon", () => {
     // Removed while its restore was downloading: it stays removed.
     expect(recordAddon(list, it0("gone.zip"), ["z"], "refresh")).toBe(false);
     expect(list).toHaveLength(1);
+  });
+});
+
+describe("stillInstalled", () => {
+  const it0 = (url: string): Importable =>
+    ({ url, inner: url, section: "fish" }) as Importable;
+  it("drops failed restores whose add-on was removed since", () => {
+    // Removed (or the tank emptied) while its retry timer was pending:
+    // the retry must not bring it back.
+    const failed = [it0("a.zip"), it0("gone.zip")];
+    expect(stillInstalled(failed, [it0("b.zip"), it0("a.zip")])
+      .map((a) => a.url)).toEqual(["a.zip"]);
+    expect(stillInstalled(failed, [])).toEqual([]);
   });
 });
 
