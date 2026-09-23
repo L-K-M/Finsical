@@ -1145,16 +1145,14 @@ function render(): void {
   }
 
   if (paused) {
-    const prevFont = ctx.font;
-    const prevAlign = ctx.textAlign;
+    ctx.save();
     ctx.fillStyle = "rgba(4,8,24,0.35)";
     ctx.fillRect(0, 0, TANK.width, TANK.height);
     ctx.fillStyle = "#e8e8e8";
     ctx.font = "10px monospace";
     ctx.textAlign = "center";
     ctx.fillText("PAUSED", TANK.width / 2, TANK.height / 2);
-    ctx.textAlign = prevAlign;
-    ctx.font = prevFont;
+    ctx.restore();
   }
 }
 
