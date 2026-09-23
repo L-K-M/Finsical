@@ -174,6 +174,8 @@ export class Sim {
       f.scale = SPAWN_SCALE_MIN + this.rand() * SPAWN_SCALE_RANGE;
     else if (!Number.isFinite(f.scale) || f.scale <= 0)
       f.scale = 1; // 0/NaN/negative from a bad save mustn't render invisible
+    else
+      f.scale = Math.min(f.scale, MAX_SCALE); // oversized saves shouldn't dwarf the tank
     this.fish.push(f);
     return f;
   }
