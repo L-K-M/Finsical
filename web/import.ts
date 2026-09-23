@@ -118,15 +118,43 @@ function immutableHost(u: string): boolean {
  * wedged entry. Aborting rejects like a network error, the cache
  * entry drops, and the retry starts a fresh request. */
 const FETCH_TIMEOUT_MS = 30_000;
-/** fetch + consume the body under one timeout — a stall in either
- * phase aborts the request and rejects like a network error. */
+/** fetch + consume the body under a stall budget — any phase that
+ * makes no progress for the limit aborts the request and rejects like
+ * a network error. `kick` resets the clock: callers streaming a body
+ * call it per chunk so a slow-but-healthy download always finishes —
+ * only a true wedge dies. */
 async function fetchTimed<T>(url: string,
-                             read: (r: Response) => Promise<T>):
+                             read: (r: Response, kick: () => void)
+                               => Promise<T>):
     Promise<T> {
   const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
-  try { return await read(await fetch(url, { signal: ctl.signal })); }
+  let t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+  const kick = () => {
+    clearTimeout(t);
+    t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+  };
+  try { return await read(await fetch(url, { signal: ctl.signal }), kick); }
   finally { clearTimeout(t); }
+}
+/** Body bytes via a reader so each arrived chunk can kick the stall
+ * clock — `r.arrayBuffer()` would give no progress signal. */
+async function readBody(r: Response, kick: () => void):
+    Promise<Uint8Array> {
+  const rd = r.body?.getReader();
+  if (!rd) return new Uint8Array(await r.arrayBuffer());
+  const chunks: Uint8Array[] = [];
+  let len = 0;
+  for (;;) {
+    const { done, value } = await rd.read();
+    if (done) break;
+    chunks.push(value);
+    len += value.length;
+    kick();
+  }
+  const out = new Uint8Array(len);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
 }
 function fetchZip(url: string): Promise<Uint8Array> {
   let p = zipCache.get(url);
@@ -134,9 +162,9 @@ function fetchZip(url: string): Promise<Uint8Array> {
     p = (async () => {
       const hit = immutableHost(url) ? await packGet(url) : null;
       if (hit) return hit;
-      const d = await fetchTimed(url, async (r) => {
+      const d = await fetchTimed(url, async (r, kick) => {
         if (!r.ok) throw new Error(`${url}: ${r.status}`);
-        return new Uint8Array(await r.arrayBuffer());
+        return readBody(r, kick);
       });
       if (immutableHost(url)) void packPut(url, d).catch(() => {});
       return d;
@@ -544,7 +572,7 @@ export function loadProblem(e: unknown): string {
   if (msg.endsWith(": entry missing"))
     return "The download is missing the add-on's file.";
   if (/abort/i.test(msg))
-    return "archive.org took too long to answer.";
+    return "The download took too long — try again.";
   return "Check the connection and try again.";
 }
 
