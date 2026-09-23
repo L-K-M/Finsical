@@ -173,6 +173,7 @@ body.crt canvas#tank { opacity: 0; }
 .osm-selected .othumb img { filter: brightness(0.5); }
 #obar { position: relative; height: 31px; border-top: 1px solid #000; }
 #oremove { position: absolute; right: 22px; top: 5px; }
+#ouse { position: absolute; right: 110px; top: 5px; }
 
 /* ---- the add-on browser (web/import.ts) ----------------------------------
    Laid out like the Chooser: Show: pop-up across the top, the section's
