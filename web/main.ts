@@ -1193,6 +1193,23 @@ function render(): void {
     audio.bubble();
   prevBubbles = sim.bubbles.length;
 
+  // Subtle drifting light rays — a slow vertical shimmer in the water.
+  const rayTime = (sim.tickCount * 0.015) % (Math.PI * 2);
+  for (let i = 0; i < 3; i++) {
+    const rx = TANK.width * (0.2 + 0.35 * ((i + rayTime) / 3));
+    const alpha = 0.015 + 0.01 * Math.sin(rayTime + i);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(0.06, alpha));
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(rx - 20, 0);
+    ctx.lineTo(rx + 20, 0);
+    ctx.lineTo(rx + 8, TANK.height);
+    ctx.lineTo(rx - 8, TANK.height);
+    ctx.fill();
+    ctx.restore();
+  }
+
   // Fouled water murks the whole scene.
   const murk = 1 - sim.waterQuality;
   if (murk > 0.02) {
@@ -1200,10 +1217,10 @@ function render(): void {
     ctx.fillRect(0, 0, TANK.width, TANK.height);
   }
 
-  // day/night dimming
+  // day/night dimming — deeper blue at night for underwater feel.
   const dark = 1 - sim.light;
   if (dark > 0.01) {
-    ctx.fillStyle = `rgba(4,8,24,${(dark * 0.55).toFixed(3)})`;
+    ctx.fillStyle = `rgba(6,12,36,${(dark * 0.55).toFixed(3)})`;
     ctx.fillRect(0, 0, TANK.width, TANK.height);
   }
 }
