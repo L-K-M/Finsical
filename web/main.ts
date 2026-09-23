@@ -102,8 +102,9 @@ function sanitizeSavedFish(f: Partial<Fish> & { x: number; y: number }):
   // passed the finite check, so a corrupt save could seed an
   // out-of-bounds band and re-persist it.
   const y = num(f.y, 0, TANK.height - 1, TANK.height / 2);
-  const out = {
-    ...f,
+  // Only the fields saveTank writes come back: anything else a save
+  // carries stays out of the sim rather than passing through unchecked.
+  const out: Partial<Fish> & { x: number; y: number } = {
     x: num(f.x, 0, TANK.width - 1, TANK.width / 2),
     y,
     facing: f.facing === -1 ? -1 as const : 1 as const,
@@ -117,10 +118,10 @@ function sanitizeSavedFish(f: Partial<Fish> & { x: number; y: number }):
   };
   // Optional fields drop rather than zero out — a bogus sheetIdx or
   // pack must read as "no binding", not bind to slot 0.
-  if (!Number.isInteger(out.sheetIdx) || out.sheetIdx! < 0)
-    delete out.sheetIdx;
-  if (typeof out.pack !== "string") delete out.pack;
-  if (!Number.isInteger(out.id) || out.id! < 0) delete out.id;
+  if (Number.isInteger(f.id) && f.id! >= 0) out.id = f.id!;
+  if (Number.isInteger(f.sheetIdx) && f.sheetIdx! >= 0)
+    out.sheetIdx = f.sheetIdx!;
+  if (typeof f.pack === "string") out.pack = f.pack;
   return out;
 }
 const roster = (saved?.fish ?? [])
