@@ -411,12 +411,11 @@ export function recordAddon(list: Importable[], it: Importable,
   return true;
 }
 
-/** The failed restores still worth retrying: those whose add-on is
- * still on the saved `list`. One removed since its restore failed
- * (Remove, Empty Tank) stays out instead of coming back on a retry. */
-export function stillInstalled(failed: Importable[],
-                               list: Importable[]): Importable[] {
-  return failed.filter((it) => list.some((a) => a.url === it.url));
+/** Whether `it` is still on the saved add-on `list`. A restore asks
+ * right before applying a pack: an add-on removed since the restore
+ * was queued (Remove, Empty Tank) must not come back. */
+export function isListed(list: Importable[], it: Importable): boolean {
+  return list.some((a) => a.url === it.url);
 }
 
 /** The listing qualifies colliding leaf names ("sub/dup", "dup (2)");
@@ -657,7 +656,8 @@ export function loadProblem(e: unknown): string {
 export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     { open(): void; close(): void; readonly isOpen: boolean;
       /** Resolves to the add-ons that failed to restore. */
-      restore(list: Importable[]): Promise<Importable[]>;
+      restore(list: Importable[],
+              wanted: (it: Importable) => boolean): Promise<Importable[]>;
       notify(m: BusMsg): void } {
   const remote = opts?.remote;
   const installed = new Set<string>(); // add-on urls, not display names
@@ -1399,18 +1399,21 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     // the original install order; failures skip that add-on. Shares
     // applyPack's dispatch so the two install paths can't diverge;
     // fires onRestore to refresh sound provenance, which never re-adds.
-    // Skips add-ons already installed while the chain was in flight and
-    // resolves with the ones that failed, so the caller can retry them.
-    restore(list: Importable[]): Promise<Importable[]> {
+    // Skips add-ons already installed while the chain was in flight, or
+    // no longer `wanted` when their turn comes, and resolves with the
+    // ones that failed, so the caller can retry them.
+    restore(list: Importable[],
+            wanted: (it: Importable) => boolean): Promise<Importable[]> {
       if (remote) return Promise.resolve([]); // the tank page owns the sim
       const failed: Importable[] = [];
       let p: Promise<void> = Promise.resolve();
       for (const it of list) {
         p = p.then(() => {
-          if (installed.has(it.url)) return;
+          if (installed.has(it.url) || !wanted(it)) return;
           return fetchPack(it.url)
             .then((rs) => {
-              if (installed.has(it.url)) return;
+              // Asked again: it may have been removed during the fetch.
+              if (installed.has(it.url) || !wanted(it)) return;
               // Restores refresh the saved record's sound provenance —
               // legacy installs recorded before it existed heal after
               // one launch, so uninstall can drop their records too.

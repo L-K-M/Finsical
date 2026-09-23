@@ -48,6 +48,9 @@ const bus = openBus((m) => {
       lastStructure = "";
     }
     tankState = m;
+    // Emptied some other way (Remove, another window): nothing is left
+    // to confirm, so an armed Empty Tank button stands down now.
+    if (emptyBtn.dataset.armed && !tankItems()) disarmEmpty();
     render();
   } else if (m.op === "thumbs" &&
              m.thumbs && typeof m.thumbs === "object") {
@@ -129,10 +132,10 @@ const disarmEmpty = (): void => {
   delete emptyBtn.dataset.armed;
   emptyBtn.textContent = "Empty Tank…";
 };
+const tankItems = (): number =>
+  (tankState?.fish ?? []).length + (tankState?.addons ?? []).length;
 pushButton(emptyBtn, () => {
-  const n = (tankState?.fish ?? []).length +
-    (tankState?.addons ?? []).length;
-  if (!n) { disarmEmpty(); return; }
+  if (!tankItems()) { disarmEmpty(); return; }
   if (emptyBtn.dataset.armed !== "1") {
     emptyBtn.dataset.armed = "1";
     emptyBtn.textContent = "Really empty?";

@@ -16,7 +16,7 @@ import { drawRipples, drawSplashes, newSplash, tickRipples,
 import type { Ripple, Splash } from "./fx.js";
 import { pushButton } from "osmium-ui";
 import { fetchAddon, mountImportPanel, orphanedSounds, recordAddon,
-         qualifySoundItemName, stillInstalled, COLLECTIONS }
+         qualifySoundItemName, isListed, COLLECTIONS }
   from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
@@ -191,7 +191,11 @@ const roster = (saved?.fish ?? [])
   .filter((f): f is Partial<Fish> & { x: number; y: number } =>
     !!f && Number.isFinite(f.x) && Number.isFinite(f.y))
   .map(sanitizeSavedFish);
-for (const f of roster?.length ? roster : DEFAULT_FISH) sim.addFish(f);
+// A saved, deliberately empty v=2 roster stays empty (Empty Tank, or
+// every fish removed); only a missing or pre-roster save gets starters.
+const keepEmpty = saved?.v === 2 && saved.fish.length === 0;
+for (const f of roster.length || keepEmpty ? roster : DEFAULT_FISH)
+  sim.addFish(f);
 
 function saveTank(): void {
   try {
@@ -576,6 +580,9 @@ function reconcileFish(): void {
 // fish (or missing scenery) for the whole session. Only runs remap/
 // reconcile again when at least one pack actually landed.
 const RESTORE_RETRY_DELAYS = [15_000, 60_000];
+/** Restores and their retries skip an add-on removed since they were
+ * queued (Remove, Empty Tank) instead of bringing it back. */
+const stillListed = (it: Importable): boolean => isListed(installedAddons, it);
 // Each exhausted offline round would arm its own "online" listener —
 // dedupe so one reconnect launches one retry round, not N concurrent
 // chains racing the same sequential restore path.
@@ -595,8 +602,8 @@ function retryRestores(failed: Importable[], attempt = 0): void {
     return;
   }
   setTimeout(() => {
-    const wanted = stillInstalled(failed, installedAddons);
-    void importPanel.restore(wanted).then((still) => {
+    const wanted = failed.filter(stillListed);
+    void importPanel.restore(wanted, stillListed).then((still) => {
       restoreFailed = still;
       if (still.length < wanted.length) {
         applySceneryChoice(); // a landed pack must not override it
@@ -961,9 +968,13 @@ let tankEpoch = 0;
  * default gradient backdrop returns. */
 function emptyTank(): void {
   tankEpoch++;
+  // Nothing is left to reconcile: the empty roster is final (saves as
+  // v=2), so a relaunch keeps the tank empty.
+  rosterComplete = true;
   for (const a of [...installedAddons]) removeAddon(a.url);
   for (const f of [...sim.fish]) sim.removeFish(f.id);
   sweepThumbs();
+  requestPaint();
   saveTank(); // persists the empty roster and resyncs the panel
 }
 
@@ -1348,7 +1359,7 @@ void (async () => {
   // Saved add-ons re-import after the bundled pack; once they've landed,
   // rebind saved fish to their species' actual sheet slot and heal
   // pre-spawning rosters that never gained their fish.
-  .then(() => importPanel.restore([...installedAddons]))
+  .then(() => importPanel.restore([...installedAddons], stillListed))
   .then((failed) => { restoreFailed = failed; })
   // Imported 'snd ' sets persist — restore them so dropped sounds
   // survive relaunch even when no pack in use carries audio. Best

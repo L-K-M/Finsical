@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { browserGeometry, importAddon, listAddons, loadProblem,
-         orphanedSounds, qualifySoundItemName, recordAddon, stillInstalled }
+         isListed, orphanedSounds, qualifySoundItemName, recordAddon }
   from "./import.js";
 import type { Importable } from "./import.js";
 
@@ -190,16 +190,16 @@ describe("recordAddon", () => {
   });
 });
 
-describe("stillInstalled", () => {
+describe("isListed", () => {
   const it0 = (url: string): Importable =>
     ({ url, inner: url, section: "fish" }) as Importable;
-  it("drops failed restores whose add-on was removed since", () => {
-    // Removed (or the tank emptied) while its retry timer was pending:
-    // the retry must not bring it back.
-    const failed = [it0("a.zip"), it0("gone.zip")];
-    expect(stillInstalled(failed, [it0("b.zip"), it0("a.zip")])
-      .map((a) => a.url)).toEqual(["a.zip"]);
-    expect(stillInstalled(failed, [])).toEqual([]);
+  it("tells a still-installed add-on from one removed since", () => {
+    // Removed (or the tank emptied) while its restore or retry was
+    // pending: the restore must not bring it back.
+    const list = [it0("b.zip"), it0("a.zip")];
+    expect(isListed(list, it0("a.zip"))).toBe(true);
+    expect(isListed(list, it0("gone.zip"))).toBe(false);
+    expect(isListed([], it0("a.zip"))).toBe(false);
   });
 });
 
