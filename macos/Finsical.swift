@@ -109,6 +109,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
 
     private func makeWebConfig() -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
+        // Menu actions run via evaluateJavaScript and do not grant the
+        // page a user activation; without this, AudioContext.resume()
+        // from Tank ▸ Feed Fish on a fresh window stays rejected.
+        config.mediaTypesRequiringUserActionForPlayback = []
         config.setURLSchemeHandler(WebHandler(), forURLScheme: WebHandler.scheme)
         // "finsical" posts are relayed to the sibling webview (bus.ts).
         config.userContentController.add(self, name: "finsical")

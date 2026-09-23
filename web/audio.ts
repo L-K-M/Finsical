@@ -72,7 +72,12 @@ export class TankAudio {
    * still needs a prior gesture on some WebKit builds). */
   unlock(): void {
     if (!this.ctx) return;
-    void this.ctx.resume().then(() => this.startAmbient());
+    // Menu-driven unlock can resume() without a user activation and
+    // reject — swallow so it doesn't surface as unhandled rejection.
+    // startAmbient() is already idempotent (ambientSrc guard).
+    void this.ctx.resume()
+      .then(() => this.startAmbient())
+      .catch(() => { /* resume blocked until a user gesture */ });
   }
 
   /** Play one imported sound by name — install feedback and the only
