@@ -130,12 +130,14 @@ describe("Sim", () => {
   it("the nearest calm fish drifts toward the hovered pointer", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const near = sim.addFish({ x: 40, y: 60 });
-    const far = sim.addFish({ x: 280, y: 170 });
+    sim.addFish({ x: 280, y: 170 }); // outside the notice radius
     sim.notice = { x: 80, y: 80 }; // inside notice radius of `near`
+    sim.tick();
+    // Curiosity picks the close fish, never the far one — asserting
+    // identity, not where a free fish happened to wander.
+    expect(sim.noticeFish).toBe(near);
     for (let i = 0; i < 500; i++) sim.tick();
     expect(Math.hypot(near.x - 80, near.y - 80)).toBeLessThan(60);
-    // The far fish was outside the radius — it never got curious.
-    expect(Math.hypot(far.x - 80, far.y - 80)).toBeGreaterThan(80);
   });
 
   it("hunger outranks curiosity", () => {

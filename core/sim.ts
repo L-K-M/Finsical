@@ -147,9 +147,9 @@ export class Sim {
    * nearest calm fish notices it and drifts over. null when it
    * leaves. */
   notice: { x: number; y: number } | null = null;
-  /** The drift-state fish currently closest to `notice`, picked once
-   * per tick in tick(). */
-  private noticeFish: Fish | null = null;
+  /** The calm fish currently watching the pointer — the drift-state
+   * fish closest to `notice`, picked once per tick in tick(). */
+  noticeFish: Fish | null = null;
   private rand: () => number;
   private nextId = 0;
 
