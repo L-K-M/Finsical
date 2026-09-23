@@ -99,8 +99,8 @@ body.crt canvas#tank { opacity: 0; }
 .pfslider { flex: none; width: 125px; }
 .pflabel { display: block; padding-left: 4px; margin-bottom: 5px; }
 .pfends { display: flex; justify-content: space-between; margin-top: 2px; padding: 0 1px 0 3px; }
-/* CRT off: the sliders are disabled and their captions dim with them. */
-.pfcrtoff .pfslider { color: #888; }
+/* CRT off: its sliders dim — the Sound pane's must not follow along. */
+.pfcrtoff .pfslider:not(.pfsnd) { color: #888; }
 /* Muted: only the Sound pane's sliders dim. */
 .pfsndoff .pfsnd { color: #888; }
 
