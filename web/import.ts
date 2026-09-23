@@ -14,7 +14,7 @@ import { zipEntries, zipRead } from "../core/data/zip.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
 import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
-import { metaGet, metaPut, packDelete, packGet, packPut }
+import { isLocalPack, metaGet, metaPut, packDelete, packGet, packPut }
   from "./store.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
@@ -346,7 +346,7 @@ export function qualifySoundItemName(
 export async function importAddon(url: string): Promise<PackResult[]> {
   // Dropped packs persist as raw bytes under a `local:` key — nothing
   // to download; decode them like any other pack blob.
-  if (url.startsWith("local:")) {
+  if (isLocalPack(url)) {
     const d = await packGet(url);
     if (!d || !isPack(d)) throw new Error(`${url}: stored pack missing`);
     return [{ sheets: fshToSheets(d), images: packImages(d),

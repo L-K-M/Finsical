@@ -70,6 +70,14 @@ function rw<T>(store: string, mode: IDBTransactionMode,
   });
 }
 
+/** Dropped packs persist under a `local:` key — the scheme is shared
+ * by the store (trim exemption), the importer (decode path) and the
+ * tank (mint/delete), so it lives here, defined once. */
+export const LOCAL_PREFIX = "local:";
+export function isLocalPack(url: string): boolean {
+  return url.startsWith(LOCAL_PREFIX);
+}
+
 export function packGet(url: string): Promise<Uint8Array | null> {
   const got = rw<Uint8Array>("packs", "readonly", (s) => s.get(url));
   // Refresh the stat's age on hit so eviction is least-recently-used
@@ -121,7 +129,7 @@ async function trimPacks(): Promise<void> {
             // User-dropped packs (local:) are stored user data, not a
             // fetch cache — the only copy of the file lives here, so
             // they neither count against the budget nor ever evict.
-            if (url.startsWith("local:")) return;
+            if (isLocalPack(url)) return;
             total += bytes;
             recs.push({ stat: k, url, at, bytes });
           });
