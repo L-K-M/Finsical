@@ -792,9 +792,9 @@ postState();
 
 // Native-menu / keyboard entry points (macos/Finsical.swift calls these).
 function feedFish(): void {
-  // Bare F and Tank ▸ Feed Fish are gestures too — without this the
-  // context stays suspended until the first tank click and play()'s
-  // resume() rejects silently.
+  // Bare F is a real user gesture, but Tank ▸ Feed Fish arrives via
+  // evaluateJavaScript with no user activation — without unlock() the
+  // context stays suspended until the first tank click.
   audio.unlock();
   sim.dropFood(TANK.width / 2);
   audio.feed();
