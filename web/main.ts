@@ -10,7 +10,7 @@ import { fetchAddon, mountImportPanel, qualifySoundItemName,
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { sndsGet, sndsMerge } from "./store.js";
 import { imageCanvas, previewOf, soundIcon, swimCanvas } from "./render.js";
-import { FEED_ZONE, isFeedZoneY } from "./feedzone.js";
+import { containPoint, feedZoneLineY, isFeedZoneY } from "./feedzone.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
@@ -98,24 +98,28 @@ window.addEventListener("pagehide", saveTank);
 setInterval(saveTank, 10_000);
 
 // Click near the surface drops food; deeper clicks knock on the glass.
-// object-fit: contain letterboxes the bitmap inside the element box.
 function tankPoint(e: PointerEvent): { x: number; y: number } | null {
-  const r = canvas.getBoundingClientRect();
-  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
-  const x = (e.clientX - r.left - (r.width - TANK.width * s) / 2) / s;
-  const y = (e.clientY - r.top - (r.height - TANK.height * s) / 2) / s;
-  if (!Number.isFinite(x) || !Number.isFinite(y) ||
-      x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return null;
-  return { x, y };
+  return containPoint(e.clientX, e.clientY, canvas.getBoundingClientRect(),
+                      TANK);
 }
 
 // Feed-zone affordance: a crosshair over the strip, and a brighter
 // boundary line while the pointer is parked there (see render()).
+// Hover is re-evaluated each frame from the last client point so a
+// resize under a stationary pointer can't leave the state stale, and
+// getBoundingClientRect runs once per frame instead of per move.
 let overFeedZone = false;
+let lastClient: { x: number; y: number } | null = null;
 function setFeedHover(on: boolean): void {
   if (on === overFeedZone) return;
   overFeedZone = on;
   canvas.style.cursor = on ? "crosshair" : "";
+}
+function syncFeedHover(): void {
+  if (!lastClient) { setFeedHover(false); return; }
+  const p = containPoint(lastClient.x, lastClient.y,
+                         canvas.getBoundingClientRect(), TANK);
+  setFeedHover(p !== null && isFeedZoneY(p.y, TANK.height));
 }
 
 canvas.addEventListener("pointerdown", (e) => {
@@ -127,10 +131,9 @@ canvas.addEventListener("pointerdown", (e) => {
   else { sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height); }
 });
 canvas.addEventListener("pointermove", (e) => {
-  const p = tankPoint(e);
-  setFeedHover(p !== null && isFeedZoneY(p.y, TANK.height));
+  lastClient = { x: e.clientX, y: e.clientY };
 });
-canvas.addEventListener("pointerleave", () => setFeedHover(false));
+canvas.addEventListener("pointerleave", () => { lastClient = null; });
 
 // ---- sprite loading ----------------------------------------------------
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
@@ -1146,7 +1149,10 @@ function render(): void {
 
   // Feed-zone boundary: after the night/murk overlays so the affordance
   // stays visible. Faint at rest; brightens while the pointer is there.
-  const zoneY = Math.round(TANK.height * FEED_ZONE);
+  // Re-check hover here so a resize under a stationary pointer updates
+  // the cursor/line on the next frame (setFeedHover early-returns).
+  syncFeedHover();
+  const zoneY = feedZoneLineY(TANK.height);
   ctx.fillStyle = overFeedZone
     ? "rgba(255,255,255,0.45)"
     : "rgba(255,255,255,0.14)";
