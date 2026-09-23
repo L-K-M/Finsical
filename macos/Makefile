@@ -30,7 +30,7 @@ $(APP): bundle Finsical.swift Info.plist Finsical.icns
 	# minimum macOS differs from the one Info.plist promises.
 	@minos="$$(vtool -show-build $(APP).staging/Contents/MacOS/Finsical | awk '$$1 == "minos" { print $$2 }')"; \
 	promised="$$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' Info.plist)"; \
-	if [ "$$minos" != "$$promised" ]; then \
+	if [ -z "$$minos" ] || [ "$$minos" != "$$promised" ]; then \
 		echo "Binary minos '$$minos' does not match LSMinimumSystemVersion '$$promised'" >&2; \
 		exit 1; \
 	fi; \
