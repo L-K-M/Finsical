@@ -7,7 +7,7 @@ export interface Tank {
   height: number;
 }
 
-export type FishState = "drift" | "seek" | "startle" | "turn";
+export type FishState = "drift" | "seek" | "startle" | "turn" | "sleep";
 
 export interface Fish {
   /** Stable identity — overview display and removal target. */
@@ -200,6 +200,11 @@ const MAX_SCALE = 1;
 const BUBBLE_CHANCE = 0.004;
 /** One full day/night cycle in ticks (~13 min at 30 tps). */
 export const DAY_TICKS = 24000;
+/** Fish bed down below this light; wake again past the higher
+ * threshold — the hysteresis keeps a fish on the dusk edge from
+ * fluttering between states. Exported for the sleep test. */
+export const SLEEP_LIGHT = 0.45;
+export const WAKE_LIGHT = 0.55;
 
 /** Pitch off the facing axis, limited to MAX_PITCH either way. */
 function clampPitch(p: number): number {
@@ -226,6 +231,10 @@ export class Sim {
   private _noticeFish: Fish | null = null;
   private rand: () => number;
   private nextId = 0;
+  /** Fish only bed down after the tank has seen daylight once — a
+   * sim created or restored mid-night keeps its fish awake until
+   * the first dawn rather than knocking them out on tick one. */
+  private seenDay = false;
 
   constructor(tank: Tank, seed = 1) {
     this.tank = tank;
@@ -310,6 +319,7 @@ export class Sim {
 
   tick(): void {
     this.tickCount++;
+    if (this.light >= WAKE_LIGHT) this.seenDay = true;
     // The hovered pointer is noticed by the closest calm fish — only
     // drifters look up; seeking and startled fish have other business.
     // The watcher keeps watching while it stays in range (a roll to
@@ -374,7 +384,29 @@ export class Sim {
     // Foul water makes fish sluggish; panic (startle) ignores it.
     const vigor = 0.5 + 0.5 * this.waterQuality;
 
-    if (f.state === "startle") {
+    // Night falls: any unpanicked fish beds down. A sleeping fish
+    // wakes at dawn; a knock on the glass wakes it instantly (the
+    // startle branch runs its course, then it beds back down while
+    // it's still dark).
+    if (f.state === "sleep") {
+      if (this.light >= WAKE_LIGHT) {
+        this.setState(f, "drift");
+        this.decide(f);
+      }
+    } else if (f.state !== "startle" && this.seenDay &&
+               this.light < SLEEP_LIGHT) {
+      this.setState(f, "sleep");
+    }
+
+    if (f.state === "sleep") {
+      // Settle onto the gravel and idle in place: a weak stroke keeps
+      // the tail wafting without wandering; food is ignored. The
+      // settle is bidirectional — a fish startled below the resting
+      // line mid-night rises back to it.
+      const floor = this.tank.height - BOTTOM_PAD - 4;
+      f.y += Math.max(-0.4, Math.min(0.4, floor - f.y));
+      f.speed = Math.max(f.speed * 0.98, f.cruise * 0.04);
+    } else if (f.state === "startle") {
       f.x += f.speed * f.facing;
       f.y += f.vy;
       f.speed *= 0.94;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BAND_HALF, DAY_TICKS, FOOD_ROT_TICKS, MARGIN, Sim, SURFACE,
-         TURN_TICKS } from "./sim.js";
+import { BAND_HALF, BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, MARGIN, Sim,
+         SLEEP_LIGHT, SURFACE, TURN_TICKS, WAKE_LIGHT } from "./sim.js";
 import { QUALITY_SEEK } from "./tuning.js";
 
 // States a fish may be in when it's not seeking food.
@@ -351,6 +351,32 @@ describe("Sim", () => {
     expect(sim.light).toBe(0.45);
     sim.setLight(null);
     expect(sim.light).toBe(cycle);
+  });
+
+  it("fish bed down for the night and wake at dawn", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 160, y: 60, cruise: 1.4 });
+    // Fish only sleep after the tank has seen a dawn — a fresh sim
+    // starts at midnight, so tick through the first daylight first.
+    for (let i = 0; i < DAY_TICKS && sim.light < WAKE_LIGHT; i++)
+      sim.tick();
+    // Tick until dark, then let the fish settle — it sinks at
+    // ≤0.4 px/tick, so give it room to reach the bed.
+    for (let i = 0; i < DAY_TICKS && sim.light >= SLEEP_LIGHT; i++)
+      sim.tick();
+    for (let i = 0; i < 600; i++) sim.tick();
+    expect(f.state).toBe("sleep");
+    // It idles on the gravel, not mid-water — and stays put
+    // horizontally (no all-night drift toward a wall).
+    expect(f.y).toBeGreaterThan(200 - BOTTOM_PAD - 12);
+    const x0 = f.x;
+    for (let i = 0; i < 300; i++) sim.tick();
+    expect(f.x).toBe(x0);
+    // Dawn sends it wandering again.
+    for (let i = 0; i < DAY_TICKS && sim.light < WAKE_LIGHT; i++)
+      sim.tick();
+    for (let i = 0; i < 60; i++) sim.tick();
+    expect(f.state).not.toBe("sleep");
   });
 
   it("darts out of each decision — quadratic ramp capped at cruise", () => {

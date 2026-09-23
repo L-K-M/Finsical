@@ -43,7 +43,7 @@ const KINDS: Record<string, string> = {
 };
 const STATES: Record<string, string> = {
   drift: "Swimming", seek: "Looking for food", startle: "Startled",
-  turn: "Turning",
+  turn: "Turning", sleep: "Sleeping",
 };
 
 /** The Finder-style header line: "8 fish, 3 add-ons, water 96%, up
