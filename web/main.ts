@@ -810,6 +810,7 @@ document.addEventListener("pointerdown", (e) => {
       + " select, label, [contenteditable]"))
     return;
   e.preventDefault();
+  audio.click(); // soft synthetic click for the case press
   bus.post({ op: "dragWindow" }); // native shell → performDrag
 });
 // Seed clients + the native aspect before the first save/heartbeat —

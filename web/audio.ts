@@ -154,4 +154,21 @@ export class TankAudio {
     this.ambientGen++; // stale pending starts abort in play()
     this.ambientSrc = this.play(this.ambientBuf, 0.12, true);
   }
+
+  /** A soft synthetic click for machine-case interaction. */
+  click(): void {
+    if (!this.ctx || this.ctx.state !== "running") return;
+    const ac = this.ctx;
+    const osc = ac.createOscillator();
+    const g = ac.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(880, ac.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ac.currentTime + 0.06);
+    g.gain.setValueAtTime(0.1, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.01, ac.currentTime + 0.06);
+    osc.connect(g);
+    g.connect(ac.destination);
+    osc.start();
+    osc.stop(ac.currentTime + 0.06);
+  }
 }
