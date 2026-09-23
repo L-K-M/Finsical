@@ -31,6 +31,7 @@ const thumbRequested = new Set<string>();     // asked once per page
 const summaryEl = document.getElementById("osummary")!;
 const headsEl = document.getElementById("oheads")!;
 const listEl = document.getElementById("olist")!;
+const useBtn = document.getElementById("ouse") as HTMLButtonElement;
 const removeBtn = document.getElementById("oremove") as HTMLButtonElement;
 
 let tankBoot: string | undefined;
@@ -101,11 +102,19 @@ const list = mountList(listEl, {
 listEl.focus({ preventScroll: true });
 
 function syncRemove(): void {
-  removeBtn.disabled = !items[list.selected];
+  const it = items[list.selected];
+  removeBtn.disabled = !it;
+  useBtn.disabled = !it?.use;
 }
 pushButton(removeBtn, () => {
   const it = items[list.selected];
   if (it) bus.post(it.remove);
+});
+// "Use" swaps a scenery pack into view (backdrop/gravel by aspect);
+// the next state push re-tags the rows "Showing"/"In tank".
+pushButton(useBtn, () => {
+  const it = items[list.selected];
+  if (it?.use) bus.post(it.use);
 });
 // Delete (or Command-Delete, the Finder's Move to Trash) removes the
 // selected line.

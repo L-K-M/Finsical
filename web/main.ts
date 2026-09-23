@@ -68,6 +68,8 @@ interface SavedTank {
   waterQuality: number;
   fish: Partial<Fish>[];
   addons: Importable[];
+  /** Explicitly chosen scenery (Overview's "Use") — add-on urls. */
+  scenery?: { backdrop?: string; gravel?: string };
 }
 function loadTank(): SavedTank | null {
   try {
@@ -193,6 +195,10 @@ function saveTank(): void {
         ...(f.pack !== undefined ? { pack: f.pack } : {}),
       })),
       addons: installedAddons,
+      scenery: {
+        ...(backdropSrc ? { backdrop: backdropSrc } : {}),
+        ...(gravelSrc ? { gravel: gravelSrc } : {}),
+      },
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(s));
   } catch { /* storage unavailable — the tank still runs */ }
@@ -656,6 +662,8 @@ function postState(): void {
                // scale it identically or backplate and mask drift.
                hole: machine.hole ?? null },
     addons: installedAddons,
+    // Which scenery packs are on display — Overview's "Use" acts on it.
+    scenery: { backdrop: backdropSrc, gravel: gravelSrc },
     // `pack` lets the panel tell pack-bound fish from loose ones —
     // a fish add-on with a living fish doesn't repeat in Add-ons.
     fish: sim.fish.map(({ id, species, hunger, state, pack }) =>
@@ -792,6 +800,9 @@ function onBusMessage(m: BusMsg): void {
   } else if (m.op === "removeAddon" &&
              typeof m.url === "string" && m.url !== "") {
     removeAddon(m.url);
+  } else if (m.op === "useAddon" &&
+             typeof m.url === "string" && m.url !== "") {
+    useScenery(m.url);
   } else if (m.op === "wantThumbs" && Array.isArray(m.keys)) {
     serveThumbs(m.keys);
   } else if (m.op === "crtEnabled") {
@@ -818,6 +829,19 @@ function onBusMessage(m: BusMsg): void {
       });
     }).catch((e) => console.warn("snd reload failed:", e));
   }
+}
+
+/** Overview's "Use": show this pack's backdrop/gravel art. A pack can
+ * supply either or both (aspect decides at decode); a url that
+ * produced neither just resyncs the panel. Persists through the save
+ * so the choice survives relaunch. */
+function useScenery(url: string): void {
+  const bd = backdropByPack.get(url), gr = gravelByPack.get(url);
+  if (!bd && !gr) { postState(); return; }
+  if (bd) { backdropCv = bd; backdropSrc = url; }
+  if (gr) { gravelCv = gr; gravelSrc = url; }
+  saveTank();
+  postState(); // retag the panel's row now, not on the next tick
 }
 
 /** Uninstall an add-on: drops it from the saved list (it won't restore
@@ -1270,6 +1294,18 @@ void (async () => {
   .then((recs) => recs?.length ? audio.addWavs(recs).catch((e) =>
     console.warn("snd decode failed:", e)) : undefined)
   .then(() => {
+    // The user's chosen scenery wins over install-recency — applied
+    // once every pack has had its restore chance. A pack that failed
+    // to restore leaves whatever the chain picked.
+    const sc = saved?.scenery;
+    if (sc?.backdrop && backdropByPack.has(sc.backdrop)) {
+      backdropCv = backdropByPack.get(sc.backdrop)!;
+      backdropSrc = sc.backdrop;
+    }
+    if (sc?.gravel && gravelByPack.has(sc.gravel)) {
+      gravelCv = gravelByPack.get(sc.gravel)!;
+      gravelSrc = sc.gravel;
+    }
     remapSheetIdx(); reconcileFish();
     retryRestores(restoreFailed);
   });
