@@ -151,8 +151,11 @@ void main() {
   c = (c - 0.40) * (0.55 + 0.90 * uContr) + 0.40;
   c *= 0.5 + uBright;
   c *= vec3(0.6 + 0.8 * uRed, 0.6 + 0.8 * uGreen, 0.6 + 0.8 * uBlue);
-  // The collapsed line burns hot and settles as the raster opens.
-  c *= 1.0 + 2.0 * (1.0 - uPower);
+  // The collapsed line burns hot and settles as the raster opens:
+  // the boost tracks openness, so total emitted light stays roughly
+  // constant through warm-up instead of flashing mid-animation.
+  float open = (uPower >= 1.0) ? 1.0 : max(pow(uPower, 0.55), 0.015);
+  c *= 1.0 + 2.0 * (1.0 - open);
 
   gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
 }
@@ -336,7 +339,10 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   // for reduced motion.
   const POWERON_MS = 450;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  let powerT0 = 0;
+  // -Infinity reads as "already settled" until the first enable —
+  // 0 would mean page-load time and could play a stray warm-up if a
+  // frame draws before setEnabled(true) is ever called.
+  let powerT0 = -Infinity;
 
   return {
     get enabled() { return enabled; },
