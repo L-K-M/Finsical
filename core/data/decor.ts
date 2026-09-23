@@ -43,9 +43,12 @@ export function pickDecorArts(images: Iterable<IndexedImage>, max: number):
     if (key !== null) keyed.push({ img, key });
   }
   keyed.sort((a, b) => b.img.w * b.img.h - a.img.w * a.img.h);
-  if (keyed.length) return keyed.slice(0, Math.max(0, max));
-  return anyImg && max > 0 ? [{ img: anyImg, key: 0, guessed: true }]
-                           : [];
+  // Floor once so a fractional max rounds the same way on both
+  // branches (slice would truncate; a `> 0` check wouldn't).
+  const n = Math.max(0, Math.floor(max));
+  if (keyed.length) return keyed.slice(0, n);
+  return anyImg && n > 0 ? [{ img: anyImg, key: 0, guessed: true }]
+                         : [];
 }
 
 /** The decor art frame: largest image with a uniform corner key. */
