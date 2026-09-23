@@ -105,9 +105,12 @@ if [ -e package-lock.json ]; then
     cp package-lock.json "$lockfile_backup"
   fi
 fi
-trap 'git checkout -- "$INFO_PLIST" package.json "$README" 2>/dev/null || echo "release.sh rollback failed; version files may be half-bumped" >&2; if ! git checkout -- package-lock.json 2>/dev/null; then if [ -n "$lockfile_backup" ]; then cp "$lockfile_backup" package-lock.json || echo "release.sh: restoring untracked package-lock.json from backup failed" >&2; elif [ "$had_lockfile" -eq 0 ]; then rm -f package-lock.json; fi; fi; rm -f "$README.bak" ${lockfile_backup:+"$lockfile_backup"}' EXIT
+trap 'git checkout -- "$INFO_PLIST" package.json "$README" 2>/dev/null || echo "release.sh rollback failed; version files may be half-bumped" >&2; if git checkout -- package-lock.json 2>/dev/null; then rm -f ${lockfile_backup:+"$lockfile_backup"}; elif [ -n "$lockfile_backup" ]; then if cp "$lockfile_backup" package-lock.json; then rm -f "$lockfile_backup"; else echo "release.sh: restoring untracked package-lock.json failed; backup kept at $lockfile_backup" >&2; fi; elif [ "$had_lockfile" -eq 0 ]; then rm -f package-lock.json; fi; rm -f "$README.bak"' EXIT
 # Interrupts must run the EXIT trap so the temp lockfile backup is removed.
-trap 'exit 130' INT TERM HUP
+# Exit codes follow 128+signal so callers can tell INT from TERM from HUP.
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 "$PLIST_BUDDY" -c "Set :CFBundleShortVersionString $version" "$INFO_PLIST"
 "$PLIST_BUDDY" -c "Set :CFBundleVersion $next_build" "$INFO_PLIST"
 npm version "$version" --no-git-tag-version --allow-same-version
