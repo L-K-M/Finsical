@@ -45,6 +45,13 @@
   on, whatever the Lighting setting: Tank > Toggle Lights (Cmd-L) in the
   app, the L key, or Lamp on in the Lighting pane. It is kept with the
   lighting settings, and Tank Stats says when the lamp is off.
+- The water comes alive. Bubbles wobble, grow as they rise and pop at
+  a surface line that catches the light, and by day sunlight slants
+  through the water and ripples over the gravel (held still if you
+  prefer reduced motion). Feed Fish scatters a pinch of 3 to 5 pellets
+  that drift as they sink, instead of stacking every pellet in one
+  column. Fouled water now turns visibly green-brown and murky, with
+  debris drifting in it.
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview

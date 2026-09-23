@@ -1,4 +1,4 @@
-import { BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
+import { BOTTOM_PAD, DAY_TICKS, Sim } from "../core/sim.js";
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
@@ -19,9 +19,12 @@ import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
          swimCanvas } from "./render.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
+import { drawBubbles, drawFood, drawLight, drawMurk, feedPinch }
+  from "./water.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
   from "./machines.js";
 import type { CrtConfig } from "./crt.js";
+import type { WaterMotion } from "./water.js";
 import type { Machine } from "./machines.js";
 import type { Lighting } from "../core/light.js";
 import type { BusMsg } from "./bus.js";
@@ -987,10 +990,15 @@ document.addEventListener("pointerdown", (e) => {
 postState();
 
 // Native-menu / keyboard entry points (macos/Finsical.swift calls these).
+// A pinch of pellets scattered around the middle, raining in over a
+// moment, so repeated feeds don't stack into one sinking column.
 function feedFish(): void {
-  // Scatter menu-feeds across the surface — always dead-center piles
-  // pellets in one spot and never moves the school.
-  sim.dropFood(30 + Math.random() * (TANK.width - 60));
+  // A pinch of pellets, scattered around a random spot on the surface:
+  // always dead-center piles pellets in one spot and never moves the
+  // school.
+  const x = 30 + Math.random() * (TANK.width - 60);
+  for (const p of feedPinch(Math.random))
+    setTimeout(() => sim.dropFood(x + p.dx), p.delay);
   audio.feed();
   requestPaint();
 }
@@ -1316,6 +1324,12 @@ const tankGradient = (() => {
   return g;
 })();
 
+// Reduced motion freezes the ambient light (caustics, shafts, glint).
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+let waterMotion: WaterMotion = reducedMotion.matches ? "still" : "animated";
+reducedMotion.addEventListener("change", (e) => {
+  waterMotion = e.matches ? "still" : "animated";
+});
 function render(): void {
   if (backdropCv) {
     ctx.drawImage(backdropCv, 0, 0);
@@ -1341,28 +1355,18 @@ function render(): void {
                   TANK.height - 6 - d.height);
   }
 
-  for (const fd of sim.food) {
-    // Rotting pellets dissolve — fade them out over their rot lifetime.
-    ctx.globalAlpha = 1 - 0.65 * Math.min(1, fd.settled / FOOD_ROT_TICKS);
-    ctx.fillStyle = "#c9a227";
-    ctx.fillRect(Math.round(fd.x) - 1, Math.round(fd.y) - 1, 3, 3);
-    ctx.globalAlpha = 1;
-  }
+  drawLight(ctx, sim.light, sim.tickCount, waterMotion);
+
+  drawFood(ctx, sim.food);
   for (const f of sim.fish) drawFish(f);
 
-  ctx.fillStyle = "#cfe8ff";
-  for (const b of sim.bubbles) {
-    ctx.fillRect(Math.round(b.x), Math.round(b.y), 2, 2);
-  }
+  drawBubbles(ctx, sim.bubbles);
 
   // Fouled water murks the whole scene.
-  const murk = 1 - sim.waterQuality;
-  if (murk > 0.02) {
-    ctx.fillStyle = `rgba(96,80,36,${(murk * 0.28).toFixed(3)})`;
-    ctx.fillRect(0, 0, TANK.width, TANK.height);
-  }
+  drawMurk(ctx, sim.waterQuality,
+           waterMotion === "animated" ? sim.tickCount : 0);
 
-  drawLight(new Date());
+  drawNight(new Date());
 }
 
 /** Night's blue, multiplied over the scene at the darkest demo night:
@@ -1373,7 +1377,7 @@ const NIGHT_TINT = { r: 70, g: 90, b: 150 };
 const NIGHT_LIFT = { r: 26, g: 34, b: 60 };
 /** Moonbeam strength under a full moon. */
 const MOONBEAM_ALPHA = 0.08;
-function drawLight(now: Date): void {
+function drawNight(now: Date): void {
   const k = Math.min(1, (1 - sim.light) / (1 - DEMO_NIGHT_LIGHT));
   const W = TANK.width, H = TANK.height;
   ctx.save();
