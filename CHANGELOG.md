@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The app is now compiled for macOS 12.0, the minimum it promises.
+  Earlier builds targeted the build machine's macOS, so binaries from
+  the macOS 15 release runner declared macOS 15 as their minimum and
+  nothing checked that they avoided APIs missing from macOS 12 to 14.
+  The build now fails if the binary and the app's stated minimum
+  disagree.
 - Every window is now Mac OS 8 Platinum, laid out the way Mac OS 8
   would: Preferences is a control panel with Machine, Monitor and
   Picture panes (a case list with a preview, Keyboard-style sliders in
