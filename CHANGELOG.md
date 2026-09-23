@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Preferences has a Sound pane, laid out like Monitors & Sound: a
+  volume slider, Mute, and switches for bubble sounds and the water
+  ambience. Tank > Mute Sound (Option-Command-S) and the M key mute
+  too. Installing a sound add-on now plays a 4-second taste
+  instead of the whole song, Add Again no longer stacks copies, and
+  closing Import Add-ons stops its preview.
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview

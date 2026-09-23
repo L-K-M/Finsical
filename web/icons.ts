@@ -3,7 +3,8 @@
 // copied): a compact Mac with a fish tank on screen, a tube monitor
 // showing scanlines, and a brightness/contrast disc. Registered as
 // Osmium sprites (--osm-sprite-icon-*) by prefs.ts. Also the sound
-// add-ons' icon, a speaker, which the add-on lists draw on canvases.
+// add-ons' icon, a speaker, which the add-on lists draw on canvases
+// and the Sound pane's button shows.
 import type { Palette } from "osmium-ui";
 
 /** Icon colors beyond Osmium's built-in grays and lavender ramp, from
@@ -147,8 +148,13 @@ export const SOUND_ICON: readonly string[] = [
   "................................",
 ];
 
+// The Sound pane's button: the same speaker, centered in 32 x 32.
+const BLANK_ROWS = Array<string>(4).fill(".".repeat(32));
+const ICON_SOUND = [...BLANK_ROWS, ...SOUND_ICON, ...BLANK_ROWS];
+
 export const ICON_SPRITES: Record<string, readonly string[]> = {
   "icon-machine": ICON_MACHINE,
   "icon-monitor": ICON_MONITOR,
   "icon-picture": ICON_PICTURE,
+  "icon-sound": ICON_SOUND,
 };

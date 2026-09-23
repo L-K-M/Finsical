@@ -3,7 +3,7 @@ import { fishPose, pitch } from "../core/pose.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
-import { TankAudio } from "./audio.js";
+import { sanitizeSoundConfig, TankAudio } from "./audio.js";
 import { pushButton } from "osmium-ui";
 import { fetchAddon, mountImportPanel, qualifySoundItemName,
          COLLECTIONS } from "./import.js";
@@ -15,6 +15,7 @@ import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
   from "./machines.js";
 import type { CrtConfig } from "./crt.js";
+import type { SoundConfig } from "./audio.js";
 import type { Machine } from "./machines.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
@@ -415,6 +416,7 @@ function postState(): void {
       on: crt?.enabled ?? false,
       cfg: crtCfg,
     },
+    sound: soundCfg,
   });
 }
 
@@ -528,6 +530,8 @@ function onBusMessage(m: BusMsg): void {
     setCrt(m.on === true);
   } else if (m.op === "crtConfig") {
     applyCrtConfig(m.cfg);
+  } else if (m.op === "soundConfig") {
+    applySoundConfig(m.cfg);
   } else if (m.op === "machine" && typeof m.id === "string") {
     const nm = machineById(m.id);
     if (nm && nm.id !== machine.id) { applyMachine(nm); postState(); }
@@ -700,6 +704,35 @@ let machine: Machine =
   } catch { return undefined; } })()
   ?? machineById(DEFAULT_MACHINE)!;
 
+// ---- sound settings ------------------------------------------------------
+// Volume, mute and the bubble/ambience switches. Declared before the
+// setCrt call below for the same TDZ reason: postState() reads them.
+const SOUND_KEY = "finsical:sound";
+let soundCfg: SoundConfig = sanitizeSoundConfig(
+  (() => { try {
+    return JSON.parse(localStorage.getItem(SOUND_KEY) ?? "null");
+  } catch { return null; /* storage or JSON: defaults */ } })());
+function configureAudio(): void {
+  audio.setVolume(soundCfg.volume);
+  audio.setMuted(soundCfg.muted);
+  audio.setOptions({ bubbles: soundCfg.bubbles, ambient: soundCfg.ambient });
+}
+configureAudio();
+/** Merge a partial config (Sound pane, Mute Sound, the M key) onto the
+ * current one, sanitize, persist and apply. */
+function applySoundConfig(raw: unknown): void {
+  const merged: Record<string, unknown> = { ...soundCfg };
+  if (raw && typeof raw === "object")
+    for (const [k, v] of Object.entries(raw))
+      if (v !== undefined) merged[k] = v;
+  soundCfg = sanitizeSoundConfig(merged);
+  configureAudio();
+  try { localStorage.setItem(SOUND_KEY, JSON.stringify(soundCfg)); }
+  catch { /* storage unavailable */ }
+  postState();
+}
+const toggleMute = (): void => applySoundConfig({ muted: !soundCfg.muted });
+
 try { setCrt(localStorage.getItem(CRT_KEY) === "1"); }
 catch { /* storage unavailable — default off */ }
 
@@ -797,7 +830,7 @@ function feedFish(): void {
 }
 (window as unknown as { finsical?: unknown }).finsical =
   { openImport: () => importPanel.open(), feedFish,
-    toggleCrt: () => setCrt(!crtOn) };
+    toggleCrt: () => setCrt(!crtOn), toggleMute };
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
 // path. Touch fallback: hover-less devices have no keyboard or native menu.
@@ -832,6 +865,9 @@ window.addEventListener("keydown", (e) => {
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "c" &&
              !e.repeat && !importPanel.isOpen) {
     setCrt(!crtOn); // bare C: ⌘C is Copy via the Edit menu
+  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "m" &&
+             !e.repeat && !importPanel.isOpen) {
+    toggleMute(); // bare M: ⌘M is Minimize
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "s" &&
              !e.repeat && !importPanel.isOpen && !inNativeShell()) {
     // Browser-only fallback — the app opens stats.html via Tank ▸

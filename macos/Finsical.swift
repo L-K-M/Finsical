@@ -425,6 +425,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         }
     }
 
+    @objc func toggleMute() {
+        let js = "window.finsical?.toggleMute ? window.finsical.toggleMute()" +
+                 " : (() => { throw new Error('window.finsical.toggleMute missing') })()"
+        webView?.evaluateJavaScript(js) { _, error in
+            if let error { NSLog("Finsical: toggleMute JS failed: \(error.localizedDescription)") }
+        }
+    }
+
     @objc func supportArchive() {
         if let url = URL(string: "https://archive.org/donate") {
             NSWorkspace.shared.open(url)
@@ -570,6 +578,10 @@ enum FinsicalApp {
         tankMenu.addItem(withTitle: "Toggle CRT Effect",
                          action: #selector(AppDelegate.toggleCrt),
                          keyEquivalent: "r")
+        let muteItem = tankMenu.addItem(withTitle: "Mute Sound",
+                                        action: #selector(AppDelegate.toggleMute),
+                                        keyEquivalent: "s")
+        muteItem.keyEquivalentModifierMask = [.command, .option] // ⌥⌘S; ⇧⌘S is Tank Stats
         tankMenu.addItem(.separator())
         tankMenu.addItem(withTitle: "Support the Internet Archive",
                          action: #selector(AppDelegate.supportArchive),
