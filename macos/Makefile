@@ -9,6 +9,11 @@ SOURCES := Finsical.swift $(OSMIUM)/macos/OsmiumWindows.swift
 # Info.plist. swiftc ignores MACOSX_DEPLOYMENT_TARGET and would otherwise
 # target the build host's macOS, so pass it explicitly through -target.
 MACOS_MIN := 12.0
+# Swift language mode. CI also builds with SWIFT_VERSION=6 and
+# SWIFTFLAGS=-warnings-as-errors, which keeps the app and Osmium UI's
+# window host ready for Swift 6's stricter concurrency checks.
+SWIFT_VERSION ?= 5
+SWIFTFLAGS ?=
 
 all: $(APP)
 
@@ -31,7 +36,8 @@ $(APP): bundle $(SOURCES) Info.plist Finsical.icns
 	# assets is required — the Plus machine's shell lives there; fail
 	# the build rather than ship an empty silhouette.
 	cp -r ../web/assets $(APP).staging/Contents/Resources/web/
-	swiftc -O -target $(shell uname -m)-apple-macos$(MACOS_MIN) \
+	swiftc -O -swift-version $(SWIFT_VERSION) $(SWIFTFLAGS) \
+		-target $(shell uname -m)-apple-macos$(MACOS_MIN) \
 		-o $(APP).staging/Contents/MacOS/Finsical $(SOURCES)
 	# The linked binary is what the OS enforces, so fail the build if its
 	# minimum macOS differs from the one Info.plist promises.

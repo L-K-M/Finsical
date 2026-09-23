@@ -433,9 +433,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
 
     /// Keep the aquarium on screen: hand any top-level http(s) navigation
     /// to the default browser instead of replacing the app's content.
+    /// The handler's type matches WKNavigationDelegate's exactly: in
+    /// Swift 6 a near miss is only a warning, and WebKit would never
+    /// call this method.
     func webView(_ webView: WKWebView,
                  decidePolicyFor action: WKNavigationAction,
-                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+                 decisionHandler: @escaping @MainActor @Sendable
+                     (WKNavigationActionPolicy) -> Void) {
         if action.targetFrame?.isMainFrame == true,
            let url = action.request.url,
            url.scheme == "http" || url.scheme == "https" {
@@ -526,8 +530,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
 }
 
 // Several source files (this one and Osmium UI's window host), so the
-// entry point is an @main type rather than top-level code.
+// entry point is an @main type rather than top-level code. AppKit runs
+// it on the main thread, where everything it sets up belongs.
 @main
+@MainActor
 enum FinsicalApp {
     static func main() {
         let app = NSApplication.shared
