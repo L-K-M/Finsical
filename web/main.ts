@@ -605,8 +605,9 @@ function removeAddon(url: string): void {
 const KNOWN_SECTIONS = new Set(COLLECTIONS.map((c) => c.section));
 const installsInFlight = new Set<string>();
 // "Add again" intents that arrived while the same url was installing —
-// run them right after so a fast second click isn't silently dropped.
-const queuedAgain = new Map<string, Importable>();
+// run them right after so fast clicks aren't silently dropped. A list
+// per url: every click is another fish/copy, not a dedupe.
+const queuedAgain = new Map<string, Importable[]>();
 async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   const fail = (error: string) =>
     bus.post({ op: "installFailed", url: it?.url ?? "", error });
@@ -621,7 +622,11 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   if (installsInFlight.has(it.url)) {
     // The in-flight request's ack covers a duplicate add; an explicit
     // "Add again" means another fish/decor copy — queue it for after.
-    if (again) queuedAgain.set(it.url, it);
+    if (again) {
+      const q = queuedAgain.get(it.url) ?? [];
+      q.push(it);
+      queuedAgain.set(it.url, q);
+    }
     return;
   }
   // A restore may have landed this add-on while the panel's detail fetch
@@ -631,6 +636,7 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     return;
   }
   installsInFlight.add(it.url);
+  let ok = false;
   try {
     const rs = await fetchAddon(it.url);
     const usable = rs.filter(
@@ -653,14 +659,17 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     recordInstall(it);
     bus.post({ op: "installed", url: it.url });
     postState();
+    ok = true;
   } catch (e) { fail(String(e)); }
   finally {
     installsInFlight.delete(it.url);
-    const next = queuedAgain.get(it.url);
-    if (next) {
-      queuedAgain.delete(it.url);
-      void remoteInstall(next, true);
-    }
+    // A failed install would fail its queued twins the same way —
+    // drop them rather than spam installFailed per click.
+    if (!ok) queuedAgain.delete(it.url);
+    const q = queuedAgain.get(it.url);
+    const next = q?.shift();
+    if (q && !q.length) queuedAgain.delete(it.url);
+    if (next) void remoteInstall(next, true);
   }
 }
 
