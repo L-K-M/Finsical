@@ -85,7 +85,12 @@ export class TankAudio {
         return this.startAmbient();
       })
       .catch((err) => {
-        if (resumed) console.warn("audio start failed:", err);
+        // Quiet only the documented no-activation rejection; surface
+        // resume failures (closed context, etc.) and startAmbient throws.
+        const expected = !resumed && err instanceof DOMException
+          && err.name === "NotAllowedError";
+        if (!expected)
+          console.warn(resumed ? "audio start failed:" : "audio resume failed:", err);
       });
   }
 
