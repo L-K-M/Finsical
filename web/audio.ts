@@ -25,34 +25,44 @@ export class TankAudio {
     this.ambientBuf = null;
     this.ambientWanted = false;
     this.buffers.clear();
-    for (const s of manifest.sounds ?? []) {
+    const sounds = manifest.sounds ?? [];
+    if (!sounds.length) return;
+    const ac = this.ctx ?? new AudioContext();
+    this.ctx = ac;
+    // Decode concurrently — sequential awaits made a 25-sound set
+    // ~25x slower than the decoders allow. Each entry still fails
+    // alone so one bad file keeps the rest.
+    const decoded = await Promise.all(sounds.map(async (s) => {
       try {
-        const ac = this.ctx ?? new AudioContext();
-        this.ctx = ac;
         const raw = await read(s.file);
         const buf = raw.buffer.slice(raw.byteOffset,
                                      raw.byteOffset + raw.byteLength);
-        this.buffers.set(s.name, await ac.decodeAudioData(buf));
+        return { name: s.name, data: await ac.decodeAudioData(buf) };
       } catch {
-        // undecodable entry — keep the rest
+        return null; // undecodable entry — keep the rest
       }
-    }
+    }));
+    for (const d of decoded) if (d) this.buffers.set(d.name, d.data);
   }
 
   /** Merge decoded WAVs (e.g. from a dropped .rsrc) under their resource
    * names; same-name entries replace. Keeps manifest sounds loaded. */
   async addWavs(records: { name: string; wav: Uint8Array }[]): Promise<void> {
-    for (const r of records) {
-      try {
-        const ac = this.ctx ?? new AudioContext();
-        this.ctx = ac;
-        const raw = r.wav;
-        const buf = raw.buffer.slice(raw.byteOffset,
-                                     raw.byteOffset + raw.byteLength);
-        this.imported.set(r.name, await ac.decodeAudioData(buf));
-      } catch {
-        // undecodable entry — keep the rest
-      }
+    if (records.length) {
+      const ac = this.ctx ?? new AudioContext();
+      this.ctx = ac;
+      // Decode concurrently; each record still fails alone.
+      const decoded = await Promise.all(records.map(async (r) => {
+        try {
+          const raw = r.wav;
+          const buf = raw.buffer.slice(raw.byteOffset,
+                                       raw.byteOffset + raw.byteLength);
+          return { name: r.name, data: await ac.decodeAudioData(buf) };
+        } catch {
+          return null; // undecodable entry — keep the rest
+        }
+      }));
+      for (const d of decoded) if (d) this.imported.set(d.name, d.data);
     }
     // A dropped "aqua" can outrank what's looping (or supply the ambient
     // an earlier startAmbient found missing) — restart when the buffer
