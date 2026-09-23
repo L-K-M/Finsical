@@ -111,10 +111,13 @@ export class TankAudio {
   /** Apply new levels; live sources follow, nothing restarts. */
   setVolume(v: SoundConfig): void {
     this.vol = sanitizeSoundConfig(v);
-    if (this.masterGain)
-      this.masterGain.gain.value = this.vol.muted ? 0 : this.vol.master;
-    if (this.ambientGain)
-      this.ambientGain.gain.value = AMBIENT_BASE * this.vol.ambient;
+    // Ramp (20 ms) — snapping a live gain clicks. currentTime is 0
+    // before the context exists, so the fallback still reads sanely.
+    const t = this.ctx?.currentTime ?? 0;
+    this.masterGain?.gain.setTargetAtTime(
+      this.vol.muted ? 0 : this.vol.master, t, 0.02);
+    this.ambientGain?.gain.setTargetAtTime(
+      AMBIENT_BASE * this.vol.ambient, t, 0.02);
   }
 
   /** The shared context (and its master bus), created on first use. */
@@ -164,8 +167,9 @@ export class TankAudio {
 
   private play(buf: AudioBuffer | null, gain = 0.8, loop = false,
                retry = true): AudioBufferSourceNode | null {
+    if (!buf) return null; // no sound to play — don't spin up a context
     const ac = this.ac();
-    if (!buf || !ac) return null;
+    if (!ac) return null;
     if (ac.state === "suspended" && retry) {
       const gen = this.ambientGen;
       void ac.resume()
@@ -190,6 +194,11 @@ export class TankAudio {
     if (loop) {
       // The ambient loop rides its own gain node so the slider can
       // trim it live; the master bus still governs the final level.
+      // A second loop (a restart racing the resume path) retires the
+      // old source too, not just its gain node.
+      if (this.ambientSrc) {
+        try { this.ambientSrc.stop(); } catch { /* already ended */ }
+      }
       this.ambientGain?.disconnect();
       this.ambientGain = g;
     }
