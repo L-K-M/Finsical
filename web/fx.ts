@@ -25,8 +25,9 @@ export const SPLASH_TICKS = 18;
 const RIPPLE_MAX_R = 14;
 const DROP_GRAVITY = 0.12;
 
-/** Knock on the glass: one ring (a second, fainter one joins once the
- * first has room — the classic cartoon double-pulse). */
+/** Age every ring one tick; discard rings past RIPPLE_TICKS. (The
+ * fainter trailing ring of the double-pulse is drawn by drawRipples,
+ * not ticked separately.) */
 export function tickRipples(rs: Ripple[]): void {
   for (let i = rs.length - 1; i >= 0; i--)
     if (++rs[i]!.age > RIPPLE_TICKS) rs.splice(i, 1);

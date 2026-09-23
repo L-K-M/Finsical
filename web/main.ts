@@ -1,4 +1,4 @@
-import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
+import { BOTTOM_PAD, FOOD_ENTRY_Y, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
 import { fishPose, pitch } from "../core/pose.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
@@ -111,7 +111,7 @@ canvas.addEventListener("pointerdown", (e) => {
   audio.unlock();
   if (y < TANK.height * 0.15) {
     sim.dropFood(x); audio.feed();
-    splashes.push(newSplash(x, 12));
+    splashes.push(newSplash(x, FOOD_ENTRY_Y));
   } else {
     sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height);
     ripples.push({ x, y, age: 0 });
@@ -157,7 +157,7 @@ function spawnFish(sheetIdx: number, species: string, pack?: string): void {
   });
   // A new fish enters through the surface — pair the splash sound
   // with droplets where it went in.
-  splashes.push(newSplash(x, 12));
+  splashes.push(newSplash(x, FOOD_ENTRY_Y));
   saveTank();
 }
 
@@ -806,7 +806,7 @@ postState();
 function feedFish(): void {
   sim.dropFood(TANK.width / 2);
   audio.feed();
-  splashes.push(newSplash(TANK.width / 2, 12));
+  splashes.push(newSplash(TANK.width / 2, FOOD_ENTRY_Y));
 }
 (window as unknown as { finsical?: unknown }).finsical =
   { openImport: () => importPanel.open(), feedFish,
