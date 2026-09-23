@@ -56,6 +56,9 @@ export class TankAudio {
       try { this.ambientSrc.stop(); } catch { /* already ended */ }
       this.ambientSrc = null;
     }
+    // Drop the node connected, not just referenced — a new pack's
+    // loop builds its own chain.
+    this.ambientGain?.disconnect();
     this.ambientGain = null;
     this.ambientBuf = null;
     this.ambientWanted = false;
