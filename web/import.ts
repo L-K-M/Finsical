@@ -403,6 +403,10 @@ export interface ImportHandlers {
   /** Fired once per successful install — lets the caller record which
    * add-ons went into the tank so they can be restored later. */
   onInstall?(it: Importable): void;
+  /** Why the tank can't take this add-on right now (e.g. it is full),
+   * or null. Asked before a local install; the Import Add-ons window
+   * gets the same answer from the tank page as an installFailed. */
+  refuse?(it: Importable): string | null;
   /** Render decoded packs to a preview canvas; null = nothing to show. */
   preview(rs: PackResult[]): HTMLCanvasElement | null;
 }
@@ -826,6 +830,11 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       // paths drop a first add of something already in the tank, which
       // is what "Add to Tank" promises.
       const addIt = (again: boolean) => {
+        const refusal = remote ? null : h.refuse?.(it) ?? null;
+        if (refusal) {
+          status.textContent = refusal;
+          return;
+        }
         try {
           applyAddon(it, usable, again);
         } catch (e) {

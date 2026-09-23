@@ -11,3 +11,6 @@ export const QUALITY_SEEK = 0.3;
  * takes the first pellets a new owner drops instead of ignoring them
  * for minutes. */
 export const SPAWN_HUNGER = HUNGER_SEEK + 0.05;
+/** Soft population limit: the original kept tanks small, and past this
+ * the water reads as soup while every save bloats. */
+export const FISH_CAP = 24;

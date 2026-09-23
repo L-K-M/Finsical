@@ -1,6 +1,6 @@
 import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
-import { SPAWN_HUNGER } from "../core/tuning.js";
+import { FISH_CAP, SPAWN_HUNGER } from "../core/tuning.js";
 import { planFrame } from "../core/loop.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
@@ -194,18 +194,26 @@ function usePack(pack: { sheets: Map<string, SpriteSheet>;
   return sheet ? fishSheets.length - 1 : -1;
 }
 
-/** Soft population limit — the original kept tanks small, and past
- * this the water reads as soup while every save bloats. Roster
- * restores bypass it: saved pets always come back. */
-const FISH_CAP = 24;
+/** Whether a spawn honors FISH_CAP. Healing a pre-cap roster bypasses
+ * it: those fish were installed before the cap existed. */
+type CapRule = "enforce" | "bypass";
+
+/** Why the tank refuses a new fish, or null when there is room. Both
+ * install paths (the in-page panel and the Import Add-ons window) ask
+ * this before fetching, so neither reports a fish that never spawns. */
+function fishRefusal(section: string): string | null {
+  if (section !== "fish" || sim.fish.length < FISH_CAP) return null;
+  return `The tank is full: ${FISH_CAP} fish is plenty. ` +
+         "Release one from Tank Overview first.";
+}
 
 /** A newly installed fish pack adds one fish bound to its sheet —
  * "Add again" adds another of the same species. `pack` is the add-on's
  * install URL: the precise identity when packs share a species name.
  * Returns the new fish, or null when the tank is already full. */
 function spawnFish(sheetIdx: number, species: string, pack?: string,
-                   enforceCap = true): Fish | null {
-  if (enforceCap && sim.fish.length >= FISH_CAP) return null;
+                   cap: CapRule = "enforce"): Fish | null {
+  if (cap === "enforce" && sim.fish.length >= FISH_CAP) return null;
   const facing = Math.random() < 0.5 ? 1 : -1;
   const f = sim.addFish({
     x: 60 + Math.random() * (TANK.width - 120),
@@ -428,8 +436,9 @@ function reconcileFish(): void {
       continue;
     const idx = sheetByPack.get(it.url) ?? sheetBySpecies.get(it.inner);
     if (idx === undefined) { pending = true; continue; } // restore failed — retry next launch
-    // Saved pets bypass the cap — the roster recorded them, they return.
-    spawnFish(idx, it.inner, it.url, false);
+    // These packs were installed before fish spawned on install (and
+    // before the cap), so healing them isn't a new fish: bypass it.
+    spawnFish(idx, it.inner, it.url, "bypass");
   }
   // spawnFish's own saves went out as v=1 — stamp the reconciled roster.
   rosterComplete = !pending;
@@ -483,6 +492,7 @@ const importPanel = mountImportPanel({
       .catch((e) => console.warn("sound import failed:", e));
   },
   onInstall: recordInstall,
+  refuse: (it) => fishRefusal(it.section),
   preview: previewOf,
 });
 
@@ -749,9 +759,9 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   }
   // A fish pack can't be added past the population cap — refuse up
   // front so the panel explains it instead of fetching for nothing.
-  if (it.section === "fish" && sim.fish.length >= FISH_CAP) {
-    fail(`The tank is full — ${FISH_CAP} fish is plenty. ` +
-         "Release one from Tank Overview first.");
+  const refusal = fishRefusal(it.section);
+  if (refusal) {
+    fail(refusal);
     return;
   }
   installsInFlight.add(it.url);
