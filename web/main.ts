@@ -69,11 +69,13 @@ const audio = new TankAudio();
 if (saved) {
   if (Number.isFinite(saved.tickCount)) sim.tickCount = saved.tickCount;
   if (Number.isFinite(saved.waterQuality))
-    sim.waterQuality = saved.waterQuality;
+    sim.waterQuality =
+      Math.min(1, Math.max(0, saved.waterQuality));
   // A save predating the lamp has no field: the cycle stays in charge.
-  // Storage is untrusted — clamp into the valid range (a tampered 5
-  // would drop the night overlay's alpha below zero and void the fill).
-  if (typeof saved.lightOverride === "number")
+  // Storage is untrusted — Number.isFinite rejects NaN/Infinity, and
+  // the clamp keeps the valid range (a tampered 5 would drop the night
+  // overlay's alpha below zero and void the fill).
+  if (Number.isFinite(saved.lightOverride))
     sim.lightOverride = Math.min(1, Math.max(0, saved.lightOverride));
 }
 const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
