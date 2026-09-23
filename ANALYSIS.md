@@ -80,7 +80,7 @@ open idea is written so an LLM can pick it up cold.
 - **Click-a-fish info card (highest value).** Per-species names + descriptions (`FsTH`) are decoded but never shown; clicks only scare. ⌥-click (or plain click) should open a Get-Info fish card: name, description, hunger/mood, species params.
 - **Fish lifecycle stage 1.** No sickness (`SicH` unused), death, birth/eggs (`Egg*` unused), growth — hunger has no consequences so feeding is theater. Start with lethargy at hunger ≥ ~0.9 + recovery on feed, wired to the decoded birth/sick/dead `snd` events.
 - **Water care actions.** Quality self-recovers; the user can only wait. Add "Clean tank / water change" + a visible dirty cue beyond the murk overlay (stats.ts already advises about it).
-- **Lighting switch.** `sim.light` auto-runs a 13-min cycle with ~6.5 min pinned at flat night. Add day/night/auto + dimmer; `LigH` data already decoded.
+- **Lighting switch.** `sim.light` auto-runs a 13-min cosine cycle: 0.3 only at the midnight tick, 1.0 at noon, ~36% of ticks "night" under the 0.5 split. Add day/night/auto + dimmer; `LigH` data already decoded.
 - **More foods.** `FdHd` data decoded and ignored; flakes/pellets/live food with different sink rates is one `sink` field on `Food`.
 - **Import search/filter.** JPN sections are long; add a name-substring filter box.
 - **Starter reef bundle.** One-click curated set (6 fish + gravel + plant) + first-run card ("Your tank is empty. [Import Add-ons…] [Stock a starter reef]") — fixes asset-failure silence and cold-start discoverability together.

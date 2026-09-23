@@ -158,8 +158,15 @@ describe("Sim", () => {
     expect(min).toBeCloseTo(0.3, 5);
     expect(max).toBeCloseTo(1, 5);
     expect(nightTicks).toBeGreaterThan(DAY_TICKS * 0.2);
-    // Inverted cosine would pass min/max/night>20% (~64% night).
+    // Sanity bound only: every min-0.3/max-1 cosine — including a
+    // sign-flipped one — lands near ~36% night, so this can't catch
+    // phase inversion. Pin alignment separately below.
     expect(nightTicks).toBeLessThan(DAY_TICKS * 0.5);
+    // Phase: light(0) ≈ midnight floor, light(DAY_TICKS/2) ≈ noon peak.
+    const align = new Sim({ width: 100, height: 100 }, 1);
+    expect(align.light).toBeCloseTo(0.3, 5);
+    for (let i = 0; i < DAY_TICKS / 2; i++) align.tick();
+    expect(align.light).toBeCloseTo(1, 5);
   });
 
   it("darts out of each decision — quadratic ramp capped at cruise", () => {
