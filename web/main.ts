@@ -459,8 +459,12 @@ const sheetByPack = new Map<string, number>();
 const packBySheet = new Map<number, string>();
 function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
                       url: string, section: string, live: boolean): void {
+  // Only fish sections register sheets — a tank/scenery pack's sprite
+  // streams mustn't join the fish pool or starter fish could
+  // round-robin onto art nobody chose.
+  if (section !== "fish") return;
   const idx = usePack({ sheets });
-  if (section === "fish" && idx >= 0) {
+  if (idx >= 0) {
     sheetBySpecies.set(name, idx);
     // A reinstall can rebind the url to a new slot — drop the old
     // reverse entry so the two maps stay exact inverses.
@@ -894,9 +898,8 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
         // claim provenance over records never written.
         .then(() => { storedNames = sounds.map((s) => s.name); })
         .catch((e) => console.warn("sound install skipped:", e));
-    recordInstall(it, storedNames);
+    recordInstall(it, storedNames); // saveTank() inside pushes fresh state
     bus.post({ op: "installed", url: it.url });
-    postState();
   } catch (e) { fail(String(e)); }
   finally { installsInFlight.delete(it.url); }
 }
