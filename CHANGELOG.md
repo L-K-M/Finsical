@@ -23,6 +23,5 @@
   and Geneva 10 bitmap text, the real close/zoom/collapse boxes with
   their pressed states, the grow box, inactive and windowshade looks,
   and Platinum progress bars. The chrome and controls live in a
-  reusable module (`web/platinum/`, `web/platinum.css`) for other
-  windows. Earlier history lives in the commit log and any GitHub
+  reusable module for other windows (since moved to Osmium UI). Earlier history lives in the commit log and any GitHub
   releases.

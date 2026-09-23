@@ -10,7 +10,7 @@ import type { StatsInput, TankStats } from "./statsmodel.js";
 // bars for the two levels, care hints below.
 // The tank page owns the sim; this page renders the `state` payloads
 // it pushes (same contract as the other client windows). The window
-// chrome goes through winhost.ts.
+// chrome goes through Osmium UI's hostWindow.
 
 const win = document.getElementById("swin")!;
 const rowsEl = document.getElementById("srows")!;
