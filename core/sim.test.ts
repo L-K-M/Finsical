@@ -246,6 +246,25 @@ describe("Sim", () => {
     expect(everStartled).toBe(false);
   });
 
+  it("same-species fish drift closer than strangers", () => {
+    const run = (same: boolean): number => {
+      const sim = new Sim({ width: 320, height: 200 }, 9);
+      sim.addFish({ x: 60, y: 60, species: "a" });
+      sim.addFish({ x: 260, y: 160, species: same ? "a" : "b" });
+      let sum = 0, n = 0;
+      for (let i = 0; i < 6000; i++) {
+        sim.tick();
+        if (i >= 2000) { // measure after the wander settles
+          const [p, q] = sim.fish;
+          sum += Math.hypot(p!.x - q!.x, p!.y - q!.y);
+          n++;
+        }
+      }
+      return sum / n;
+    };
+    expect(run(true)).toBeLessThan(run(false));
+  });
+
   it("rolls through a turn when the destination is behind it", () => {
     const sim = new Sim({ width: 300, height: 100 }, 7);
     // At the right wall facing right — every wander target is behind.
