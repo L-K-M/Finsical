@@ -104,6 +104,8 @@ setInterval(saveTank, 10_000);
 let splashState: { x: number; y: number; life: number }[] = [];
 let prevEaten = new Set<string>();
 
+canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
 // Click near the surface drops food; deeper clicks knock on the glass.
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) { e.preventDefault(); return; } // ignore right/middle clicks
@@ -467,7 +469,11 @@ function scaledThumb(cv: HTMLCanvasElement): string | null {
 function fishThumb(f: Fish): string | null {
   const key = fishThumbKey(f);
   const hit = thumbMemo.get(key);
-  if (hit) return hit;
+  if (hit) {
+    thumbMemo.delete(key);
+    thumbMemo.set(key, hit);
+    return hit;
+  }
   const sheet = sheetOf(f);
   if (!sheet) return null; // placeholder fish — nothing to render
   let url: string | null = null;

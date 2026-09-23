@@ -65,7 +65,9 @@ export function itemsOf(s: TankState): Item[] {
     thumb: fishThumbKey(f),
     name: f.name ? `${f.name} (${f.species || "Fish"})` : (f.species || "Fish"),
     kind: "Fish",
-    status: `${STATES[f.state] ?? "Swimming"}, ${hungerLabel(f.hunger)}`,
+    // Personality hint derived from state and species — adds flavor.
+    const personality = personalityOf(f);
+    status: `${STATES[f.state] ?? "Swimming"}, ${hungerLabel(f.hunger)}${personality ? ` · ${personality}` : ""}`,
     rank: 0,
     remove: { op: "removeFish", id: f.id },
   }));
@@ -84,6 +86,23 @@ export function itemsOf(s: TankState): Item[] {
     });
   }
   return items;
+}
+
+function personalityOf(f: FishSnap): string {
+  // Small playful hints based on what we know — no extra sim data needed.
+  const hints: string[] = [];
+  if (f.state === "seek") hints.push("eager");
+  else if (f.state === "startle") hints.push("jumpy");
+  else if (f.state === "turn") hints.push("graceful");
+  else hints.push("calm");
+  const species = (f.species ?? "").toLowerCase();
+  if (species.includes("angel") || species.includes("angelfish"))
+    hints.push("elegant");
+  else if (species.includes("guppy") || species.includes("guppies"))
+    hints.push("lively");
+  else if (species.includes("tang") || species.includes("tank"))
+    hints.push("bold");
+  return hints.join(", ");
 }
 
 export function sortItems(items: Item[], by: Column): Item[] {
