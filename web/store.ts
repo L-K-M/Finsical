@@ -117,9 +117,13 @@ async function trimPacks(): Promise<void> {
               { bytes?: unknown; at?: unknown } | undefined;
             const bytes = typeof v?.bytes === "number" ? v.bytes : 0;
             const at = typeof v?.at === "number" ? v.at : 0;
+            const url = k.slice(STAT_PREFIX.length);
+            // User-dropped packs (local:) are stored user data, not a
+            // fetch cache — the only copy of the file lives here, so
+            // they neither count against the budget nor ever evict.
+            if (url.startsWith("local:")) return;
             total += bytes;
-            recs.push({ stat: k, url: k.slice(STAT_PREFIX.length),
-                        at, bytes });
+            recs.push({ stat: k, url, at, bytes });
           });
           recs.sort((a, b) => a.at - b.at); // oldest evicts first
           for (const r of recs) {

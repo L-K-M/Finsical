@@ -8,7 +8,7 @@ import { pushButton } from "osmium-ui";
 import { fetchAddon, mountImportPanel, qualifySoundItemName,
          COLLECTIONS } from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
-import { sndsGet, sndsMerge } from "./store.js";
+import { packDelete, packPut, sndsGet, sndsMerge } from "./store.js";
 import { imageCanvas, previewOf, soundIcon, swimCanvas } from "./render.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
@@ -592,6 +592,9 @@ function removeAddon(url: string): void {
   if (slot !== undefined && packBySheet.get(slot) === url)
     packBySheet.delete(slot);
   sheetByPack.delete(url);
+  // A dropped pack's stored bytes are the only copy — uninstall
+  // deletes them (archive packs keep their cache entries).
+  if (url.startsWith("local:")) void packDelete(url).catch(() => {});
   // Drop thumb state that can only rot: this pack's own memo and any
   // queued ask, plus entries for fish that no longer exist anywhere.
   thumbMemo.delete(`a:${url}`);
@@ -986,14 +989,37 @@ window.addEventListener("drop", (e) => {
       if (!isPack(head)) continue;
       const data = new Uint8Array(await file.arrayBuffer());
       const sheets = fshToSheets(data);
-      if (!sheets.size) continue;
-      const idx = usePack({ sheets });
-      if (idx >= 0) { spawnFish(idx, name.replace(/\.[^.]*$/, "")); audio.splash(); }
-      pickBackdrop(packImages(data).values());
-      if (fishSheets.length) {
-        console.info(`${name}: pack imported`);
-        return;
+      const imgs = packImages(data);
+      if (!sheets.size && !imgs.size) continue;
+      // A dropped pack has no home URL — mint a local: identity so the
+      // bytes persist (the only copy lives in IndexedDB) and the fish
+      // restores next launch like an installed add-on. Same-named
+      // drops reuse the record and overwrite the stored bytes.
+      const url = `local:${name}`;
+      const species = name.replace(/\.[^.]*$/, "");
+      if (sheets.size) {
+        const idx = usePack({ sheets });
+        if (idx >= 0) {
+          sheetBySpecies.set(species, idx);
+          const prior = sheetByPack.get(url);
+          if (prior !== undefined && prior !== idx)
+            packBySheet.delete(prior);
+          sheetByPack.set(url, idx);
+          packBySheet.set(idx, url);
+          spawnFish(idx, species, url);
+          audio.splash();
+        }
       }
+      pickBackdrop(imgs.values());
+      void packPut(url, data).catch(() => {});
+      // Fish packs restore their sheets under "fish"; a scenery-only
+      // pack restores its images under "backgrounds" (the same
+      // pickBackdrop the drop ran). A mixed pack's images are session-
+      // only — fish portraits dominate that case anyway.
+      recordInstall({
+        section: sheets.size ? "fish" : "backgrounds", inner: name, url });
+      console.info(`${name}: pack imported`);
+      return;
     }
     if (!recs.length)
       console.warn("drop: no manifest.json, pack file, or 'snd ' found");

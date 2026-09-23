@@ -344,6 +344,14 @@ export function qualifySoundItemName(
  * the caller can pick each one's best sheet. Sound-bearing entries
  * (audio files, 'snd ' resource forks) come back as sound records. */
 export async function importAddon(url: string): Promise<PackResult[]> {
+  // Dropped packs persist as raw bytes under a `local:` key — nothing
+  // to download; decode them like any other pack blob.
+  if (url.startsWith("local:")) {
+    const d = await packGet(url);
+    if (!d || !isPack(d)) throw new Error(`${url}: stored pack missing`);
+    return [{ sheets: fshToSheets(d), images: packImages(d),
+              sounds: [] }];
+  }
   const blobs = await fetchInnerBlobs(url);
   const out: PackResult[] = [];
   for (const b of blobs) {
