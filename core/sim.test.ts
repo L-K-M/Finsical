@@ -351,6 +351,13 @@ describe("Sim", () => {
     expect(sim.addFish({ x: 50, y: 50, scale: 1.2 }).scale).toBe(1.2);
   });
 
+  it("resets a corrupt saved scale to adult", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 7);
+    expect(sim.addFish({ x: 50, y: 50, scale: 0 }).scale).toBe(1);
+    expect(sim.addFish({ x: 50, y: 50, scale: -2 }).scale).toBe(1);
+    expect(sim.addFish({ x: 50, y: 50, scale: NaN }).scale).toBe(1);
+  });
+
   it("grows toward adult size as it eats, never past the cap", () => {
     const sim = new Sim({ width: 300, height: 100 }, 5);
     const f = sim.addFish({ x: 40, y: 50, hunger: 0.9, scale: 0.8 });

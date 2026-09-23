@@ -73,7 +73,10 @@ const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
 const roster = (saved?.fish ?? []).filter(
   (f): f is Partial<Fish> & { x: number; y: number } =>
     !!f && Number.isFinite(f.x) && Number.isFinite(f.y));
-for (const f of roster?.length ? roster : DEFAULT_FISH) sim.addFish(f);
+const initial = roster?.length ? roster : DEFAULT_FISH;
+for (const f of initial)
+  // Pre-scale saves carry no scale; those fish are grown, not juveniles.
+  sim.addFish(initial === roster ? { ...f, scale: f.scale ?? 1 } : f);
 
 function saveTank(): void {
   try {

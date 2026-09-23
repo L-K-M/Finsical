@@ -129,8 +129,8 @@ export const TURN_TICKS = 10;
 /** Juveniles spawn at 0.78–1.10 of adult scale. */
 const SPAWN_SCALE_MIN = 0.78;
 const SPAWN_SCALE_RANGE = 0.32;
-/** Each meal closes this share of the gap to full size — asymptotic,
- * ~30 feedings to read as grown. */
+/** Each meal closes this share of the gap to the cap — asymptotic:
+ * crosses 1.0 after ~8 meals from minimum spawn, ~90% grown after ~37. */
 const GROWTH = 0.06;
 const MAX_SCALE = 1.35;
 const BUBBLE_CHANCE = 0.004;
@@ -172,6 +172,8 @@ export class Sim {
     // of varying size so a school doesn't read as clones.
     if (fish.scale === undefined)
       f.scale = SPAWN_SCALE_MIN + this.rand() * SPAWN_SCALE_RANGE;
+    else if (!Number.isFinite(f.scale) || f.scale <= 0)
+      f.scale = 1; // 0/NaN/negative from a bad save mustn't render invisible
     this.fish.push(f);
     return f;
   }
