@@ -234,6 +234,47 @@ describe("Sim", () => {
     expect(Math.hypot(near.x - 80, near.y - 80)).toBeLessThan(60);
   });
 
+  it("one fish keeps watching the pointer", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    sim.notice = { x: 160, y: 100 };
+    const a = sim.addFish({ x: 130, y: 100, hunger: 0 });
+    const b = sim.addFish({ x: 200, y: 100, hunger: 0 });
+    sim.tick();
+    expect(sim.noticeFish).toBe(a);
+    // b drifts closer than a; the watcher stays a (while it stays in
+    // range) instead of the pick flipping and pulling b over too.
+    b.x = 165; b.y = 100;
+    for (let i = 0; i < 60; i++) {
+      sim.tick();
+      expect(sim.noticeFish).toBe(a);
+    }
+  });
+
+  it("the watcher turns to face a pointer behind it and holds there", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    // Facing left with the pointer 60 px behind it.
+    const f = sim.addFish({ x: 140, y: 100, facing: -1, heading: Math.PI,
+                            hunger: 0 });
+    sim.notice = { x: 200, y: 100 };
+    let reached = -1, strayed = 0, backwards = 0;
+    for (let i = 0; i < 900; i++) {
+      sim.tick();
+      const d = Math.hypot(f.x - 200, f.y - 100);
+      if (reached < 0 && d < 24) reached = i;
+      if (reached >= 0 && d > 40) strayed++;
+      // Heading more than 90 degrees off the way it faces: steering
+      // held against the pitch limit instead of rolling round. Chasing
+      // the pointer itself did that for 170-240 of these ticks.
+      const off = Math.abs(Math.atan2(Math.sin(f.heading),
+                                      Math.cos(f.heading) * f.facing));
+      if (off > Math.PI / 2 + 0.05) backwards++;
+    }
+    expect(reached).toBeGreaterThanOrEqual(0);
+    expect(reached).toBeLessThan(120);
+    expect(strayed).toBe(0);
+    expect(backwards).toBeLessThan(60);
+  });
+
   it("hunger outranks curiosity", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const f = sim.addFish({ x: 60, y: 60, hunger: 0.9 });

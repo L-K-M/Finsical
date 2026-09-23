@@ -304,16 +304,24 @@ export class Sim {
   tick(): void {
     this.tickCount++;
     // The hovered pointer is noticed by the closest calm fish — only
-    // drifters look up; seeking, turning and startled fish have other
-    // business.
-    this._noticeFish = null;
+    // drifters look up; seeking and startled fish have other business.
+    // The watcher keeps watching while it stays in range (a roll to
+    // face the pointer is part of watching), so one fish comes over
+    // instead of a new pick every tick drawing two or three.
     const n = this.notice;
-    if (n) {
-      let bd = NOTICE_RADIUS * NOTICE_RADIUS;
-      for (const f of this.fish) {
-        if (f.state !== "drift") continue;
-        const d = (f.x - n.x) ** 2 + (f.y - n.y) ** 2;
-        if (d < bd) { bd = d; this._noticeFish = f; }
+    const w = this._noticeFish;
+    const inRange = (f: Fish): boolean => !!n &&
+      (f.x - n.x) ** 2 + (f.y - n.y) ** 2 < NOTICE_RADIUS * NOTICE_RADIUS;
+    if (!w || !this.fish.includes(w) || !inRange(w) ||
+        (w.state !== "drift" && w.state !== "turn")) {
+      this._noticeFish = null;
+      if (n) {
+        let bd = NOTICE_RADIUS * NOTICE_RADIUS;
+        for (const f of this.fish) {
+          if (f.state !== "drift") continue;
+          const d = (f.x - n.x) ** 2 + (f.y - n.y) ** 2;
+          if (d < bd) { bd = d; this._noticeFish = f; }
+        }
       }
     }
     for (const f of this.fish) this.tickFish(f);
@@ -412,7 +420,14 @@ export class Sim {
         turning = this.maybeTurn(f);
       }
       let dist = Math.hypot(f.tx - f.x, f.ty - f.y);
-      if (!food && !turning && (f.phase >= MOVE_TICKS || dist < 4)) {
+      const n = f === this.noticeFish ? this.notice : null;
+      const nd = n ? Math.hypot(n.x - f.x, n.y - f.y) : Infinity;
+      // A big fish stops with its nose, not its middle, by the pointer.
+      const standoff = NOTICE_STANDOFF + this.halfW(f);
+      // A fish watching the pointer from inside the standoff holds
+      // there instead of re-deciding.
+      if (!food && !turning && nd > standoff &&
+          (f.phase >= MOVE_TICKS || dist < 4)) {
         if (dist >= BRAKE_DIST && f.strokes < MAX_STROKES) {
           f.strokes++;
           f.phase = 0;
@@ -431,12 +446,15 @@ export class Sim {
       // it just hovers there. The guard measures fish-to-pointer, not
       // fish-to-target: a fresh decide() re-rolls tx/ty, so `dist`
       // alone would re-pin a hovering fish to the cursor forever.
-      if (f === this.noticeFish && this.notice &&
-          Math.hypot(this.notice.x - f.x, this.notice.y - f.y) >
-            NOTICE_STANDOFF) {
-        f.tx = this.notice.x;
-        f.ty = this.notice.y;
+      if (n && nd > standoff) {
+        // Aim just short of the pointer, on the fish's side of it, and
+        // roll to face it: steering alone can't reverse, so a pointer
+        // behind the fish would pin it at the pitch limit.
+        const k = standoff * 0.5 / nd;
+        f.tx = n.x + (f.x - n.x) * k;
+        f.ty = n.y + (f.y - n.y) * k;
         dist = Math.hypot(f.tx - f.x, f.ty - f.y);
+        if (!turning) turning = this.maybeTurn(f);
       }
 
       // Steer the continuous heading toward the destination; the fish
@@ -563,15 +581,17 @@ export class Sim {
     }
     // A starving fish begs where the food lands — while the water is
     // still clean enough to keep an appetite (the seek gate).
-    if (f.hunger > BEG_HUNGER && this.waterQuality > QUALITY_SEEK)
-      f.bandY = Math.min(f.bandY, y0 + BAND_HALF);
+    const begging =
+      f.hunger > BEG_HUNGER && this.waterQuality > QUALITY_SEEK;
+    if (begging) f.bandY = Math.min(f.bandY, y0 + BAND_HALF);
     f.ty = Math.min(
       y1, Math.max(y0, f.bandY + (this.rand() - 0.5) * 2 * BAND_HALF));
     // Schooling: a same-species wander sometimes anchors on a
     // schoolmate's neighborhood — loose grouping, not lockstep. Starter
     // fish share species "" but take sprite sheets round-robin, so they
     // look like different species: they don't school.
-    if (f.species && this.rand() < SCHOOL_PULL) {
+    // A begging fish stays under the surface rather than follow a mate.
+    if (f.species && !begging && this.rand() < SCHOOL_PULL) {
       const mates = this.fish.filter(
         (m) => m !== f && m.species === f.species);
       if (mates.length) {
