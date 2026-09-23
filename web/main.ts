@@ -828,14 +828,16 @@ const COMPANIONS: Record<string, [string, string]> = {
   p: ["prefs.html", "finsical-prefs"],
 };
 window.addEventListener("keydown", (e) => {
-  // Never steal bare keys from a text field — the tank page has none
-  // today, but a future field shouldn't fight the shortcuts. Modifier
-  // chords still work: ⌘I has no meaning inside a plain field.
+  // Never steal keys from a text field — the tank page has none
+  // today, but a future field shouldn't fight the shortcuts. Only
+  // the app's own chord (⌘I) passes through; OS/editing chords like
+  // ⌘C/⌘V/⌘P belong to the field.
   const t = e.target;
-  if (!e.metaKey && !e.ctrlKey && t instanceof HTMLElement &&
-      (t.isContentEditable || t.tagName === "INPUT" ||
-       t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
   const k = e.key.toLowerCase();
+  if (t instanceof HTMLElement &&
+      (t.isContentEditable || t.tagName === "INPUT" ||
+       t.tagName === "TEXTAREA" || t.tagName === "SELECT") &&
+      !((e.metaKey || e.ctrlKey) && k === "i")) return;
   if ((e.metaKey || e.ctrlKey) && k === "i") {
     importPanel.open(); e.preventDefault();
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" &&
