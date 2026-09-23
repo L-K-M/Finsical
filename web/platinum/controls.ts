@@ -391,6 +391,8 @@ export function mountPopup(btn: HTMLButtonElement,
       e.preventDefault();
       close();
       const eat = (ev: Event) => {
+        // detail 0: a keyboard-activated click, not this press's.
+        if ((ev as MouseEvent).detail === 0) { done(); return; }
         ev.stopPropagation();
         ev.preventDefault();
         done();
@@ -741,7 +743,9 @@ export function mountList(host: HTMLElement, opts: ListOptions): PlatinumList {
             Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) > TOUCH_SLOP)
           return;
         const i = rowAt(ev.clientY);
-        if (i < rows.length) select(i);
+        if (i >= rows.length) return;
+        host.focus({ preventScroll: true }); // keys follow (hybrid devices)
+        select(i);
       };
       view.addEventListener("pointerup", up);
       view.addEventListener("pointercancel", up);

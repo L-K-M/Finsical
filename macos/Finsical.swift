@@ -101,7 +101,8 @@ final class ClientWebView: WKWebView {
     /// The Platinum title bar's height (web/platinum.css).
     private let titleBarH: CGFloat = 22
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
-        guard let e = event else { return false }
+        // Only a left press drags; others just activate.
+        guard let e = event, e.type == .leftMouseDown else { return false }
         let p = convert(e.locationInWindow, from: nil)
         return (isFlipped ? p.y : bounds.height - p.y) < titleBarH
     }
