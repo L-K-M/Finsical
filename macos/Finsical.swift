@@ -126,6 +126,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     private var machineVbW: CGFloat = 0
     private var machineVbH: CGFloat = 0
     private var machineShape: [(rect: CGRect, radius: CGFloat)] = []
+    /// Tank ▸ Pause/Resume — title tracks the tank's paused flag (the
+    /// page owns state; the menu is a mirror of `postState` + ⌘P).
+    private var pauseMenuItem: NSMenuItem?
+
+    func setPauseMenuItem(_ item: NSMenuItem) {
+        pauseMenuItem = item
+    }
+
+    private func syncPauseMenu(paused: Bool) {
+        pauseMenuItem?.title = paused ? "Resume Simulation" : "Pause Simulation"
+        pauseMenuItem?.state = paused ? .on : .off
+    }
     private var machineMaskImage: CGImage?
     private func applyMachine(id: String, w: CGFloat, h: CGFloat,
                               shape: [(CGRect, CGFloat)],
@@ -341,36 +353,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             // retune the frame to the case outline. Falls through:
             // clients still need the push.
             if body["op"] as? String == "state",
-               message.webView === webView,
-               let mc = body["machine"] as? [String: Any],
-               let mid = mc["id"] as? String,
-               let mw = (mc["w"] as? NSNumber)?.doubleValue,
-               let mh = (mc["h"] as? NSNumber)?.doubleValue {
-                var shape: [(CGRect, CGFloat)] = []
-                if let raw = mc["shape"] as? [[String: Any]] {
-                    shape = raw.compactMap { e in
-                        guard let x = (e["x"] as? NSNumber)?.doubleValue,
-                              let y = (e["y"] as? NSNumber)?.doubleValue,
-                              let w = (e["w"] as? NSNumber)?.doubleValue,
-                              let h = (e["h"] as? NSNumber)?.doubleValue
-                        else { return nil }
-                        let r = (e["r"] as? NSNumber)?.doubleValue ?? 0
-                        return (CGRect(x: x, y: y, width: w, height: h),
-                                CGFloat(r))
+               message.webView === webView {
+                if let p = body["paused"] as? Bool {
+                    syncPauseMenu(paused: p)
+                }
+                if let mc = body["machine"] as? [String: Any],
+                   let mid = mc["id"] as? String,
+                   let mw = (mc["w"] as? NSNumber)?.doubleValue,
+                   let mh = (mc["h"] as? NSNumber)?.doubleValue {
+                    var shape: [(CGRect, CGFloat)] = []
+                    if let raw = mc["shape"] as? [[String: Any]] {
+                        shape = raw.compactMap { e in
+                            guard let x = (e["x"] as? NSNumber)?.doubleValue,
+                                  let y = (e["y"] as? NSNumber)?.doubleValue,
+                                  let w = (e["w"] as? NSNumber)?.doubleValue,
+                                  let h = (e["h"] as? NSNumber)?.doubleValue
+                            else { return nil }
+                            let r = (e["r"] as? NSNumber)?.doubleValue ?? 0
+                            return (CGRect(x: x, y: y, width: w, height: h),
+                                    CGFloat(r))
+                        }
                     }
+                    var hole: CGRect?
+                    if let hd = mc["hole"] as? [String: Any],
+                       let hx = (hd["x"] as? NSNumber)?.doubleValue,
+                       let hy = (hd["y"] as? NSNumber)?.doubleValue,
+                       let hw = (hd["w"] as? NSNumber)?.doubleValue,
+                       let hh = (hd["h"] as? NSNumber)?.doubleValue {
+                        hole = CGRect(x: hx, y: hy,
+                                      width: hw, height: hh)
+                    }
+                    applyMachine(id: mid, w: CGFloat(mw), h: CGFloat(mh),
+                                 shape: shape,
+                                 maskPath: mc["mask"] as? String, hole: hole)
                 }
-                var hole: CGRect?
-                if let hd = mc["hole"] as? [String: Any],
-                   let hx = (hd["x"] as? NSNumber)?.doubleValue,
-                   let hy = (hd["y"] as? NSNumber)?.doubleValue,
-                   let hw = (hd["w"] as? NSNumber)?.doubleValue,
-                   let hh = (hd["h"] as? NSNumber)?.doubleValue {
-                    hole = CGRect(x: hx, y: hy,
-                                  width: hw, height: hh)
-                }
-                applyMachine(id: mid, w: CGFloat(mw), h: CGFloat(mh),
-                             shape: shape,
-                             maskPath: mc["mask"] as? String, hole: hole)
             }
         }
         guard let data = try? JSONSerialization.data(
@@ -428,8 +444,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     @objc func togglePause() {
         let js = "window.finsical?.togglePause ? window.finsical.togglePause()" +
                  " : (() => { throw new Error('window.finsical.togglePause missing') })()"
-        webView?.evaluateJavaScript(js) { _, error in
-            if let error { NSLog("Finsical: togglePause JS failed: \(error.localizedDescription)") }
+        webView?.evaluateJavaScript(js) { result, error in
+            if let error {
+                NSLog("Finsical: togglePause JS failed: \(error.localizedDescription)")
+                return
+            }
+            // setPaused returns the new flag — keep the menu label in sync
+            // even if the state push races the completion handler.
+            if let paused = result as? Bool {
+                self.syncPauseMenu(paused: paused)
+            }
         }
     }
 
@@ -578,9 +602,10 @@ enum FinsicalApp {
         tankMenu.addItem(withTitle: "Toggle CRT Effect",
                          action: #selector(AppDelegate.toggleCrt),
                          keyEquivalent: "r")
-        tankMenu.addItem(withTitle: "Pause Simulation",
-                         action: #selector(AppDelegate.togglePause),
-                         keyEquivalent: "p") // ⌘P — no Print menu in this app
+        let pause = tankMenu.addItem(withTitle: "Pause Simulation",
+                                 action: #selector(AppDelegate.togglePause),
+                                 keyEquivalent: "p") // ⌘P — no Print menu here
+        delegate.setPauseMenuItem(pause)
         tankMenu.addItem(.separator())
         tankMenu.addItem(withTitle: "Support the Internet Archive",
                          action: #selector(AppDelegate.supportArchive),

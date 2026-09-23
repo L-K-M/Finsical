@@ -655,12 +655,14 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
 // stays interactive (render, CRT, saves). Keyboard P / Tank ▸ Pause.
 let paused = false;
 const PAUSE_KEY = "finsical:paused";
-function setPaused(on: boolean): void {
-  if (paused === on) return;
-  paused = on;
-  try { localStorage.setItem(PAUSE_KEY, on ? "1" : "0"); }
-  catch { /* storage unavailable — pause is session-only */ }
-  postState();
+function setPaused(on: boolean): boolean {
+  if (paused !== on) {
+    paused = on;
+    try { localStorage.setItem(PAUSE_KEY, on ? "1" : "0"); }
+    catch { /* storage unavailable — pause is session-only */ }
+    postState();
+  }
+  return paused;
 }
 try { paused = localStorage.getItem(PAUSE_KEY) === "1"; }
 catch { /* storage unavailable */ }
