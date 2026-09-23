@@ -1014,7 +1014,10 @@ window.addEventListener("drop", (e) => {
           "survive a relaunch");
       if (!sheets.size) {
         // Scenery-only pack — record it but keep scanning for fish.
-        recordInstall({ section: "backgrounds", inner: name, url });
+        // A failed packPut means no bytes to restore: recording the
+        // add-on would just throw "stored pack missing" every launch.
+        if (stored)
+          recordInstall({ section: "backgrounds", inner: name, url });
         console.info(`${name}: scenery pack imported`);
         continue;
       }
@@ -1032,7 +1035,10 @@ window.addEventListener("drop", (e) => {
       }
       // Recorded as "fish": restore replays its sheets; a mixed
       // pack's images stay session-only (fish portraits dominate).
-      recordInstall({ section: "fish", inner: name, url });
+      // Only when the bytes actually persisted — a dangling record
+      // would throw "stored pack missing" on every future launch.
+      if (stored)
+        recordInstall({ section: "fish", inner: name, url });
       console.info(`${name}: pack imported`);
       return;
     }
