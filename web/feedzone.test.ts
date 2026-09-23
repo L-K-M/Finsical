@@ -67,5 +67,8 @@ describe("containPoint", () => {
     const rect = { left: 0, top: 0, width: 320, height: 200 };
     expect(containPoint(NaN, 100, rect, TANK)).toBeNull();
     expect(containPoint(160, Infinity, rect, TANK)).toBeNull();
+    // Hidden canvas → 0×0 rect → scale 0 → non-finite coordinates.
+    expect(containPoint(160, 100, { left: 0, top: 0, width: 0, height: 0 },
+                        TANK)).toBeNull();
   });
 });

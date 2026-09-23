@@ -133,7 +133,10 @@ canvas.addEventListener("pointerdown", (e) => {
 canvas.addEventListener("pointermove", (e) => {
   lastClient = { x: e.clientX, y: e.clientY };
 });
-canvas.addEventListener("pointerleave", () => { lastClient = null; });
+canvas.addEventListener("pointerleave", () => {
+  lastClient = null;
+  setFeedHover(false); // pointer is definitionally off the tank — clear now
+});
 
 // ---- sprite loading ----------------------------------------------------
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
