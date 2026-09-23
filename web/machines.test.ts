@@ -159,14 +159,17 @@ describe("previewMarkup", () => {
   });
 
   it("backs the glass aperture only where a hole exists", () => {
+    const pad = SCREENBACK_HOLE_PAD;
     for (const m of MACHINES) {
       const mk = previewMarkup(m);
       if (m.hole) {
+        // Padded past the hole like the live backplate (#screenback).
         expect(mk, m.id).toContain(
-          `<rect x="${m.hole.x}" y="${m.hole.y}" width="${m.hole.w}"` +
-          ` height="${m.hole.h}" fill="#050508"/>`);
+          `<rect x="${m.hole.x - pad}" y="${m.hole.y - pad}"` +
+          ` width="${m.hole.w + pad * 2}" height="${m.hole.h + pad * 2}"` +
+          ` fill="#050505"/>`);
       } else {
-        expect(mk, m.id).not.toContain('fill="#050508"');
+        expect(mk, m.id).not.toContain('fill="#050505"');
       }
     }
   });

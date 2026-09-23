@@ -60,7 +60,7 @@ export function shellMarkup(m: Machine): string {
 // preview as a running Finsical, not an empty screen.
 const PV_WATER_TOP = "#2e7fc4", PV_WATER_BOT = "#14508c";
 const PV_GRAVEL = "#8a6d3b", PV_FISH = "#e8a33d", PV_EYE = "#1a1a2e";
-const PV_BUBBLE = "#cfe8ff", PV_BACKPLATE = "#050508";
+const PV_BUBBLE = "#cfe8ff", PV_BACKPLATE = "#050505"; // #screenback
 
 /** The shell over a still of the tank — the prefs machine picker shows
  * each case as a running aquarium: black backplate behind the glass,
@@ -71,9 +71,15 @@ export function previewMarkup(m: Machine): string {
   const tx = (x: number) => m.sx + x * k;
   const ty = (y: number) => m.sy + y * k;
   const parts: string[] = [];
-  if (m.hole) // backplate — the letterbox matte around the tank
-    parts.push(`<rect x="${m.hole.x}" y="${m.hole.y}" width="${m.hole.w}"` +
-      ` height="${m.hole.h}" fill="${PV_BACKPLATE}"/>`);
+  // Backplate — the letterbox matte around the tank. Padded like the
+  // live #screenback: the art's translucent glass rim runs a few px
+  // past the measured hole and would otherwise show the page behind.
+  if (m.hole) {
+    const pad = SCREENBACK_HOLE_PAD;
+    parts.push(`<rect x="${m.hole.x - pad}" y="${m.hole.y - pad}"` +
+      ` width="${m.hole.w + pad * 2}" height="${m.hole.h + pad * 2}"` +
+      ` fill="${PV_BACKPLATE}"/>`);
+  }
   parts.push(
     // ids are document-global across inline SVGs — suffix per machine
     `<defs><linearGradient id="pvwater-${m.id}" x1="0" y1="0" x2="0" y2="1">` +
