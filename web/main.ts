@@ -1115,10 +1115,10 @@ function render(): void {
     ctx.fillRect(0, 0, TANK.width, TANK.height);
   }
 
-  // day/night dimming
+  // day/night dimming — deep blue reads as night water, not a blackout
   const dark = 1 - sim.light;
   if (dark > 0.01) {
-    ctx.fillStyle = `rgba(4,8,24,${(dark * 0.55).toFixed(3)})`;
+    ctx.fillStyle = `rgba(10,22,66,${(dark * 0.5).toFixed(3)})`;
     ctx.fillRect(0, 0, TANK.width, TANK.height);
   }
 }

@@ -157,6 +157,18 @@ describe("Sim", () => {
     expect(max - min).toBeGreaterThan(0.5);
   });
 
+  it("holds a real night, not a brief dusk", () => {
+    // statsmodel calls light<=0.5 "night" — it should cover a solid
+    // share of the cycle, not a momentary dip at the edges.
+    const sim = new Sim({ width: 100, height: 100 }, 1);
+    let night = 0;
+    for (let i = 0; i < DAY_TICKS; i++) {
+      sim.tick();
+      if (sim.light < 0.5) night++;
+    }
+    expect(night / DAY_TICKS).toBeGreaterThan(0.25);
+  });
+
   it("darts out of each decision — quadratic ramp capped at cruise", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const f = sim.addFish({ x: 60, y: 100, cruise: 1.4 });

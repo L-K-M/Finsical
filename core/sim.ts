@@ -199,7 +199,10 @@ export class Sim {
   /** 0.3 = night, 1 = full daylight. */
   get light(): number {
     const t = (this.tickCount % DAY_TICKS) / DAY_TICKS;
-    return 0.3 + 0.7 * Math.max(0, Math.sin(t * Math.PI));
+    // A full sine over the cycle: the old half-wave only dipped below
+    // the 0.5 night threshold for ~18% of the day — a brief dusk, not
+    // a night. This holds a real dark valley (~36% of the cycle).
+    return 0.65 + 0.35 * Math.sin(t * Math.PI * 2);
   }
 
   tick(): void {
