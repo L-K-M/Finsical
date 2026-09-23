@@ -119,7 +119,7 @@ describe("Sim", () => {
   it("a water change recovers quality and siphons settled food", () => {
     const sim = new Sim({ width: 200, height: 100 }, 1);
     sim.dropFood(50);
-    for (let i = 0; i < 400; i++) sim.tick(); // pellet settles, rots
+    for (let i = 0; i < 400; i++) sim.tick(); // pellet settles, fouls the water
     expect(sim.food[0]!.settled).toBeGreaterThan(0);
     sim.waterQuality = 0.2;
     sim.changeWater();
