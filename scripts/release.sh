@@ -82,11 +82,12 @@ if [[ ! -f "$README" ]] ||
 fi
 
 next_build=$((current_build + 1))
+# Roll back the mutation set on any later abort (npm version, build, …)
+# so a failed release never leaves Info.plist/package.json/README half-bumped.
+trap 'git checkout -- "$INFO_PLIST" package.json "$README" 2>/dev/null || true; rm -f "$README.bak"' EXIT
 "$PLIST_BUDDY" -c "Set :CFBundleShortVersionString $version" "$INFO_PLIST"
 "$PLIST_BUDDY" -c "Set :CFBundleVersion $next_build" "$INFO_PLIST"
 npm version "$version" --no-git-tag-version --allow-same-version
-# Drop the sed backup on success and on any later abort (set -e / interrupt).
-trap 'rm -f "$README.bak"' EXIT
 sed -i.bak -E "s|(<!-- version -->)[0-9]+\.[0-9]+\.[0-9]+(<!-- /version -->)|\\1$version\\2|" "$README"
 rm -f "$README.bak"
 trap - EXIT
