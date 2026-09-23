@@ -524,6 +524,8 @@ function onBusMessage(m: BusMsg): void {
     removeAddon(m.url);
   } else if (m.op === "wantThumbs" && Array.isArray(m.keys)) {
     serveThumbs(m.keys);
+  } else if (m.op === "cleanTank") {
+    changeWater();
   } else if (m.op === "crtEnabled") {
     setCrt(m.on === true);
   } else if (m.op === "crtConfig") {
@@ -795,8 +797,14 @@ function feedFish(): void {
   sim.dropFood(TANK.width / 2);
   audio.feed();
 }
+// A partial water change, also callable from the stats window's bus op.
+function changeWater(): void {
+  sim.changeWater();
+  audio.splash();
+  saveTank(); // persists + pushes fresh state to open panels
+}
 (window as unknown as { finsical?: unknown }).finsical =
-  { openImport: () => importPanel.open(), feedFish,
+  { openImport: () => importPanel.open(), feedFish, changeWater,
     toggleCrt: () => setCrt(!crtOn) };
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary

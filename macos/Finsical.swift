@@ -417,6 +417,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         }
     }
 
+    @objc func changeWater() {
+        let js = "window.finsical?.changeWater ? window.finsical.changeWater()" +
+                 " : (() => { throw new Error('window.finsical.changeWater missing') })()"
+        webView?.evaluateJavaScript(js) { _, error in
+            if let error { NSLog("Finsical: changeWater JS failed: \(error.localizedDescription)") }
+        }
+    }
+
     @objc func toggleCrt() {
         let js = "window.finsical?.toggleCrt ? window.finsical.toggleCrt()" +
                  " : (() => { throw new Error('window.finsical.toggleCrt missing') })()"
@@ -567,6 +575,9 @@ enum FinsicalApp {
         tankMenu.addItem(withTitle: "Feed Fish",
                          action: #selector(AppDelegate.feedFish),
                          keyEquivalent: "f")
+        tankMenu.addItem(withTitle: "Change Water",
+                         action: #selector(AppDelegate.changeWater),
+                         keyEquivalent: "")
         tankMenu.addItem(withTitle: "Toggle CRT Effect",
                          action: #selector(AppDelegate.toggleCrt),
                          keyEquivalent: "r")

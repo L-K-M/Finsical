@@ -116,6 +116,17 @@ describe("Sim", () => {
     expect(sim.waterQuality).toBeGreaterThanOrEqual(0);
   });
 
+  it("a water change recovers quality and siphons rotting food", () => {
+    const sim = new Sim({ width: 200, height: 100 }, 1);
+    sim.dropFood(50);
+    for (let i = 0; i < 400; i++) sim.tick(); // pellet settles, rots
+    expect(sim.food[0]!.settled).toBeGreaterThan(0);
+    sim.waterQuality = 0.2;
+    sim.changeWater();
+    expect(sim.waterQuality).toBeCloseTo(0.68, 5); // 0.2 + 0.8*0.6
+    expect(sim.food.length).toBe(0);               // siphoned
+  });
+
   it("fish lose their appetite in foul water", () => {
     const sim = new Sim({ width: 200, height: 100 }, 5);
     const f = sim.addFish({ x: 40, y: 50, hunger: 0.9 });

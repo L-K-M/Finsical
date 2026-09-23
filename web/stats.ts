@@ -1,5 +1,5 @@
 import { openBus } from "./bus.js";
-import { hostWindow } from "osmium-ui";
+import { hostWindow, pushButton } from "osmium-ui";
 import { deriveStats, hungerLabel, trend, uptime } from "./statsmodel.js";
 import type { BusMsg } from "./bus.js";
 import type { StatsInput, TankStats } from "./statsmodel.js";
@@ -124,6 +124,11 @@ const greet = setInterval(() => {
   else bus.post({ op: "hello" });
 }, 500);
 bus.post({ op: "hello" });
+
+// Change Water — a partial change on the tank sim (it also siphons
+// rotting pellets). The next state push re-renders the numbers.
+pushButton(document.getElementById("schange") as HTMLButtonElement,
+           () => bus.post({ op: "cleanTank" }));
 
 // Ungated on `greeted`: if the tank tab opens after the greet retries
 // gave up, this heartbeat is the revival path — one cheap message, and
