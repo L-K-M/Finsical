@@ -98,7 +98,7 @@ setInterval(saveTank, 10_000);
 
 // Click near the surface drops food; deeper clicks knock on the glass.
 canvas.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0) return; // ignore right/middle clicks
+  if (e.button !== 0) { e.preventDefault(); return; } // ignore right/middle clicks
   // object-fit: contain letterboxes the bitmap inside the element box.
   const r = canvas.getBoundingClientRect();
   const s = Math.min(r.width / TANK.width, r.height / TANK.height);
@@ -426,7 +426,15 @@ function postState(): void {
 // along because ids can be reused for a different species after the
 // tank page reloads under a still-open panel.
 const THUMB_W = 38, THUMB_H = 28;
+const THUMB_MAX = 512;
 const thumbMemo = new Map<string, string>();
+function trimThumbMemo(): void {
+  if (thumbMemo.size <= THUMB_MAX) return;
+  for (const k of thumbMemo.keys()) {
+    thumbMemo.delete(k);
+    if (thumbMemo.size <= THUMB_MAX / 2) break;
+  }
+}
 function scaledThumb(cv: HTMLCanvasElement): string | null {
   const s = Math.min(1, THUMB_W / cv.width, THUMB_H / cv.height);
   const out = document.createElement("canvas");
@@ -449,7 +457,7 @@ function fishThumb(f: Fish): string | null {
     const pose = fishPose(sheet, f);
     url = scaledThumb(swimCanvas(sheet, 0, pose.mir, pose.g));
   } catch { /* sheet can't render that pose */ }
-  if (url) thumbMemo.set(key, url);
+  if (url) { thumbMemo.set(key, url); trimThumbMemo(); }
   return url;
 }
 function addonThumb(url: string): string | null {
@@ -469,7 +477,7 @@ function addonThumb(url: string): string | null {
     cv = soundIcon();
   if (!cv) return null;
   const data = scaledThumb(cv);
-  if (data) thumbMemo.set(key, data);
+  if (data) { thumbMemo.set(key, data); trimThumbMemo(); }
   return data;
 }
 
