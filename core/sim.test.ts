@@ -116,7 +116,7 @@ describe("Sim", () => {
     expect(sim.waterQuality).toBeGreaterThanOrEqual(0);
   });
 
-  it("a water change recovers quality and siphons rotting food", () => {
+  it("a water change recovers quality and siphons settled food", () => {
     const sim = new Sim({ width: 200, height: 100 }, 1);
     sim.dropFood(50);
     for (let i = 0; i < 400; i++) sim.tick(); // pellet settles, rots

@@ -524,7 +524,7 @@ function onBusMessage(m: BusMsg): void {
     removeAddon(m.url);
   } else if (m.op === "wantThumbs" && Array.isArray(m.keys)) {
     serveThumbs(m.keys);
-  } else if (m.op === "cleanTank") {
+  } else if (m.op === "changeWater") {
     changeWater();
   } else if (m.op === "crtEnabled") {
     setCrt(m.on === true);

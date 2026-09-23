@@ -178,7 +178,8 @@ export class Sim {
   }
 
   /** Partial water change: recovers `fraction` of the quality gap and
-   * siphons the settled, rotting pellets off the gravel. */
+   * siphons every settled pellet off the gravel — settled food is waste
+   * in this model (it drains quality from the first settled tick). */
   changeWater(fraction = 0.6): void {
     const f = Math.min(1, Math.max(0, fraction));
     this.waterQuality += (1 - this.waterQuality) * f;

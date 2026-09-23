@@ -126,9 +126,9 @@ const greet = setInterval(() => {
 bus.post({ op: "hello" });
 
 // Change Water — a partial change on the tank sim (it also siphons
-// rotting pellets). The next state push re-renders the numbers.
+// settled pellets). The next state push re-renders the numbers.
 pushButton(document.getElementById("schange") as HTMLButtonElement,
-           () => bus.post({ op: "cleanTank" }));
+           () => bus.post({ op: "changeWater" }));
 
 // Ungated on `greeted`: if the tank tab opens after the greet retries
 // gave up, this heartbeat is the revival path — one cheap message, and
