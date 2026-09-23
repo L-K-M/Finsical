@@ -809,12 +809,12 @@ const hoverNone = window.matchMedia("(hover: none)");
 // a load-time constant, so only the hover query can flip the answer.
 const wantTrigger = (): boolean =>
   hoverNone.matches || !inNativeShell();
-// Memoized so a hover-mode change that doesn't alter the answer
-// doesn't rebuild the button (and kill a press mid-gesture).
-let triggerShown: boolean | null = null;
+// Memoized on the element's own presence: a hover-mode change that
+// doesn't alter the answer doesn't rebuild the button (and kill a
+// press mid-gesture), while a removal by other code or a failed
+// build still recovers on the next sync.
 const syncTrigger = (show: boolean): void => {
-  if (show === triggerShown) return;
-  triggerShown = show;
+  if (show === !!document.getElementById("opentrigger")) return;
   document.getElementById("opentrigger")?.remove();
   if (!show) return;
   // A 20px Osmium push button is too small for a finger: a transparent
