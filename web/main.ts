@@ -937,8 +937,9 @@ void (async () => {
     console.warn("snd decode failed:", e)) : undefined)
   .then(() => { remapSheetIdx(); reconcileFish(); })
   // Whether the bundled pack loaded or not: the hint shows exactly
-  // when there is nothing to look at yet.
-  .then(() => syncHint());
+  // when there is nothing to look at yet. finally, not then — a chain
+  // step that still rejects must not leave the hint unsynced.
+  .finally(() => syncHint());
 
 // Drag an .azpack folder onto the window to import it.
 async function walkEntry(ent: FileSystemEntry, prefix: string,
@@ -1072,7 +1073,8 @@ const MAX_FISH_W = TANK.width * 0.6, MAX_FISH_H = TANK.height * 0.6;
 function drawFish(f: Fish): void {
   const sheet = sheetOf(f);
   if (!sheet)
-    return drawPlaceholder(f.x, f.y, f.facing, animFrame(f, 2), pitch(f));
+    return drawPlaceholder(f.x, f.y, f.facing,
+      animFrame(f, placeholderFrames().length), pitch(f));
   const pose = fishPose(sheet, f);
   const cv = swimCanvas(sheet, animFrame(f, sheet.meta.framesPerGroup),
                         pose.mir, pose.g);
