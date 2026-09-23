@@ -735,7 +735,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   filter.addEventListener("input", applyFilter);
   filter.addEventListener("keydown", (e) => {
     // Escape clears the field; consuming it keeps the panel open.
-    if (e.key === "Escape" && filter.value) {
+    // isComposing: an IME-cancel Escape must not wipe the filter.
+    if (!e.isComposing && e.key === "Escape" && filter.value) {
       filter.value = "";
       applyFilter();
       e.preventDefault();
