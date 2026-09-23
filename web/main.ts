@@ -165,10 +165,16 @@ let gravelSrc = "";
 // Scenery is fitted once at import so render() stays a 1:1 blit:
 // backdrops cover-crop to the tank frame (no aspect distortion,
 // no per-frame scale), gravel pre-scales to tank width.
+// NOTE: these caches bake in the TANK dims (a fixed 320x200
+// logical resolution) — a dynamic TANK would need them rebuilt.
 function fitBackdrop(img: IndexedImage): HTMLCanvasElement {
   const src = imageCanvas(img, true);
-  const { sx, sy, sw, sh } =
-    coverCrop(src.width, src.height, TANK.width, TANK.height);
+  const r = coverCrop(src.width, src.height, TANK.width, TANK.height);
+  // Whole texels: a fractional source rect starts mid-texel and
+  // browsers disagree on sampling it with smoothing disabled.
+  const sx = Math.round(r.sx), sy = Math.round(r.sy);
+  const sw = Math.min(Math.round(r.sw), src.width - sx);
+  const sh = Math.min(Math.round(r.sh), src.height - sy);
   const out = document.createElement("canvas");
   out.width = TANK.width; out.height = TANK.height;
   const c = out.getContext("2d")!;
