@@ -1,6 +1,7 @@
 import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
 import { SPAWN_HUNGER } from "../core/tuning.js";
+import { planFrame } from "../core/loop.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
@@ -65,6 +66,11 @@ let rosterComplete = saved?.v !== 1;
 
 const sim = new Sim(TANK, 0x9003);
 const audio = new TankAudio();
+// Hidden (Cmd-H, minimized, background tab): rAF stops and the sim
+// freezes, so the ambient loop and the audio device pause with it.
+const syncAudioVisibility = (): void => audio.setHidden(document.hidden);
+document.addEventListener("visibilitychange", syncAudioVisibility);
+syncAudioVisibility();
 if (saved) {
   if (Number.isFinite(saved.tickCount)) sim.tickCount = saved.tickCount;
   if (Number.isFinite(saved.waterQuality))
@@ -700,6 +706,10 @@ const CRT_KEY = "finsical:crt";
 const CRT_CFG_KEY = "finsical:crt-cfg";
 const crt = initCrt(canvas);
 let crtOn = false;
+// The loop only draws after a sim tick; this asks for one draw without
+// a tick, for changes the sim doesn't know about. Declared here, not by
+// frame(): setCrt runs during module evaluation (see MACHINE_KEY below).
+let frameDirty = true;
 let crtCfg: CrtConfig;
 try {
   crtCfg = sanitizeCrtConfig(
@@ -709,6 +719,9 @@ crt?.configure(crtCfg);
 function setCrt(on: boolean): void {
   crtOn = crt !== null && on;
   crt?.setEnabled(crtOn);
+  // Enabling sizes the WebGL buffer, which clears it: redraw now
+  // rather than show black until the next tick.
+  if (crtOn) frameDirty = true;
   if (crt !== null) {
     try { localStorage.setItem(CRT_KEY, crtOn ? "1" : "0"); }
     catch { /* storage unavailable */ }
@@ -727,6 +740,7 @@ function applyCrtConfig(raw: unknown): void {
       if (v !== undefined) merged[k] = v;
   crtCfg = sanitizeCrtConfig(merged);
   crt?.configure(crtCfg);
+  frameDirty = true; // slider drags show up at once
   try { localStorage.setItem(CRT_CFG_KEY, JSON.stringify(crtCfg)); }
   catch { /* storage unavailable */ }
   postState();
@@ -1145,7 +1159,6 @@ const tankGradient = (() => {
   return g;
 })();
 
-let prevBubbles = 0;
 function render(): void {
   if (backdropCv) {
     ctx.drawImage(backdropCv, 0, 0);
@@ -1180,10 +1193,6 @@ function render(): void {
   for (const b of sim.bubbles) {
     ctx.fillRect(Math.round(b.x), Math.round(b.y), 2, 2);
   }
-  // Sparse bloops: only some spawns make a sound.
-  if (sim.bubbles.length > prevBubbles && Math.random() < 0.25)
-    audio.bubble();
-  prevBubbles = sim.bubbles.length;
 
   // Fouled water murks the whole scene.
   const murk = 1 - sim.waterQuality;
@@ -1200,20 +1209,37 @@ function render(): void {
   }
 }
 
-// Fixed-step sim; render on rAF.
+function tickSim(): void {
+  const bubbles = sim.bubbles.length;
+  sim.tick();
+  // Sparse bloops: only some spawns make a sound. Checked per tick so
+  // the odds don't depend on how often the tank is drawn.
+  if (sim.bubbles.length > bubbles && Math.random() < 0.25)
+    audio.bubble();
+}
+
+// Fixed-step sim on rAF. render() depends only on sim state and
+// installed art, so a frame without a tick would redraw the same
+// picture: at 60 Hz every other frame, at 120 Hz three in four, each
+// also re-uploading the CRT texture. Those frames are skipped (the CRT
+// grain and flicker then move at the tick rate too).
 const TICKS_PER_SECOND = 30;
+const STEP_MS = 1000 / TICKS_PER_SECOND;
 let acc = 0;
 let last = performance.now();
 function frame(now: number): void {
-  acc += Math.min(now - last, 200);
+  // Schedule first: an exception while drawing must not stop the tank.
+  requestAnimationFrame(frame);
+  const plan = planFrame(acc, now - last, STEP_MS);
+  acc = plan.acc;
   last = now;
-  const step = 1000 / TICKS_PER_SECOND;
-  while (acc >= step) {
-    sim.tick();
-    acc -= step;
-  }
+  for (let i = 0; i < plan.ticks; i++) tickSim();
+  if (plan.ticks === 0 && !frameDirty) return;
+  frameDirty = false;
   render();
   if (crtOn) crt?.render();
-  requestAnimationFrame(frame);
 }
+// A resize changes the CRT buffer size, and resizing a WebGL canvas
+// clears it: draw on the next frame instead of waiting for a tick.
+window.addEventListener("resize", () => { frameDirty = true; });
 requestAnimationFrame(frame);

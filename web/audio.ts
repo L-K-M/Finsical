@@ -15,6 +15,16 @@ export class TankAudio {
   // Bumped by each startAmbient so a stale pending resume() retry can
   // tell it lost the race instead of starting a second loop.
   private ambientGen = 0;
+  // Page hidden: rAF stops and the sim freezes, so the device sleeps too.
+  private hidden = false;
+
+  private context(): AudioContext {
+    if (this.ctx) return this.ctx;
+    this.ctx = new AudioContext();
+    if (this.hidden)
+      void this.ctx.suspend().catch(() => { /* closed context */ });
+    return this.ctx;
+  }
 
   async load(read: (path: string) => Promise<Uint8Array>,
              manifest: AzpackManifest): Promise<void> {
@@ -27,8 +37,7 @@ export class TankAudio {
     this.buffers.clear();
     for (const s of manifest.sounds ?? []) {
       try {
-        const ac = this.ctx ?? new AudioContext();
-        this.ctx = ac;
+        const ac = this.context();
         const raw = await read(s.file);
         const buf = raw.buffer.slice(raw.byteOffset,
                                      raw.byteOffset + raw.byteLength);
@@ -44,8 +53,7 @@ export class TankAudio {
   async addWavs(records: { name: string; wav: Uint8Array }[]): Promise<void> {
     for (const r of records) {
       try {
-        const ac = this.ctx ?? new AudioContext();
-        this.ctx = ac;
+        const ac = this.context();
         const raw = r.wav;
         const buf = raw.buffer.slice(raw.byteOffset,
                                      raw.byteOffset + raw.byteLength);
@@ -70,7 +78,29 @@ export class TankAudio {
   /** Browsers gate audio behind a user gesture; call from pointerdown. */
   unlock(): void {
     if (!this.ctx) return;
-    void this.ctx.resume().then(() => this.startAmbient());
+    // Hidden, setHidden(false) resumes on return; waking the device
+    // now would undo the suspend for nothing.
+    if (!this.hidden)
+      void this.ctx.resume().then(() => this.startAmbient());
+  }
+
+  /** Suspend the audio device while the tank is hidden and resume it on
+   * return. Suspending pauses a live ambient loop in place, so resuming
+   * continues it; startAmbient only starts one when none is live (one
+   * asked for while hidden, or whose gated start was dropped). */
+  setHidden(hidden: boolean): void {
+    this.hidden = hidden;
+    const ac = this.ctx;
+    if (!ac) return;
+    if (hidden) {
+      void ac.suspend().catch(() => { /* closed context */ });
+      return;
+    }
+    void ac.resume()
+      .then(() => {
+        if (!this.hidden && this.ambientWanted) this.startAmbient();
+      })
+      .catch(() => { /* resume blocked until a user gesture */ });
   }
 
   /** Play one imported sound by name — install feedback and the only
@@ -99,6 +129,9 @@ export class TankAudio {
   private play(buf: AudioBuffer | null, gain = 0.8, loop = false,
                retry = true): AudioBufferSourceNode | null {
     if (!buf || !this.ctx) return null;
+    // Hidden: drop the sound rather than resume() the device below. A
+    // wanted ambient loop starts from setHidden(false) instead.
+    if (this.hidden) return null;
     if (this.ctx.state === "suspended" && retry) {
       const ac = this.ctx;
       const gen = this.ambientGen;

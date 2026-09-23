@@ -21,6 +21,11 @@
   inside the glass and blow bubbles from their mouths.
   The Import Add-ons preview, its list and Tank Overview show the same
   fish in its level profile, and cached previews are redrawn.
+- The tank redraws only when the fish have moved, 30 times a second,
+  instead of on every display refresh: half the drawing work on a
+  60 Hz display and a quarter on a 120 Hz one, CRT on or off. Sound
+  pauses while the tank is hidden, and a fish whose sprite fails to
+  draw becomes a placeholder fish instead of freezing the whole tank.
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview
