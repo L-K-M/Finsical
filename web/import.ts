@@ -567,8 +567,11 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   popBtn.type = "button";
   popBtn.id = "imp-show";
   showLabel.htmlFor = popBtn.id;
+  const filter = el("input", "ifilter");
+  filter.placeholder = "Filter";
+  filter.setAttribute("aria-label", "Filter the add-on list");
   const count = el("div", "icount");
-  head.append(showLabel, popBtn, count);
+  head.append(showLabel, popBtn, filter, count);
 
   const listHost = el("div", "ilist");
   const detail = el("div", "idetail");
@@ -663,6 +666,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   });
   function setShowEnabled(on: boolean): void {
     popBtn.disabled = !on;
+    filter.disabled = !on;
     showLabel.classList.toggle("osm-disabled", !on);
   }
   setShowEnabled(false);
@@ -696,8 +700,18 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   function showSection(sec: string): void {
     section = sec;
     try { localStorage.setItem(SECTION_KEY, sec); } catch { /* unavailable */ }
-    rows = all.filter((x) => x.section === sec);
-    // Drop still-pending thumbs from the previous section; in-flight
+    applyFilter();
+  }
+
+  /** Rebuild the list for the current section under the filter text —
+   * substring, case-insensitive, on the add-on's display name. The
+   * query survives a section switch so "guppy" can be tried in each. */
+  function applyFilter(): void {
+    const q = filter.value.trim().toLowerCase();
+    const pool = all.filter((x) => x.section === section);
+    rows = q ? pool.filter((x) => x.inner.toLowerCase().includes(q))
+             : pool;
+    // Drop still-pending thumbs from the previous listing; in-flight
     // fetches complete anyway and their results stay memoized.
     thumbQueue.length = 0;
     thumbQueued.clear();
@@ -709,9 +723,21 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       if (!it || it.section === "sounds") continue;
       if (io) io.observe(r); else wantThumb(it);
     }
-    count.textContent = `${rows.length} add-on${rows.length === 1 ? "" : "s"}`;
+    count.textContent = q
+      ? `${rows.length} of ${pool.length}`
+      : `${rows.length} add-on${rows.length === 1 ? "" : "s"}`;
     clearDetail();
   }
+
+  filter.addEventListener("input", applyFilter);
+  filter.addEventListener("keydown", (e) => {
+    // Escape clears the field; swallowing it keeps the panel open.
+    if (e.key === "Escape" && filter.value) {
+      filter.value = "";
+      applyFilter();
+      e.preventDefault();
+    }
+  });
 
   // ---- detail ---------------------------------------------------------------
   // The preview on show, kept to re-place it when the well resizes.

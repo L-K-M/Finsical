@@ -186,6 +186,16 @@ body.crt canvas#tank { opacity: 0; }
 }
 .ishow { font: var(--osm-font-system); margin: 1px 6px 0 0; }
 .ipop { flex: none; width: 180px; }
+/* Plain Mac-style text field: white box, 1px black rule, no chrome. */
+.ifilter {
+  flex: 0 1 130px; min-width: 48px; margin-left: 8px; height: 19px;
+  box-sizing: border-box; padding: 0 4px; border-radius: 0;
+  border: 1px solid #000; background: #fff; color: #000;
+  font: var(--osm-font-small); appearance: none;
+}
+.ifilter::placeholder { color: #888; }
+.ifilter:focus { outline: none; border-color: #000; box-shadow: 0 0 0 1px #fff, 0 0 0 2px #000; }
+.ifilter:disabled { background: #ddd; }
 .icount {
   flex: 0 1 auto; min-width: 0; margin: 3px 0 0 auto;
   white-space: nowrap; overflow: hidden;
