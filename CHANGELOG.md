@@ -12,6 +12,16 @@
   slows fish down, and a fish scared into the glass bounces off it.
   Tank Overview and Stats call a fish peckish once it would go for
   food.
+- Fish have more life of their own. Fish of one species school loosely
+  together; a hungry fish waits just under the surface for food; the
+  nearest calm fish comes over to look at the pointer; and after dark
+  fish settle on the gravel to sleep, waking at dawn, at a knock on the
+  glass, or when a hungry one spots food. In foul water they crowd just
+  under the surface, gasping, and now and then a bubble works loose
+  from the gravel.
+- Newly added fish arrive as youngsters of varying size and grow toward
+  their adult size as they eat. The tank holds up to 24 fish; past that,
+  adding one says the tank is full instead.
 - Fish look like their species. Every AquaZone fish pack carries a
   generic hatchling set alongside the adult art, and the tank drew the
   hatchlings: a clownfish, a comet and a ryukin were the same grey fry.
@@ -24,8 +34,20 @@
 - The tank redraws only when the fish have moved, 30 times a second,
   instead of on every display refresh: half the drawing work on a
   60 Hz display and a quarter on a 120 Hz one, CRT on or off. Sound
-  pauses while the tank is hidden, and a fish whose sprite fails to
-  draw becomes a placeholder fish instead of freezing the whole tank.
+  pauses while the tank is hidden, and a fish whose sprite frame is
+  missing draws as a placeholder instead of freezing the whole tank.
+- Backgrounds that aren't 16:10 are cropped to fill the tank instead of
+  being stretched, and backgrounds and gravel are scaled once when they
+  load rather than on every frame. The CRT effect renders at no more
+  than twice the display's pixel density, saving work on very dense
+  displays.
+- A damaged .azpack is turned away when it loads instead of breaking
+  the tank while it draws, and art with an oversized or malformed image
+  can no longer exhaust memory.
+- Taps near the tank's corners pick the right knock sound, long add-on
+  names end in an ellipsis instead of being cut off, a corrupt tank save
+  is repaired on load, and the tank saves when its window hides, so
+  quitting no longer loses the last few seconds.
 - Plants and accessories now play the animation their packs ship:
   plants sway, bubble plumes rise, and robots, clocks and submarines
   move, each on its own beat so two copies of a plant don't sway in
@@ -56,7 +78,10 @@
   ring at the tap, and food (or a newly installed fish) breaks the
   surface with a small splash of droplets. Both effects tick on the
   sim clock and paint as whole pixels, matching the retro bubbles.
-
+- Pointing at the top of the tank, where a click drops food, shows a
+  crosshair and a faint line marking where feeding stops.
+- The machine list in Preferences previews each case with a still of
+  a running tank instead of a blank screen.
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview
