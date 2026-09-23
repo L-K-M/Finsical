@@ -7,6 +7,8 @@ import { pitch } from "./pose.js";
 
 // States a fish may be in when it's not seeking food.
 const IDLE_STATES = ["drift", "turn"];
+const GASP_SLACK = 8; // per-fish id offset at full gasp (see sim.ts)
+const TRANSIT = 8;    // ~1 tick of upward travel while converging
 
 /** Mean distance between two fish of the given species over ticks
  * 2000-6000 (after the wander settles), from opposite corners. */
@@ -322,6 +324,39 @@ describe("Sim", () => {
       pc = { x: c.x, y: c.y }; pf = { x: f.x, y: f.y };
     }
     expect(df).toBeLessThan(dc * 0.7); // vigor 0.5 vs 1.0
+  });
+
+  it("ambient bubbles rise from the gravel on their own", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 13);
+    sim.fish.length = 0;    // isolate ambient spawning from fish-blown bubbles
+    sim.bubbles.length = 0;
+    let seen = 0;
+    for (let i = 0; i < 3000; i++) {
+      sim.tick();
+      seen = Math.max(seen, sim.bubbles.length);
+      for (const b of sim.bubbles) expect(b.y).toBeLessThan(200 - 10);
+    }
+    expect(seen).toBeGreaterThan(0); // ~12 expected at p=0.004/tick
+  });
+
+  it("fish hang near the surface when the water turns foul", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 160, y: 150 });
+    for (let i = 0; i < 1500; i++) {
+      sim.waterQuality = 0; // pinned — filtration would creep it up
+      sim.tick();
+    }
+    // Full-gasp ceiling is SURFACE + MARGIN + slack; bound by that +
+    // transit tolerance, not an id-specific pixel row.
+    expect(f.y).toBeLessThanOrEqual(SURFACE + MARGIN + GASP_SLACK + TRANSIT);
+    let maxY = 0;
+    for (let i = 0; i < 500; i++) {
+      sim.waterQuality = 0;
+      sim.tick();
+      maxY = Math.max(maxY, f.y);
+    }
+    // max over 500 ticks tolerates a few px of bob past the ceiling
+    expect(maxY).toBeLessThanOrEqual(SURFACE + MARGIN + GASP_SLACK + TRANSIT + 4);
   });
 
   it("day/night light oscillates in [0.3, 1]", () => {

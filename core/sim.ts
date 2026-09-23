@@ -115,6 +115,9 @@ export const FOOD_ROT_TICKS = 30 * 45;
 const WASTE_PER_TICK = 1 / 6000;
 /** Filtration: recovers a fouled tank over ~7 min of clean water. */
 const FILTER_PER_TICK = 1 / 12000;
+/** Below this water quality fish start gasping: wander targets pull
+ * toward the surface, all the way to just under it at quality 0. */
+const GASP_QUALITY = 0.45;
 const STARTLE_RADIUS = 48;
 /** Length of a full-strength startle; weaker ones last down to half. */
 const STARTLE_TICKS = 30;
@@ -201,6 +204,8 @@ const SPAWN_SCALE_RANGE = 0.25;
 const GROWTH = 0.06;
 const MAX_SCALE = 1;
 const BUBBLE_CHANCE = 0.004;
+/** Per tick, a bubble working loose from the gravel: one every ~8 s. */
+const AMBIENT_BUBBLE = 0.004;
 /** How far a bubble rises per tick. */
 export const BUBBLE_RISE = 0.8;
 /** One full day/night cycle in ticks (~13 min at 30 tps). */
@@ -378,6 +383,12 @@ export class Sim {
     }
     this.waterQuality =
       Math.min(1, Math.max(0, this.waterQuality + FILTER_PER_TICK));
+    // Ambient: the odd bubble works loose from the gravel.
+    if (this.rand() < AMBIENT_BUBBLE)
+      this.bubbles.push({
+        x: MARGIN + this.rand() * (this.tank.width - MARGIN * 2),
+        y: this.tank.height - BOTTOM_PAD - 2,
+      });
     for (let i = this.bubbles.length - 1; i >= 0; i--) {
       const b = this.bubbles[i]!;
       b.y -= BUBBLE_RISE;
@@ -642,8 +653,15 @@ export class Sim {
     const begging =
       f.hunger > BEG_HUNGER && this.waterQuality > QUALITY_SEEK;
     if (begging) f.bandY = Math.min(f.bandY, y0 + BAND_HALF);
-    f.ty = Math.min(
-      y1, Math.max(y0, f.bandY + (this.rand() - 0.5) * 2 * BAND_HALF));
+    // Gasping: foul water shrinks the usable depth toward the surface,
+    // so fish hang just under it until filtration recovers. A little
+    // gasp-scaled slack from the id keeps a gasping school off one
+    // exact row without re-rolling (and flickering) every decision.
+    const gasp =
+      Math.max(0, (GASP_QUALITY - this.waterQuality) / GASP_QUALITY);
+    const ceiling = y1 - gasp * (y1 - y0) + gasp * (f.id % 9);
+    f.ty = Math.min(ceiling,
+      Math.max(y0, f.bandY + (this.rand() - 0.5) * 2 * BAND_HALF));
     // Schooling: a same-species wander sometimes anchors on a
     // schoolmate's neighborhood — loose grouping, not lockstep. Starter
     // fish share species "" but take sprite sheets round-robin, so they
@@ -656,8 +674,9 @@ export class Sim {
         const m = mates[(this.rand() * mates.length) | 0]!;
         f.tx = Math.min(x1, Math.max(x0,
           m.x + (this.rand() - 0.5) * 2 * SCHOOL_RADIUS));
-        // Half the x-spread vertically — schools sit flat in a band.
-        f.ty = Math.min(y1, Math.max(y0,
+        // Half the x-spread vertically — schools sit flat in a band,
+        // under the surface while they gasp.
+        f.ty = Math.min(ceiling, Math.max(y0,
           m.y + (this.rand() - 0.5) * SCHOOL_RADIUS));
       }
     }
