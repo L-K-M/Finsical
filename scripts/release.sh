@@ -73,17 +73,23 @@ fi
 # The Info.plist is the version the shipped app reports; package.json is kept
 # in step in the same commit so npm tooling never disagrees with the app.
 # README's "Latest release" marker follows the same version so the badge
-# matches what ships.
+# matches what ships. Validate the marker before any file is rewritten so
+# a failed guard leaves the tree clean.
+if [[ ! -f "$README" ]] ||
+   ! grep -qE '<!-- version -->[0-9]+\.[0-9]+\.[0-9]+<!-- /version -->' "$README"; then
+  echo "README missing or version marker malformed: $README" >&2
+  exit 1
+fi
+
 next_build=$((current_build + 1))
 "$PLIST_BUDDY" -c "Set :CFBundleShortVersionString $version" "$INFO_PLIST"
 "$PLIST_BUDDY" -c "Set :CFBundleVersion $next_build" "$INFO_PLIST"
 npm version "$version" --no-git-tag-version --allow-same-version
-if ! grep -qE '<!-- version -->[0-9]+\.[0-9]+\.[0-9]+<!-- /version -->' "$README"; then
-  echo "README version marker missing or malformed." >&2
-  exit 1
-fi
+# Drop the sed backup on success and on any later abort (set -e / interrupt).
+trap 'rm -f "$README.bak"' EXIT
 sed -i.bak -E "s|(<!-- version -->)[0-9]+\.[0-9]+\.[0-9]+(<!-- /version -->)|\\1$version\\2|" "$README"
 rm -f "$README.bak"
+trap - EXIT
 
 "$SCRIPT_DIR/build.sh" --clean
 
