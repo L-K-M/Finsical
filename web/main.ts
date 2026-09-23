@@ -830,15 +830,17 @@ const COMPANIONS: Record<string, [string, string]> = {
 window.addEventListener("keydown", (e) => {
   // Never steal keys from a text field — the tank page has none
   // today, but a future field shouldn't fight the shortcuts. Only
-  // the app's own chord (⌘I) passes through; OS/editing chords like
-  // ⌘C/⌘V/⌘P belong to the field.
+  // the app's own chords pass through (⌘I opens Add-ons — but in a
+  // rich-text field that's italic, so even it stays with the field);
+  // OS/editing chords like ⌘C/⌘V/⌘P always belong to the field.
   const t = e.target;
   const k = e.key.toLowerCase();
+  const appChord = (e.metaKey || e.ctrlKey) && k === "i";
   if (t instanceof HTMLElement &&
       (t.isContentEditable || t.tagName === "INPUT" ||
        t.tagName === "TEXTAREA" || t.tagName === "SELECT") &&
-      !((e.metaKey || e.ctrlKey) && k === "i")) return;
-  if ((e.metaKey || e.ctrlKey) && k === "i") {
+      !(appChord && !t.isContentEditable)) return;
+  if (appChord) {
     importPanel.open(); e.preventDefault();
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" &&
              !e.repeat && !importPanel.isOpen) {
