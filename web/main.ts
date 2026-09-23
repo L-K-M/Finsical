@@ -827,9 +827,10 @@ window.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && k === "i") {
     // Native shell owns Import via the Tank menu (⌘I); opening the
     // in-page overlay here would put two import surfaces on screen.
-    // Ctrl+I on an external keyboard hits the same branch — still
-    // prefer the native window over the overlay.
-    if (inNativeShell()) return;
+    // Ctrl+I hits the same branch — still prefer the native window.
+    // Suppress the web-view default (e.g. contenteditable italic)
+    // before deferring to the shell.
+    if (inNativeShell()) { e.preventDefault(); return; }
     importPanel.open(); e.preventDefault();
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" &&
              !e.repeat && !importPanel.isOpen) {
