@@ -343,8 +343,9 @@ export class Sim {
       if (food) {
         const d = Math.max(Math.hypot(food.x - f.x, food.y - f.y), 1);
         // A big fish can't sink to a settled pellet's depth; it eats
-        // what comes within reach of its body.
-        if (d < Math.max(EAT_DIST, (f.halfH ?? 0) / 2)) {
+        // what comes within reach of its body. EDGE_KEEP matches the
+        // floor clamp in room(), so the reach always spans the gap.
+        if (d < Math.max(EAT_DIST, (f.halfH ?? 0) * EDGE_KEEP)) {
           food.eaten = true;
           f.hunger = 0;
           this.setState(f, "drift");

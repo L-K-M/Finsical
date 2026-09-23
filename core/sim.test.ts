@@ -46,15 +46,22 @@ describe("Sim", () => {
   });
 
   it("lets a big fish eat a settled pellet it can't sink to", () => {
-    const sim = new Sim({ width: 320, height: 200 }, 5);
-    sim.addFish({ x: 60, y: 120, hunger: 1, halfW: 50, halfH: 33 });
-    sim.dropFood(200);
-    let eaten = false;
-    for (let i = 0; i < 3000 && !eaten; i++) {
-      sim.tick();
-      eaten = sim.food.length === 0 && sim.fish[0]!.hunger < 0.5;
+    // A ryukin (67 tall), and a discus as tall as the height cap lets
+    // a fish get: its floor clamp sits farthest above the gravel.
+    for (const halfH of [33, 45, 60]) {
+      const sim = new Sim({ width: 320, height: 200 }, 5);
+      const f = sim.addFish({ x: 60, y: 120, hunger: 0, halfW: 50, halfH });
+      sim.dropFood(200);
+      // Sated until the pellet has settled on the gravel.
+      while (!sim.food[0]!.settled) sim.tick();
+      f.hunger = 1;
+      let eaten = false;
+      for (let i = 0; i < 3000 && !eaten; i++) {
+        sim.tick();
+        eaten = sim.food.length === 0 && sim.fish[0]!.hunger < 0.5;
+      }
+      expect(eaten, `halfH ${halfH}`).toBe(true);
     }
-    expect(eaten).toBe(true);
   });
 
   it("blows bubbles from a big fish's mouth", () => {
