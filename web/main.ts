@@ -1286,7 +1286,9 @@ window.addEventListener("keydown", (e) => {
   // handlers so the first keyboard action also starts ambient sound.
   audio.unlock();
   const k = e.key.toLowerCase();
-  if ((e.metaKey || e.ctrlKey) && k === "i") {
+  if ((e.metaKey || e.ctrlKey) && k === "i" && !inNativeShell()) {
+    // The app's Tank menu owns Cmd-I and opens the Import Add-ons
+    // window; the overlay would squeeze into the tank.
     importPanel.open(); e.preventDefault();
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" &&
              !e.repeat && !importPanel.isOpen) {
