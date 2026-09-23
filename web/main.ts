@@ -836,6 +836,8 @@ function onBusMessage(m: BusMsg): void {
   } else if (m.op === "useAddon" &&
              typeof m.url === "string" && m.url !== "") {
     useScenery(m.url);
+  } else if (m.op === "emptyTank") {
+    emptyTank();
   } else if (m.op === "wantThumbs" && Array.isArray(m.keys)) {
     serveThumbs(m.keys);
   } else if (m.op === "crtEnabled") {
@@ -948,6 +950,23 @@ function removeAddon(url: string): void {
   requestPaint(); // removed fish and decor vanish at once
 }
 
+// Bumped by Empty Tank — an install that was fetching when the wipe
+// ran discards its results instead of repopulating the emptied tank.
+let tankEpoch = 0;
+
+/** The Overview's danger button: uninstall every add-on (removes its
+ * fish, decor and scenery) then release whatever fish remain —
+ * bundled-pack or legacy fish no add-on claimed. Preferences, water
+ * and the sound bank stay; scenery leaves with its add-on, so the
+ * default gradient backdrop returns. */
+function emptyTank(): void {
+  tankEpoch++;
+  for (const a of [...installedAddons]) removeAddon(a.url);
+  for (const f of [...sim.fish]) sim.removeFish(f.id);
+  sweepThumbs();
+  saveTank(); // persists the empty roster and resyncs the panel
+}
+
 // Bus messages cross a page boundary — validate before trusting them.
 const KNOWN_SECTIONS = new Set(COLLECTIONS.map((c) => c.section));
 const installsInFlight = new Set<string>();
@@ -977,8 +996,13 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     return;
   }
   installsInFlight.add(it.url);
+  const epoch = tankEpoch;
   try {
     const rs = await fetchAddon(it.url);
+    // The tank was emptied while this pack was fetching — applying
+    // it now would repopulate the tank the user just cleared.
+    if (epoch !== tankEpoch)
+      throw new Error("cancelled — the tank was emptied mid-install");
     const usable = rs.filter(
       (r) => r.sheets.size || r.images.size || r.sounds.length);
     if (!usable.length) throw new Error("no pack inside");
@@ -1002,6 +1026,10 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
         // claim provenance over records never written.
         .then(() => { storedNames = sounds.map((s) => s.name); })
         .catch((e) => console.warn("sound install skipped:", e));
+    // Re-check after the awaits: a wipe during sound decode would
+    // otherwise record an add-on whose fish are already gone.
+    if (epoch !== tankEpoch)
+      throw new Error("cancelled — the tank was emptied mid-install");
     recordInstall(it, storedNames); // saveTank() inside pushes fresh state
     bus.post({ op: "installed", url: it.url });
   } catch (e) { fail(String(e)); }

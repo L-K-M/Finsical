@@ -32,6 +32,7 @@ const summaryEl = document.getElementById("osummary")!;
 const headsEl = document.getElementById("oheads")!;
 const listEl = document.getElementById("olist")!;
 const useBtn = document.getElementById("ouse") as HTMLButtonElement;
+const emptyBtn = document.getElementById("oempty") as HTMLButtonElement;
 const removeBtn = document.getElementById("oremove") as HTMLButtonElement;
 
 let tankBoot: string | undefined;
@@ -115,6 +116,35 @@ pushButton(removeBtn, () => {
 pushButton(useBtn, () => {
   const it = items[list.selected];
   if (it?.use) bus.post(it.use);
+});
+// The danger action: every fish and add-on leaves the tank. Kept
+// stateless — the next state push just lists an empty tank. Confirm
+// in-page: window.confirm() silently returns false in embedded
+// pages whose host never wires up the panel delegate (our WKWebView
+// shell included) — a two-click arm works everywhere.
+let emptyArmTimer = 0;
+let emptyArmedAt = 0;
+const disarmEmpty = (): void => {
+  window.clearTimeout(emptyArmTimer);
+  delete emptyBtn.dataset.armed;
+  emptyBtn.textContent = "Empty Tank…";
+};
+pushButton(emptyBtn, () => {
+  const n = (tankState?.fish ?? []).length +
+    (tankState?.addons ?? []).length;
+  if (!n) { disarmEmpty(); return; }
+  if (emptyBtn.dataset.armed !== "1") {
+    emptyBtn.dataset.armed = "1";
+    emptyBtn.textContent = "Really empty?";
+    emptyArmedAt = performance.now();
+    emptyArmTimer = window.setTimeout(disarmEmpty, 4000);
+    return;
+  }
+  // A double-click would confirm within milliseconds of arming —
+  // that's an accident, not a decision. Require a beat between.
+  if (performance.now() - emptyArmedAt < 350) return;
+  disarmEmpty();
+  bus.post({ op: "emptyTank" });
 });
 // Delete (or Command-Delete, the Finder's Move to Trash) removes the
 // selected line.
