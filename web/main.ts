@@ -75,7 +75,8 @@ if (saved) {
   // Storage is untrusted — Number.isFinite rejects NaN/Infinity, and
   // the clamp keeps the valid range (a tampered 5 would drop the night
   // overlay's alpha below zero and void the fill).
-  if (Number.isFinite(saved.lightOverride))
+  if (typeof saved.lightOverride === "number" &&
+      Number.isFinite(saved.lightOverride))
     sim.lightOverride = Math.min(1, Math.max(0, saved.lightOverride));
 }
 const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
