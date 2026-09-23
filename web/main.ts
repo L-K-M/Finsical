@@ -603,11 +603,17 @@ function removeAddon(url: string): void {
   bus.post({ op: "uninstalled", url });
 }
 
+// Bumped by Empty Tank — an install that was fetching when the wipe
+// ran discards its results instead of repopulating the emptied tank.
+let tankEpoch = 0;
+
 /** The Overview's danger button: uninstall every add-on (removes its
  * fish, decor and scenery) then release whatever fish remain —
  * bundled-pack or legacy fish no add-on claimed. Preferences, water
- * and the sound bank stay. */
+ * and the sound bank stay; scenery leaves with its add-on, so the
+ * default gradient backdrop returns. */
 function emptyTank(): void {
+  tankEpoch++;
   for (const a of [...installedAddons]) removeAddon(a.url);
   for (const f of [...sim.fish]) sim.removeFish(f.id);
   sweepThumbs();
@@ -636,8 +642,12 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     return;
   }
   installsInFlight.add(it.url);
+  const epoch = tankEpoch;
   try {
     const rs = await fetchAddon(it.url);
+    // The tank was emptied while this pack was fetching — applying
+    // it now would repopulate the tank the user just cleared.
+    if (epoch !== tankEpoch) return;
     const usable = rs.filter(
       (r) => r.sheets.size || r.images.size || r.sounds.length);
     if (!usable.length) throw new Error("no pack inside");

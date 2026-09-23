@@ -174,7 +174,8 @@ body.crt canvas#tank { opacity: 0; }
 #obar { position: relative; height: 31px; border-top: 1px solid #000; }
 #oremove { position: absolute; right: 22px; top: 5px; }
 /* Danger action sits alone on the left, away from Remove. */
-#oempty { position: absolute; left: 22px; top: 5px; }
+#oempty { position: absolute; left: 22px; top: 5px; color: #a00; }
+#oempty[data-armed] { font-weight: bold; }
 
 /* ---- the add-on browser (web/import.ts) ----------------------------------
    Laid out like the Chooser: Show: pop-up across the top, the section's

@@ -109,13 +109,28 @@ pushButton(removeBtn, () => {
   if (it) bus.post(it.remove);
 });
 // The danger action: every fish and add-on leaves the tank. Kept
-// stateless — the next state push just lists an empty tank.
+// stateless — the next state push just lists an empty tank. Confirm
+// in-page: window.confirm() silently returns false in embedded
+// pages whose host never wires up the panel delegate (our WKWebView
+// shell included) — a two-click arm works everywhere.
+let emptyArmTimer = 0;
+const disarmEmpty = (): void => {
+  window.clearTimeout(emptyArmTimer);
+  delete emptyBtn.dataset.armed;
+  emptyBtn.textContent = "Empty Tank…";
+};
 pushButton(emptyBtn, () => {
   const n = (tankState?.fish ?? []).length +
     (tankState?.addons ?? []).length;
   if (!n) return;
-  if (confirm("Release every fish and uninstall every add-on?"))
-    bus.post({ op: "emptyTank" });
+  if (emptyBtn.dataset.armed !== "1") {
+    emptyBtn.dataset.armed = "1";
+    emptyBtn.textContent = "Really empty?";
+    emptyArmTimer = window.setTimeout(disarmEmpty, 4000);
+    return;
+  }
+  disarmEmpty();
+  bus.post({ op: "emptyTank" });
 });
 // Delete (or Command-Delete, the Finder's Move to Trash) removes the
 // selected line.
