@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A fresh install now shows a small Platinum note pointing at Import
+  Add-ons until the first pack lands (dismissable once, for good), and
+  the placeholder fish is a pixel-art guppy with a wagging tail instead
+  of a few rectangles.
+
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview

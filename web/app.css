@@ -49,6 +49,35 @@ canvas#crt {
 body.crt canvas#crt { display: block; }
 body.crt canvas#tank { opacity: 0; }
 
+/* ---- first-run hint (web/main.ts) ---------------------------------------
+   A small raised Platinum note at the foot of the tank, shown until
+   the first pack lands (or the user dismisses it for good). Sits above
+   the machine art but below the overlay windows. */
+#tankhint {
+  position: fixed; left: 50%; bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 4;
+  display: flex; align-items: center; gap: 12px;
+  box-sizing: border-box;
+  max-width: min(540px, calc(100vw - 24px));
+  padding: 10px 12px;
+  background:
+    linear-gradient(#fff, #fff) 0 0 / 100% 1px no-repeat,
+    linear-gradient(#fff, #fff) 0 0 / 1px 100% no-repeat,
+    linear-gradient(#aaa, #aaa) 0 100% / 100% 1px no-repeat,
+    linear-gradient(#aaa, #aaa) 100% 0 / 1px 100% no-repeat,
+    #ddd;
+  font: var(--osm-font-small);
+}
+#tankhint[hidden] { display: none; }
+#tankhint span { flex: 1; min-width: 0; }
+#tankhint .osm-button { flex: none; margin: 0 0 0 8px; }
+#tankhintclose {
+  flex: none; margin: 0 -4px 0 0; width: 20px; height: 20px;
+  padding: 0; border: 0; background: none;
+  font: var(--osm-font-caption); color: #000; cursor: default;
+}
+
 /* ---- client windows --------------------------------------------------
    Preferences, Tank Overview, Import Add-ons and Tank Stats are Mac OS
    8 windows drawn by Osmium UI (osmium.css), each page one borderless

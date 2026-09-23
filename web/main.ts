@@ -10,6 +10,7 @@ import { fetchAddon, mountImportPanel, qualifySoundItemName,
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { sndsGet, sndsMerge } from "./store.js";
 import { imageCanvas, previewOf, soundIcon, swimCanvas } from "./render.js";
+import { placeholderFrames } from "./placeholder.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
@@ -129,6 +130,8 @@ function usePack(pack: { sheets: Map<string, SpriteSheet>;
     void audio.load(read, pack.manifest)
       .then(() => audio.startAmbient())
       .catch((e) => console.warn("audio load failed:", e));
+  // The first pack dismisses the first-run hint.
+  if (sheets[0]) syncHint();
   return sheets[0] ? fishSheets.length - 1 : -1;
 }
 
@@ -334,6 +337,7 @@ function recordInstall(it: Importable): void {
   if (!installedAddons.some((a) => a.url === it.url))
     installedAddons.push(it);
   saveTank();
+  syncHint(); // any install proves the importer was found
 }
 
 /** Imported sound records (audio file or 'snd ' fork) enter the live
@@ -366,6 +370,40 @@ const importPanel = mountImportPanel({
   },
   onInstall: recordInstall,
   preview: previewOf,
+});
+
+// ---- first-run hint -------------------------------------------------
+// A fresh install has no packs: until one lands, a small Platinum note
+// points at the importer. Dismissed by hand once, it never returns.
+const HINT_KEY = "finsical:hintDismissed";
+const hintEl = document.createElement("div");
+hintEl.id = "tankhint";
+hintEl.hidden = true;
+const hintText = document.createElement("span");
+hintText.textContent = "No fish packs yet — import the original " +
+  "Aquazone fish, free, from the Internet Archive.";
+const hintBtn = document.createElement("button");
+hintBtn.type = "button";
+hintBtn.className = "osm-button osm-default";
+hintBtn.textContent = "Import Add-ons\u2026";
+const hintClose = document.createElement("button");
+hintClose.type = "button";
+hintClose.id = "tankhintclose";
+hintClose.setAttribute("aria-label", "Dismiss the hint");
+hintClose.textContent = "\u2715";
+hintEl.append(hintText, hintBtn, hintClose);
+document.body.append(hintEl);
+function syncHint(): void {
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(HINT_KEY) === "1"; }
+  catch { /* storage unavailable — show it */ }
+  hintEl.hidden = dismissed || fishSheets.length > 0 ||
+                  installedAddons.length > 0;
+}
+pushButton(hintBtn, () => importPanel.open());
+pushButton(hintClose, () => {
+  hintEl.hidden = true;
+  try { localStorage.setItem(HINT_KEY, "1"); } catch { /* unavailable */ }
 });
 
 // ---- panel-window bus ------------------------------------------------------
@@ -897,7 +935,10 @@ void (async () => {
   }))
   .then((recs) => recs?.length ? audio.addWavs(recs).catch((e) =>
     console.warn("snd decode failed:", e)) : undefined)
-  .then(() => { remapSheetIdx(); reconcileFish(); });
+  .then(() => { remapSheetIdx(); reconcileFish(); })
+  // Whether the bundled pack loaded or not: the hint shows exactly
+  // when there is nothing to look at yet.
+  .then(() => syncHint());
 
 // Drag an .azpack folder onto the window to import it.
 async function walkEntry(ent: FileSystemEntry, prefix: string,
@@ -1030,7 +1071,8 @@ const MAX_FISH_W = TANK.width * 0.6, MAX_FISH_H = TANK.height * 0.6;
 
 function drawFish(f: Fish): void {
   const sheet = sheetOf(f);
-  if (!sheet) return drawPlaceholder(f.x, f.y, f.facing, pitch(f));
+  if (!sheet)
+    return drawPlaceholder(f.x, f.y, f.facing, animFrame(f, 2), pitch(f));
   const pose = fishPose(sheet, f);
   const cv = swimCanvas(sheet, animFrame(f, sheet.meta.framesPerGroup),
                         pose.mir, pose.g);
@@ -1043,20 +1085,18 @@ function drawFish(f: Fish): void {
   ctx.restore();
 }
 
-// Placeholder sprite until real Aquazone assets are imported.
+// Placeholder sprite until real Aquazone assets are imported — a
+// pixel guppy (web/placeholder.ts) whose tail wags on the same clock
+// as the real fish.
 function drawPlaceholder(x: number, y: number, facing: number,
-                         dev = 0): void {
+                         frame: number, dev = 0): void {
+  const cv = placeholderFrames()[frame]!;
   ctx.save();
   ctx.translate(Math.round(x), Math.round(y));
   ctx.scale(-facing, 1);
   // In the mirrored draw space the pitch angle flips sign.
   ctx.rotate(-facing * dev);
-  ctx.fillStyle = "#e8a33d";
-  ctx.fillRect(-8, -4, 14, 8);   // body
-  ctx.fillRect(6, -6, 6, 12);    // tail
-  ctx.fillRect(-2, -7, 6, 3);    // dorsal
-  ctx.fillStyle = "#1a1a2e";
-  ctx.fillRect(-6, -2, 2, 2);    // eye
+  ctx.drawImage(cv, -cv.width / 2, -cv.height / 2);
   ctx.restore();
 }
 
