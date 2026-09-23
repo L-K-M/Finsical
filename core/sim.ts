@@ -196,9 +196,10 @@ export class Sim {
     }
   }
 
-  /** 0.3 = night, 1 = full daylight. Cosine over the full cycle: night
-   * floor holds near midnight (t≈0 and t≈1) for a real stretch, not a
-   * single tick — half-wave sine only grazed 0.3 at the endpoints. */
+  /** 0.3 = night, 1 = full daylight. Full-cycle cosine: exact 0.3 only at
+   * the midnight tick (t=0), exact 1 at noon (t=0.5). ~36% of ticks fall
+   * below the 0.5 day/night split — the old half-wave sine spent ~18%
+   * below it and left the floor at maximum slope. */
   get light(): number {
     const t = (this.tickCount % DAY_TICKS) / DAY_TICKS;
     return 0.3 + 0.7 * (0.5 - 0.5 * Math.cos(t * Math.PI * 2));
