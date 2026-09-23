@@ -1,9 +1,8 @@
 import { openBus } from "./bus.js";
 import { COLUMNS, itemsOf, sortItems, summary } from "./overviewmodel.js";
 import type { Column, Item, TankState } from "./overviewmodel.js";
-import { centerText, mountList, pushButton } from "./platinum/controls.js";
-import type { ListScroll } from "./platinum/controls.js";
-import { hostWindow } from "./winhost.js";
+import { centerText, hostWindow, mountList, pushButton } from "osmium-ui";
+import type { ListScroll } from "osmium-ui";
 
 // Tank Overview: what's in the tank, as a Mac OS 8 Finder list view —
 // a header placard, sortable Name / Kind / Status columns, and a strip
@@ -57,7 +56,7 @@ const bus = openBus((m) => {
   }
 });
 
-hostWindow(document.getElementById("owin")!, bus, {
+hostWindow(document.getElementById("owin")!, {
   title: "Tank Overview",
   zoom: { standard: { w: 520, h: 380 } },
   grow: { min: { w: 360, h: 200 } },
@@ -68,7 +67,7 @@ centerText(summaryEl);
 let sortBy: Column = "name"; // the Finder's default
 const heads = new Map<Column, HTMLButtonElement>();
 for (const c of COLUMNS) {
-  const h = el("button", `pt-colhead ohead-${c.id}`, c.title) as
+  const h = el("button", `osm-colhead ohead-${c.id}`, c.title) as
     HTMLButtonElement;
   h.type = "button";
   h.addEventListener("click", () => {
@@ -83,7 +82,7 @@ for (const c of COLUMNS) {
 }
 function syncHeads(): void {
   for (const [id, h] of heads) {
-    h.classList.toggle("pt-sorted", id === sortBy);
+    h.classList.toggle("osm-sorted", id === sortBy);
     h.setAttribute("aria-pressed", String(id === sortBy));
     h.setAttribute("aria-label", `Sort by ${h.textContent}`);
   }

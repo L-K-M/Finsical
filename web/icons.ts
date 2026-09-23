@@ -1,7 +1,15 @@
 // Pane icons for the Preferences window, 32 x 32. Original artwork in
 // the spirit of Mac OS 8 control panel icons (drawn for Finsical, not
 // copied): a compact Mac with a fish tank on screen, a tube monitor
-// showing scanlines, and a brightness/contrast disc.
+// showing scanlines, and a brightness/contrast disc. Registered as
+// Osmium sprites (--osm-sprite-icon-*) by prefs.ts.
+import type { Palette } from "osmium-ui";
+
+/** Icon colors beyond Osmium's built-in grays and lavender ramp, from
+ * the Mac's standard 256-color palette. */
+export const ICON_PALETTE: Palette = {
+  y: "#ffcc00", o: "#ff9900", t: "#339999", u: "#66cccc",
+};
 
 const ICON_MACHINE = [
   "................................",

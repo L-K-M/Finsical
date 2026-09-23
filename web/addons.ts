@@ -3,7 +3,7 @@ import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { mountImportPanel } from "./import.js";
 import { previewOf } from "./render.js";
 import { sndsMerge } from "./store.js";
-import { hostWindow } from "./winhost.js";
+import { hostWindow } from "osmium-ui";
 
 // Import Add-ons window: the archive.org add-on browser. The tank page
 // owns the sim — this page sends install intents and renders the acks
@@ -18,7 +18,7 @@ const bus = openBus((m) => {
 });
 
 const win = document.getElementById("awin")!;
-hostWindow(win, bus, {
+hostWindow(win, {
   title: "Import Add-ons",
   zoom: { standard: { w: 620, h: 440 } },
   grow: { min: { w: 440, h: 300 } },
@@ -30,7 +30,7 @@ const panel = mountImportPanel({
   onSheets: () => {},
   onImages: () => {},
   preview: previewOf,
-}, { host: win.querySelector<HTMLElement>(".pt-content")!, remote: bus });
+}, { host: win.querySelector<HTMLElement>(".osm-content")!, remote: bus });
 panel.open();
 
 // Sound files dropped on the window: decoded/encoded bytes persist to

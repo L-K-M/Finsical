@@ -1,30 +1,30 @@
 <!doctype html>
-<html lang="en" class="ptroot">
+<html lang="en" class="osm-page">
 <head>
   <meta charset="utf-8" />
   <title>Preferences</title>
-  <link rel="stylesheet" href="platinum.css" />
+  <link rel="stylesheet" href="osmium.css" />
   <link rel="stylesheet" href="app.css" />
 </head>
-<body class="ptpage">
+<body>
   <!-- A Mac OS 8 control panel: pane buttons down the left (Desktop
        Pictures style), the chosen pane on the right, and a caption
        area along the bottom explaining whatever the pointer is on.
        prefs.ts fills in the controls. -->
-  <div id="pwin" class="pt-page-window">
-    <div class="pt-content">
+  <div id="pwin" class="osm-page-window">
+    <div class="osm-content">
       <div id="pfstrip" role="tablist" aria-orientation="vertical"
            aria-label="Settings"></div>
       <div id="pfpanes">
         <section id="pane-machine" class="pfpane" role="tabpanel">
           <div id="pfmachines"></div>
-          <div id="pfpreview" class="pt-well" aria-hidden="true"></div>
+          <div id="pfpreview" class="osm-well" aria-hidden="true"></div>
         </section>
         <section id="pane-monitor" class="pfpane" role="tabpanel" hidden>
-          <label class="pt-checkbox" id="pfcrt">
+          <label class="osm-checkbox" id="pfcrt">
             <input type="checkbox" id="crt-on" />Simulate a CRT monitor
           </label>
-          <div class="pt-caption" id="crt-warn" hidden>This Mac can't show
+          <div class="osm-caption" id="crt-warn" hidden>This Mac can't show
             the effect (WebGL is unavailable or the graphics context was
             lost). Settings are kept for later.</div>
           <div id="pftraits"></div>
@@ -33,9 +33,9 @@
           <div id="pfpicture"></div>
         </section>
         <div id="pffoot">
-          <div class="pt-separator"></div>
+          <div class="osm-separator"></div>
           <div id="pfdesc" aria-live="polite"></div>
-          <button type="button" class="pt-button" id="pfdefaults">Defaults</button>
+          <button type="button" class="osm-button" id="pfdefaults">Defaults</button>
         </div>
       </div>
     </div>

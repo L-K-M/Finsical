@@ -8,12 +8,15 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "esbuild web/main.ts --bundle --format=iife --outfile=dist/bundle.js && esbuild web/overview.ts --bundle --format=iife --outfile=dist/overview.js && esbuild web/addons.ts --bundle --format=iife --outfile=dist/addons.js && esbuild web/prefs.ts --bundle --format=iife --outfile=dist/prefs.js && esbuild web/stats.ts --bundle --format=iife --outfile=dist/stats.js && node -e \"const f=require('fs');f.mkdirSync('dist',{recursive:true});for(const s of['index.html','overview.html','addons.html','prefs.html','stats.html','app.css','platinum.css'])f.copyFileSync('web/'+s,'dist/'+s)\"",
-    "dev": "trap 'kill 0' INT TERM; esbuild web/overview.ts --bundle --format=iife --outfile=web/overview.js --watch & esbuild web/addons.ts --bundle --format=iife --outfile=web/addons.js --watch & esbuild web/prefs.ts --bundle --format=iife --outfile=web/prefs.js --watch & esbuild web/stats.ts --bundle --format=iife --outfile=web/stats.js --watch & esbuild web/main.ts --bundle --format=iife --outfile=web/bundle.js --servedir=web --serve=8080 --watch & wait"
+    "build": "esbuild web/main.ts --bundle --format=iife --outfile=dist/bundle.js && esbuild web/overview.ts --bundle --format=iife --outfile=dist/overview.js && esbuild web/addons.ts --bundle --format=iife --outfile=dist/addons.js && esbuild web/prefs.ts --bundle --format=iife --outfile=dist/prefs.js && esbuild web/stats.ts --bundle --format=iife --outfile=dist/stats.js && node -e \"const f=require('fs');f.mkdirSync('dist',{recursive:true});for(const s of['index.html','overview.html','addons.html','prefs.html','stats.html','app.css'])f.copyFileSync('web/'+s,'dist/'+s);f.copyFileSync('node_modules/osmium-ui/osmium.css','dist/osmium.css')\"",
+    "dev": "cp node_modules/osmium-ui/osmium.css web/osmium.css && trap 'kill 0' INT TERM; esbuild web/overview.ts --bundle --format=iife --outfile=web/overview.js --watch & esbuild web/addons.ts --bundle --format=iife --outfile=web/addons.js --watch & esbuild web/prefs.ts --bundle --format=iife --outfile=web/prefs.js --watch & esbuild web/stats.ts --bundle --format=iife --outfile=web/stats.js --watch & esbuild web/main.ts --bundle --format=iife --outfile=web/bundle.js --servedir=web --serve=8080 --watch & wait"
   },
   "devDependencies": {
     "esbuild": "0.24.2",
     "typescript": "5.6.3",
     "vitest": "2.1.9"
+  },
+  "dependencies": {
+    "osmium-ui": "file:../osmium-ui"
   }
 }

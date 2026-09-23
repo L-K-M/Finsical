@@ -2,9 +2,9 @@ import { openBus } from "./bus.js";
 import { CRT_DEFAULTS, sanitizeCrtConfig } from "./crt.js";
 import { MACHINES, shellMarkup } from "./machines.js";
 import type { CrtConfig } from "./crt.js";
-import { centerText, mountList, pushButton, setEnabled, trackHighlight,
-         trackPress } from "./platinum/controls.js";
-import { hostWindow } from "./winhost.js";
+import { centerText, hostWindow, mountList, pushButton, registerSprites,
+         setEnabled, trackHighlight, trackPress } from "osmium-ui";
+import { ICON_PALETTE, ICON_SPRITES } from "./icons.js";
 
 // Preferences window: a Mac OS 8 control panel with three panes —
 // the machine case, the CRT tube effect, and the monitor's picture
@@ -188,7 +188,8 @@ const bus = openBus((m) => {
   syncControls();
 });
 
-hostWindow(document.getElementById("pwin")!, bus, { title: "Preferences" });
+registerSprites(ICON_SPRITES, ICON_PALETTE);
+hostWindow(document.getElementById("pwin")!, { title: "Preferences" });
 
 // ---- the caption area -------------------------------------------------
 // Explains whatever the pointer (or keyboard focus) is on, the way
@@ -201,7 +202,7 @@ function describe(spec: SliderSpec | null): void {
   if (pane === "machine") {
     const m = MACHINES.find((x) => x.id === machineSel);
     if (m) {
-      descEl.append(el("span", "pt-label", m.name), ` — ${m.blurb}`);
+      descEl.append(el("span", "osm-label", m.name), ` — ${m.blurb}`);
       return;
     }
   }
@@ -210,7 +211,7 @@ function describe(spec: SliderSpec | null): void {
     descEl.textContent = !onBox.checked && p.offHint ? p.offHint : p.hint;
     return;
   }
-  descEl.append(el("span", "pt-label",
+  descEl.append(el("span", "osm-label",
                    `${spec.label}: ${(spec.fmt ?? pct)(cfg[spec.key])}`),
                 ` — ${spec.blurb}`);
 }
@@ -223,7 +224,7 @@ function showPane(id: PaneId, focus = false): void {
   for (const p of PANES) {
     const tab = paneTabs.get(p.id)!;
     const on = p.id === id;
-    tab.classList.toggle("pt-selected", on);
+    tab.classList.toggle("osm-selected", on);
     tab.setAttribute("aria-selected", String(on));
     tab.tabIndex = on ? 0 : -1;
     document.getElementById(`pane-${p.id}`)!.hidden = !on;
@@ -237,13 +238,13 @@ function showPane(id: PaneId, focus = false): void {
 }
 for (const p of PANES) {
   const item = el("div", "pfpanebtn");
-  const tab = el("button", "pt-bevel") as HTMLButtonElement;
+  const tab = el("button", "osm-bevel") as HTMLButtonElement;
   tab.type = "button";
   tab.id = `tab-${p.id}`;
   tab.setAttribute("role", "tab");
   tab.setAttribute("aria-controls", `pane-${p.id}`);
-  tab.style.setProperty("--pt-icon", `var(--pt-sprite-${p.icon})`);
-  const cap = el("span", "pt-bevel-caption", p.label);
+  tab.style.setProperty("--osm-icon", `var(--osm-sprite-${p.icon})`);
+  const cap = el("span", "osm-bevel-caption", p.label);
   cap.id = `tabcap-${p.id}`;
   tab.setAttribute("aria-labelledby", cap.id);
   item.append(tab, cap);
@@ -330,15 +331,15 @@ function queueConfigPost(key: keyof CrtConfig): void {
 function slider(spec: SliderSpec): HTMLElement {
   const unit = el("div", "pfslider");
   const id = `sl-${spec.key}`;
-  const label = el("label", "pt-caption pflabel", spec.label);
+  const label = el("label", "osm-caption pflabel", spec.label);
   label.setAttribute("for", id);
-  const track = el("div", "pt-slider");
+  const track = el("div", "osm-slider");
   const input = document.createElement("input");
   input.type = "range";
   input.id = id;
   input.min = "0"; input.max = "100"; input.step = "1";
   track.appendChild(input);
-  const ends = el("div", "pt-caption pfends");
+  const ends = el("div", "osm-caption pfends");
   ends.setAttribute("aria-hidden", "true");
   ends.append(el("span", "", spec.ends[0]), el("span", "", spec.ends[1]));
   unit.append(label, track, ends);
@@ -380,8 +381,8 @@ function slider(spec: SliderSpec): HTMLElement {
 
 function addGroups(groups: Group[], host: HTMLElement): void {
   for (const g of groups) {
-    const box = el("div", "pt-group pfgroup");
-    box.appendChild(el("div", "pt-group-title", g.title));
+    const box = el("div", "osm-group pfgroup");
+    box.appendChild(el("div", "osm-group-title", g.title));
     box.setAttribute("role", "group");
     box.setAttribute("aria-label", g.title);
     for (const row of g.rows) {

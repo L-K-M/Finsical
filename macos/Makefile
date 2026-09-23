@@ -2,17 +2,20 @@
 APP := Finsical.app
 ICON_SRC := ../media-sources/icon-finsical.png
 ICONSET := Finsical.iconset
+# Osmium UI (npm dependency): the stylesheet and the native window host.
+OSMIUM := ../node_modules/osmium-ui
+SOURCES := Finsical.swift $(OSMIUM)/macos/OsmiumWindows.swift
 
 all: $(APP)
 
-$(APP): bundle Finsical.swift Info.plist Finsical.icns
+$(APP): bundle $(SOURCES) Info.plist Finsical.icns
 	rm -rf $(APP).staging
 	mkdir -p $(APP).staging/Contents/MacOS $(APP).staging/Contents/Resources/web
 	cp Info.plist $(APP).staging/Contents/
 	cp Finsical.icns $(APP).staging/Contents/Resources/
 	cp ../web/index.html ../web/overview.html ../web/addons.html \
 	   ../web/prefs.html ../web/stats.html ../web/app.css \
-	   ../web/platinum.css \
+	   $(OSMIUM)/osmium.css \
 	   ../dist/bundle.js ../dist/overview.js ../dist/addons.js \
 	   ../dist/prefs.js ../dist/stats.js \
 	   $(APP).staging/Contents/Resources/web/
@@ -20,7 +23,7 @@ $(APP): bundle Finsical.swift Info.plist Finsical.icns
 	# assets is required — the Plus machine's shell lives there; fail
 	# the build rather than ship an empty silhouette.
 	cp -r ../web/assets $(APP).staging/Contents/Resources/web/
-	MACOSX_DEPLOYMENT_TARGET=12.0 swiftc -O -o $(APP).staging/Contents/MacOS/Finsical Finsical.swift
+	MACOSX_DEPLOYMENT_TARGET=12.0 swiftc -O -o $(APP).staging/Contents/MacOS/Finsical $(SOURCES)
 	rm -rf $(APP) && mv $(APP).staging $(APP)
 	codesign --force --sign - $(APP)
 	@echo "Built $(APP)"

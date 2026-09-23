@@ -1,13 +1,13 @@
 import { openBus } from "./bus.js";
-import { hostWindow } from "./winhost.js";
+import { hostWindow } from "osmium-ui";
 import { deriveStats, hungerLabel, trend, uptime } from "./statsmodel.js";
 import type { BusMsg } from "./bus.js";
 import type { StatsInput, TankStats } from "./statsmodel.js";
 
 // Tank Stats — an optional secondary window drawn as a Mac OS 8
-// document window (web/platinum/) and laid out like a Get Info
-// window: bold labels on a shared right edge, values after them,
-// Platinum progress bars for the two levels, care hints below.
+// document window (Osmium UI) and laid out like a Get Info window:
+// bold labels on a shared right edge, values after them, progress
+// bars for the two levels, care hints below.
 // The tank page owns the sim; this page renders the `state` payloads
 // it pushes (same contract as the other client windows). The window
 // chrome goes through winhost.ts.
@@ -23,9 +23,9 @@ function el(tag: string, cls = "", text = ""): HTMLElement {
   return e;
 }
 
-/** One label/value pair of the .pt-fields grid. */
+/** One label/value pair of the .osm-fields grid. */
 function field(label: string, value: HTMLElement): void {
-  rowsEl.append(el("span", "pt-label", `${label}:`), value);
+  rowsEl.append(el("span", "osm-label", `${label}:`), value);
 }
 function text(value: string): HTMLElement {
   return el("span", "sval", value);
@@ -35,12 +35,12 @@ function text(value: string): HTMLElement {
 function meter(frac: number | null, pct: string,
                arrow: string): HTMLElement {
   const cell = el("span", "smeter");
-  const bar = el("div", "pt-progress");
+  const bar = el("div", "osm-progress");
   bar.setAttribute("aria-hidden", "true");
-  bar.style.setProperty("--pt-value",
+  bar.style.setProperty("--osm-value",
                         String(Math.min(1, Math.max(0, frac ?? 0))));
-  const track = el("div", "pt-progress-track");
-  track.appendChild(el("div", "pt-progress-fill"));
+  const track = el("div", "osm-progress-track");
+  track.appendChild(el("div", "osm-progress-fill"));
   bar.appendChild(track);
   cell.append(bar, el("span", "spct", pct), el("span", "strend", arrow));
   return cell;
@@ -85,7 +85,7 @@ function render(st: TankStats): void {
   field("Tank age", text(uptime(st.uptimeMin)));
 
   careEl.textContent = "";
-  careEl.appendChild(el("div", "pt-label scarehead", "Care:"));
+  careEl.appendChild(el("div", "osm-label scarehead", "Care:"));
   for (const a of st.advice) careEl.appendChild(el("div", "scareline", a));
 }
 
@@ -109,7 +109,7 @@ const bus = openBus((m: BusMsg) => {
 // ---- window chrome -------------------------------------------------------
 // Zoom toggles to the standard size; the grow box keeps every field
 // and two care hints visible (the window clips rather than scrolls).
-hostWindow(win, bus, {
+hostWindow(win, {
   title: "Tank Stats",
   zoom: { standard: { w: 400, h: 360 } },
   grow: { min: { w: 300, h: 60 } },

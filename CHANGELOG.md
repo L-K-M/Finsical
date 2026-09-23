@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The Mac OS 8 look now comes from Osmium UI
+  (https://github.com/L-K-M/osmium-ui), a separate library extracted
+  from Finsical: the stylesheet, windows, controls, bitmap fonts and
+  the native window host. Every window looks and behaves as before.
 - Every window is now Mac OS 8 Platinum, laid out the way Mac OS 8
   would: Preferences is a control panel with Machine, Monitor and
   Picture panes (a case list with a preview, Keyboard-style sliders in
