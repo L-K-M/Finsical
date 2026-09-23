@@ -668,13 +668,14 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     if (!ok) queuedAgain.delete(it.url);
     // Replays already passed validation and skip the dedupe guard,
     // so each drained call reaches its own finally and shifts the
-    // next click. Loop anyway: if an early return ever stranded the
-    // rest of the queue, this picks up where it stopped.
+    // next click. remoteInstall claims the in-flight slot
+    // synchronously (no await before installsInFlight.add), so a
+    // held slot right after the call means the replay took over the
+    // chain — stop draining. An early-returned replay leaves the
+    // slot free; the loop picks up where it stopped.
     let next = queuedAgain.get(it.url)?.shift();
     while (next) {
-      await remoteInstall(next, true);
-      // The inner call's finally drained and chained the next item —
-      // it owns the in-flight slot now, so this loop is done.
+      void remoteInstall(next, true).catch(() => {});
       if (installsInFlight.has(it.url)) break;
       next = queuedAgain.get(it.url)?.shift();
     }
