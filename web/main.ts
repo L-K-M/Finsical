@@ -31,6 +31,14 @@ const canvas = document.getElementById("tank") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 ctx.imageSmoothingEnabled = false;
 
+// The loop only draws after a sim tick; requestPaint() asks for one draw
+// without a tick, for changes the sim doesn't make (feeding, taps,
+// installs, removals, settings) so they show at once even while no
+// tick runs. Declared first: module-level setup (setCrt, lighting)
+// already requests paints while the module evaluates.
+let frameDirty = true;
+function requestPaint(): void { frameDirty = true; }
+
 // ---- persistence ---------------------------------------------------------
 // Tank state (fish, water, installed add-ons) survives restarts via
 // localStorage. Add-ons are re-imported on launch — archives are
@@ -118,6 +126,7 @@ canvas.addEventListener("pointerdown", (e) => {
   audio.unlock();
   if (y < TANK.height * 0.15) { sim.dropFood(x); audio.feed(); }
   else { sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height); }
+  requestPaint();
 });
 
 // ---- sprite loading ----------------------------------------------------
@@ -160,6 +169,7 @@ function spawnFish(sheetIdx: number, species: string, pack?: string): void {
   });
   bindExtents(f);
   saveTank();
+  requestPaint();
 }
 
 // Biggest pack image large enough to matter becomes the tank backdrop —
@@ -309,6 +319,7 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
     if (live) { spawnFish(idx, name, url); audio.splash(); }
   }
   console.info(`archive.org: imported ${section} ${name}`);
+  requestPaint(); // restores can rebind existing fish to new art
   if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
 }
 
@@ -372,6 +383,7 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
     pickBackdrop(images, src);
   else return;
   console.info(`archive.org: imported scenery ${src}`);
+  requestPaint();
   if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
 }
 function recordInstall(it: Importable): void {
@@ -649,6 +661,7 @@ function removeAddon(url: string): void {
   sweepThumbs();
   saveTank(); // persists and pushes fresh state to the panel
   bus.post({ op: "uninstalled", url });
+  requestPaint(); // removed fish and decor vanish at once
 }
 
 // Bus messages cross a page boundary — validate before trusting them.
@@ -706,10 +719,6 @@ const CRT_KEY = "finsical:crt";
 const CRT_CFG_KEY = "finsical:crt-cfg";
 const crt = initCrt(canvas);
 let crtOn = false;
-// The loop only draws after a sim tick; this asks for one draw without
-// a tick, for changes the sim doesn't know about. Declared here, not by
-// frame(): setCrt runs during module evaluation (see MACHINE_KEY below).
-let frameDirty = true;
 let crtCfg: CrtConfig;
 try {
   crtCfg = sanitizeCrtConfig(
@@ -721,7 +730,7 @@ function setCrt(on: boolean): void {
   crt?.setEnabled(crtOn);
   // Enabling sizes the WebGL buffer, which clears it: redraw now
   // rather than show black until the next tick.
-  if (crtOn) frameDirty = true;
+  if (crtOn) requestPaint();
   if (crt !== null) {
     try { localStorage.setItem(CRT_KEY, crtOn ? "1" : "0"); }
     catch { /* storage unavailable */ }
@@ -740,7 +749,7 @@ function applyCrtConfig(raw: unknown): void {
       if (v !== undefined) merged[k] = v;
   crtCfg = sanitizeCrtConfig(merged);
   crt?.configure(crtCfg);
-  frameDirty = true; // slider drags show up at once
+  requestPaint(); // slider drags show up at once
   try { localStorage.setItem(CRT_CFG_KEY, JSON.stringify(crtCfg)); }
   catch { /* storage unavailable */ }
   postState();
@@ -852,6 +861,7 @@ postState();
 function feedFish(): void {
   sim.dropFood(TANK.width / 2);
   audio.feed();
+  requestPaint();
 }
 (window as unknown as { finsical?: unknown }).finsical =
   { openImport: () => importPanel.open(), feedFish,
@@ -1118,8 +1128,8 @@ function drawFish(f: Fish): void {
                     pose.mir, pose.g, sheetScale(sheet));
   } catch (e) {
     if (!(e instanceof RangeError)) throw e;
-    // A truncated pack can legitimately lack this cell — an uncaught
-    // RangeError here would kill the whole rAF loop, so fall back.
+    // A truncated pack can legitimately lack this cell; an uncaught
+    // RangeError here would abort the rest of every frame, so fall back.
     return drawPlaceholder(f.x, f.y, f.facing, pitch(f));
   }
   ctx.save();
@@ -1241,5 +1251,5 @@ function frame(now: number): void {
 }
 // A resize changes the CRT buffer size, and resizing a WebGL canvas
 // clears it: draw on the next frame instead of waiting for a tick.
-window.addEventListener("resize", () => { frameDirty = true; });
+window.addEventListener("resize", requestPaint);
 requestAnimationFrame(frame);
