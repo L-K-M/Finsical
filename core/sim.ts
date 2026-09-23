@@ -175,7 +175,8 @@ export class Sim {
     else if (!Number.isFinite(f.scale) || f.scale <= 0)
       f.scale = 1; // 0/NaN/negative from a bad save mustn't render invisible
     else
-      f.scale = Math.min(f.scale, MAX_SCALE); // oversized saves shouldn't dwarf the tank
+      // Bad saves shouldn't render invisible or dwarf the tank.
+      f.scale = Math.min(Math.max(f.scale, SPAWN_SCALE_MIN), MAX_SCALE);
     this.fish.push(f);
     return f;
   }

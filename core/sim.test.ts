@@ -358,6 +358,7 @@ describe("Sim", () => {
     expect(sim.addFish({ x: 50, y: 50, scale: NaN }).scale).toBe(1);
     expect(sim.addFish({ x: 50, y: 50, scale: Infinity }).scale).toBe(1);
     expect(sim.addFish({ x: 50, y: 50, scale: 9 }).scale).toBe(1.35);
+    expect(sim.addFish({ x: 50, y: 50, scale: 1e-9 }).scale).toBe(0.78);
   });
 
   it("grows toward adult size as it eats, never past the cap", () => {
