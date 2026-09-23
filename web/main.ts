@@ -10,6 +10,7 @@ import { fetchAddon, mountImportPanel, qualifySoundItemName,
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { sndsGet, sndsMerge } from "./store.js";
 import { imageCanvas, previewOf, soundIcon, swimCanvas } from "./render.js";
+import { FEED_ZONE, isFeedZoneY } from "./feedzone.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
@@ -97,18 +98,39 @@ window.addEventListener("pagehide", saveTank);
 setInterval(saveTank, 10_000);
 
 // Click near the surface drops food; deeper clicks knock on the glass.
-canvas.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0) return; // ignore right/middle clicks
-  // object-fit: contain letterboxes the bitmap inside the element box.
+// object-fit: contain letterboxes the bitmap inside the element box.
+function tankPoint(e: PointerEvent): { x: number; y: number } | null {
   const r = canvas.getBoundingClientRect();
   const s = Math.min(r.width / TANK.width, r.height / TANK.height);
   const x = (e.clientX - r.left - (r.width - TANK.width * s) / 2) / s;
   const y = (e.clientY - r.top - (r.height - TANK.height * s) / 2) / s;
-  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return; // letterbox bar
+  if (!Number.isFinite(x) || !Number.isFinite(y) ||
+      x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return null;
+  return { x, y };
+}
+
+// Feed-zone affordance: a crosshair over the strip, and a brighter
+// boundary line while the pointer is parked there (see render()).
+let overFeedZone = false;
+function setFeedHover(on: boolean): void {
+  if (on === overFeedZone) return;
+  overFeedZone = on;
+  canvas.style.cursor = on ? "crosshair" : "";
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return; // ignore right/middle clicks
+  const p = tankPoint(e);
+  if (!p) return; // letterbox bar
   audio.unlock();
-  if (y < TANK.height * 0.15) { sim.dropFood(x); audio.feed(); }
-  else { sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height); }
+  if (isFeedZoneY(p.y, TANK.height)) { sim.dropFood(p.x); audio.feed(); }
+  else { sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height); }
 });
+canvas.addEventListener("pointermove", (e) => {
+  const p = tankPoint(e);
+  setFeedHover(p !== null && isFeedZoneY(p.y, TANK.height));
+});
+canvas.addEventListener("pointerleave", () => setFeedHover(false));
 
 // ---- sprite loading ----------------------------------------------------
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
@@ -1121,6 +1143,14 @@ function render(): void {
     ctx.fillStyle = `rgba(4,8,24,${(dark * 0.55).toFixed(3)})`;
     ctx.fillRect(0, 0, TANK.width, TANK.height);
   }
+
+  // Feed-zone boundary: after the night/murk overlays so the affordance
+  // stays visible. Faint at rest; brightens while the pointer is there.
+  const zoneY = Math.round(TANK.height * FEED_ZONE);
+  ctx.fillStyle = overFeedZone
+    ? "rgba(255,255,255,0.45)"
+    : "rgba(255,255,255,0.14)";
+  ctx.fillRect(0, zoneY, TANK.width, 1);
 }
 
 // Fixed-step sim; render on rAF.
