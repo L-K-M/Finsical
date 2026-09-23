@@ -193,7 +193,7 @@ function checkSheetMeta(s: SpriteSheetMeta, img: IndexedImage, file: string): vo
       !Number.isInteger(cellH) || cellH < 1) throw bad("bad cell size");
   if (!Array.isArray(dims) || dims.length < 1 ||
       dims.length > groups * framesPerGroup)
-    throw bad("dims length mismatch");
+    throw bad(`dims length ${Array.isArray(dims) ? dims.length : "not an array"} not in 1..${groups * framesPerGroup}`);
   for (let i = 0; i < dims.length; i++) {
     const d = dims[i];
     if (!Array.isArray(d) || d.length !== 4 ||

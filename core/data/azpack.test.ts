@@ -197,6 +197,7 @@ describe("loadAzpack", () => {
     ["an extra frame", { dims: [...meta.dims, [2, 0, 1, 1]] }],
     ["an invalid frame record", { dims: [null, ...meta.dims.slice(1)] }],
     ["out-of-order frame coordinates", { dims: [[0, 1, 1, 1], ...meta.dims.slice(1)] }],
+    ["an interior gap in the frame table", { dims: [meta.dims[0], meta.dims[1], meta.dims[3]] }],
     ["an empty frame", { dims: [[0, 0, 0, 1], ...meta.dims.slice(1)] }],
     ["a fractional frame width", { dims: [[0, 0, 0.5, 1], ...meta.dims.slice(1)] }],
     ["a frame wider than its cell", { dims: [[0, 0, 2, 1], ...meta.dims.slice(1)] }],
