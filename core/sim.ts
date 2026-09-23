@@ -91,7 +91,7 @@ const WASTE_PER_TICK = 1 / 6000;
 /** Filtration: recovers a fouled tank over ~7 min of clean water. */
 const FILTER_PER_TICK = 1 / 12000;
 /** Below this fish lose their appetite and stop seeking food. */
-const QUALITY_SEEK = 0.3;
+export const QUALITY_SEEK = 0.3;
 const STARTLE_RADIUS = 48;
 const STARTLE_TICKS = 30;
 /** Reactions weaker than this read as frozen fish — trims the
@@ -298,6 +298,10 @@ export class Sim {
         // The pellet was eaten, rotted, or the water turned foul —
         // stop looking; the fish drifts on to its next wander target.
         this.setState(f, "drift");
+        // Saturate the phase so the wander repick below fires this
+        // tick — otherwise the fish keeps steering at the dead
+        // pellet's coordinates until the old phase expires.
+        f.phase = MOVE_TICKS;
       }
       let dist = Math.hypot(f.tx - f.x, f.ty - f.y);
       if (!food && (f.phase >= MOVE_TICKS || dist < 4)) {

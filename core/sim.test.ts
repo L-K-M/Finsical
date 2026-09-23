@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DAY_TICKS, FOOD_ROT_TICKS, Sim, TURN_TICKS } from "./sim.js";
+import { DAY_TICKS, FOOD_ROT_TICKS, QUALITY_SEEK, Sim, TURN_TICKS }
+  from "./sim.js";
 
 // States a fish may be in when it's not seeking food.
 const IDLE_STATES = ["drift", "turn"];
@@ -302,7 +303,10 @@ describe("Sim", () => {
     sim.food[0]!.eaten = true;
     sim.tick();
     expect(sim.food.length).toBe(0);
-    expect(f.state).not.toBe("seek"); // not still "Looking for food"
+    expect(f.state).toBe("drift"); // back to wandering, not seeking
+    // The repick fires the same tick — the fish is not still aiming
+    // at the dead pellet's coordinates.
+    expect(f.phase).toBe(0);
   });
 
   it("stops seeking when the water turns foul", () => {
@@ -312,9 +316,10 @@ describe("Sim", () => {
     sim.dropFood(200);
     sim.tick();
     expect(f.state).toBe("seek");
-    sim.waterQuality = 0.1; // below QUALITY_SEEK — appetite is gone
+    // Just under the appetite threshold.
+    sim.waterQuality = Math.max(0, QUALITY_SEEK - 0.05);
     sim.tick();
-    expect(f.state).not.toBe("seek");
+    expect(f.state).toBe("drift");
   });
 
   it("starts a roll without snapping heading when food is behind", () => {
