@@ -44,9 +44,9 @@ function meter(frac: number | null, pct: string, arrow: string,
   track.appendChild(el("div", "osm-progress-fill"));
   bar.appendChild(track);
   cell.append(bar, el("span", "spct", pct), el("span", "strend", arrow));
-  // No framed blank: an all-null history is "no data yet", so the
-  // sparkline waits for one usable sample.
-  if (series && series.some((v) => v !== null))
+  // No framed blank: an all-gap history (null/NaN/Infinity — the
+  // same definition spark() can't draw) is "no data yet".
+  if (series && series.some((v) => Number.isFinite(v)))
     cell.appendChild(spark(series));
   return cell;
 }
