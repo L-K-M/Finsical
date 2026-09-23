@@ -237,7 +237,9 @@ function mountClock(bar: HTMLElement): () => void {
       (d.getHours() < 12 ? "AM" : "PM");
   };
   paint();
-  const t = setInterval(paint, 30_000);
+  // Every second, not every 30: the minute must roll over the moment
+  // it happens (the paint is a cheap textContent write).
+  const t = setInterval(paint, 1_000);
   // Background tabs throttle the interval to ~1/min — snap the clock
   // back to now the moment the page shows again.
   const vis = () => { if (!document.hidden) paint(); };
