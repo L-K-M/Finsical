@@ -339,6 +339,30 @@ export function orphanedSounds(gone: Importable[],
     .filter((n) => !keep.has(n));
 }
 
+/** How a finished install is recorded: "install" (a user's install)
+ * adds the add-on when it is missing; "refresh" (a launch restore) only
+ * updates an existing record, so an add-on removed while its restore
+ * was still downloading stays removed. */
+export type RecordMode = "install" | "refresh";
+
+/** Record `it` in the saved add-on list with the sound names its
+ * install put in the bank (merged into any names already recorded, so
+ * uninstall knows what to drop). Returns whether the add-on is on the
+ * list afterwards. Mutates `list`. */
+export function recordAddon(list: Importable[], it: Importable,
+                            soundNames: string[], mode: RecordMode): boolean {
+  const rec = list.find((a) => a.url === it.url);
+  if (!rec) {
+    if (mode === "refresh") return false;
+    list.push(soundNames.length
+      ? { ...it, sounds: [...new Set(soundNames)] } : it);
+    return true;
+  }
+  if (soundNames.length)
+    rec.sounds = [...new Set([...(rec.sounds ?? []), ...soundNames])];
+  return true;
+}
+
 /** The listing qualifies colliding leaf names ("sub/dup", "dup (2)");
  * an audio-file record takes its name from the basename stem, so it
  * must carry the same qualification — otherwise installing the sibling
@@ -421,6 +445,11 @@ export interface ImportHandlers {
    * `soundNames` are the record names (post-dedup) the install put in
    * the sound bank — uninstall needs them for provenance. */
   onInstall?(it: Importable, soundNames: string[]): void;
+  /** Fired after a launch restore re-applies an add-on, with the sound
+   * names it put back: refreshes the saved record's provenance (legacy
+   * installs heal after one launch) without re-recording an add-on the
+   * user removed while its restore was downloading. */
+  onRestore?(it: Importable, soundNames: string[]): void;
   /** Why the tank can't take this add-on right now (e.g. it is full),
    * or null. Asked before a local install; the Import Add-ons window
    * gets the same answer from the tank page as an installFailed. */
@@ -1248,8 +1277,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     // gravel backdrop). Sequential so slot/backdrop assignment matches
     // the original install order; failures skip that add-on. Shares
     // applyPack's dispatch so the two install paths can't diverge;
-    // fires onInstall only to refresh sound provenance — recordInstall
-    // dedupes by url so the record merges rather than re-adding.
+    // fires onRestore to refresh sound provenance, which never re-adds.
     // Skips add-ons already installed while the chain was in flight.
     restore(list: Importable[]): Promise<void> {
       if (remote) return Promise.resolve(); // the tank page owns the sim
@@ -1264,9 +1292,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
               // legacy installs recorded before it existed heal after
               // one launch, so uninstall can drop their records too.
               // applyPack must run unconditionally — inside the ?.()
-              // call a missing onInstall would skip the whole restore.
+              // call a missing onRestore would skip the whole restore.
               const names = applyPack(it, rs, false);
-              h.onInstall?.(it, names);
+              h.onRestore?.(it, names);
             })
             .catch((e) =>
               console.warn(`add-on restore failed for ${it.inner}:`, e));

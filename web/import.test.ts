@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { browserGeometry, importAddon, listAddons, loadProblem,
-         orphanedSounds, qualifySoundItemName } from "./import.js";
+         orphanedSounds, qualifySoundItemName, recordAddon } from "./import.js";
+import type { Importable } from "./import.js";
 
 const enc = new TextEncoder();
 
@@ -165,6 +166,26 @@ describe("qualifySoundItemName", () => {
     // Qualifier + extension both strip before the stem compare.
     expect(qualifySoundItemName([rec("dup")], "dup (2).mp3")
       .map((r) => r.name)).toEqual(["dup (2).mp3"]);
+  });
+});
+
+describe("recordAddon", () => {
+  const it0 = (url: string): Importable =>
+    ({ url, inner: url, section: "sounds" }) as Importable;
+  it("adds a new install and merges later sound names into it", () => {
+    const list: Importable[] = [];
+    expect(recordAddon(list, it0("a.zip"), ["x"], "install")).toBe(true);
+    expect(recordAddon(list, it0("a.zip"), ["x", "y"], "install")).toBe(true);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.sounds).toEqual(["x", "y"]);
+  });
+  it("lets a restore refresh a record but never re-add a removed one", () => {
+    const list: Importable[] = [{ ...it0("a.zip"), sounds: ["x"] }];
+    expect(recordAddon(list, it0("a.zip"), ["y"], "refresh")).toBe(true);
+    expect(list[0]!.sounds).toEqual(["x", "y"]);
+    // Removed while its restore was downloading: it stays removed.
+    expect(recordAddon(list, it0("gone.zip"), ["z"], "refresh")).toBe(false);
+    expect(list).toHaveLength(1);
   });
 });
 

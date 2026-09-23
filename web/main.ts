@@ -14,7 +14,7 @@ import { drawRipples, drawSplashes, newSplash, tickRipples,
          tickSplashes } from "./fx.js";
 import type { Ripple, Splash } from "./fx.js";
 import { pushButton } from "osmium-ui";
-import { fetchAddon, mountImportPanel, orphanedSounds,
+import { fetchAddon, mountImportPanel, orphanedSounds, recordAddon,
          qualifySoundItemName, COLLECTIONS } from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { sndsGet, sndsMerge, sndsRemove } from "./store.js";
@@ -545,15 +545,12 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
 // `soundNames` are the bank records this install contributed — stored
 // on the add-on so uninstall can drop exactly its own sounds.
 function recordInstall(it: Importable, soundNames: string[] = []): void {
-  const rec = installedAddons.find((a) => a.url === it.url);
-  if (rec) {
-    if (soundNames.length)
-      rec.sounds = [...new Set([...(rec.sounds ?? []), ...soundNames])];
-  } else {
-    installedAddons.push(soundNames.length
-      ? { ...it, sounds: [...new Set(soundNames)] } : it);
-  }
+  recordAddon(installedAddons, it, soundNames, "install");
   saveTank();
+}
+/** A launch restore only refreshes a record that is still there. */
+function refreshInstall(it: Importable, soundNames: string[]): void {
+  if (recordAddon(installedAddons, it, soundNames, "refresh")) saveTank();
 }
 
 /** Imported sound records (audio file or 'snd ' fork) enter the live
@@ -585,6 +582,7 @@ const importPanel = mountImportPanel({
       .catch((e) => console.warn("sound import failed:", e));
   },
   onInstall: recordInstall,
+  onRestore: refreshInstall,
   refuse: (it) => fishRefusal(it.section),
   preview: previewOf,
 });
