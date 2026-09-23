@@ -133,6 +133,9 @@ const fishNear = (p: { x: number; y: number }): Fish | null => {
   }
   return best;
 };
+const fishTipLabel = (f: Fish): string =>
+  (f.species || "Fish") +
+  (f.state === "drift" ? "" : ` — ${stateLabel(f.state)}`);
 // Tank coords of the last hover — the frame loop re-checks it so the
 // tip doesn't linger when the fish swims away from a parked cursor.
 let lastHover: { x: number; y: number } | null = null;
@@ -142,8 +145,7 @@ canvas.addEventListener("pointermove", (e) => {
   lastHover = p;
   const best = p && fishNear(p);
   if (!best) { fishTip.style.display = "none"; return; }
-  fishTip.textContent = (best.species || "Fish") +
-    (best.state === "drift" ? "" : ` — ${stateLabel(best.state)}`);
+  fishTip.textContent = fishTipLabel(best);
   fishTip.style.display = "";
   // Clamp inside the viewport — the tank usually fills the window,
   // so an unclamped +14 offset clips at the right and bottom edges.
@@ -1189,8 +1191,10 @@ function frame(now: number): void {
   if (lastHover && fishTip.style.display !== "none") {
     const best = fishNear(lastHover);
     if (!best) fishTip.style.display = "none";
-    else fishTip.textContent = (best.species || "Fish") +
-      (best.state === "drift" ? "" : ` — ${stateLabel(best.state)}`);
+    else {
+      const label = fishTipLabel(best);
+      if (fishTip.textContent !== label) fishTip.textContent = label;
+    }
   }
   if (crtOn) crt?.render();
   requestAnimationFrame(frame);
