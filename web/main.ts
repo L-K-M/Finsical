@@ -929,6 +929,20 @@ window.addEventListener("drop", (e) => {
   void (async () => {
     const files = new Map<string, File>();
     for (const ent of entries) await walkEntry(ent, "", files);
+    // No webkitGetAsEntry (Firefox): fall back to the flat file list —
+    // single .fsh/.REZ/audio drops still import; .azpack folders need
+    // a Chromium-style entries API.
+    if (!files.size && e.dataTransfer?.files?.length) {
+      for (let i = 0; i < e.dataTransfer.files.length; i++)
+        files.set(e.dataTransfer.files[i]!.name,
+                  e.dataTransfer.files[i]!);
+      if (files.size)
+        console.info("drop: flat files only — folder drops need Chromium");
+    }
+    if (!files.size) {
+      console.warn("drop: nothing readable in the drop");
+      return;
+    }
     // Strip a shared top-level folder so manifest.json sits at the root.
     const first = [...files.keys()][0] ?? "";
     let flat = new Map(files);
