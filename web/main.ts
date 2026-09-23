@@ -325,14 +325,24 @@ function reconcileFish(): void {
 // reconcile again when at least one pack actually landed.
 const RESTORE_RETRY_DELAYS = [15_000, 60_000];
 function retryRestores(failed: Importable[], attempt = 0): void {
-  if (!failed.length || attempt >= RESTORE_RETRY_DELAYS.length) return;
+  if (!failed.length) return;
+  if (attempt >= RESTORE_RETRY_DELAYS.length) {
+    // Timers ran out — if we're simply offline, connectivity returning
+    // earns one fresh round of retries instead of a reload.
+    if (!navigator.onLine)
+      window.addEventListener("online",
+        () => retryRestores(restoreFailed, 0), { once: true });
+    return;
+  }
   setTimeout(() => {
     void importPanel.restore(failed).then((still) => {
+      restoreFailed = still;
       if (still.length < failed.length) {
         remapSheetIdx(); reconcileFish(); postState();
       }
       retryRestores(still, attempt + 1);
-    });
+    }).catch((e) =>
+      console.warn("add-on restore retry failed:", e));
   }, RESTORE_RETRY_DELAYS[attempt]);
 }
 function handleImages(images: Iterable<IndexedImage>, src: string,
