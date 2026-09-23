@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DAY_TICKS, FOOD_ROT_TICKS, Sim, TURN_TICKS } from "./sim.js";
+import { QUALITY_SEEK } from "./tuning.js";
 
 // States a fish may be in when it's not seeking food.
 const IDLE_STATES = ["drift", "turn"];
@@ -573,6 +574,19 @@ describe("Sim", () => {
     }
     expect(touched).toBe(true);
     expect(f.x).toBeGreaterThan(16 + 5);
+  });
+
+  it("stops seeking when the water turns foul", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 11);
+    const f = sim.addFish({ x: 50, y: 50, facing: 1, heading: 0,
+                            hunger: 0.9 });
+    sim.dropFood(200);
+    sim.tick();
+    expect(f.state).toBe("seek");
+    // Just under the appetite threshold.
+    sim.waterQuality = Math.max(0, QUALITY_SEEK - 0.05);
+    sim.tick();
+    expect(f.state).not.toBe("seek");
   });
 
   it("stops seeking once another fish ate the pellet", () => {
