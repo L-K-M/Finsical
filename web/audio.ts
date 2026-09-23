@@ -141,7 +141,7 @@ export class TankAudio {
     src.connect(g).connect(this.ctx.destination);
     src.start();
     this.active.add(src);
-    src.onended = () => { this.active.delete(src); };
+    src.addEventListener("ended", () => this.active.delete(src));
     return src;
   }
 
