@@ -171,7 +171,7 @@ describe("Sim", () => {
     expect(night / DAY_TICKS).toBeLessThan(0.45);
   });
 
-  it("keeps mean daylight near the old curve's budget", () => {
+  it("pins the full-sine day's mean daylight at 0.65", () => {
     // The full sine runs mean 0.65 vs ~0.75 for the old half-wave —
     // a deliberate trade for a real night, pinned so it can't drift
     // further without notice. One full cycle of sine samples sums to
@@ -179,7 +179,7 @@ describe("Sim", () => {
     const sim = new Sim({ width: 100, height: 100 }, 1);
     let sum = 0;
     for (let i = 0; i < DAY_TICKS; i++) { sim.tick(); sum += sim.light; }
-    expect(sum / DAY_TICKS).toBeCloseTo(0.65, 2);
+    expect(sum / DAY_TICKS).toBeCloseTo(0.65, 5);
   });
 
   it("darts out of each decision — quadratic ramp capped at cruise", () => {
