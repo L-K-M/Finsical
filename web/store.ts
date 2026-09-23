@@ -228,3 +228,17 @@ export function sndsMerge(records: StoredSnd[]): Promise<unknown> {
   sndsChain = run.catch(() => {}); // a failed merge mustn't poison the chain
   return run;
 }
+
+/** Drop records by name — add-on uninstall. Serialized with merges so a
+ * removal can't be overwritten by a merge that read the old baseline. */
+export function sndsRemove(names: Iterable<string>): Promise<unknown> {
+  const drop = new Set(names);
+  if (!drop.size) return Promise.resolve(null);
+  const run = sndsChain.then(() => sndsGet().then((cur) => {
+    if (!cur?.length) return null;
+    const out = cur.filter((r) => !drop.has(r.name));
+    return out.length === cur.length ? null : metaPut(SNDS_KEY, out);
+  }));
+  sndsChain = run.catch(() => {});
+  return run;
+}

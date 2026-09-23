@@ -96,7 +96,12 @@ function pageUrl(item: string, outer: string): string {
   return `${BASE}/${item}/${encodeURIComponent(outer)}/`;
 }
 
-export interface Importable { section: string; inner: string; url: string }
+export interface Importable {
+  section: string; inner: string; url: string;
+  /** Sound record names this add-on contributed — persisted with the
+   * install so uninstall can drop exactly these from the bank. */
+  sounds?: string[];
+}
 
 /** Raw zip bytes, memoized by URL and persisted in IndexedDB — nested
  * collections share one parent download across all of their entry
@@ -323,6 +328,17 @@ export interface PackResult {
   sounds: { name: string; wav: Uint8Array }[];
 }
 
+/** Record names the leaving add-ons exclusively own — a name still
+ * claimed by a surviving add-on stays in the bank (same-name records
+ * overwrite each other in the store, so the survivor's copy is the
+ * one that's actually there). */
+export function orphanedSounds(gone: Importable[],
+                               rest: Importable[]): string[] {
+  const keep = new Set(rest.flatMap((a) => a.sounds ?? []));
+  return [...new Set(gone.flatMap((a) => a.sounds ?? []))]
+    .filter((n) => !keep.has(n));
+}
+
 /** The listing qualifies colliding leaf names ("sub/dup", "dup (2)");
  * an audio-file record takes its name from the basename stem, so it
  * must carry the same qualification — otherwise installing the sibling
@@ -401,8 +417,10 @@ export interface ImportHandlers {
   onSounds?(recs: { name: string; wav: Uint8Array }[],
             live: boolean): void;
   /** Fired once per successful install — lets the caller record which
-   * add-ons went into the tank so they can be restored later. */
-  onInstall?(it: Importable): void;
+   * add-ons went into the tank so they can be restored later.
+   * `soundNames` are the record names (post-dedup) the install put in
+   * the sound bank — uninstall needs them for provenance. */
+  onInstall?(it: Importable, soundNames: string[]): void;
   /** Render decoded packs to a preview canvas; null = nothing to show. */
   preview(rs: PackResult[]): HTMLCanvasElement | null;
 }
@@ -1080,20 +1098,28 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   // Shared fetch→dispatch→mark-installed core for applyAddon (manual
   // install) and restore (re-import on launch); only the onInstall
   // side effect differs. `live` marks user installs vs restores.
-  function applyPack(it: Importable, rs: PackResult[], live: boolean): void {
+  function applyPack(it: Importable, rs: PackResult[],
+                     live: boolean): string[] {
     const usable = rs.filter(
       (r) => r.sheets.size || r.images.size || r.sounds.length);
     if (!usable.length) throw new Error("no pack inside");
+    const soundNames: string[] = [];
     for (const r of usable) {
       if (r.sheets.size)
         h.onSheets(r.sheets, it.inner, it.url, it.section, live);
       if (r.images.size) h.onImages(r.images.values(), it.url, it.section);
-      if (r.sounds.length)
-        h.onSounds?.(qualifySoundItemName(r.sounds, it.inner), live);
+      if (r.sounds.length) {
+        const recs = qualifySoundItemName(r.sounds, it.inner);
+        // The handler may rename colliding records in place — read the
+        // names after it ran so uninstall drops what was stored.
+        h.onSounds?.(recs, live);
+        for (const s of recs) soundNames.push(s.name);
+      }
     }
     markInstalled(it.url, true);
     const pv = h.preview(usable);
     if (pv) { thumbs.set(it.url, pv); storeThumb(it, pv); }
+    return soundNames;
   }
 
   function markInstalled(url: string, on: boolean): void {
@@ -1126,8 +1152,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     // A launch-time restore may have installed it while the detail fetch
     // was in flight — honor the label the user actually clicked.
     if (!again && installed.has(it.url)) return;
-    applyPack(it, rs, true);
-    h.onInstall?.(it);
+    const soundNames = applyPack(it, rs, true);
+    h.onInstall?.(it, soundNames);
   }
 
   function loadListing(): void {

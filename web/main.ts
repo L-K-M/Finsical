@@ -5,10 +5,10 @@ import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
 import { TankAudio } from "./audio.js";
 import { pushButton } from "osmium-ui";
-import { fetchAddon, mountImportPanel, qualifySoundItemName,
-         COLLECTIONS } from "./import.js";
+import { fetchAddon, mountImportPanel, orphanedSounds,
+         qualifySoundItemName, COLLECTIONS } from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
-import { sndsGet, sndsMerge } from "./store.js";
+import { sndsGet, sndsMerge, sndsRemove } from "./store.js";
 import { imageCanvas, previewOf, soundIcon, swimCanvas } from "./render.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
@@ -330,9 +330,17 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
   console.info(`archive.org: imported scenery ${src}`);
   if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
 }
-function recordInstall(it: Importable): void {
-  if (!installedAddons.some((a) => a.url === it.url))
-    installedAddons.push(it);
+// `soundNames` are the bank records this install contributed — stored
+// on the add-on so uninstall can drop exactly its own sounds.
+function recordInstall(it: Importable, soundNames: string[] = []): void {
+  const rec = installedAddons.find((a) => a.url === it.url);
+  if (rec) {
+    if (soundNames.length)
+      rec.sounds = [...new Set([...(rec.sounds ?? []), ...soundNames])];
+  } else {
+    installedAddons.push(soundNames.length
+      ? { ...it, sounds: [...new Set(soundNames)] } : it);
+  }
   saveTank();
 }
 
@@ -585,6 +593,14 @@ function removeAddon(url: string): void {
     backdropCv = prev !== undefined ? backdropByPack.get(prev)! : null;
     backdropSrc = prev ?? "";
   }
+  // Sounds this add-on put in the bank leave it — unless a surviving
+  // add-on claims the same record name.
+  const dropSnds = orphanedSounds(gone, installedAddons);
+  if (dropSnds.length) {
+    audio.removeWavs(dropSnds);
+    void sndsRemove(dropSnds)
+      .catch((e) => console.warn("snd removal failed:", e));
+  }
   for (const s of orphaned) sheetBySpecies.delete(s);
   const slot = sheetByPack.get(url);
   // Only delete the reverse entry it still owns — a rebind may have
@@ -642,7 +658,9 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     if (sounds.length)
       await handleSounds(sounds)
         .catch((e) => console.warn("sound install skipped:", e));
-    recordInstall(it);
+    // handleSounds dedupes colliding names in place — record the final
+    // ones so uninstall drops what was actually stored.
+    recordInstall(it, sounds.map((s) => s.name));
     bus.post({ op: "installed", url: it.url });
     postState();
   } catch (e) { fail(String(e)); }

@@ -73,6 +73,21 @@ export class TankAudio {
     void this.ctx.resume().then(() => this.startAmbient());
   }
 
+  /** Drop imported records (add-on uninstall). If the ambient loop was
+   * playing one, restart it on whatever "aqua" remains — same restart
+   * rule as addWavs. */
+  removeWavs(names: Iterable<string>): void {
+    for (const n of names) this.imported.delete(n);
+    const now = this.find("aqua");
+    if (this.ambientWanted && now !== this.ambientBuf) {
+      if (this.ambientSrc) {
+        try { this.ambientSrc.stop(); } catch { /* already ended */ }
+        this.ambientSrc = null;
+      }
+      this.startAmbient();
+    }
+  }
+
   /** Play one imported sound by name — install feedback and the only
    * trigger for records (like an imported music track) that no sim
    * event maps onto. */
