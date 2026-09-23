@@ -16,20 +16,25 @@ export interface DroppedPack {
 
 /** Decode every pack container among the entries (name → bytes), in
  * drop order. Non-pack files and pack containers without a decodable
- * sprite chunk are skipped. */
+ * sprite chunk are skipped; a pack that throws while decoding is
+ * skipped too — one corrupt file must not cost the rest of the drop. */
 export function decodeDroppedPacks(
-  entries: readonly [string, Uint8Array][],
+  entries: readonly (readonly [string, Uint8Array])[],
 ): DroppedPack[] {
   const out: DroppedPack[] = [];
   for (const [name, data] of entries) {
     if (!isPack(data)) continue;
-    const sheets = fshToSheets(data);
-    if (!sheets.size) continue;
-    out.push({
-      name: name.replace(/\.[^.]*$/, ""),
-      sheets,
-      images: packImages(data),
-    });
+    try {
+      const sheets = fshToSheets(data);
+      if (!sheets.size) continue;
+      out.push({
+        name: name.replace(/\.[^.]*$/, ""),
+        sheets,
+        images: packImages(data),
+      });
+    } catch (e) {
+      console.warn(`drop: skipping undecodable pack ${name}:`, e);
+    }
   }
   return out;
 }
