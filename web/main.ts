@@ -1,7 +1,8 @@
 import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
 import { fishPose, pitch } from "../core/pose.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
-import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
+import { isPack } from "../core/data/fsh.js";
+import { decodeDroppedPacks } from "./drop.js";
 import { keyMask, pickDecorArt } from "../core/data/decor.js";
 import { TankAudio } from "./audio.js";
 import { pushButton } from "osmium-ui";
@@ -962,10 +963,12 @@ window.addEventListener("drop", (e) => {
     // ~16MB, but .bin/.hqx wrappers inflate that (BinHex text is ~4/3),
     // so allow up to 32MB before skipping.
     const recs: { name: string; wav: Uint8Array }[] = [];
+    // Pack files are collected here (their head is read once) and
+    // decoded in the pass below, so no file is buffered twice.
+    const packFiles: [string, File][] = [];
     for (const [name, file] of flat) {
-      // A pack file belongs to the pass below — don't buffer it twice.
       const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());
-      if (isPack(head)) continue;
+      if (isPack(head)) { packFiles.push([name, file]); continue; }
       if (file.size > 32 * 1024 * 1024) {
         console.warn("snd skip (too large):", name);
         continue;
@@ -980,22 +983,18 @@ window.addEventListener("drop", (e) => {
     if (recs.length)
       await handleSounds(recs)
         .catch((e) => console.warn("sound import failed:", e));
-    // Not an .azpack folder — try each dropped file as a raw .fsh/.REZ pack.
-    for (const [name, file] of flat) {
-      const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());
-      if (!isPack(head)) continue;
-      const data = new Uint8Array(await file.arrayBuffer());
-      const sheets = fshToSheets(data);
-      if (!sheets.size) continue;
-      const idx = usePack({ sheets });
-      if (idx >= 0) { spawnFish(idx, name.replace(/\.[^.]*$/, "")); audio.splash(); }
-      pickBackdrop(packImages(data).values());
-      if (fishSheets.length) {
-        console.info(`${name}: pack imported`);
-        return;
-      }
+    // Not an .azpack folder — every dropped pack file imports, not
+    // just the first (web/drop.ts, tested there).
+    const packs = decodeDroppedPacks(await Promise.all(
+      packFiles.map(async ([name, file]) =>
+        [name, new Uint8Array(await file.arrayBuffer())] as const)));
+    for (const p of packs) {
+      const idx = usePack({ sheets: p.sheets });
+      if (idx >= 0) { spawnFish(idx, p.name); audio.splash(); }
+      pickBackdrop(p.images.values());
+      console.info(`${p.name}: pack imported`);
     }
-    if (!recs.length)
+    if (!packs.length && !recs.length)
       console.warn("drop: no manifest.json, pack file, or 'snd ' found");
   })().catch((e) => console.warn("azpack import failed:", e));
 });
