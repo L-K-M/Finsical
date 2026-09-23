@@ -11,6 +11,7 @@ import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { sndsGet, sndsMerge } from "./store.js";
 import { imageCanvas, previewOf, soundIcon, swimCanvas } from "./render.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
+import { stateLabel } from "./overviewmodel.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
   from "./machines.js";
@@ -96,19 +97,50 @@ function saveTank(): void {
 window.addEventListener("pagehide", saveTank);
 setInterval(saveTank, 10_000);
 
-// Click near the surface drops food; deeper clicks knock on the glass.
-canvas.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0) return; // ignore right/middle clicks
-  // object-fit: contain letterboxes the bitmap inside the element box.
+// object-fit: contain letterboxes the bitmap inside the element box —
+// shared by the tap and hover handlers.
+function tankPoint(e: PointerEvent): { x: number; y: number } | null {
   const r = canvas.getBoundingClientRect();
   const s = Math.min(r.width / TANK.width, r.height / TANK.height);
   const x = (e.clientX - r.left - (r.width - TANK.width * s) / 2) / s;
   const y = (e.clientY - r.top - (r.height - TANK.height * s) / 2) / s;
-  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return; // letterbox bar
+  if (!Number.isFinite(x) || !Number.isFinite(y) ||
+      x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return null;
+  return { x, y };
+}
+
+// Click near the surface drops food; deeper clicks knock on the glass.
+canvas.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return; // ignore right/middle clicks
+  const p = tankPoint(e);
+  if (!p) return; // letterbox bar
   audio.unlock();
-  if (y < TANK.height * 0.15) { sim.dropFood(x); audio.feed(); }
-  else { sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height); }
+  if (p.y < TANK.height * 0.15) { sim.dropFood(p.x); audio.feed(); }
+  else { sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height); }
 });
+
+// Hover a fish and its species (and mood) pops up in a little
+// balloon — a nod to System 7's Balloon Help.
+const fishTip = document.createElement("div");
+fishTip.id = "fishtip";
+fishTip.style.display = "none";
+document.body.appendChild(fishTip);
+canvas.addEventListener("pointermove", (e) => {
+  const p = tankPoint(e);
+  let best: Fish | null = null, bd = 18 * 18;
+  if (p) for (const f of sim.fish) {
+    const d = (f.x - p.x) ** 2 + (f.y - p.y) ** 2;
+    if (d < bd) { bd = d; best = f; }
+  }
+  if (!best) { fishTip.style.display = "none"; return; }
+  fishTip.textContent = (best.species || "Fish") +
+    (best.state === "drift" ? "" : ` — ${stateLabel(best.state)}`);
+  fishTip.style.display = "";
+  fishTip.style.left = `${e.clientX + 14}px`;
+  fishTip.style.top = `${e.clientY + 14}px`;
+});
+canvas.addEventListener("pointerleave",
+  () => fishTip.style.display = "none");
 
 // ---- sprite loading ----------------------------------------------------
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
