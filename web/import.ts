@@ -736,7 +736,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   filter.addEventListener("keydown", (e) => {
     // Escape clears the field; consuming it keeps the panel open.
     // isComposing: an IME-cancel Escape must not wipe the filter.
-    if (!e.isComposing && e.key === "Escape" && filter.value) {
+    // Safari reports composition keydowns with isComposing false and
+    // keyCode 229 — the canonical IME guard checks both.
+    if (!(e.isComposing || e.keyCode === 229) &&
+        e.key === "Escape" && filter.value) {
       filter.value = "";
       applyFilter();
       e.preventDefault();

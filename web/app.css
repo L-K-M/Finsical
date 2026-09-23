@@ -193,7 +193,7 @@ body.crt canvas#tank { opacity: 0; }
   border: 1px solid #000; background: #fff; color: #000;
   font: var(--osm-font-small); appearance: none;
 }
-.ifilter::placeholder { color: #888; }
+.ifilter::placeholder { color: #767676; }
 .ifilter:focus { outline: none; border-color: #000; box-shadow: 0 0 0 1px #fff, 0 0 0 2px #000; }
 .ifilter:disabled { background: #ddd; }
 /* Forced-colors mode suppresses box-shadow — fall back to a real
