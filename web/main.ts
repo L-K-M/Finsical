@@ -191,10 +191,12 @@ function layoutInfo(): void {
   let px = ox + f.x * s - cw / 2;
   let py = oy + f.y * s - ch - 8;
   if (py < 0) py = oy + f.y * s + 16; // too near the surface: go under
+  // Bounds are screenEl-relative like the offsets above — the canvas
+  // may not fill the screen exactly.
   card.root.style.left =
-    `${Math.max(0, Math.min(px, r.width - cw))}px`;
+    `${Math.max(0, Math.min(px, sr.width - cw))}px`;
   card.root.style.top =
-    `${Math.max(0, Math.min(py, r.height - ch))}px`;
+    `${Math.max(0, Math.min(py, sr.height - ch))}px`;
   const hunger = `Hunger  ${Math.round(f.hunger * 100)}%`;
   const mood = INFO_MOODS[f.state];
   if (card.hunger.textContent !== hunger)
