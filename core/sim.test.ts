@@ -135,6 +135,14 @@ describe("Sim", () => {
     expect(sim.fish[0]!.facing).toBe(-1);
   });
 
+  it("drops food off the side glass and says where it went in", () => {
+    const sim = new Sim({ width: 320, height: 200 });
+    const pellet = sim.dropFood(2);
+    expect(pellet).toBe(sim.food[0]);
+    expect(pellet.x).toBeGreaterThan(2); // clamped away from the wall
+    expect(sim.dropFood(160).x).toBe(160);
+  });
+
   it("sinks food to the gravel", () => {
     const sim = new Sim({ width: 200, height: 100 }, 1);
     sim.dropFood(50);

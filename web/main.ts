@@ -221,8 +221,9 @@ canvas.addEventListener("pointerdown", (e) => {
   if (!p) return;
   audio.unlock();
   if (p.y < TANK.height * 0.15) {
-    sim.dropFood(p.x); audio.feed();
-    splashes.push(newSplash(p.x, FOOD_ENTRY_Y));
+    const pellet = sim.dropFood(p.x);
+    audio.feed();
+    splashes.push(newSplash(pellet.x, pellet.y));
   } else {
     sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
     ripples.push({ x: p.x, y: p.y, age: 0 });
@@ -1011,8 +1012,8 @@ function feedFish(): void {
   const hungry = sim.fish.filter((f) => f.hunger > HUNGER_SEEK).length;
   for (const p of feedPinch(Math.random, hungry)) {
     setTimeout(() => {
-      sim.dropFood(x + p.dx);
-      splashes.push(newSplash(x + p.dx, FOOD_ENTRY_Y));
+      const pellet = sim.dropFood(x + p.dx);
+      splashes.push(newSplash(pellet.x, pellet.y));
       requestPaint();
     }, p.delay);
   }

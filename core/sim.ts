@@ -290,10 +290,13 @@ export class Sim {
     return true;
   }
 
-  /** Drop a food pellet at x; it sinks to the gravel. */
-  dropFood(x: number): void {
+  /** Drop a food pellet at x (kept off the side glass); it sinks to the
+   * gravel. Returns the pellet, so callers can mark where it went in. */
+  dropFood(x: number): Food {
     const cx = Math.min(Math.max(x, MARGIN), this.tank.width - MARGIN);
-    this.food.push({ x: cx, y: FOOD_ENTRY_Y, eaten: false, settled: 0 });
+    const pellet = { x: cx, y: FOOD_ENTRY_Y, eaten: false, settled: 0 };
+    this.food.push(pellet);
+    return pellet;
   }
 
   /** Knock on the glass: startle fish near (x, y), strength fading
