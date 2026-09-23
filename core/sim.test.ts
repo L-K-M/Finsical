@@ -158,6 +158,8 @@ describe("Sim", () => {
     expect(min).toBeCloseTo(0.3, 5);
     expect(max).toBeCloseTo(1, 5);
     expect(nightTicks).toBeGreaterThan(DAY_TICKS * 0.2);
+    // Inverted cosine would pass min/max/night>20% (~64% night).
+    expect(nightTicks).toBeLessThan(DAY_TICKS * 0.5);
   });
 
   it("darts out of each decision — quadratic ramp capped at cruise", () => {
