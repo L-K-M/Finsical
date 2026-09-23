@@ -97,6 +97,9 @@ const list = mountList(listEl, {
   label: "Tank contents",
   onSelect: () => syncRemove(),
 });
+// Until the first state push lands, blank is "not heard yet", not
+// "empty" — render() swaps in the empty-tank text once it knows.
+list.setEmpty("Waiting for the tank…");
 // Keys go to the list from the start (arrows, type-select, Delete).
 listEl.focus({ preventScroll: true });
 
