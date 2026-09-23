@@ -54,10 +54,12 @@ describe("itemsOf", () => {
     const items = itemsOf({ ...STATE,
       addons: [...STATE.addons,
         { section: "plants", inner: "Kelp.pl", url: "u:kelp" }] });
-    for (const i of items) {
-      if (i.name === "tang.fsh") expect(i.use).toBeUndefined();
-      if (i.name === "Kelp.pl") expect(i.use).toBeUndefined();
-    }
+    const tang = items.find((i) => i.name === "tang.fsh");
+    expect(tang).toBeDefined();
+    expect(tang?.use).toBeUndefined();
+    const kelp = items.find((i) => i.name === "Kelp.pl");
+    expect(kelp).toBeDefined();
+    expect(kelp?.use).toBeUndefined();
   });
 });
 
