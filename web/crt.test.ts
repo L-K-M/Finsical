@@ -95,6 +95,14 @@ describe("initCrt", () => {
     expect(calls.texSubImage2D).toBe(2);
   });
 
+  it("uploads on the first stale frame after enabling", () => {
+    const { crt, calls } = setup();
+    crt.setEnabled(true);
+    crt.render(false); // enabled between ticks — dirtyTex forces one upload
+    expect(calls.texSubImage2D).toBe(1);
+    expect(calls.drawArrays).toBe(1);
+  });
+
   it("does nothing while disabled", () => {
     const { crt, calls } = setup();
     crt.render(true);

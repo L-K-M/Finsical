@@ -108,6 +108,7 @@ canvas.addEventListener("pointerdown", (e) => {
   audio.unlock();
   if (y < TANK.height * 0.15) { sim.dropFood(x); audio.feed(); }
   else { sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height); }
+  invalidatePaint();
 });
 
 // ---- sprite loading ----------------------------------------------------
@@ -147,6 +148,7 @@ function spawnFish(sheetIdx: number, species: string, pack?: string): void {
     ...(pack !== undefined ? { pack } : {}),
   });
   saveTank();
+  invalidatePaint();
 }
 
 // Biggest pack image large enough to matter becomes the tank backdrop —
@@ -266,6 +268,7 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
     if (live) { spawnFish(idx, name, url); audio.splash(); }
   }
   console.info(`archive.org: imported ${section} ${name}`);
+  invalidatePaint(); // restores can rebind existing fish to new art
   if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
 }
 
@@ -328,6 +331,7 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
     pickBackdrop(images, src);
   else return;
   console.info(`archive.org: imported scenery ${src}`);
+  invalidatePaint();
   if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
 }
 function recordInstall(it: Importable): void {
@@ -599,6 +603,7 @@ function removeAddon(url: string): void {
   sweepThumbs();
   saveTank(); // persists and pushes fresh state to the panel
   bus.post({ op: "uninstalled", url });
+  invalidatePaint(); // removed fish/decor vanish on the next frame
 }
 
 // Bus messages cross a page boundary — validate before trusting them.
@@ -794,6 +799,7 @@ postState();
 function feedFish(): void {
   sim.dropFood(TANK.width / 2);
   audio.feed();
+  invalidatePaint();
 }
 (window as unknown as { finsical?: unknown }).finsical =
   { openImport: () => importPanel.open(), feedFish,
@@ -1125,12 +1131,16 @@ function render(): void {
 
 // Fixed-step sim; render on rAF, but repaint only when a tick ran —
 // between ticks nothing in the 2D scene can move, so unticked repaints
-// (about half at 60 Hz) redraw the identical frame. Non-tick changes
-// (feeding, imports, decor swaps) show on the next tick, <=33ms later.
+// (about half at 60 Hz) redraw the identical frame. Out-of-band
+// changes (feeding, imports, decor swaps) call invalidatePaint() so
+// they show on the next rAF instead of waiting up to 33ms for a tick.
 const TICKS_PER_SECOND = 30;
 let acc = 0;
 let last = performance.now();
 let painted = false;
+/** Repaint on the next rAF even without a sim tick — call after any
+ *  out-of-band change the tank should show immediately. */
+function invalidatePaint(): void { painted = false; }
 function frame(now: number): void {
   acc += Math.min(now - last, 200);
   last = now;
