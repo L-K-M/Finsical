@@ -74,14 +74,20 @@ open idea is written so an LLM can pick it up cold.
   bubble vents trickling from the gravel, foul-water surface
   gasping (`bandY` biases to the surface below `QUALITY_SEEK`),
   a 1px surface line, and drag-to-feed scattering pellets along
-  the drag. GLM review timed out once; re-run pending.
+  the drag. Review follow-ups applied through round 5: pointer
+  capture + touch-action for feed drags, pointerId-scoped drag
+  state, paced pellets/feed sounds, id-stable gasp slack,
+  lostpointercapture cleanup, constant-derived test bounds.
 - **PR #110** (`feat/fish-growth`): per-fish `scale` — juveniles
   spawn at 0.78–1.10, each meal closes 6% of the gap to the
   1.35 cap (crosses 1.0 after ~8 meals, ~90% grown after ~37),
   persisted in the roster, rendered via existing scale path.
-  Review follow-ups applied (`c8f5da2`): corrupt restored scale
-  (0/NaN/negative) resets to 1; pre-scale saves default to 1 so
-  established fish aren't re-rolled as juveniles.
+  Review follow-ups applied through round 5 (`8af7701`):
+  restored scale sanitized and clamped to [SPAWN_SCALE_MIN,
+  MAX_SCALE]; pre-scale saves default to 1 via an explicit
+  `fromSave` flag so established fish aren't re-rolled as
+  juveniles. Declined: size-scaled `EAT_DIST` (design call,
+  skews feeding competition) and duplicate clamp assertions.
 - **PR #112** (`feat/schooling`): `decide()` occasionally anchors
   a wander target near a same-species schoolmate (x-scatter ±42
   px, half that vertically so schools sit flat). Test asserts a
@@ -218,10 +224,11 @@ open idea is written so an LLM can pick it up cold.
 
 ## Review-response log (third pass — Devin)
 
-- Applied: multi-pack drop + `did`-on-rejected-pack import fixes (PR #93); corrupt-`scale` guard + legacy-save default-to-1 + `GROWTH` comment math (PR #110); flat-school y-scatter comment + calibrated 10 px test margin (PR #112); `cleanTank`→`changeWater` op rename + "every settled pellet" doc fix (PR #114).
-- Declined with reasons: `.azn` fish-sheet spawning — remote "tanks" section doesn't spawn fish either; `.azn` drops now match it (sheets still join the pool via `usePack`).
-- Refuted with evidence: "dangerous `exec`/`child_process` usage" on `web/main.ts:994` — the flagged call is `RegExp.exec` on a string (PR #93). "Missing `cleanTank` `BusMsg` variant breaks the build" — `BusMsg` is `Record<string, unknown>`, CI green (PR #114). "Use 0 fish in the water-change test" — the ctor's second arg is the seed; the test already has zero fish (PR #114). "Confirm `audio.splash()` exists" — web/audio.ts:133, typecheck green.
-- Review gaps: GLM timed out twice on PR #103 (reported, not approval) and once on PR #106 (re-run pending at merge time).
+- Applied: multi-pack drop + `did`-on-rejected-pack import fixes (PR #93); corrupt-`scale` guard + clamp both ends + legacy-save `fromSave` flag + `GROWTH` comment math (PR #110); flat-school y-scatter comment + calibrated 10 px test margin + direct gap assertion (PR #112); `cleanTank`→`changeWater` op rename + "every settled pellet" doc fix (PR #114); pointer capture + `touch-action:none` + pointerId-scoped feed drag + FEED_STEP pacing + feed-sound throttle + id-stable gasp slack + `lostpointercapture` + named test tolerances (PR #106).
+- Declined with reasons: `.azn` fish-sheet spawning — remote "tanks" section doesn't spawn fish either; `.azn` drops now match it (sheets still join the pool via `usePack`) (PR #93). 9-row gasp-slack quantization — integer pixel rows are fine for pixel art (PR #106). `EAT_DIST * f.scale` — design call, skews feeding competition toward adults (PR #110). Redundant clamp assertions duplicating covered branches (PR #110).
+- Refuted with evidence: "dangerous `exec`/`child_process` usage" on `web/main.ts:994` — the flagged call is `RegExp.exec` on a string (PR #93). "Missing `cleanTank` `BusMsg` variant breaks the build" — `BusMsg` is `Record<string, unknown>`, CI green (PR #114). "Use 0 fish in the water-change test" — the ctor's second arg is the seed; the test already has zero fish (PR #114). "Confirm `audio.splash()` exists" — web/audio.ts:133, typecheck green (PR #114). "Feed drag never captures the pointer" — `setPointerCapture` runs unconditionally on every valid press before the branch (PR #106).
+- Review gaps: GLM timed out twice consecutively on PR #103 — reported as a gap, not approval; CI green. PR #106 also lost its first run to a timeout but later rounds completed.
+- Steady state: all six PRs posted with merge-ready/gap notes. Rounds without important findings: #93 clean re-review; #103 n/a (integration failure); #106 rounds 3–6 minor-only; #110 rounds 2–5 minor-only; #112 round 3 clean; #114 rounds 2–3 clean/minor.
 
 ## Implementation Order (suggested for future work)
 
