@@ -166,7 +166,9 @@ describe("Sim", () => {
       sim.tick();
       if (sim.light < 0.5) night++;
     }
-    expect(night / DAY_TICKS).toBeGreaterThan(0.25);
+    expect(night / DAY_TICKS).toBeGreaterThan(0.3);
+    // And still a minority of the cycle — night shouldn't swallow dusk.
+    expect(night / DAY_TICKS).toBeLessThan(0.45);
   });
 
   it("darts out of each decision — quadratic ramp capped at cruise", () => {
