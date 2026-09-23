@@ -446,7 +446,9 @@ function fishThumb(f: Fish): string | null {
   if (!sheet) return null; // placeholder fish — nothing to render
   let url: string | null = null;
   try {
-    const pose = fishPose(sheet, f);
+    // Always the profile pose — a fish caught mid-roll would otherwise
+    // keep an edge-on thumbnail for the life of the tank.
+    const pose = fishPose(sheet, { ...f, state: "drift" });
     url = scaledThumb(swimCanvas(sheet, 0, pose.mir, pose.g));
   } catch { /* sheet can't render that pose */ }
   if (url) thumbMemo.set(key, url);
@@ -980,17 +982,38 @@ window.addEventListener("drop", (e) => {
     if (recs.length)
       await handleSounds(recs)
         .catch((e) => console.warn("sound import failed:", e));
-    // Not an .azpack folder — try each dropped file as a raw .fsh/.REZ pack.
+    // Not an .azpack folder — try each dropped file as a raw pack.
+    // Classify by extension the same way remote installs dispatch by
+    // section (handleImages): a .fsh fish contributes no scenery —
+    // before this split, a dropped fish pack's catalog art could take
+    // the tank's backdrop.
     for (const [name, file] of flat) {
       const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());
       if (!isPack(head)) continue;
       const data = new Uint8Array(await file.arrayBuffer());
+      const ext = (/\.([^.]+)$/.exec(name)?.[1] ?? "").toLowerCase();
+      const section = ext === "grv" ? "gravel"
+        : ext === "plt" ? "plants"
+        : ext === "acc" ? "accessories"
+        : ext === "azn" || ext === "rez" ? "tanks"
+        : "fish"; // .fsh and unknown extensions
+      let did = false;
       const sheets = fshToSheets(data);
-      if (!sheets.size) continue;
-      const idx = usePack({ sheets });
-      if (idx >= 0) { spawnFish(idx, name.replace(/\.[^.]*$/, "")); audio.splash(); }
-      pickBackdrop(packImages(data).values());
-      if (fishSheets.length) {
+      // .rez holds the base library's scenery alongside its fish; .fsh
+      // and unknown extensions are treated as fish-only.
+      if (sheets.size && (section === "fish" || ext === "rez")) {
+        const idx = usePack({ sheets });
+        if (idx >= 0) {
+          spawnFish(idx, name.replace(/\.[^.]*$/, ""));
+          audio.splash();
+        }
+        did = true;
+      }
+      if (section !== "fish") {
+        handleImages(packImages(data).values(), name, section);
+        did = true;
+      }
+      if (did) {
         console.info(`${name}: pack imported`);
         return;
       }

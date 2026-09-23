@@ -125,7 +125,9 @@ function fetchZip(url: string): Promise<Uint8Array> {
       return d;
     })();
     zipCache.set(url, p);
-    p.catch(() => zipCache.delete(url));
+    // Delete only if still ours — a same-tick caller may have swapped in
+    // a replacement promise before this one rejected.
+    p.catch(() => { if (zipCache.get(url) === p) zipCache.delete(url); });
   }
   return p;
 }
@@ -178,7 +180,7 @@ async function listPage(item: string, outer: string): Promise<string> {
     }
   })();
   pageCache.set(page, p);
-  p.catch(() => pageCache.delete(page));
+  p.catch(() => { if (pageCache.get(page) === p) pageCache.delete(page); });
   return (await p).html;
 }
 
@@ -443,7 +445,9 @@ export function fetchAddon(url: string): Promise<PackResult[]> {
   if (!p) {
     p = importAddon(url);
     packCache.set(url, p);
-    p.catch(() => packCache.delete(url)); // failed fetches stay retryable
+    // Failed fetches stay retryable; only evict if the entry is still
+    // this promise (a rider may have replaced it already).
+    p.catch(() => { if (packCache.get(url) === p) packCache.delete(url); });
   }
   return p;
 }
