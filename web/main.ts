@@ -608,36 +608,44 @@ const installsInFlight = new Set<string>();
 // run them right after so fast clicks aren't silently dropped. A list
 // per url: every click is another fish/copy, not a dedupe.
 const queuedAgain = new Map<string, Importable[]>();
-async function remoteInstall(it: Importable, again: boolean): Promise<void> {
+// `heldSlot` marks a replay the previous install's drain handed the
+// in-flight slot to directly. `held` tracks whether THIS call owns
+// the slot — only the owner drains the queue or releases it, so no
+// correctness depends on a replay claiming the slot synchronously.
+async function remoteInstall(it: Importable, again: boolean,
+                             heldSlot = false): Promise<void> {
   const fail = (error: string) =>
     bus.post({ op: "installFailed", url: it?.url ?? "", error });
-  if (!it?.url || typeof it.url !== "string" ||
-      !it.url.startsWith("https://archive.org/") ||
-      !KNOWN_SECTIONS.has(it.section)) {
-    fail("invalid add-on item");
-    return;
-  }
-  // The panel's retry timeout can fire while the original fetch is still
-  // running — a second request for the same url would double-install.
-  if (installsInFlight.has(it.url)) {
-    // The in-flight request's ack covers a duplicate add; an explicit
-    // "Add again" means another fish/decor copy — queue it for after.
-    if (again) {
-      const q = queuedAgain.get(it.url) ?? [];
-      q.push(it);
-      queuedAgain.set(it.url, q);
-    }
-    return;
-  }
-  // A restore may have landed this add-on while the panel's detail fetch
-  // was in flight — unless the user clicked "Add again", that's a dup.
-  if (!again && installedAddons.some((a) => a.url === it.url)) {
-    bus.post({ op: "installed", url: it.url });
-    return;
-  }
-  installsInFlight.add(it.url);
+  let held = heldSlot;
   let ok = false;
   try {
+    if (!it?.url || typeof it.url !== "string" ||
+        !it.url.startsWith("https://archive.org/") ||
+        !KNOWN_SECTIONS.has(it.section)) {
+      fail("invalid add-on item");
+      return;
+    }
+    // The panel's retry timeout can fire while the original fetch is
+    // still running — a second request would double-install. A held
+    // replay skips this: it IS the in-flight request continuing.
+    if (!held && installsInFlight.has(it.url)) {
+      // The in-flight request's ack covers a duplicate add; an
+      // explicit "Add again" means another fish/decor copy — queue it.
+      if (again) {
+        const q = queuedAgain.get(it.url) ?? [];
+        q.push(it);
+        queuedAgain.set(it.url, q);
+      }
+      return;
+    }
+    // A restore may have landed this add-on while the panel's detail
+    // fetch was in flight — unless the user clicked "Add again",
+    // that's a dup.
+    if (!again && installedAddons.some((a) => a.url === it.url)) {
+      bus.post({ op: "installed", url: it.url });
+      return;
+    }
+    if (!held) { installsInFlight.add(it.url); held = true; }
     const rs = await fetchAddon(it.url);
     const usable = rs.filter(
       (r) => r.sheets.size || r.images.size || r.sounds.length);
@@ -662,24 +670,22 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
     ok = true;
   } catch (e) { fail(String(e)); }
   finally {
-    installsInFlight.delete(it.url);
-    // A failed install would fail its queued twins the same way —
-    // drop them rather than spam installFailed per click.
-    if (!ok) queuedAgain.delete(it.url);
-    // Replays already passed validation and skip the dedupe guard,
-    // so each drained call reaches its own finally and shifts the
-    // next click. remoteInstall claims the in-flight slot
-    // synchronously (no await before installsInFlight.add), so a
-    // held slot right after the call means the replay took over the
-    // chain — stop draining. An early-returned replay leaves the
-    // slot free; the loop picks up where it stopped.
-    let next = queuedAgain.get(it.url)?.shift();
-    while (next) {
-      void remoteInstall(next, true).catch(() => {});
-      if (installsInFlight.has(it.url)) break;
-      next = queuedAgain.get(it.url)?.shift();
+    if (held) {
+      // A failed install would fail its queued twins the same way —
+      // drop them rather than spam installFailed per click.
+      if (!ok) queuedAgain.delete(it.url);
+      const next = queuedAgain.get(it.url)?.shift();
+      if (next) {
+        // The slot passes straight to the replay — no release window
+        // for a stray dup to slip into and no probe on timing. The
+        // replay's own finally drains the next click or releases.
+        void remoteInstall(next, true, true).catch((e) =>
+          console.error("queued Add-again replay failed:", e));
+      } else {
+        installsInFlight.delete(it.url);
+        queuedAgain.delete(it.url);
+      }
     }
-    if (!queuedAgain.get(it.url)?.length) queuedAgain.delete(it.url);
   }
 }
 
