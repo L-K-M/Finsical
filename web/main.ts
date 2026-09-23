@@ -962,7 +962,10 @@ window.addEventListener("drop", (e) => {
     if (flat.has("manifest.json")) {
       const pack = await loadAzpack(readFile);
       const idx = usePack(pack, readFile);
-      if (idx >= 0 && spawnFish(idx, pack.manifest.tag)) audio.splash();
+      if (idx >= 0 && !spawnFish(idx, pack.manifest.tag))
+        console.warn(`Tank is full — ${FISH_CAP} fish max. ` +
+          "Release one from Tank Overview first.");
+      else if (idx >= 0) audio.splash();
       const imgs: IndexedImage[] = [];
       for (const c of pack.manifest.chunks) {
         if (!c.image) continue;
@@ -1005,8 +1008,10 @@ window.addEventListener("drop", (e) => {
       const sheets = fshToSheets(data);
       if (!sheets.size) continue;
       const idx = usePack({ sheets });
-      if (idx >= 0 &&
-          spawnFish(idx, name.replace(/\.[^.]*$/, ""))) audio.splash();
+      if (idx >= 0 && !spawnFish(idx, name.replace(/\.[^.]*$/, "")))
+        console.warn(`Tank is full — ${FISH_CAP} fish max. ` +
+          "Release one from Tank Overview first.");
+      else if (idx >= 0) audio.splash();
       pickBackdrop(packImages(data).values());
       if (fishSheets.length) {
         console.info(`${name}: pack imported`);
