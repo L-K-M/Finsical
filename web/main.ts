@@ -10,6 +10,7 @@ import { fetchAddon, mountImportPanel, qualifySoundItemName,
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { sndsGet, sndsMerge } from "./store.js";
 import { imageCanvas, previewOf, soundIcon, swimCanvas } from "./render.js";
+import { upsertDecor, type DecorEntry } from "./decors.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
@@ -195,7 +196,7 @@ function pickGravel(images: Iterable<IndexedImage>, src: string): void {
 // Decorations (plants/accessories) sit on the gravel between the backdrop
 // and the fish. Each pack's art frame is scaled to fit; the set is
 // re-spaced across the tank floor whenever one is added.
-const decors: { cv: HTMLCanvasElement; pack: string }[] = [];
+const decors: DecorEntry[] = [];
 function addDecor(images: Iterable<IndexedImage>, src: string): void {
   // Art frames share one corner key index (0 or 255 depending on the
   // pack); catalog thumbnails have textured corners and are skipped.
@@ -207,14 +208,14 @@ function addDecor(images: Iterable<IndexedImage>, src: string): void {
     : imageCanvas(pick.img, false, keyMask(pick.img, pick.key));
   const s = Math.min(1, TANK.height * 0.8 / cv.height,
                      TANK.width * 0.5 / cv.width);
-  if (s >= 1) { decors.push({ cv, pack: src }); return; }
+  if (s >= 1) { upsertDecor(decors, src, cv); return; }
   const scaled = document.createElement("canvas");
   scaled.width = Math.max(1, Math.round(cv.width * s));
   scaled.height = Math.max(1, Math.round(cv.height * s));
   const c2 = scaled.getContext("2d")!;
   c2.imageSmoothingEnabled = false;
   c2.drawImage(cv, 0, 0, scaled.width, scaled.height);
-  decors.push({ cv: scaled, pack: src });
+  upsertDecor(decors, src, scaled);
 }
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
