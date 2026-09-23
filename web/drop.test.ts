@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeDroppedPacks } from "./drop.js";
+import { decodeDroppedPacks, dropSection } from "./drop.js";
 
 const PAL: [number, number, number][] =
   [[0, 0, 0], [255, 0, 0], [0, 0, 255], [0, 255, 0]];
@@ -35,6 +35,18 @@ function buildBmp8(pal: [number, number, number][]): Uint8Array {
   v.setUint32(46, pal.length, true);
   pal.forEach(([r, g, b], i) => hdr.set([b, g, r, 0], 14 + 40 + i * 4));
   return hdr;
+}
+
+/** 8-bit BMP with real pixel rows — packImages decodes it. */
+function buildBmpImage(w: number, h: number): Uint8Array {
+  const hdr = buildBmp8(PAL);
+  const stride = ((w * 8 + 31) >> 5) * 4;
+  const out = cat(hdr, new Uint8Array(stride * h).fill(1));
+  const v = new DataView(out.buffer);
+  v.setUint32(2, out.length, true);
+  v.setInt32(18, w, true);
+  v.setInt32(22, h, true);
+  return out;
 }
 
 /** One-frame, one-group sprite chunk over a w×h single-color frame. */
@@ -98,5 +110,29 @@ describe("decodeDroppedPacks", () => {
       ["Guppy.fsh", packB],
     ]);
     expect(packs.map((p) => p.name)).toEqual(["Guppy"]);
+  });
+
+  it("classifies by extension: fish add no scenery, scenery no fish", () => {
+    const art = buildBmpImage(8, 4);
+    const [fish, gravel, tank, rez] = decodeDroppedPacks([
+      ["Guppy.fsh", buildPack(art, spriteChunk(4, 4, 1))],
+      ["Sand.grv", buildPack(art)],
+      ["Reef.azn", buildPack(art, spriteChunk(4, 4, 1))],
+      ["ANGEL.REZ", buildPack(art, spriteChunk(4, 4, 1))],
+    ]);
+    expect([fish!.section, fish!.sheets.size, fish!.images.size])
+      .toEqual(["fish", 1, 0]);
+    expect([gravel!.section, gravel!.sheets.size, gravel!.images.size])
+      .toEqual(["gravel", 0, 1]);
+    expect([tank!.section, tank!.sheets.size, tank!.images.size])
+      .toEqual(["tanks", 0, 1]);
+    expect([rez!.section, rez!.sheets.size, rez!.images.size])
+      .toEqual(["tanks", 1, 1]);
+  });
+
+  it("maps every pack extension to its section", () => {
+    expect(["a.GRV", "b.plt", "c.acc", "d.azn", "e.rez", "f.fsh", "g"]
+      .map(dropSection)).toEqual(["gravel", "plants", "accessories",
+      "tanks", "tanks", "fish", "fish"]);
   });
 });

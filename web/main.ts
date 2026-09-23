@@ -1309,17 +1309,29 @@ window.addEventListener("drop", (e) => {
       await handleSounds(recs)
         .catch((e) => console.warn("sound import failed:", e));
     // Not an .azpack folder — every dropped pack file imports, not
-    // just the first (web/drop.ts, tested there).
-    const packs = decodeDroppedPacks(await Promise.all(
-      packFiles.map(async ([name, file]) =>
-        [name, new Uint8Array(await file.arrayBuffer())] as const)));
-    for (const p of packs) {
-      const idx = usePack({ sheets: p.sheets });
-      spawnFromDrop(idx, p.name);
-      pickBackdrop(p.images.values());
-      console.info(`${p.name}: pack imported`);
+    // just the first (web/drop.ts, tested there). One file at a time:
+    // an unreadable file costs only itself, and a folder drop never
+    // holds every pack's bytes at once. Sections come from the
+    // extension like remote installs' collections: a .fsh fish adds
+    // no scenery, so its catalog art can't take the backdrop.
+    let imported = 0;
+    for (const [name, file] of packFiles) {
+      let data: Uint8Array;
+      try { data = new Uint8Array(await file.arrayBuffer()); }
+      catch (e) {
+        console.warn(`drop: skipping unreadable ${name}:`, e);
+        continue;
+      }
+      for (const p of decodeDroppedPacks([[name, data]])) {
+        if (p.sheets.size) spawnFromDrop(usePack({ sheets: p.sheets }), p.name);
+        // Keyed by file name, not "": a drop mustn't replace the
+        // bundled pack's art entry.
+        if (p.images.size) handleImages(p.images.values(), name, p.section);
+        imported++;
+        console.info(`${name}: pack imported`);
+      }
     }
-    if (!packs.length && !recs.length)
+    if (!imported && !recs.length)
       console.warn("drop: no manifest.json, pack file, or 'snd ' found");
   })().catch((e) => console.warn("azpack import failed:", e));
 });
