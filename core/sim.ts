@@ -70,7 +70,7 @@ export interface Bubble {
 }
 
 const MARGIN = 16;
-const SURFACE = 10;
+export const SURFACE = 10;
 export const BOTTOM_PAD = 12;
 
 /** Smallest signed angle delta, wrapped to [−π, π). */
@@ -92,6 +92,9 @@ const WASTE_PER_TICK = 1 / 6000;
 const FILTER_PER_TICK = 1 / 12000;
 /** Below this fish lose their appetite and stop seeking food. */
 const QUALITY_SEEK = 0.3;
+/** Below this fish start gasping: wander targets pull toward the
+ * surface, full depth at GASP_QUALITY, the waterline itself at 0. */
+const GASP_QUALITY = 0.45;
 const STARTLE_RADIUS = 48;
 const STARTLE_TICKS = 30;
 /** Reactions weaker than this read as frozen fish — trims the
@@ -125,6 +128,8 @@ const BAND_SHIFT = 0.2;
  */
 export const TURN_TICKS = 10;
 const BUBBLE_CHANCE = 0.004;
+/** Per tick, a bubble escaping the gravel — one every ~8 s. */
+const AMBIENT_BUBBLE = 0.004;
 /** One full day/night cycle in ticks (~13 min at 30 tps). */
 export const DAY_TICKS = 24000;
 
@@ -238,6 +243,12 @@ export class Sim {
     }
     this.waterQuality =
       Math.min(1, Math.max(0, this.waterQuality + FILTER_PER_TICK));
+    // Ambient: the odd bubble works loose from the gravel.
+    if (this.rand() < AMBIENT_BUBBLE)
+      this.bubbles.push({
+        x: MARGIN + this.rand() * (this.tank.width - MARGIN * 2),
+        y: this.tank.height - BOTTOM_PAD - 2,
+      });
     for (let i = this.bubbles.length - 1; i >= 0; i--) {
       const b = this.bubbles[i]!;
       b.y -= 0.8;
@@ -382,8 +393,13 @@ export class Sim {
                 this.rand() * (maxY - SURFACE - MARGIN);
     }
     f.tx = MARGIN + this.rand() * (this.tank.width - MARGIN * 2);
+    // Gasping: foul water shrinks the usable depth toward the
+    // waterline — fish hang just under it until filtration recovers.
+    const gasp =
+      Math.max(0, (GASP_QUALITY - this.waterQuality) / GASP_QUALITY);
+    const shallow = maxY - gasp * (maxY - SURFACE - MARGIN);
     f.ty = Math.min(
-      maxY,
+      shallow,
       Math.max(SURFACE + MARGIN,
                f.bandY + (this.rand() - 0.5) * 2 * BAND_HALF));
     f.phase = 0;

@@ -1,4 +1,4 @@
-import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
+import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim, SURFACE } from "../core/sim.js";
 import { fishPose, pitch } from "../core/pose.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
@@ -97,18 +97,51 @@ window.addEventListener("pagehide", saveTank);
 setInterval(saveTank, 10_000);
 
 // Click near the surface drops food; deeper clicks knock on the glass.
-canvas.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0) return; // ignore right/middle clicks
-  // object-fit: contain letterboxes the bitmap inside the element box.
+// A press-drag along the surface scatters a trail of pellets — shaking
+// the food tin.
+const FEED_ZONE = TANK.height * 0.15;
+/** Drag-feed leaves one pellet per this many px of travel. */
+const FEED_STEP = 14;
+let lastFeedX: number | null = null;
+// Tap rings on the glass — expanding, fading circles at the knock.
+const ripples: { x: number; y: number; t0: number }[] = [];
+const RIPPLE_MS = 1200;
+/** Tank coords under a pointer event, or null in the letterbox bar. */
+function tankPoint(e: PointerEvent): { x: number; y: number } | null {
   const r = canvas.getBoundingClientRect();
   const s = Math.min(r.width / TANK.width, r.height / TANK.height);
   const x = (e.clientX - r.left - (r.width - TANK.width * s) / 2) / s;
   const y = (e.clientY - r.top - (r.height - TANK.height * s) / 2) / s;
-  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return; // letterbox bar
+  return Number.isFinite(x) && Number.isFinite(y) &&
+         x >= 0 && x < TANK.width && y >= 0 && y < TANK.height
+    ? { x, y } : null;
+}
+canvas.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return; // ignore right/middle clicks
+  const p = tankPoint(e);
+  if (!p) return;
   audio.unlock();
-  if (y < TANK.height * 0.15) { sim.dropFood(x); audio.feed(); }
-  else { sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height); }
+  if (p.y < FEED_ZONE) {
+    sim.dropFood(p.x); audio.feed();
+    lastFeedX = p.x;
+  } else {
+    sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
+    ripples.push({ x: p.x, y: p.y, t0: performance.now() });
+    if (ripples.length > 12) ripples.shift();
+    lastFeedX = null; // a glass press isn't a feed drag
+  }
 });
+canvas.addEventListener("pointermove", (e) => {
+  if (!(e.buttons & 1) || lastFeedX === null) return;
+  const p = tankPoint(e);
+  if (!p || p.y >= FEED_ZONE || Math.abs(p.x - lastFeedX) < FEED_STEP)
+    return;
+  sim.dropFood(p.x); audio.feed();
+  lastFeedX = p.x;
+});
+const endFeedDrag = () => { lastFeedX = null; };
+canvas.addEventListener("pointerup", endFeedDrag);
+canvas.addEventListener("pointercancel", endFeedDrag);
 
 // ---- sprite loading ----------------------------------------------------
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
@@ -1089,6 +1122,11 @@ function render(): void {
     ctx.drawImage(d, Math.round(TANK.width * (i + 0.5) / dn - d.width / 2),
                   TANK.height - 6 - d.height);
   }
+  // Waterline: a soft glint marks the surface (and the feeding zone).
+  ctx.fillStyle = "rgba(220,240,255,0.30)";
+  ctx.fillRect(0, SURFACE, TANK.width, 1);
+  ctx.fillStyle = "rgba(220,240,255,0.12)";
+  ctx.fillRect(0, SURFACE + 1, TANK.width, 1);
 
   for (const fd of sim.food) {
     // Rotting pellets dissolve — fade them out over their rot lifetime.
@@ -1098,6 +1136,22 @@ function render(): void {
     ctx.globalAlpha = 1;
   }
   for (const f of sim.fish) drawFish(f);
+
+  // Tap rings on the glass, expanding and fading (~1.2 s).
+  const now = performance.now();
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const r = ripples[i]!;
+    const t = (now - r.t0) / RIPPLE_MS;
+    if (t >= 1) { ripples.splice(i, 1); continue; }
+    ctx.strokeStyle =
+      `rgba(210,235,255,${(0.55 * (1 - t)).toFixed(3)})`;
+    ctx.lineWidth = 1;
+    for (const k of [1, 0.55]) {
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, (4 + t * 30) * k, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
 
   ctx.fillStyle = "#cfe8ff";
   for (const b of sim.bubbles) {

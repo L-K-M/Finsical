@@ -144,6 +144,34 @@ describe("Sim", () => {
     expect(df).toBeLessThan(dc * 0.7); // vigor 0.5 vs 1.0
   });
 
+  it("ambient bubbles rise from the gravel on their own", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 13);
+    let seen = 0;
+    for (let i = 0; i < 3000; i++) {
+      sim.tick();
+      seen = Math.max(seen, sim.bubbles.length);
+      for (const b of sim.bubbles) expect(b.y).toBeLessThan(200 - 10);
+    }
+    expect(seen).toBeGreaterThan(0); // ~12 expected at p=0.004/tick
+  });
+
+  it("fish hang near the surface when the water turns foul", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 160, y: 150 });
+    for (let i = 0; i < 1500; i++) {
+      sim.waterQuality = 0; // pinned — filtration would creep it up
+      sim.tick();
+    }
+    expect(f.y).toBeLessThanOrEqual(40);
+    let maxY = 0;
+    for (let i = 0; i < 500; i++) {
+      sim.waterQuality = 0;
+      sim.tick();
+      maxY = Math.max(maxY, f.y);
+    }
+    expect(maxY).toBeLessThanOrEqual(45); // stays under the waterline
+  });
+
   it("day/night light oscillates in [0,1]", () => {
     const sim = new Sim({ width: 100, height: 100 }, 1);
     let min = 1, max = 0;
