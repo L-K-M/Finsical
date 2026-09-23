@@ -1,5 +1,18 @@
 # Finsical — thorough review (swe)
 
+> **Status:** implementation pass complete. Items below that landed
+> are folded into `ANALYSIS.md` with their PR numbers — that file is
+> now the living backlog; this document is the original review record.
+>
+> Landed (PRs open for review): B2 → #124; fish cap → #111; night
+> curve/tint → #113; sound pane + mute → #101; sound uninstall → #104;
+> tap ripple → #107; water art → #108; Add-again queue → #117;
+> scenery Use → #118; Add-ons button → #120; flat-drop fallback → #121;
+> restore retry → #122; backdrop cover-fit → #125; browser O/P/S
+> shortcuts → #126; Empty Tank → #127; sleeping fish → #128; fish
+> hover tip → #130; `.idea` untracked → #105. Overlaps with other
+> passes are noted in ANALYSIS.md (#107↔#106, #125↔#87, #113↔#109).
+
 Scope: full read of `web/` (main, import, crt, machines, prefs, stats,
 overview, addons, audio, render, store, bus, icons), `core/` (sim, pose,
 data/*), `macos/Finsical.swift`, build/release scripts, CI. All 167 tests
