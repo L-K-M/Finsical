@@ -20,6 +20,7 @@ import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { sndsGet, sndsMerge } from "./store.js";
 import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
          swimCanvas } from "./render.js";
+import { containPoint, feedZoneLineY, isFeedZoneY } from "./feedzone.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { drawBubbles, drawFood, drawLight, drawMurk, feedPinch }
@@ -205,22 +206,35 @@ setInterval(saveTank, 10_000);
  * letterbox bars (object-fit: contain inside the element box). */
 function tankPoint(clientX: number, clientY: number):
     { x: number; y: number } | null {
-  const r = canvas.getBoundingClientRect();
-  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
-  const x = (clientX - r.left - (r.width - TANK.width * s) / 2) / s;
-  const y = (clientY - r.top - (r.height - TANK.height * s) / 2) / s;
-  if (!Number.isFinite(x) || !Number.isFinite(y) ||
-      x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return null;
-  return { x, y };
+  return containPoint(clientX, clientY, canvas.getBoundingClientRect(),
+                      TANK);
 }
 
-// Click near the surface drops food; deeper clicks knock on the glass.
+// Feed-zone affordance: a crosshair over the strip, and a brighter
+// boundary line while the pointer is parked there (see render()).
+// Hover is re-evaluated each frame from the last client point so a
+// resize under a stationary pointer can't leave the state stale, and
+// getBoundingClientRect runs once per frame instead of per move.
+let overFeedZone = false;
+let lastClient: { x: number; y: number } | null = null;
+function setFeedHover(on: boolean): void {
+  if (on === overFeedZone) return;
+  overFeedZone = on;
+  canvas.style.cursor = on ? "crosshair" : "";
+}
+function syncFeedHover(): void {
+  if (!lastClient) { setFeedHover(false); return; }
+  const p = containPoint(lastClient.x, lastClient.y,
+                         canvas.getBoundingClientRect(), TANK);
+  setFeedHover(p !== null && isFeedZoneY(p.y, TANK.height));
+}
+
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return; // ignore right/middle clicks
   const p = tankPoint(e.clientX, e.clientY);
-  if (!p) return;
+  if (!p) return; // letterbox bar
   audio.unlock();
-  if (p.y < TANK.height * 0.15) {
+  if (isFeedZoneY(p.y, TANK.height)) {
     const pellet = sim.dropFood(p.x);
     audio.feed();
     splashes.push(newSplash(pellet.x, pellet.y));
@@ -233,10 +247,13 @@ canvas.addEventListener("pointerdown", (e) => {
 // The nearest calm fish notices the hovering pointer and drifts over
 // to look — hunger and panic still outrank curiosity in the sim.
 canvas.addEventListener("pointermove", (e) => {
+  lastClient = { x: e.clientX, y: e.clientY };
   if (!e.isPrimary) return; // one pointer drives curiosity
   sim.notice = tankPoint(e.clientX, e.clientY);
 });
 canvas.addEventListener("pointerleave", (e) => {
+  lastClient = null;
+  setFeedHover(false); // pointer is definitionally off the tank — clear now
   if (!e.isPrimary) return; // don't clear the primary's curiosity
   sim.notice = null;
 });
@@ -1393,6 +1410,17 @@ function render(): void {
            waterMotion === "animated" ? sim.tickCount : 0);
 
   drawNight(new Date());
+
+  // Feed-zone boundary: after the night/murk overlays so the affordance
+  // stays visible. Faint at rest; brightens while the pointer is there.
+  // Re-check hover here so a resize under a stationary pointer updates
+  // the cursor/line on the next frame (setFeedHover early-returns).
+  syncFeedHover();
+  const zoneY = feedZoneLineY(TANK.height);
+  ctx.fillStyle = overFeedZone
+    ? "rgba(255,255,255,0.45)"
+    : "rgba(255,255,255,0.14)";
+  ctx.fillRect(0, zoneY, TANK.width, 1);
 }
 
 /** Night's blue, multiplied over the scene at the darkest demo night:
