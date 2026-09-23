@@ -291,6 +291,32 @@ describe("Sim", () => {
     expect(f.turnFrom).toBe(1); // untouched — no roll began
   });
 
+  it("abandons the seek when its pellet disappears", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 11);
+    const f = sim.addFish({ x: 50, y: 50, facing: 1, heading: 0,
+                          hunger: 0.9 });
+    sim.dropFood(200);
+    sim.tick();
+    expect(f.state).toBe("seek");
+    // A rival got there first — the eater marks it, tick() splices it.
+    sim.food[0]!.eaten = true;
+    sim.tick();
+    expect(sim.food.length).toBe(0);
+    expect(f.state).not.toBe("seek"); // not still "Looking for food"
+  });
+
+  it("stops seeking when the water turns foul", () => {
+    const sim = new Sim({ width: 300, height: 100 }, 11);
+    const f = sim.addFish({ x: 50, y: 50, facing: 1, heading: 0,
+                          hunger: 0.9 });
+    sim.dropFood(200);
+    sim.tick();
+    expect(f.state).toBe("seek");
+    sim.waterQuality = 0.1; // below QUALITY_SEEK — appetite is gone
+    sim.tick();
+    expect(f.state).not.toBe("seek");
+  });
+
   it("starts a roll without snapping heading when food is behind", () => {
     const sim = new Sim({ width: 300, height: 100 }, 11);
     const f = sim.addFish({ x: 200, y: 50, facing: 1, heading: 0,

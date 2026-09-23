@@ -294,6 +294,10 @@ export class Sim {
         this.setState(f, "seek");
         f.tx = food.x; f.ty = food.y;
         turning = this.maybeTurn(f);
+      } else if (f.state === "seek") {
+        // The pellet was eaten, rotted, or the water turned foul —
+        // stop looking; the fish drifts on to its next wander target.
+        this.setState(f, "drift");
       }
       let dist = Math.hypot(f.tx - f.x, f.ty - f.y);
       if (!food && (f.phase >= MOVE_TICKS || dist < 4)) {
