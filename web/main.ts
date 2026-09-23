@@ -132,12 +132,20 @@ function usePack(pack: { sheets: Map<string, SpriteSheet>;
   return sheets[0] ? fishSheets.length - 1 : -1;
 }
 
+/** Soft population limit — the original kept tanks small, and past
+ * this the water reads as soup while every save bloats. Roster
+ * restores bypass it: saved pets always come back. */
+const FISH_CAP = 24;
+
 /** A newly installed fish pack adds one fish bound to its sheet —
  * "Add again" adds another of the same species. `pack` is the add-on's
- * install URL: the precise identity when packs share a species name. */
-function spawnFish(sheetIdx: number, species: string, pack?: string): void {
+ * install URL: the precise identity when packs share a species name.
+ * Returns the new fish, or null when the tank is already full. */
+function spawnFish(sheetIdx: number, species: string, pack?: string,
+                   enforceCap = true): Fish | null {
+  if (enforceCap && sim.fish.length >= FISH_CAP) return null;
   const facing = Math.random() < 0.5 ? 1 : -1;
-  sim.addFish({
+  const f = sim.addFish({
     x: 60 + Math.random() * (TANK.width - 120),
     y: 30 + Math.random() * (TANK.height - 90),
     facing: facing as 1 | -1,
@@ -147,6 +155,7 @@ function spawnFish(sheetIdx: number, species: string, pack?: string): void {
     ...(pack !== undefined ? { pack } : {}),
   });
   saveTank();
+  return f;
 }
 
 // Biggest pack image large enough to matter becomes the tank backdrop —
@@ -263,7 +272,7 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
     packBySheet.set(idx, url);
     // A live fish-pack install adds a real fish; restores replay sheets
     // only — the saved roster already carries those fish.
-    if (live) { spawnFish(idx, name, url); audio.splash(); }
+    if (live && spawnFish(idx, name, url)) audio.splash();
   }
   console.info(`archive.org: imported ${section} ${name}`);
   if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
@@ -312,7 +321,8 @@ function reconcileFish(): void {
       continue;
     const idx = sheetByPack.get(it.url) ?? sheetBySpecies.get(it.inner);
     if (idx === undefined) { pending = true; continue; } // restore failed — retry next launch
-    spawnFish(idx, it.inner, it.url);
+    // Saved pets bypass the cap — the roster recorded them, they return.
+    spawnFish(idx, it.inner, it.url, false);
   }
   // spawnFish's own saves went out as v=1 — stamp the reconciled roster.
   rosterComplete = !pending;
@@ -620,6 +630,13 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   // was in flight — unless the user clicked "Add again", that's a dup.
   if (!again && installedAddons.some((a) => a.url === it.url)) {
     bus.post({ op: "installed", url: it.url });
+    return;
+  }
+  // A fish pack can't be added past the population cap — refuse up
+  // front so the panel explains it instead of fetching for nothing.
+  if (it.section === "fish" && sim.fish.length >= FISH_CAP) {
+    fail(`The tank is full — ${FISH_CAP} fish is plenty. ` +
+         "Release one from Tank Overview first.");
     return;
   }
   installsInFlight.add(it.url);
@@ -945,7 +962,7 @@ window.addEventListener("drop", (e) => {
     if (flat.has("manifest.json")) {
       const pack = await loadAzpack(readFile);
       const idx = usePack(pack, readFile);
-      if (idx >= 0) { spawnFish(idx, pack.manifest.tag); audio.splash(); }
+      if (idx >= 0 && spawnFish(idx, pack.manifest.tag)) audio.splash();
       const imgs: IndexedImage[] = [];
       for (const c of pack.manifest.chunks) {
         if (!c.image) continue;
@@ -988,7 +1005,8 @@ window.addEventListener("drop", (e) => {
       const sheets = fshToSheets(data);
       if (!sheets.size) continue;
       const idx = usePack({ sheets });
-      if (idx >= 0) { spawnFish(idx, name.replace(/\.[^.]*$/, "")); audio.splash(); }
+      if (idx >= 0 &&
+          spawnFish(idx, name.replace(/\.[^.]*$/, ""))) audio.splash();
       pickBackdrop(packImages(data).values());
       if (fishSheets.length) {
         console.info(`${name}: pack imported`);
