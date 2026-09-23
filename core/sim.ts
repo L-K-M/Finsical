@@ -139,7 +139,8 @@ export class Sim {
   tickCount = 0;
   /** 1 = clean, 0 = foul. Rotted food fouls it; filtration recovers it. */
   waterQuality = 1;
-  /** The lamp: LIGHT_NIGHT while off, null to follow the day cycle. */
+  /** The lamp: LIGHT_NIGHT = night, 1 = full daylight, null = follow
+   * the day cycle. */
   lightOverride: number | null = null;
   private rand: () => number;
   private nextId = 0;

@@ -71,8 +71,10 @@ if (saved) {
   if (Number.isFinite(saved.waterQuality))
     sim.waterQuality = saved.waterQuality;
   // A save predating the lamp has no field: the cycle stays in charge.
+  // Storage is untrusted — clamp into the valid range (a tampered 5
+  // would drop the night overlay's alpha below zero and void the fill).
   if (typeof saved.lightOverride === "number")
-    sim.lightOverride = saved.lightOverride;
+    sim.lightOverride = Math.min(1, Math.max(0, saved.lightOverride));
 }
 const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
   [0, 1, 2, 3].map((i) =>
