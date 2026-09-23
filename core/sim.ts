@@ -342,10 +342,15 @@ export class Sim {
 
       if (food) {
         const d = Math.max(Math.hypot(food.x - f.x, food.y - f.y), 1);
-        // A big fish can't sink to a settled pellet's depth; it eats
-        // what comes within reach of its body. EDGE_KEEP matches the
-        // floor clamp in room(), so the reach always spans the gap.
-        if (d < Math.max(EAT_DIST, (f.halfH ?? 0) * EDGE_KEEP)) {
+        // A big fish can't sink to a settled pellet's depth or press
+        // its centre against the side glass; it eats what comes within
+        // reach of its body. EDGE_KEEP matches room()'s floor clamp, so
+        // the reach spans the depth gap, and the pellet's distance
+        // outside room()'s sides is added to span the wall gap (at a
+        // corner the two gaps sum to more than their hypotenuse).
+        const { x0, x1 } = this.room(f);
+        const wallGap = Math.max(0, x0 - food.x, food.x - x1);
+        if (d < Math.max(EAT_DIST, (f.halfH ?? 0) * EDGE_KEEP) + wallGap) {
           food.eaten = true;
           f.hunger = 0;
           this.setState(f, "drift");

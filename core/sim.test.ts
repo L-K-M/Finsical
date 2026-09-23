@@ -66,6 +66,22 @@ describe("Sim", () => {
     }
   });
 
+  it("lets a wide fish eat a pellet against the side glass", () => {
+    // Its centre keeps 0.8 halfW off the glass, farther than a pellet
+    // dropped at the wall; the reach has to span that gap too.
+    for (const drop of [0, 320]) {
+      const sim = new Sim({ width: 320, height: 200 }, 5);
+      sim.addFish({ x: 160, y: 100, hunger: 1, halfW: 90, halfH: 30 });
+      sim.dropFood(drop);
+      let eaten = false;
+      for (let i = 0; i < 3000 && !eaten; i++) {
+        sim.tick();
+        eaten = sim.food.length === 0 && sim.fish[0]!.hunger < 0.5;
+      }
+      expect(eaten, `drop at ${drop}`).toBe(true);
+    }
+  });
+
   it("blows bubbles from a big fish's mouth", () => {
     const sim = new Sim({ width: 320, height: 200 }, 11);
     const f = sim.addFish({ x: 160, y: 100, halfW: 40, halfH: 20 });
