@@ -149,6 +149,7 @@ canvas.addEventListener("pointermove", (e) => {
 const endFeedDrag = () => { lastFeedX = null; };
 canvas.addEventListener("pointerup", endFeedDrag);
 canvas.addEventListener("pointercancel", endFeedDrag);
+canvas.addEventListener("lostpointercapture", endFeedDrag);
 
 // ---- sprite loading ----------------------------------------------------
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
