@@ -110,7 +110,7 @@ const PICTURE_GROUPS: Group[] = [
   { title: "Color", rows: [["red", "green", "blue"]] },
 ];
 
-type PaneId = "machine" | "monitor" | "picture";
+type PaneId = "machine" | "monitor" | "picture" | "sound";
 const PANES: { id: PaneId; label: string; icon: string; hint: string;
                /** Hint while the CRT effect is off (its sliders dim). */
                offHint?: string;
@@ -128,6 +128,9 @@ const PANES: { id: PaneId; label: string; icon: string; hint: string;
     offHint: "These controls adjust the CRT effect. Turn on Simulate a " +
       "CRT monitor in the Monitor pane to use them.",
     keys: PIC_SPECS.map((s) => s.key) },
+  { id: "sound", label: "Sound", icon: "icon-sound",
+    hint: "Ambient and event sounds — feeding drops, glass taps, the " +
+      "water bed, and imported sound records.", keys: [] },
 ];
 const PANE_KEY = "finsical:prefsPane";
 
@@ -143,6 +146,9 @@ const dragging = new Set<keyof CrtConfig>();
 // times out so a dropped post can't wedge the checkbox.
 let onTouched = false;
 let onTouchTimer: ReturnType<typeof setTimeout> | undefined;
+// Same latch for the Sound switch.
+let sndTouched = false;
+let sndTouchTimer: ReturnType<typeof setTimeout> | undefined;
 // Machine picks latch the same way: pushes already in flight still
 // carry the previous case and would snap the list back mid-browse.
 let machinePending: string | null = null;
@@ -160,6 +166,7 @@ function el(tag: string, cls = "", text = ""): HTMLElement {
 }
 
 const onBox = document.getElementById("crt-on") as HTMLInputElement;
+const sndBox = document.getElementById("snd-on") as HTMLInputElement;
 const warnEl = document.getElementById("crt-warn")!;
 const descEl = document.getElementById("pfdesc")!;
 const defaultsBtn = document.getElementById("pfdefaults") as HTMLButtonElement;
@@ -178,6 +185,12 @@ const bus = openBus((m) => {
   // Only warn when the tank explicitly reports the effect can't run —
   // a missing field just means an older page build.
   warnEl.hidden = crt.available !== false;
+  const snd = (m.sound ?? {}) as { on?: unknown };
+  if (snd.on !== undefined &&
+      (firstState || !sndTouched || (snd.on === true) === sndBox.checked)) {
+    sndTouched = false;
+    sndBox.checked = snd.on === true;
+  }
   if (crt.cfg !== undefined) cfg = sanitizeCrtConfig(crt.cfg);
   const mc = m.machine as { id?: unknown } | undefined;
   if (typeof mc?.id === "string" &&
@@ -230,7 +243,9 @@ function showPane(id: PaneId, focus = false): void {
     document.getElementById(`pane-${p.id}`)!.hidden = !on;
   }
   if (focus) paneTabs.get(id)!.focus();
-  defaultsBtn.hidden = id === "machine";
+  // Defaults restores sliders — panes without any hide the button.
+  defaultsBtn.hidden =
+    PANES.find((p) => p.id === id)!.keys.length === 0;
   document.getElementById("pffoot")!
     .classList.toggle("pfdefaults", !defaultsBtn.hidden);
   describe(null);
@@ -439,6 +454,13 @@ onBox.addEventListener("change", () => {
   // state push resync rather than staying optimistic forever.
   onTouchTimer = setTimeout(() => { onTouched = false; }, 1500);
   bus.post({ op: "crtEnabled", on: onBox.checked });
+});
+trackHighlight(document.getElementById("pfsnd")!);
+sndBox.addEventListener("change", () => {
+  sndTouched = true;
+  clearTimeout(sndTouchTimer);
+  sndTouchTimer = setTimeout(() => { sndTouched = false; }, 1500);
+  bus.post({ op: "sound", on: sndBox.checked });
 });
 
 // Defaults restores the visible pane's sliders only — the other pane's

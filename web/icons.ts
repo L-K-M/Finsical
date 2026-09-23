@@ -147,8 +147,16 @@ export const SOUND_ICON: readonly string[] = [
   "................................",
 ];
 
+// Pane buttons want 32 x 32 — the speaker graphic centered vertically.
+const ICON_SOUND = [
+  ...Array<string>(4).fill(".".repeat(32)),
+  ...SOUND_ICON,
+  ...Array<string>(4).fill(".".repeat(32)),
+];
+
 export const ICON_SPRITES: Record<string, readonly string[]> = {
   "icon-machine": ICON_MACHINE,
   "icon-monitor": ICON_MONITOR,
   "icon-picture": ICON_PICTURE,
+  "icon-sound": ICON_SOUND,
 };

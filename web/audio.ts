@@ -15,6 +15,19 @@ export class TankAudio {
   // Bumped by each startAmbient so a stale pending resume() retry can
   // tell it lost the race instead of starting a second loop.
   private ambientGen = 0;
+  // Muted silences every source and stops the ambient loop; unmuting
+  // restarts it through the normal path (ambientWanted survives).
+  private muted = false;
+
+  setMuted(m: boolean): void {
+    if (m === this.muted) return;
+    this.muted = m;
+    if (!m) { this.startAmbient(); return; }
+    if (this.ambientSrc) {
+      try { this.ambientSrc.stop(); } catch { /* already ended */ }
+      this.ambientSrc = null;
+    }
+  }
 
   async load(read: (path: string) => Promise<Uint8Array>,
              manifest: AzpackManifest): Promise<void> {
@@ -98,7 +111,7 @@ export class TankAudio {
 
   private play(buf: AudioBuffer | null, gain = 0.8, loop = false,
                retry = true): AudioBufferSourceNode | null {
-    if (!buf || !this.ctx) return null;
+    if (!buf || !this.ctx || this.muted) return null;
     if (this.ctx.state === "suspended" && retry) {
       const ac = this.ctx;
       const gen = this.ambientGen;

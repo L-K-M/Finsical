@@ -89,6 +89,8 @@ body.crt canvas#tank { opacity: 0; }
    checkbox's control rect ends. */
 #pfcrt { display: flex; width: max-content; }
 #crt-warn { position: absolute; left: 196px; right: 0; top: 0; }
+#pfsnd { display: flex; width: max-content; }
+#snd-blurb { position: absolute; left: 0; right: 0; top: 34px; }
 .pfgroup { padding: 12px 11px 6px; }
 #pftraits .pfgroup:first-child { margin-top: 28px; }
 #pftraits .pfgroup + .pfgroup { margin-top: 24px; }

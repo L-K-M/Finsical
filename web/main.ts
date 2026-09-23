@@ -415,6 +415,8 @@ function postState(): void {
       on: crt?.enabled ?? false,
       cfg: crtCfg,
     },
+    // Preferences' Sound pane echoes this back into its checkbox.
+    sound: { on: soundOn },
   });
 }
 
@@ -528,6 +530,8 @@ function onBusMessage(m: BusMsg): void {
     setCrt(m.on === true);
   } else if (m.op === "crtConfig") {
     applyCrtConfig(m.cfg);
+  } else if (m.op === "sound") {
+    setSound(m.on === true);
   } else if (m.op === "machine" && typeof m.id === "string") {
     const nm = machineById(m.id);
     if (nm && nm.id !== machine.id) { applyMachine(nm); postState(); }
@@ -687,6 +691,22 @@ function applyCrtConfig(raw: unknown): void {
   catch { /* storage unavailable */ }
   postState();
 }
+// Sound preference — like the CRT switch, the tank page owns the
+// persisted bit and Preferences echoes it back. Ambient and event
+// sounds share the one switch.
+const SOUND_KEY = "finsical:sound";
+let soundOn = (() => {
+  try { return localStorage.getItem(SOUND_KEY) !== "0"; }
+  catch { return true; } // storage unavailable — default to on
+})();
+audio.setMuted(!soundOn);
+function setSound(on: boolean): void {
+  soundOn = on;
+  audio.setMuted(!on);
+  try { localStorage.setItem(SOUND_KEY, on ? "1" : "0"); }
+  catch { /* storage unavailable */ }
+  postState();
+}
 // Machine selection is declared up here, not in the machine-case
 // section — setCrt below calls postState() during module eval, and a
 // let/TDZ read would throw (silently, inside that try) before a later
@@ -797,7 +817,8 @@ function feedFish(): void {
 }
 (window as unknown as { finsical?: unknown }).finsical =
   { openImport: () => importPanel.open(), feedFish,
-    toggleCrt: () => setCrt(!crtOn) };
+    toggleCrt: () => setCrt(!crtOn),
+    toggleSound: () => setSound(!soundOn) };
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
 // path. Touch fallback: hover-less devices have no keyboard or native menu.
@@ -832,6 +853,9 @@ window.addEventListener("keydown", (e) => {
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "c" &&
              !e.repeat && !importPanel.isOpen) {
     setCrt(!crtOn); // bare C: ⌘C is Copy via the Edit menu
+  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "m" &&
+             !e.repeat && !importPanel.isOpen) {
+    setSound(!soundOn); // bare M: ⌘M is Minimize via the Window menu
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "s" &&
              !e.repeat && !importPanel.isOpen && !inNativeShell()) {
     // Browser-only fallback — the app opens stats.html via Tank ▸
