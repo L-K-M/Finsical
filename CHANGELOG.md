@@ -26,6 +26,13 @@
   60 Hz display and a quarter on a 120 Hz one, CRT on or off. Sound
   pauses while the tank is hidden, and a fish whose sprite fails to
   draw becomes a placeholder fish instead of freezing the whole tank.
+- Plants and accessories now play the animation their packs ship:
+  plants sway, bubble plumes rise, and robots, clocks and submarines
+  move, each on its own beat so two copies of a plant don't sway in
+  step. They show their side-view art instead of the top view or
+  catalog tile (the Aquazone submarine, BUGDANCE), and draw at one
+  scale, shrunk smoothly, so a small plant stays smaller than a large
+  one; only items taller than the tank shrink further to fit.
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview

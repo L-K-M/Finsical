@@ -1,11 +1,12 @@
 import { swimFrame } from "../core/data/orient.js";
 import { pickSwimSheet } from "../core/data/swimsheet.js";
 import { restPose } from "../core/pose.js";
-import { shrinkSprite } from "./artscale.js";
 import type { SpriteSheet, IndexedImage } from "../core/data/azpack.js";
 import type { Palette } from "osmium-ui";
 import { ICON_PALETTE, SOUND_ICON } from "./icons.js";
 import type { PackResult } from "./import.js";
+import { keyToZero, pickDecorFrames } from "../core/data/decor.js";
+import { ART_SCALE, shrinkSprite } from "./artscale.js";
 
 // Canvas rasterizers shared by the tank page and the panel window.
 
@@ -117,4 +118,24 @@ export function previewOf(rs: PackResult[]): HTMLCanvasElement | null {
   if (!imgs[0]) return null;
   try { return imageCanvas(imgs[0], true); }
   catch (e) { console.warn("preview render failed:", e); return null; }
+}
+
+/** Decor art is drawn at the fish's ART_SCALE so a small plant stays
+ * smaller than a large one; only art taller than the tank (less 8 px
+ * of headroom) shrinks further, to fit. */
+export function decorScale(h: number, tankH: number): number {
+  return Math.min(ART_SCALE, (tankH - 8) / h);
+}
+
+/** A decor pack's in-tank art: one canvas per animation frame, all
+ * shrunk once with the box filter at frame 0's decorScale, so the tank
+ * only blits. Null when the pack has no drawable art. */
+export function decorCanvases(images: Iterable<IndexedImage>,
+                              tankH: number): HTMLCanvasElement[] | null {
+  const pick = pickDecorFrames(images);
+  const first = pick?.frames[0];
+  if (!pick || !first?.w || !first.h) return null; // zero-area art
+  const s = decorScale(first.h, tankH);
+  // shrinkSprite keys index 0; 'guessed' legacy art is key 0 already.
+  return pick.frames.map((f) => shrunkCanvas(keyToZero(f, pick.key), s));
 }

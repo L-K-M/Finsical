@@ -4,7 +4,7 @@ import { FISH_CAP, SPAWN_HUNGER } from "../core/tuning.js";
 import { planFrame } from "../core/loop.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
-import { keyMask, pickDecorArt } from "../core/data/decor.js";
+import { decorFrame, decorPhase } from "../core/data/decor.js";
 import { pickSwimSheet } from "../core/data/swimsheet.js";
 import { ART_SCALE } from "./artscale.js";
 import { TankAudio } from "./audio.js";
@@ -13,7 +13,8 @@ import { fetchAddon, mountImportPanel, qualifySoundItemName,
          COLLECTIONS } from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { sndsGet, sndsMerge } from "./store.js";
-import { coverCrop, imageCanvas, previewOf, soundIcon, swimCanvas } from "./render.js";
+import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
+         swimCanvas } from "./render.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
@@ -338,28 +339,17 @@ function pickGravel(images: Iterable<IndexedImage>, src: string): void {
   if (gravel) { gravelCv = gravelByPack.get(src)!; gravelSrc = src; }
 }
 // Decorations (plants/accessories) sit on the gravel between the backdrop
-// and the fish. Each pack's art frame is scaled to fit; the set is
-// re-spaced across the tank floor whenever one is added.
-const decors: { cv: HTMLCanvasElement; pack: string }[] = [];
+// and the fish, all at the fish's art scale; the set is re-spaced across
+// the tank floor whenever one is added. Animated packs loop their frames
+// on the sim clock, each item from its own phase.
+const decors: { frames: HTMLCanvasElement[]; phase: number;
+                pack: string }[] = [];
 function addDecor(images: Iterable<IndexedImage>, src: string): void {
-  // Art frames share one corner key index (0 or 255 depending on the
-  // pack); catalog thumbnails have textured corners and are skipped.
-  const pick = pickDecorArt(images);
-  if (!pick) return;
-  if (!pick.img.w || !pick.img.h) return; // zero-area art renders nothing
-  const cv = pick.guessed
-    ? imageCanvas(pick.img, false) // legacy: global index-0 clear
-    : imageCanvas(pick.img, false, keyMask(pick.img, pick.key));
-  const s = Math.min(1, TANK.height * 0.8 / cv.height,
-                     TANK.width * 0.5 / cv.width);
-  if (s >= 1) { decors.push({ cv, pack: src }); return; }
-  const scaled = document.createElement("canvas");
-  scaled.width = Math.max(1, Math.round(cv.width * s));
-  scaled.height = Math.max(1, Math.round(cv.height * s));
-  const c2 = scaled.getContext("2d")!;
-  c2.imageSmoothingEnabled = false;
-  c2.drawImage(cv, 0, 0, scaled.width, scaled.height);
-  decors.push({ cv: scaled, pack: src });
+  const frames = decorCanvases(images, TANK.height);
+  if (!frames) return;
+  const copy = decors.filter((d) => d.pack === src).length;
+  decors.push({ frames, phase: decorPhase(src, copy, frames.length),
+                pack: src });
 }
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
@@ -619,7 +609,7 @@ function addonThumb(url: string): string | null {
     try { cv = thumbFrame(fishSheets[i]!); } catch { /* scenery below */ }
   }
   cv ??= gravelByPack.get(url) ?? backdropByPack.get(url)
-    ?? decors.find((d) => d.pack === url)?.cv ?? null;
+    ?? decors.find((d) => d.pack === url)?.frames[0] ?? null;
   // Sound add-ons have no art: they list with the sound icon.
   if (!cv && installedAddons.some((a) => a.url === url &&
                                          a.section === "sounds"))
@@ -1297,7 +1287,8 @@ function render(): void {
   // Decorations spread evenly across the floor, bottoms planted in gravel.
   const dn = decors.length;
   for (let i = 0; i < dn; i++) {
-    const d = decors[i]!.cv;
+    const { frames, phase } = decors[i]!;
+    const d = frames[decorFrame(sim.tickCount, frames.length, phase)]!;
     ctx.drawImage(d, Math.round(TANK.width * (i + 0.5) / dn - d.width / 2),
                   TANK.height - 6 - d.height);
   }
