@@ -125,22 +125,37 @@ const fishTip = document.createElement("div");
 fishTip.id = "fishtip";
 fishTip.style.display = "none";
 document.body.appendChild(fishTip);
-canvas.addEventListener("pointermove", (e) => {
-  const p = tankPoint(e);
+const fishNear = (p: { x: number; y: number }): Fish | null => {
   let best: Fish | null = null, bd = 18 * 18;
-  if (p) for (const f of sim.fish) {
+  for (const f of sim.fish) {
     const d = (f.x - p.x) ** 2 + (f.y - p.y) ** 2;
     if (d < bd) { bd = d; best = f; }
   }
+  return best;
+};
+// Tank coords of the last hover — the frame loop re-checks it so the
+// tip doesn't linger when the fish swims away from a parked cursor.
+let lastHover: { x: number; y: number } | null = null;
+canvas.addEventListener("pointermove", (e) => {
+  if (e.pointerType === "touch") return; // no hover on touch
+  const p = tankPoint(e);
+  lastHover = p;
+  const best = p && fishNear(p);
   if (!best) { fishTip.style.display = "none"; return; }
   fishTip.textContent = (best.species || "Fish") +
     (best.state === "drift" ? "" : ` — ${stateLabel(best.state)}`);
   fishTip.style.display = "";
-  fishTip.style.left = `${e.clientX + 14}px`;
-  fishTip.style.top = `${e.clientY + 14}px`;
+  // Clamp inside the viewport — the tank usually fills the window,
+  // so an unclamped +14 offset clips at the right and bottom edges.
+  fishTip.style.left = `${Math.max(4, Math.min(e.clientX + 14,
+    innerWidth - fishTip.offsetWidth - 4))}px`;
+  fishTip.style.top = `${Math.max(4, Math.min(e.clientY + 14,
+    innerHeight - fishTip.offsetHeight - 4))}px`;
 });
-canvas.addEventListener("pointerleave",
-  () => fishTip.style.display = "none");
+canvas.addEventListener("pointerleave", () => {
+  lastHover = null;
+  fishTip.style.display = "none";
+});
 
 // ---- sprite loading ----------------------------------------------------
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
@@ -1168,6 +1183,10 @@ function frame(now: number): void {
     acc -= step;
   }
   render();
+  // A parked cursor doesn't re-hit-test: hide the tip once the fish
+  // under it has swum off.
+  if (lastHover && fishTip.style.display !== "none" &&
+      !fishNear(lastHover)) fishTip.style.display = "none";
   if (crtOn) crt?.render();
   requestAnimationFrame(frame);
 }
