@@ -425,6 +425,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         }
     }
 
+    @objc func togglePause() {
+        let js = "window.finsical?.togglePause ? window.finsical.togglePause()" +
+                 " : (() => { throw new Error('window.finsical.togglePause missing') })()"
+        webView?.evaluateJavaScript(js) { _, error in
+            if let error { NSLog("Finsical: togglePause JS failed: \(error.localizedDescription)") }
+        }
+    }
+
     @objc func supportArchive() {
         if let url = URL(string: "https://archive.org/donate") {
             NSWorkspace.shared.open(url)
@@ -570,6 +578,9 @@ enum FinsicalApp {
         tankMenu.addItem(withTitle: "Toggle CRT Effect",
                          action: #selector(AppDelegate.toggleCrt),
                          keyEquivalent: "r")
+        tankMenu.addItem(withTitle: "Pause Simulation",
+                         action: #selector(AppDelegate.togglePause),
+                         keyEquivalent: "p") // ⌘P — no Print menu in this app
         tankMenu.addItem(.separator())
         tankMenu.addItem(withTitle: "Support the Internet Archive",
                          action: #selector(AppDelegate.supportArchive),

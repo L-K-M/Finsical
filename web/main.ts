@@ -386,6 +386,7 @@ function postState(): void {
   bus.post({
     op: "state",
     boot,
+    paused,
     // The native shell retunes the window's aspect to the machine's
     // viewBox outline; prefs needs just the id.
     machine: { id: machine.id, w: machine.vbW, h: machine.vbH,
@@ -649,6 +650,21 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   finally { installsInFlight.delete(it.url); }
 }
 
+// ---- pause -----------------------------------------------------------------
+// Stops hunger, rot, filtration, and the day/night clock while the app
+// stays interactive (render, CRT, saves). Keyboard P / Tank ▸ Pause.
+let paused = false;
+const PAUSE_KEY = "finsical:paused";
+function setPaused(on: boolean): void {
+  if (paused === on) return;
+  paused = on;
+  try { localStorage.setItem(PAUSE_KEY, on ? "1" : "0"); }
+  catch { /* storage unavailable — pause is session-only */ }
+  postState();
+}
+try { paused = localStorage.getItem(PAUSE_KEY) === "1"; }
+catch { /* storage unavailable */ }
+
 // ---- CRT effect ------------------------------------------------------------
 // Optional tube emulation (web/crt.ts): the 320×200 canvas becomes a
 // texture for a device-resolution shader. Off = untouched 2D path.
@@ -797,7 +813,8 @@ function feedFish(): void {
 }
 (window as unknown as { finsical?: unknown }).finsical =
   { openImport: () => importPanel.open(), feedFish,
-    toggleCrt: () => setCrt(!crtOn) };
+    toggleCrt: () => setCrt(!crtOn),
+    togglePause: () => setPaused(!paused) };
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
 // path. Touch fallback: hover-less devices have no keyboard or native menu.
@@ -832,6 +849,9 @@ window.addEventListener("keydown", (e) => {
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "c" &&
              !e.repeat && !importPanel.isOpen) {
     setCrt(!crtOn); // bare C: ⌘C is Copy via the Edit menu
+  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "p" &&
+             !e.repeat && !importPanel.isOpen) {
+    setPaused(!paused); // bare P: ⌘P is Print via the browser/File menu
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "s" &&
              !e.repeat && !importPanel.isOpen && !inNativeShell()) {
     // Browser-only fallback — the app opens stats.html via Tank ▸
@@ -1121,6 +1141,16 @@ function render(): void {
     ctx.fillStyle = `rgba(4,8,24,${(dark * 0.55).toFixed(3)})`;
     ctx.fillRect(0, 0, TANK.width, TANK.height);
   }
+
+  if (paused) {
+    ctx.fillStyle = "rgba(4,8,24,0.35)";
+    ctx.fillRect(0, 0, TANK.width, TANK.height);
+    ctx.fillStyle = "#e8e8e8";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("PAUSED", TANK.width / 2, TANK.height / 2);
+    ctx.textAlign = "left";
+  }
 }
 
 // Fixed-step sim; render on rAF.
@@ -1131,9 +1161,16 @@ function frame(now: number): void {
   acc += Math.min(now - last, 200);
   last = now;
   const step = 1000 / TICKS_PER_SECOND;
-  while (acc >= step) {
-    sim.tick();
-    acc -= step;
+  // Pause freezes the clock (hunger, rot, day/night) but keeps rendering
+  // so CRT and the paused banner stay live. Drop the accumulator so a
+  // long pause does not fast-forward on resume.
+  if (paused) {
+    acc = 0;
+  } else {
+    while (acc >= step) {
+      sim.tick();
+      acc -= step;
+    }
   }
   render();
   if (crtOn) crt?.render();
