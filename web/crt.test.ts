@@ -64,10 +64,15 @@ describe("CRT_PRESETS", () => {
   it("Pixel Perfect zeros every tube trait and neutralizes the picture", () => {
     const flat = CRT_PRESETS.find((p) => p.id === "pixel-perfect");
     expect(flat).toBeDefined();
-    const tube: (keyof CrtConfig)[] = [
-      "scanlines", "beam", "bloom", "overdrive", "misconvergence",
-      "grille", "curvature", "vignette", "flicker", "grain",
+    // Derive tube keys from CRT_DEFAULTS minus the picture controls so a
+    // new trait can't silently keep a nonzero Pixel Perfect default.
+    const picture: (keyof CrtConfig)[] = [
+      "brightness", "contrast", "zoom", "hsize", "vsize",
+      "red", "green", "blue",
     ];
+    const tube = (Object.keys(CRT_DEFAULTS) as (keyof CrtConfig)[])
+      .filter((k) => !picture.includes(k));
+    expect(tube.length).toBeGreaterThan(0);
     for (const k of tube) expect(flat!.config[k]).toBe(0);
     expect(flat!.config.brightness).toBe(0.5);
     expect(flat!.config.contrast).toBe(0.5);
