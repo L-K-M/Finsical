@@ -324,14 +324,22 @@ function reconcileFish(): void {
 // fish (or missing scenery) for the whole session. Only runs remap/
 // reconcile again when at least one pack actually landed.
 const RESTORE_RETRY_DELAYS = [15_000, 60_000];
+// Each exhausted offline round would arm its own "online" listener —
+// dedupe so one reconnect launches one retry round, not N concurrent
+// chains racing the same sequential restore path.
+let onlineRetryArmed = false;
 function retryRestores(failed: Importable[], attempt = 0): void {
   if (!failed.length) return;
   if (attempt >= RESTORE_RETRY_DELAYS.length) {
     // Timers ran out — if we're simply offline, connectivity returning
     // earns one fresh round of retries instead of a reload.
-    if (!navigator.onLine)
-      window.addEventListener("online",
-        () => retryRestores(restoreFailed, 0), { once: true });
+    if (!navigator.onLine && !onlineRetryArmed) {
+      onlineRetryArmed = true;
+      window.addEventListener("online", () => {
+        onlineRetryArmed = false;
+        retryRestores(restoreFailed, 0);
+      }, { once: true });
+    }
     return;
   }
   setTimeout(() => {
