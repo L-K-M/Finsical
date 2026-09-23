@@ -80,16 +80,20 @@ function sanitizeSavedFish(f: Partial<Fish> & { x: number; y: number }):
                dflt: number): number =>
     typeof v === "number" && Number.isFinite(v)
       ? Math.min(hi, Math.max(lo, v)) : dflt;
+  // bandY's fallback must reuse the clamped y — the raw value only
+  // passed the finite check, so a corrupt save could seed an
+  // out-of-bounds band and re-persist it.
+  const y = num(f.y, 0, TANK.height - 1, TANK.height / 2);
   const out = {
     ...f,
     x: num(f.x, 0, TANK.width - 1, TANK.width / 2),
-    y: num(f.y, 0, TANK.height - 1, TANK.height / 2),
+    y,
     facing: f.facing === -1 ? -1 as const : 1 as const,
     heading: num(f.heading, -2 * Math.PI, 2 * Math.PI, 0),
-    speed: num(f.speed, 0, 8, 1),
+    speed: num(f.speed, 0.1, 8, 1),
     cruise: num(f.cruise, 0.1, 8, 1),
     vy: num(f.vy, -8, 8, 0),
-    bandY: num(f.bandY, 0, TANK.height - 1, f.y),
+    bandY: num(f.bandY, 0, TANK.height - 1, y),
     hunger: num(f.hunger, 0, 1, 0.2),
     species: typeof f.species === "string" ? f.species : "",
   };
@@ -1075,8 +1079,10 @@ function drawFish(f: Fish): void {
                         pose.mir, pose.g);
   const s = Math.min(1, MAX_FISH_W / cv.width, MAX_FISH_H / cv.height);
   // Integer bounds: a fractional dest rect makes the nearest-neighbor
-  // blit shimmer as the fish swims.
-  const w = Math.round(cv.width * s), h = Math.round(cv.height * s);
+  // blit shimmer when the fish swims level. Clamp ≥1 so an oversized
+  // frame can't round down to nothing.
+  const w = Math.max(1, Math.round(cv.width * s)),
+        h = Math.max(1, Math.round(cv.height * s));
   ctx.save();
   ctx.translate(Math.round(f.x), Math.round(f.y));
   ctx.rotate(pitch(f));
