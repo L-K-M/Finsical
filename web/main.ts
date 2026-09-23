@@ -107,8 +107,8 @@ canvas.addEventListener("pointerdown", (e) => {
   if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return; // letterbox bar
   audio.unlock();
   if (y < TANK.height * 0.15) { sim.dropFood(x); audio.feed(); }
-  else { sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height);
-         addRipple(x, y); }
+  else { sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height); }
+  addRipple(x, y);
 });
 
 // ---- sprite loading ----------------------------------------------------
@@ -1074,7 +1074,10 @@ const ripples: { x: number; y: number; born: number }[] = [];
 const RIPPLE_MS = 500;
 function addRipple(x: number, y: number): void {
   ripples.push({ x, y, born: performance.now() });
-  if (ripples.length > 8) ripples.shift();
+  // Generous bound — expired rings self-clean in render(); the cap
+  // only guards against pathological input, so it must never evict a
+  // ring mid-animation under fast tapping.
+  if (ripples.length > 32) ripples.shift();
 }
 
 let prevBubbles = 0;
@@ -1119,13 +1122,13 @@ function render(): void {
   prevBubbles = sim.bubbles.length;
 
   const nowMs = performance.now();
+  ctx.lineWidth = 1.5;
   for (let i = ripples.length - 1; i >= 0; i--) {
     const rp = ripples[i]!;
     const t = (nowMs - rp.born) / RIPPLE_MS;
     if (t >= 1) { ripples.splice(i, 1); continue; }
     ctx.strokeStyle =
       `rgba(215,238,255,${(0.6 * (1 - t)).toFixed(3)})`;
-    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(rp.x, rp.y, 3 + t * 30, 0, Math.PI * 2);
     ctx.stroke();
