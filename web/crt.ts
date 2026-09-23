@@ -304,9 +304,29 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   };
   upload();
 
+  // The element box is only re-measured when it may have changed —
+  // reading clientWidth every frame forces a synchronous layout per
+  // rAF. A ResizeObserver + window resize flag the box dirty; the
+  // devicePixelRatio read stays per-frame (a cheap number, no
+  // layout) so browser-zoom DPR changes still resize the buffer.
+  // DPR caps at 2: the grille mask is sub-game-pixel already there,
+  // and the ~15-tap shader scales with buffer pixels.
+  // Lifetime: initCrt runs once per page load (module scope in
+  // web/main.ts) and CrtFilter has no dispose path, so the observer
+  // and window listener below live exactly as long as the page.
+  const MAX_CRT_DPR = 2;
+  let sizeDirty = true;
+  let lastDpr = 0;
+  if (typeof ResizeObserver !== "undefined")
+    new ResizeObserver(() => { sizeDirty = true; }).observe(out);
+  window.addEventListener("resize", () => { sizeDirty = true; });
+
   function resize(): void {
     // Buffer tracks the element's box at device-pixel pitch.
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = Math.min(window.devicePixelRatio || 1, MAX_CRT_DPR);
+    if (!sizeDirty && dpr === lastDpr) return;
+    sizeDirty = false;
+    lastDpr = dpr;
     const w = Math.max(1, Math.round(out.clientWidth * dpr));
     const h = Math.max(1, Math.round(out.clientHeight * dpr));
     if (out.width === w && out.height === h) return;
@@ -338,7 +358,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     },
     render(): void {
       if (!enabled) return;
-      resize(); // cheap check — catches zoom/fullscreen/dpr changes
+      resize(); // dirty-flagged — catches zoom/fullscreen/dpr changes
       // Same math as object-fit: contain, in buffer pixels (y-up).
       const s = Math.min(out.width / src.width, out.height / src.height);
       const w = src.width * s, h = src.height * s;
