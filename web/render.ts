@@ -59,6 +59,18 @@ export function imageCanvas(img: IndexedImage, opaque: boolean,
 }
 
 const swimCache = new WeakMap<SpriteSheet, Map<string, HTMLCanvasElement>>();
+
+/** Centered cover-crop of a srcW x srcH image into a dstW x dstH
+ * frame: the returned source rect fills the frame with no letterbox
+ * and no aspect distortion. */
+export function coverCrop(srcW: number, srcH: number,
+                          dstW: number, dstH: number):
+    { sx: number; sy: number; sw: number; sh: number } {
+  const scale = Math.max(dstW / srcW, dstH / srcH);
+  const sw = dstW / scale, sh = dstH / scale;
+  return { sx: (srcW - sw) / 2, sy: (srcH - sh) / 2, sw, sh };
+}
+
 export function swimCanvas(sheet: SpriteSheet, f: number,
                            facing: 1 | -1, group = 0): HTMLCanvasElement {
   let cache = swimCache.get(sheet);
