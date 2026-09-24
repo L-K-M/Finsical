@@ -1,12 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { PAW_DESCEND, PAW_H, PAW_RETREAT, PAW_SWAT_LEN, PAW_SWING,
-         PAW_W, PAW_Y, pawPose, pawSpawnX, pawSwatAt }
+import { PAW_ART, PAW_DESCEND, PAW_H, PAW_RETREAT, PAW_SWAT_LEN,
+         PAW_SWING, PAW_W, PAW_Y, pawPose, pawSpawnX, pawSwatAt }
   from "./catpaw.js";
 import { SURFACE_W } from "./surface.js";
 
 const VISIT = { t0: 100, x: 160, swats: 3 };
 /** Total ticks a visit occupies. */
 const SPAN = PAW_DESCEND + VISIT.swats * PAW_SWAT_LEN + PAW_RETREAT;
+
+describe("PAW_ART", () => {
+  it("is exactly PAW_W wide in every row — the margin math trusts it", () => {
+    for (const row of PAW_ART) {
+      expect(row.length).toBe(PAW_W);
+      expect(row).toMatch(/^[.K]*$/);
+    }
+  });
+});
 
 describe("pawSpawnX", () => {
   it("keeps the sprite plus full swing inside the glass", () => {

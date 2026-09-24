@@ -2098,18 +2098,19 @@ function render(): void {
   // On the glass, so over the fish: ripples and splashes paint last.
   drawRipples(ctx, ripples);
   drawSplashes(ctx, splashes);
-  // The cat presses its paw to the outside of the glass — over the
-  // water but under the murk/night tint it can't dim (it's out there
-  // with the viewer).
-  if (pawVisit) {
-    const pose = pawPose(pawVisit, sim.tickCount);
-    if (pose) drawPaw(pose.x, pose.y);
-  }
 
   // Fouled water murks the whole scene.
   drawMurk(ctx, sim.waterQuality, t);
 
   drawNight(new Date());
+
+  // The cat presses its paw to the outside of the glass — painted after
+  // the murk and night tints, which can't dim what's on the viewer's
+  // side (a dark paw would vanish into fouled water otherwise).
+  if (pawVisit) {
+    const pose = pawPose(pawVisit, sim.tickCount);
+    if (pose) drawPaw(pose.x, pose.y);
+  }
 
   if (paused) {
     ctx.save();

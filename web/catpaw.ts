@@ -15,15 +15,15 @@ export const PAW_FUR = "#26232a";
 /** 14x9 silhouette: a paw pad facing the glass, toes arced above it,
  * and a stubby leg the sprite hangs from (drawn to the top edge). */
 export const PAW_ART: readonly string[] = [
-  "...KKKKKKK......",
-  "..KKKKKKKKK.....",
-  ".KKK.KKK.KK.KK..",
-  ".KKKKKKKKKKKKK..",
-  "..KKKKKKKKKKK...",
-  "..KKKKKKKKKKK...",
-  "...KKKKKKKKK....",
-  "...KKKKKKKK.....",
-  "....KKKKKK......",
+  "...KKKKKKK....",
+  "..KKKKKKKKK...",
+  ".KKK.KKK.KK.KK",
+  ".KKKKKKKKKKKKK",
+  "..KKKKKKKKKKK.",
+  "..KKKKKKKKKKK.",
+  "...KKKKKKKKK..",
+  "...KKKKKKKK...",
+  "....KKKKKK....",
 ];
 
 /** Ticks at 30 tps. */
