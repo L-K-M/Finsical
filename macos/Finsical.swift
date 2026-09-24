@@ -120,6 +120,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                          NSWindowDelegate, NSMenuItemValidation {
     private var window: TankWindow!
     private var webView: WKWebView!
+    /// The tank page's first load: its failure means nothing will show.
+    private var tankLoad: WKNavigation?
+    /// `--smoke-test`: load the tank, check the page came up, print one
+    /// line and exit (0 ok, 1 page broken, 2 load failed, 3 timed out).
+    /// CI runs it from /Applications and from /private/tmp.
+    private let smokeTest =
+        ProcessInfo.processInfo.arguments.contains("--smoke-test")
     /// Saved window frames, under the keys Finsical has always used.
     private let frames = OsmiumFrameStore(prefix: "FinsicalFrame.")
     /// The client windows (Preferences, Tank Overview, Import Add-ons,
@@ -714,6 +721,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         decisionHandler(.allow)
     }
 
+    /// The tank page couldn't load at all. The window is transparent, so
+    /// without this the app would show a menu bar and nothing else.
+    /// Other failures (a client page, a link handed to the browser, which
+    /// cancels its navigation) only log.
+    func webView(_ webView: WKWebView,
+                 didFailProvisionalNavigation navigation: WKNavigation!,
+                 withError error: any Error) {
+        tankLoadFailed(navigation, error)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!,
+                 withError error: any Error) {
+        tankLoadFailed(navigation, error)
+    }
+
+    private func tankLoadFailed(_ navigation: WKNavigation?,
+                                _ error: any Error) {
+        NSLog("Finsical: page load failed: \(error.localizedDescription)")
+        guard let navigation, navigation === tankLoad else { return }
+        if smokeTest {
+            print("{\"smoke\":\"load failed\",\"error\":\"\(error.localizedDescription)\"}")
+            exit(2)
+        }
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = "Finsical couldn't open its tank."
+        var info = error.localizedDescription
+        if Bundle.main.bundlePath.contains("/AppTranslocation/") {
+            info += "\n\nMove Finsical to your Applications folder and open it again."
+        }
+        alert.informativeText = info
+        alert.addButton(withTitle: "Quit")
+        alert.runModal()
+        NSApp.terminate(nil)
+    }
+
+    /// `--smoke-test`: the tank page finished loading; check that its
+    /// script ran (the native menu's entry points exist) and the case
+    /// art went in, then exit with the verdict.
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard smokeTest, navigation === tankLoad else { return }
+        let js = "typeof window.finsical?.feedFish === 'function' && " +
+                 "!!document.querySelector('#shell > *')"
+        webView.evaluateJavaScript(js) { result, error in
+            let ok = (result as? Bool) == true
+            print("{\"smoke\":\"\(ok ? "ok" : "page broken")\",\"path\":\"\(Bundle.main.bundlePath)\"}")
+            if let error { print("{\"error\":\"\(error.localizedDescription)\"}") }
+            exit(ok ? 0 : 1)
+        }
+    }
+
     /// target=_blank links (the donate link) have no host view; open them
     /// in the default browser instead.
     func webView(_ webView: WKWebView,
@@ -793,7 +851,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             window.makeKeyAndOrderFront(nil)
         }
 
-        webView.load(URLRequest(url: page("index.html")))
+        tankLoad = webView.load(URLRequest(url: page("index.html")))
+        if smokeTest {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
+                print("{\"smoke\":\"timed out\"}")
+                exit(3)
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
