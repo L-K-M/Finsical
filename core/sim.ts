@@ -649,10 +649,13 @@ export class Sim {
       // flap between watching and wandering.
       // The cap is per-rank: a lower rank's ceiling sits one stagger
       // inside the next rank's, so capped watchers still fan out
-      // instead of collapsing onto the same ring. The floor keeps the
-      // cap a real distance if the constants are ever retuned.
-      const cap = Math.max(NOTICE_STANDOFF, NOTICE_RADIUS - 4 -
-        (NOTICE_CAP - 1 - Math.max(0, rank)) * NOTICE_STAGGER);
+      // instead of collapsing onto the same ring. The floor is
+      // rank-staggered for the same reason — a flat floor would
+      // collapse every floored rank onto one ring after a retune.
+      const cap = Math.max(
+        NOTICE_STANDOFF + Math.max(0, rank) * NOTICE_STAGGER,
+        NOTICE_RADIUS - 4 -
+          (NOTICE_CAP - 1 - Math.max(0, rank)) * NOTICE_STAGGER);
       const standoff = Math.min(cap,
         NOTICE_STANDOFF + this.halfW(f) +
         Math.max(0, rank) * NOTICE_STAGGER);
