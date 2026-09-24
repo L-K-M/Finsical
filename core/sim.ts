@@ -606,6 +606,9 @@ export class Sim {
         const wallGap = Math.max(0, x0 - food.x, food.x - x1);
         if (d < Math.max(EAT_DIST, this.halfH(f) * EDGE_KEEP) + wallGap) {
           food.eaten = true;
+          // A gulped pellet lets a little air loose — one bubble rises
+          // from the meal and pops at the surface on its own clock.
+          this.bubbles.push({ x: food.x, y: food.y });
           f.hunger = 0;
           // A meal puts a little size on — asymptotic toward adult.
           f.scale += (MAX_SCALE - f.scale) * GROWTH;

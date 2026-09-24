@@ -172,6 +172,23 @@ describe("Sim", () => {
     expect(f.hunger).toBeLessThan(0.2);
   });
 
+  it("puffs a bubble where a fish gulps a pellet", () => {
+    // The gulp bubble marks the meal — it should appear at the
+    // pellet's position the tick it's eaten, not just anywhere.
+    const sim = new Sim({ width: 200, height: 100 }, 5);
+    sim.addFish({ x: 40, y: 50, hunger: 0.9 });
+    const fd = sim.dropFood(120);
+    sim.bubbles.length = 0; // ambient spawns would muddy the position check
+    let puff: { x: number; y: number } | undefined;
+    for (let i = 0; i < 2000 && !fd.eaten; i++) {
+      sim.tick();
+      if (fd.eaten)
+        puff = sim.bubbles.find((b) => Math.abs(b.x - fd.x) < 2 &&
+                                      Math.abs(b.y - fd.y) < 2);
+    }
+    expect(puff).toBeDefined();
+  });
+
   it("full fish ignores food", () => {
     const sim = new Sim({ width: 200, height: 100 }, 5);
     const f = sim.addFish({ x: 40, y: 50, hunger: 0 });

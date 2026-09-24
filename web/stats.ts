@@ -177,3 +177,7 @@ setInterval(() => {
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) bus.post({ op: "hello" });
 });
+// Right-click inside a borderless WebKit window surfaces WebKit's
+// generic menu (Reload etc.) — nothing in it applies to a desk
+// accessory, so swallow it like the tank page does.
+window.addEventListener("contextmenu", (e) => e.preventDefault());
