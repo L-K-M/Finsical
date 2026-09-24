@@ -126,11 +126,22 @@ const plus: Machine = {
 const performa: Machine = {
   id: "performa", name: "Macintosh Performa 450",
   blurb: "A pizza-box desktop under an Apple RGB monitor.",
-  vbW: 1090, vbH: 977,
-  hole: { x: 144, y: 128, w: 802, h: 551, r: 0 },
-  sx: 144, sy: 153, sw: 802, sh: 501,
+  vbW: 1013, vbH: 1013,
+  hole: { x: 135, y: 99, w: 745, h: 541, r: 0 },
+  sx: 135, sy: 137, sw: 745, sh: 466,
   image: "assets/performa-450.png",
-  shape: [{ x: 0, y: 0, w: 1090, h: 977, r: 0 }],
+  shape: [{ x: 0, y: 0, w: 1013, h: 1013, r: 0 }],
+  svg: "",
+};
+
+const performa2: Machine = {
+  id: "performa-2", name: "Macintosh Performa 450 (II)",
+  blurb: "Another take on the pizza box — angled, vents showing.",
+  vbW: 1132, vbH: 1010,
+  hole: { x: 294, y: 113, w: 688, h: 538, r: 0 },
+  sx: 294, sy: 167, sw: 688, sh: 430,
+  image: "assets/performa-450-2.png",
+  shape: [{ x: 0, y: 0, w: 1132, h: 1010, r: 0 }],
   svg: "",
 };
 
@@ -253,7 +264,7 @@ const bare: Machine = {
 };
 
 export const MACHINES: readonly Machine[] =
-  [plus, performa, tam, bondi, bondi2, strawberry, strawberry2,
+  [plus, performa, performa2, tam, bondi, bondi2, strawberry, strawberry2,
    flowerPower, flowerPower2, powerbookG3, ibook, imacg4, bare];
 export const DEFAULT_MACHINE = "plus";
 export function machineById(id: string): Machine | undefined {
