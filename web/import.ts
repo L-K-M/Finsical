@@ -607,30 +607,53 @@ export async function importAddon(url: string): Promise<PackResult[]> {
   return out;
 }
 
+/** Display order of sections — first collection index per section. */
+const SECTION_RANK = new Map<string, number>();
+COLLECTIONS.forEach((c, i) => {
+  if (!SECTION_RANK.has(c.section)) SECTION_RANK.set(c.section, i);
+});
+
 /** Fetch the listing pages of all collections (or those `only`
  * accepts), grouped by section in COLLECTIONS order. Never rejects: a
- * failed section just comes back empty. */
+ * failed section just comes back empty. `onItems` fires per resolved
+ * collection so a caller can show rows without waiting on the slowest
+ * one. */
 export async function listAddons(
     only: (c: Collection) => boolean = () => true,
+    onItems?: (items: Importable[]) => void,
 ): Promise<Importable[]> {
-  // First collection index per section — items group under it.
-  const rank = new Map<string, number>();
-  COLLECTIONS.forEach((c, i) => {
-    if (!rank.has(c.section)) rank.set(c.section, i);
-  });
   const cols = COLLECTIONS.filter(only);
   const lists = await Promise.all(cols.map(async (col) => {
+    let items: Importable[] = [];
     try {
-      const items = await listCollection(col);
+      items = await listCollection(col);
       for (const it of items) it.section = col.section;
-      return items;
     } catch (e) {
       console.warn(`archive.org listing failed for ${col.outer}:`, e);
-      return [];
+      items = [];
     }
+    // Outside the fetch try: a throwing UI callback must not
+    // masquerade as a fetch failure or drop the collection's items.
+    // But it still needs its own guard — an escape here would reject
+    // Promise.all and void every other collection's results.
+    if (items.length) {
+      const warn = (cbErr: unknown) =>
+        console.warn(`onItems callback failed for ${col.outer}:`, cbErr);
+      try {
+        const r: unknown = onItems?.(items);
+        // A thenable return isn't awaited, but a rejection must still
+        // not escape as an unhandled promise failure. Duck-typed:
+        // instanceof Promise misses cross-realm and custom thenables.
+        if (r && typeof (r as PromiseLike<unknown>).then === "function")
+          Promise.resolve(r).catch(warn);
+      } catch (cbErr) {
+        warn(cbErr);
+      }
+    }
+    return items;
   }));
   return lists.flat().sort((a, b) =>
-    (rank.get(a.section) ?? 0) - (rank.get(b.section) ?? 0));
+    (SECTION_RANK.get(a.section) ?? 0) - (SECTION_RANK.get(b.section) ?? 0));
 }
 
 // ---- import panel --------------------------------------------------------
@@ -977,10 +1000,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   let sections: string[] = [];
   let section = "";
   let rows: Importable[] = [];
+  // A user's own section pick survives later listing merges — only an
+  // untouched view follows the saved section as collections land.
+  let picked = false;
   const byUrl = new Map<string, Importable>();
   const popup = mountPopup(popBtn, {
     items: ["Fish"], selected: 0, label: "Show",
-    onChange: (i) => showSection(sections[i]!),
+    onChange: (i) => { picked = true; showSection(sections[i]!); },
   });
   function setShowEnabled(on: boolean): void {
     popBtn.disabled = !on;
@@ -1508,33 +1534,80 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     h.onInstall?.(it, soundNames);
   }
 
+  function savedSection(): string | null {
+    try { return localStorage.getItem(SECTION_KEY); }
+    catch { return null; } // storage unavailable
+  }
+
+  // Invalidates a previous loadListing attempt still in flight — its
+  // late collections must not merge into the retried listing.
+  let listingGen = 0;
+
+  /** Merge one collection's items into the listing as it resolves —
+   * rows appear per section instead of all at once when the slowest
+   * collection lands. */
+  function mergeListing(gen: number, items: Importable[]): void {
+    if (gen !== listingGen) return;
+    all.push(...items);
+    for (const it of items) byUrl.set(it.url, it);
+    all.sort((a, b) => (SECTION_RANK.get(a.section) ?? 0) -
+                       (SECTION_RANK.get(b.section) ?? 0));
+    const secs = [...new Set(all.map((x) => x.section))];
+    if (secs.join("\0") !== sections.join("\0")) {
+      sections = secs;
+      popup.setItems(sections.map((s) => SECTION_TITLES[s] ?? s),
+                     Math.max(0, sections.indexOf(section)));
+    }
+    setShowEnabled(true);
+    if (!picked) {
+      const sv = savedSection();
+      // Land on the saved section once it arrives; until then the
+      // first available section has something to show.
+      showSection(sv && sections.includes(sv) ? sv : sections[0]!);
+    } else if (sections.includes(section)) {
+      applyFilter(); // new rows may join the viewed section
+    }
+    // A section whose collection is still in flight reads as fetching;
+    // an empty *filtered* view of an arrived section is not fetching.
+    list.setEmpty(all.some((x) => x.section === section)
+      ? "" : "Fetching the archive.org listing…");
+  }
+
   function loadListing(): void {
     all = [];
+    sections = [];
+    section = "";
+    rows = [];
+    byUrl.clear();
+    picked = false;
     list.setRows([]);
     list.setEmpty("Fetching the archive.org listing…");
     count.textContent = "";
     status.textContent = "";
     setAdd("Add to Tank", null);
-    void listAddons().then((items) => {
+    setShowEnabled(false);
+    const gen = ++listingGen;
+    void listAddons(undefined, (items) => mergeListing(gen, items))
+      .then((items) => {
+      if (gen !== listingGen) return;
       if (!items.length) throw new Error("empty listing");
+      // Re-anchor `all` to the final COLLECTIONS-ordered list before
+      // re-rendering — mergeListing appended in network-arrival
+      // order, which made within-section row order timing-dependent.
       all = items;
-      byUrl.clear();
-      for (const it of items) byUrl.set(it.url, it);
-      sections = [...new Set(items.map((x) => x.section))];
-      // Archive order scatters near-identical names across the list —
-      // show each section alphabetically like a Finder window would.
-      all.sort((a, b) =>
-        a.inner.localeCompare(b.inner, undefined, { sensitivity: "base" }));
-      let start = sections[0]!;
-      try {
-        const saved = localStorage.getItem(SECTION_KEY);
-        if (saved && sections.includes(saved)) start = saved;
-      } catch { /* storage unavailable */ }
-      popup.setItems(sections.map((s) => SECTION_TITLES[s] ?? s),
-                     sections.indexOf(start));
-      setShowEnabled(true);
-      list.setEmpty("");
-      showSection(start);
+      // A user's own pick outranks the saved section.
+      if (!picked) {
+        const sv = savedSection();
+        const start = sv && sections.includes(sv) ? sv : sections[0]!;
+        popup.setItems(sections.map((s) => SECTION_TITLES[s] ?? s),
+                       sections.indexOf(start));
+        showSection(start);
+      } else applyFilter();
+      // A viewable section always has items (sections are built from
+      // `all`); empty at this point means its collection failed —
+      // unless a filter hid the rows, which is not a fetch failure.
+      list.setEmpty(all.some((x) => x.section === section)
+        ? "" : "Couldn't load this section.");
     }).catch((e) => {
       console.warn("add-on listing failed:", e);
       list.setEmpty("Couldn't reach archive.org.");
