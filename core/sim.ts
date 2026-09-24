@@ -78,6 +78,8 @@ export interface Food {
   eaten: boolean;
   /** ticks spent rotting on the gravel — fouls the water while it lasts */
   settled: number;
+  /** the rare golden pellet — a meal worth a victory roll */
+  golden?: boolean;
 }
 
 export interface Bubble {
@@ -109,6 +111,8 @@ const HUNGER_SNACK = 0.1;
 const NOTICE_DIST = 24;
 const EAT_DIST = 6;
 const FOOD_SINK = 0.35;
+/** One pellet in fifty drops gold — a meal worth a victory roll. */
+const GOLDEN_ODDS = 1 / 50;
 /** Ticks a settled pellet takes to dissolve away (~45 s at 30 tps). */
 export const FOOD_ROT_TICKS = 30 * 45;
 /** Quality drained per tick per rotting pellet (~0.2 over a full rot). */
@@ -301,7 +305,8 @@ export class Sim {
    * gravel. Returns the pellet, so callers can mark where it went in. */
   dropFood(x: number): Food {
     const cx = Math.min(Math.max(x, MARGIN), this.tank.width - MARGIN);
-    const pellet = { x: cx, y: FOOD_ENTRY_Y, eaten: false, settled: 0 };
+    const pellet = { x: cx, y: FOOD_ENTRY_Y, eaten: false, settled: 0,
+                     golden: this.rand() < GOLDEN_ODDS };
     this.food.push(pellet);
     return pellet;
   }
@@ -611,9 +616,17 @@ export class Sim {
           f.scale += (MAX_SCALE - f.scale) * GROWTH;
           this.setState(f, "drift");
           this.decide(f);
-          // The next destination may lie behind: roll to it now rather
-          // than pitching against the clamp until the next decision.
-          this.maybeTurn(f);
+          if (food.golden) {
+            // A golden meal earns a victory roll whether or not the
+            // next destination lies behind.
+            this.setState(f, "turn");
+            f.turnFrom = f.facing;
+            f.turnDir = this.rand() < 0.5 ? 1 : -1;
+          } else {
+            // The next destination may lie behind: roll to it now rather
+            // than pitching against the clamp until the next decision.
+            this.maybeTurn(f);
+          }
         }
       }
     }
