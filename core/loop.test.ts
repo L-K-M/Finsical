@@ -71,7 +71,6 @@ describe("planFrame", () => {
     const cap = Math.ceil(MAX_FRAME_MS / STEP) + 1;
     expect(planFrame(1e12, 16.7, STEP)).toEqual({ ticks: cap, acc: 0 });
     const tiny = planFrame(5, 16.7, 1e-9);
-    expect(tiny.ticks).toBeLessThanOrEqual(ABSOLUTE_MAX_TICKS);
-    expect(Number.isFinite(tiny.acc)).toBe(true);
+    expect(tiny).toEqual({ ticks: ABSOLUTE_MAX_TICKS, acc: 0 });
   });
 });
