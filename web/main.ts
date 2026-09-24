@@ -371,9 +371,10 @@ document.body.appendChild(fishTip);
 /** The fish to name under a hovered point — none while Get Info, a
  * menu, the add-on window, a document window or an alert is up (the
  * tip would float over them). */
+const anyOverlayOpen = (): boolean =>
+  !!(infoCard || importPanel.isOpen || menuOpen() || docOpen() || alertOpen());
 const fishToName = (p: { x: number; y: number }): Fish | null =>
-  infoCard || importPanel.isOpen || menuOpen() || docOpen() || alertOpen()
-    ? null : fishAtPoint(p);
+  anyOverlayOpen() ? null : fishAtPoint(p);
 const fishTipLabel = (f: Fish): string =>
   (f.species || "Fish") +
   (f.dead ? " — Dead" : f.sick ? " — Sick" :
@@ -382,16 +383,18 @@ const fishTipLabel = (f: Fish): string =>
 // tip doesn't linger when the fish swims away from a parked cursor.
 let lastHover: { x: number; y: number } | null = null;
 
-canvas.addEventListener("pointermove", (e) => {
-  lastClient = { x: e.clientX, y: e.clientY };
-  if (!e.isPrimary) return; // one pointer drives curiosity
-  const p = tankPoint(e.clientX, e.clientY);
-  sim.notice = p;
-  if (e.pointerType === "touch") return; // no hover on touch
-  lastHover = p;
-  const best = p && fishToName(p);
-  if (!best) { fishTip.style.display = "none"; return; }
-  fishTip.textContent = fishTipLabel(best);
+/** The hover tip for a tank point: the fish's name, or in the air
+ * strip a hint that a click drops food there. fishToName already
+ * declines while Get Info, a menu or an alert is up — the hint
+ * follows the same rule. */
+function tipForPoint(p: { x: number; y: number }): string | null {
+  const f = fishToName(p);
+  if (f) return fishTipLabel(f);
+  if (anyOverlayOpen()) return null;
+  return isFeedZoneY(p.y) ? "Click to feed" : null;
+}
+
+function placeTip(e: { clientX: number; clientY: number }): void {
   fishTip.style.display = "";
   // Clamp inside the viewport — the tank usually fills the window,
   // so an unclamped +14 offset clips at the right and bottom edges.
@@ -399,6 +402,19 @@ canvas.addEventListener("pointermove", (e) => {
     innerWidth - fishTip.offsetWidth - 4))}px`;
   fishTip.style.top = `${Math.max(4, Math.min(e.clientY + 14,
     innerHeight - fishTip.offsetHeight - 4))}px`;
+}
+
+canvas.addEventListener("pointermove", (e) => {
+  lastClient = { x: e.clientX, y: e.clientY };
+  if (!e.isPrimary) return; // one pointer drives curiosity
+  const p = tankPoint(e.clientX, e.clientY);
+  sim.notice = p;
+  if (e.pointerType === "touch") return; // no hover on touch
+  lastHover = p;
+  const tip = p && tipForPoint(p);
+  if (!tip) { fishTip.style.display = "none"; return; }
+  fishTip.textContent = tip;
+  placeTip(e);
 });
 canvas.addEventListener("pointerleave", (e) => {
   lastClient = null;
@@ -2580,11 +2596,14 @@ function frame(now: number): void {
   // under it has swum off, and refresh the label while it stays —
   // the state word would otherwise go stale between pointermoves.
   if (lastHover && fishTip.style.display !== "none") {
-    const best = fishToName(lastHover);
-    if (!best) fishTip.style.display = "none";
-    else {
-      const label = fishTipLabel(best);
-      if (fishTip.textContent !== label) fishTip.textContent = label;
+    const tip = tipForPoint(lastHover);
+    if (!tip) fishTip.style.display = "none";
+    else if (fishTip.textContent !== tip) {
+      fishTip.textContent = tip;
+      // A longer label can overflow the edge the last clamp used —
+      // re-clamp against the new size.
+      if (lastClient) placeTip({ clientX: lastClient.x,
+                                 clientY: lastClient.y });
     }
   }
   if (crtOn || crtBusy) crt?.render();
