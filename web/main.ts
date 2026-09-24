@@ -2357,15 +2357,18 @@ function render(): void {
     if (!sway) { ctx.drawImage(d, x, y); continue; }
     // Sway per horizontal band — offsets grow toward the tip, so the
     // planted root stays glued while the top drifts. Runs on the sim
-    // clock like decor frames: a paused tank holds still.
+    // clock like decor frames: a paused tank holds still. Each band
+    // re-clamps into the glass so an edge piece's tip can't overhang.
+    const xmax = Math.max(0, TANK.width - d.width);
     for (let b = 0; b < SWAY_BANDS; b++) {
       const y0 = Math.floor(b * d.height / SWAY_BANDS);
       const y1 = Math.floor((b + 1) * d.height / SWAY_BANDS);
       if (y1 <= y0) continue;
       const dx = swayOffset(sim.tickCount, swayPh,
                             (y0 + y1) / 2 / d.height);
+      const bx = Math.min(Math.max(x + dx, 0), xmax);
       ctx.drawImage(d, 0, y0, d.width, y1 - y0,
-                    x + dx, y + y0, d.width, y1 - y0);
+                    bx, y + y0, d.width, y1 - y0);
     }
   }
 
