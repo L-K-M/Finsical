@@ -7,7 +7,8 @@ import { FISH_CAP, HUNGER_SEEK, SPAWN_HUNGER } from "../core/tuning.js";
 import { planFrame } from "../core/loop.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { isPack } from "../core/data/fsh.js";
-import { decodeDroppedPacks } from "./drop.js";
+import { isBmp } from "../core/data/bmp.js";
+import { BACKDROP_MIN, decodeDroppedPacks } from "./drop.js";
 import { decorFrame, decorPhase } from "../core/data/decor.js";
 import { bodySize, pickSwimSheet } from "../core/data/swimsheet.js";
 import { fishScale } from "./artscale.js";
@@ -1753,12 +1754,16 @@ window.addEventListener("drop", (e) => {
     // ~16MB, but .bin/.hqx wrappers inflate that (BinHex text is ~4/3),
     // so allow up to 32MB before skipping.
     const recs: { name: string; wav: Uint8Array }[] = [];
-    // Pack files are collected here (their head is read once) and
-    // decoded in the pass below, so no file is buffered twice.
+    // Pack files and BMP pictures are collected here (their head is
+    // read once) and decoded in the pass below, so no file is buffered
+    // twice.
     const packFiles: [string, File][] = [];
     for (const [name, file] of flat) {
       const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());
-      if (isPack(head)) { packFiles.push([name, file]); continue; }
+      if (isPack(head) || isBmp(head)) {
+        packFiles.push([name, file]);
+        continue;
+      }
       if (file.size > 32 * 1024 * 1024) {
         console.warn("snd skip (too large):", name);
         continue;
@@ -1778,8 +1783,10 @@ window.addEventListener("drop", (e) => {
     // an unreadable file costs only itself, and a folder drop never
     // holds every pack's bytes at once. Sections come from the
     // extension like remote installs' collections: a .fsh fish adds
-    // no scenery, so its catalog art can't take the backdrop.
+    // no scenery, so its catalog art can't take the backdrop. A BMP
+    // is your own picture for the backdrop, as in AquaZone.
     let imported = 0;
+    let badPictures = 0;
     for (const [name, file] of packFiles) {
       let data: Uint8Array;
       try { data = new Uint8Array(await file.arrayBuffer()); }
@@ -1788,6 +1795,12 @@ window.addEventListener("drop", (e) => {
         continue;
       }
       const [p] = decodeDroppedPacks([[name, data]]);
+      if (!p && isBmp(data)) {
+        console.warn(`drop: ${name}: not a 256-color BMP of at least ` +
+          `${BACKDROP_MIN.w} x ${BACKDROP_MIN.h}`);
+        badPictures++;
+        continue;
+      }
       if (!p) {
         // No art: it may be the game's sound bank (AZ_WAVES.REZ). Its
         // records persist like any dropped sound; the pack isn't kept.
@@ -1840,7 +1853,15 @@ window.addEventListener("drop", (e) => {
       imported++;
       console.info(`${name}: pack imported${stored ? "" : " (session only)"}`);
     }
-    if (!imported && !recs.length)
+    // One alert for the whole drop, however many pictures missed.
+    if (badPictures) {
+      const what = badPictures > 1 ? "those pictures" : "that picture";
+      showAlert({ icon: "caution",
+                  text: `Finsical can't use ${what} as the backdrop. ` +
+                    "You can use 256-color BMP pictures of at least " +
+                    `${BACKDROP_MIN.w} by ${BACKDROP_MIN.h} pixels.`,
+                  buttons: [{ title: "OK", default: true, cancel: true }] });
+    } else if (!imported && !recs.length)
       console.warn("drop: no manifest.json, pack file, or 'snd ' found");
   })().catch((e) => console.warn("azpack import failed:", e));
 });

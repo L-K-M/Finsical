@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- You can use your own picture as the backdrop, as in AquaZone: drag a
+  256-color BMP of at least 160 by 100 pixels onto the tank. It is
+  kept, so it comes back at every launch, and Tank Overview lists it
+  with Remove. A picture Finsical can't use, such as a 24-bit BMP or
+  a smaller one, now brings up an alert. Dropped pictures used to be
+  ignored without a word.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the

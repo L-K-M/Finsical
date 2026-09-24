@@ -141,4 +141,36 @@ describe("decodeDroppedPacks", () => {
       .map(dropSection)).toEqual(["gravel", "plants", "accessories",
       "tanks", "tanks", "fish", "fish"]);
   });
+
+  it("maps a .bmp picture to the backgrounds", () => {
+    expect(["x.bmp", "Y.BMP"].map(dropSection))
+      .toEqual(["backgrounds", "backgrounds"]);
+  });
+});
+
+describe("decodeDroppedPacks with pictures", () => {
+  it("takes a 256-color BMP as a backdrop, by its content", () => {
+    const [pic, bare] = decodeDroppedPacks([
+      ["MyBackdrop.bmp", buildBmpImage(640, 480)],
+      // A classic Mac file can carry no extension at all.
+      ["Reef", buildBmpImage(160, 100)],
+    ]);
+    expect([pic!.name, pic!.section, pic!.sheets.size])
+      .toEqual(["MyBackdrop", "backgrounds", 0]);
+    expect([...pic!.images.values()].map((i) => [i.w, i.h]))
+      .toEqual([[640, 480]]);
+    expect([bare!.name, bare!.section, bare!.images.size])
+      .toEqual(["Reef", "backgrounds", 1]);
+  });
+
+  it("skips pictures the tank can't show", () => {
+    const deep = buildBmpImage(640, 480);
+    new DataView(deep.buffer).setUint16(28, 24, true); // 24-bit
+    expect(decodeDroppedPacks([
+      ["Photo.bmp", deep],
+      ["Tiny.bmp", buildBmpImage(64, 40)],
+      ["Narrow.bmp", buildBmpImage(159, 100)],
+      ["Low.bmp", buildBmpImage(160, 99)],
+    ])).toEqual([]);
+  });
 });
