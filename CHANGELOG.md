@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The CRT's Geometry group gains two pots. Skew leans the whole
+  picture into a parallelogram, and Perspective swings it like the
+  tube turning on its stand — one edge looming large while the
+  other shrinks back.
 - The CRT Softening control now smears only along each scanline, as
   its description says. The rows used to blend into each other at
   every setting, so the whole picture turned soft, and even Sharp and
