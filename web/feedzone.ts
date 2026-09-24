@@ -15,8 +15,9 @@ import { SURFACE } from "../core/sim.js";
  * height. */
 export function isFeedZone(x: number, y: number,
                            waterline: ArrayLike<number>): boolean {
-  const line = waterline[Math.round(x)];
-  return y < (line === undefined ? SURFACE : line) + 1;
+  const i = Math.round(x);
+  const line = i >= 0 && i < waterline.length ? waterline[i]! : SURFACE;
+  return y < line + 1;
 }
 
 /**

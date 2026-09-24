@@ -278,7 +278,10 @@ function syncFeedHover(): void {
   if (!lastClient) { setFeedHover(false); return; }
   const p = containPoint(lastClient.x, lastClient.y,
                          canvas.getBoundingClientRect(), TANK);
-  setFeedHover(p !== null && isFeedZone(p.x, p.y, waterline));
+  // Paused drops the affordance too — the click below is gated the
+  // same way, so the cursor mustn't promise a feed that won't land.
+  setFeedHover(p !== null && !paused &&
+               isFeedZone(p.x, p.y, waterline));
 }
 
 canvas.addEventListener("pointerdown", (e) => {
