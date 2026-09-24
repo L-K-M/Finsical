@@ -319,9 +319,10 @@ document.body.appendChild(fishTip);
 /** The fish to name under a hovered point — none while Get Info, a
  * menu, the add-on window, a document window or an alert is up (the
  * tip would float over them). */
+const anyOverlayOpen = (): boolean =>
+  !!(infoCard || importPanel.isOpen || menuOpen() || docOpen() || alertOpen());
 const fishToName = (p: { x: number; y: number }): Fish | null =>
-  infoCard || importPanel.isOpen || menuOpen() || docOpen() || alertOpen()
-    ? null : fishAtPoint(p);
+  anyOverlayOpen() ? null : fishAtPoint(p);
 const fishTipLabel = (f: Fish): string =>
   (f.species || "Fish") +
   (f.state === "drift" ? "" : ` — ${stateLabel(f.state)}`);
@@ -336,12 +337,11 @@ let lastHover: { x: number; y: number } | null = null;
 function tipForPoint(p: { x: number; y: number }): string | null {
   const f = fishToName(p);
   if (f) return fishTipLabel(f);
-  if (infoCard || importPanel.isOpen || menuOpen() || docOpen() ||
-      alertOpen()) return null;
+  if (anyOverlayOpen()) return null;
   return isFeedZoneY(p.y) ? "Click to feed" : null;
 }
 
-function placeTip(e: PointerEvent): void {
+function placeTip(e: { clientX: number; clientY: number }): void {
   fishTip.style.display = "";
   // Clamp inside the viewport — the tank usually fills the window,
   // so an unclamped +14 offset clips at the right and bottom edges.
@@ -2199,7 +2199,13 @@ function frame(now: number): void {
   if (lastHover && fishTip.style.display !== "none") {
     const tip = tipForPoint(lastHover);
     if (!tip) fishTip.style.display = "none";
-    else if (fishTip.textContent !== tip) fishTip.textContent = tip;
+    else if (fishTip.textContent !== tip) {
+      fishTip.textContent = tip;
+      // A longer label can overflow the edge the last clamp used —
+      // re-clamp against the new size.
+      if (lastClient) placeTip({ clientX: lastClient.x,
+                                 clientY: lastClient.y });
+    }
   }
   if (crtOn) crt?.render();
 }
