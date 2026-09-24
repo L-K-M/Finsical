@@ -87,9 +87,9 @@ export class TankAudio {
     const decoded = await Promise.all(sounds.map(async (s) => {
       try {
         const raw = await read(s.file);
-        const buf = raw.buffer.slice(raw.byteOffset,
-                                     raw.byteOffset + raw.byteLength);
-        return { name: s.name, data: await ac.decodeAudioData(buf) };
+        // A copy: decodeAudioData detaches the buffer it is given.
+        return { name: s.name,
+                 data: await ac.decodeAudioData(raw.slice().buffer) };
       } catch (e) {
         console.warn(`audio skip ${s.file}:`, e);
         return null; // undecodable entry — keep the rest
@@ -106,10 +106,9 @@ export class TankAudio {
       // Decode concurrently; each record still fails alone.
       const decoded = await Promise.all(records.map(async (r) => {
         try {
-          const raw = r.wav;
-          const buf = raw.buffer.slice(raw.byteOffset,
-                                       raw.byteOffset + raw.byteLength);
-          return { name: r.name, data: await ac.decodeAudioData(buf) };
+          // A copy: decodeAudioData detaches the buffer it is given.
+          return { name: r.name,
+                   data: await ac.decodeAudioData(r.wav.slice().buffer) };
         } catch (e) {
           console.warn(`audio skip imported ${r.name}:`, e);
           return null; // undecodable entry — keep the rest

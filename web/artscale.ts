@@ -6,7 +6,11 @@ import type { IndexedImage } from "../core/data/azpack.js";
  * original proportion to each other and to the tank. */
 export const ART_SCALE = 0.5;
 
-export interface Rgba { w: number; h: number; data: Uint8ClampedArray }
+export interface Rgba {
+  w: number; h: number;
+  /** A plain ArrayBuffer underneath, as ImageData requires. */
+  data: Uint8ClampedArray<ArrayBuffer>;
+}
 
 /**
  * Shrink sprite art by `s` (0 < s <= 1) with an area-weighted box

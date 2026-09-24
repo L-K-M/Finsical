@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { ownBytes } from "./bytes.js";
 import { fileSoundRecords, hasSounds, mace3Decode, parseSnd,
          qualifySoundNames, soundsFromRsrc, unwrapContainer, wavBytes }
   from "./snd.js";
 
 const sha256 = async (d: Uint8Array): Promise<string> =>
-  [...new Uint8Array(await crypto.subtle.digest("SHA-256", d))]
+  [...new Uint8Array(await crypto.subtle.digest("SHA-256", ownBytes(d)))]
     .map((b) => b.toString(16).padStart(2, "0")).join("");
 
 // --- fixtures (mirror tools/tests) -----------------------------------

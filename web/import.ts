@@ -10,6 +10,7 @@
  * with no native bridge. Add-on identity is the entry URL (`inner` is
  * only a display name/species tag — basenames collide across folders).
  */
+import { ownBytes } from "../core/data/bytes.js";
 import { zipEntries, zipRead } from "../core/data/zip.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
@@ -981,7 +982,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         // Sound add-ons preview with a real player — the payload is
         // already-decoded WAV or a browser-decodable encoded stream.
         sndObjUrl = URL.createObjectURL(
-          new Blob([snds[0]!.wav], { type: audioType(snds[0]!.wav) }));
+          new Blob([ownBytes(snds[0]!.wav)],
+                   { type: audioType(snds[0]!.wav) }));
         audio.src = sndObjUrl;
         showPlay(true);
         setButtonTitle(play, "Play");
@@ -1156,7 +1158,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         pumpThumbs();
         return;
       }
-      const blob = new Blob([bytes], { type: "image/png" });
+      const blob = new Blob([ownBytes(bytes)], { type: "image/png" });
       const done = (bmp: CanvasImageSource, w: number, h: number) => {
         const cv = document.createElement("canvas");
         cv.width = w; cv.height = h;
