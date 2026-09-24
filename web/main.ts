@@ -245,15 +245,19 @@ document.addEventListener("visibilitychange", () => {
 });
 // Every mutation path already calls saveTank() directly, so the
 // interval's 10 s cadence only needs to keep client windows fed —
-// postState — while every 6th tick persists clock/position drift.
-// localStorage writes drop from 6/min to 1/min of idle main-thread
-// serialization instead of hitching a frame on slow storage. One
-// interval with a counter keeps the save cadence coupled to the post
-// cadence so the two can't drift apart.
-let saveTick = 0;
+// postState — while a ≥60 s wall-clock guard persists clock/position
+// drift. localStorage writes drop from 6/min to 1/min of idle
+// main-thread serialization instead of hitching a frame on slow
+// storage. Wall clock, not a tick count: hidden tabs throttle the
+// interval itself (~1/min under Chrome's intensive throttling), and
+// counting fires would stretch the save to ~6 min.
+let lastSaveAt = Date.now();
 setInterval(() => {
   postState();
-  if (++saveTick % 6 === 0) saveTank();
+  if (Date.now() - lastSaveAt >= 60_000) {
+    lastSaveAt = Date.now();
+    saveTank();
+  }
 }, 10_000);
 
 /** CSS-pixel pointer coords → tank-space point; null in the
