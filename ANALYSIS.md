@@ -17,15 +17,17 @@ one entry per idea, and each merge is recorded in that entry's
   broken core flow; high = clearly wrong user-visible behavior or a
   major performance issue; medium = real but limited; low = minor;
   nit = cosmetic; idea = improvement, not a defect.
-- Before starting an entry, check the open PRs named in its notes.
-  **No review PR from any pass (#87 through #160) is merged.** Every
-  "Completed" entry below is an open PR, and several open PRs overlap
-  each other. Verify against `origin/main` before re-scoping.
-- Line numbers: the code on `origin/main` (`3320181`) is identical to
-  `0499443` (every later commit touches only `ANALYSIS.md`), so the
-  ninth-pass line numbers are current for main. Entries carried from
-  passes one to eight cite files without line numbers or with
-  `0342fb0`-era numbers; those are the same code.
+- Before starting an entry, check the PRs named in its notes. The
+  review PRs #87 through #160 were consolidated on 2026-09-24 (#161,
+  #162): most "Completed" entries below are now merged, the rest were
+  closed, and merged PRs may have finished some open entries.
+  [FOLLOW-UPS.md](FOLLOW-UPS.md) lists every PR's outcome. Verify
+  against `origin/main` before re-scoping.
+- Line numbers date from before the consolidation (`3320181`, whose
+  code is identical to `0499443`). The merged PRs moved much of the
+  code, so find an entry's code by name. Entries carried from passes
+  one to eight cite files without line numbers or with `0342fb0`-era
+  numbers.
 - Acceptance lines marked "(derived)" were written during this merge
   because the source gave no test; the rest come from the reviews.
   Size, severity, value and risk for entries tagged "(from passes
