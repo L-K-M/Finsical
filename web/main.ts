@@ -315,6 +315,11 @@ function tankSnapshot(): SavedTank {
 // visibilitychange handlers would otherwise save the OLD tank over
 // the freshly imported SAVE_KEY during unload.
 let suppressSave = false;
+// A bfcache restore after the import reload would otherwise keep
+// saving muted for the rest of the session.
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted) suppressSave = false;
+});
 function saveTank(): void {
   if (suppressSave) return;
   try {
@@ -366,9 +371,12 @@ tankFile.addEventListener("change", () => {
     // and reload rather than swap a live tank out from under the sim.
     try {
       // Keep the outgoing tank recoverable — import has no confirm.
+      // Skip the write when there's nothing to back up: an empty
+      // string isn't valid JSON and would need special-casing later.
       try {
-        localStorage.setItem(SAVE_KEY + ".bak",
-                             localStorage.getItem(SAVE_KEY) ?? "");
+        const prior = localStorage.getItem(SAVE_KEY);
+        if (prior !== null)
+          localStorage.setItem(SAVE_KEY + ".bak", prior);
       } catch { /* backup is best-effort */ }
       localStorage.setItem(SAVE_KEY, JSON.stringify(parsed));
     } catch {
