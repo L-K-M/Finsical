@@ -1074,7 +1074,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     status.textContent = section === "sounds"
       ? "AZ_WAVES holds the game's own sound effects. You can also drop " +
         "your copy's .rsrc, .bin, .hqx or .REZ file on the tank or this " +
-        "window."
+        "window. Plain audio works too: .wav, .mp3, .aiff, .m4a, .ogg " +
+        "or .flac."
       : all.length ? "Select an add-on to preview it." : "";
     if (all.length) setAdd("Add to Tank", null);
   }
