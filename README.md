@@ -46,48 +46,75 @@ source](#build-from-source), which compiles for the Mac that runs the build.
 
 macOS remembers your choice; later launches open normally.
 
+A new tank starts with four stand-in fish, and Finsical offers to
+stock it with a starter set of Aquazone fish, a gravel, a plant and a
+background from the Internet Archive (about 1 MB). Choose **Not Now**
+to keep the stand-ins; you can add the same things later from Import
+Add-ons.
+
 ## Using Finsical
 
 | Action | How |
 | --- | --- |
-| Feed the fish | Click near the water's surface (the top 15% of the tank) |
+| Feed the fish | Click near the water's surface (the top 15% of the tank, where the pointer becomes a crosshair) |
 | Tap the glass | Click lower in the tank; nearby fish startle |
+| See a fish's name | Point at it: a balloon names it and says what it is doing |
+| Get Info on a fish | Option-click it: a card follows it with its hunger and mood |
 | Move the window | In the app, drag the computer case around the tank, or the top edge of the window |
+
+A fish nearby comes over to look at the pointer while you hover over
+the tank, unless it is hungry or startled.
 
 Menu commands in the app:
 
 | Command | Menu | Keys |
 | --- | --- | --- |
+| About Finsical | Finsical | |
 | Preferences… | Finsical | Cmd-, |
+| Hide Finsical, Hide Others | Finsical | Cmd-H, Option-Cmd-H |
 | Quit Finsical | Finsical | Cmd-Q |
 | Tank Overview | Tank | Cmd-O |
 | Tank Stats | Tank | Shift-Cmd-S |
 | Import Add-ons… | Tank | Cmd-I |
 | Feed Fish | Tank | Cmd-F |
-| Toggle CRT Effect | Tank | Cmd-R |
+| Change Water | Tank | |
+| CRT Effect (checked while on) | Tank | Cmd-R |
+| Lamp On (checked while on) | Tank | Cmd-L |
+| Mute Sound (checked while muted) | Tank | Option-Cmd-S |
+| Pause Simulation, Resume Simulation | Tank | Cmd-P |
 | Support the Internet Archive | Tank | (opens archive.org/donate in your browser) |
 | Close, Minimize | Window | Cmd-W, Cmd-M |
+| Float Above Other Windows, Show on All Desktops | Window | (on by default, remembered) |
+| Finsical Help | Help | Cmd-? (opens this README) |
 
-Closing the tank window quits Finsical.
+Cmd-W closes Preferences and the other windows but not the tank; quit
+with Cmd-Q.
 
-Keys on the tank page, useful in the browser build (see
+Keys on the tank page, in the app and the browser build (see
 [Build from source](#build-from-source)):
 
 | Key | Action |
 | --- | --- |
-| F | Feed the fish (also works in the app) |
-| C | Toggle the CRT effect (also works in the app) |
+| F | Feed the fish |
+| L | Switch the lamp off or on |
+| M | Mute or unmute the sound |
+| P | Pause or resume the tank |
+| C | Toggle the CRT effect |
 | S | Open Tank Stats in a tab (browser only) |
-| Ctrl-I or Cmd-I | Open the add-on browser over the tank |
+| Ctrl-I or Cmd-I | Open the add-on browser over the tank (browser only; the app's Cmd-I opens the Import Add-ons window) |
+| Esc | Close the Get Info card or the front window |
 
-On touch screens without a keyboard, an **Add-ons…** button opens the
-add-on browser.
+In a browser, the tank page has a Mac OS 8 menu bar of its own, with
+the same commands plus **Take a Picture**, which saves the tank as a
+PNG. On touch screens without a keyboard, an **Add-ons…** button opens
+the add-on browser.
 
 ## Add-ons
 
 **Import Add-ons** lists add-ons hosted on the Internet Archive. Pick a
-section from the **Show** pop-up, select an add-on to preview it, and click
-**Add to Tank**. The sections are:
+section from the **Show** pop-up, type in **Filter** to narrow the list,
+select an add-on to preview it, and click **Add to Tank**. A tank holds
+up to 24 fish. The sections are:
 
 | Section | Contents |
 | --- | --- |
@@ -105,7 +132,7 @@ You can also drag files from the Finder onto the tank:
 | What you drop | What happens |
 | --- | --- |
 | An `.azpack` folder (made by the [asset tools](#asset-tools)) | Its fish, art and sounds are imported |
-| AquaZone fish pack files such as `.fsh` or `.REZ` | Their fish and art are imported |
+| Aquazone pack files: fish (`.fsh`), gravel (`.grv`), plants (`.plt`), accessories (`.acc`), tanks (`.azn`), or the base library (`.REZ`, fish and scenery) | Imported into their section and kept, so they come back at every launch |
 | Resource files with `snd ` resources: `.rsrc`, MacBinary `.bin`, BinHex `.hqx`, AppleDouble | Their sounds are imported and kept |
 | Audio files: `.wav`, `.mp3`, `.aif`, `.aiff`, `.m4a`, `.ogg`, `.flac` | Imported as sounds and kept |
 
@@ -113,32 +140,37 @@ Sound files over 32 MB are skipped. The Import Add-ons window accepts the
 sound formats too.
 
 Installed archive.org add-ons come back at every launch. Remove fish and
-add-ons in Tank Overview.
+add-ons in Tank Overview, choose which installed gravel or background
+is on display with **Use**, or start over with **Empty Tank…**.
 
 ## Windows
 
 | Window | What it does |
 | --- | --- |
-| Preferences | **Machine**: the computer case around the tank (Macintosh Plus, Performa 450, 20th Anniversary Mac, iMac G3 and G4 variants, or a bare tank). **Monitor**: the CRT effect and its picture tube sliders. **Picture**: the monitor's front-panel controls. |
-| Tank Overview | Everything in the tank as a sortable Name, Kind and Status list, with **Remove** |
+| Preferences | **Machine**: the computer case around the tank (Macintosh Plus, Performa 450, 20th Anniversary Mac, iMac G3 and G4 variants, or a bare tank). **Monitor**: the CRT effect, presets and its picture tube sliders. **Picture**: the monitor's front-panel controls. **Lighting**: the day and night cycle, a light timer that follows your Mac's clock, or lights always on, and the lamp. **Sound**: volume, mute, and switches for bubble sounds and the water ambience. |
+| Tank Overview | Everything in the tank as a sortable Name, Kind and Status list, with **Remove**, **Use** for scenery and **Empty Tank…** |
 | Import Add-ons | The archive.org add-on browser described above |
-| Tank Stats | Water quality, average hunger, the hungriest fish, fish and food counts, day or night, tank age, and care hints |
+| Tank Stats | Water quality and average hunger with recent history, the hungriest fish, fish and food counts, day or night, tank age, care hints, and **Change Water** |
 
 ## Your data
 
 Everything stays on your Mac:
 
 - **localStorage**, under `finsical:*` keys: the tank itself
-  (`finsical:tank`: fish, water quality and installed add-ons, saved every
-  10 seconds and when the page closes), the CRT switch and settings
-  (`finsical:crt`, `finsical:crt-cfg`), the machine case
-  (`finsical:machine`), and the last Preferences pane and add-on section
-  (`finsical:prefsPane`, `finsical:addonSection`).
+  (`finsical:tank`: fish, water quality, installed add-ons and the
+  scenery on display, saved every 10 seconds and when the page closes or
+  hides), the CRT switch and settings (`finsical:crt`,
+  `finsical:crt-cfg`), the machine case (`finsical:machine`), lighting
+  and sound settings (`finsical:lighting`, `finsical:sound`), whether
+  the tank is paused (`finsical:paused`), whether the first-run offer
+  was answered (`finsical:welcomed`), and the last Preferences pane and
+  add-on section (`finsical:prefsPane`, `finsical:addonSection`).
 - **IndexedDB** database `finsical`: downloaded add-on archives,
   thumbnails and archive.org listing pages, so installed add-ons restore
   offline. Cached downloads are evicted least recently used once they pass
-  about 150 MB. Sounds you import are stored there too and are never
-  evicted.
+  about 150 MB. Sounds you import and packs you drop onto the tank are
+  stored there too and are never evicted; removing a dropped pack in
+  Tank Overview deletes it.
 - **macOS defaults** (`dev.finsical.app`): window positions.
 
 The only network host Finsical contacts is archive.org, for add-on listings
