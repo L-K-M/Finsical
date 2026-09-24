@@ -206,7 +206,14 @@ const SCHOOL_RADIUS = 42;
 /** Above this hunger a fish begs near the surface between meals. */
 const BEG_HUNGER = 0.75;
 /** The hovered pointer is noticed inside this radius. */
-const NOTICE_RADIUS = 80;
+export const NOTICE_RADIUS = 80;
+/** How many calm fish may gather at the pointer at once — the
+ * original let a small crowd press the glass; a hard cap keeps a
+ * full tank from emptying onto the cursor. */
+const NOTICE_CAP = 4;
+/** Extra standoff per watcher rank so a gathered crowd fans out
+ * instead of stacking on one point. */
+const NOTICE_STAGGER = 10;
 /** Smallest half-size of a fish's pick box, in tank px (fishAt). */
 const HIT_MIN = 8;
 /** This close to the pointer a noticed fish just hovers nearby. */
@@ -267,6 +274,12 @@ export class Sim {
   readonly fish: Fish[] = [];
   readonly food: Food[] = [];
   readonly bubbles: Bubble[] = [];
+  /** Spawn a bubble at a point — the view emits these for decor
+   * (plants oxygenating); the lifecycle (rise, surface pop) is the
+   * same as a gravel bubble's. */
+  spawnBubble(x: number, y: number): void {
+    this.bubbles.push({ x, y });
+  }
   tickCount = 0;
   /** 1 = clean, 0 = foul. Rotted food fouls it; filtration recovers it. */
   waterQuality = 1;
@@ -276,11 +289,13 @@ export class Sim {
    * nearest calm fish notices it and drifts over. null when it
    * leaves. */
   notice: { x: number; y: number } | null = null;
-  /** The calm fish currently watching the pointer — the drift-state
-   * fish closest to `notice`, picked once per tick in tick().
-   * Read-only view: tick() owns the pick. */
-  get noticeFish(): Fish | null { return this._noticeFish; }
-  private _noticeFish: Fish | null = null;
+  /** The senior calm fish watching the pointer — the first of up to
+   * NOTICE_CAP watchers to join, kept while it stays in range.
+   * Read-only view: tick() owns the picks. */
+  get noticeFish(): Fish | null { return this._noticeFish[0] ?? null; }
+  /** The watchers in join order — up to NOTICE_CAP calm fish gather
+   * at the pointer, each holding its rank so the crowd fans out. */
+  private _noticeFish: Fish[] = [];
 
   /** The same condition decide() uses to send a fish begging at the
    * surface: starving, and water clean enough to keep an appetite. */
@@ -423,25 +438,31 @@ export class Sim {
   tick(): void {
     this.tickCount++;
     if (this.light >= WAKE_LIGHT) this.seenDay = true;
-    // The hovered pointer is noticed by the closest calm fish — only
-    // drifters look up; seeking and startled fish have other business.
-    // The watcher keeps watching while it stays in range (a roll to
-    // face the pointer is part of watching), so one fish comes over
-    // instead of a new pick every tick drawing two or three.
+    // The hovered pointer is noticed by calm fish — only drifters
+    // look up; seeking and startled fish have other business. A
+    // watcher keeps watching while it stays in range (a roll to face
+    // the pointer is part of watching), so the crowd is stable instead
+    // of a new pick every tick re-drawing the members.
     const n = this.notice;
-    const w = this._noticeFish;
     const inRange = (f: Fish): boolean => !!n &&
       (f.x - n.x) ** 2 + (f.y - n.y) ** 2 < NOTICE_RADIUS * NOTICE_RADIUS;
-    if (!w || !this.fish.includes(w) || !inRange(w) ||
-        (w.state !== "drift" && w.state !== "turn")) {
-      this._noticeFish = null;
-      if (n) {
-        let bd = NOTICE_RADIUS * NOTICE_RADIUS;
-        for (const f of this.fish) {
-          if (f.state !== "drift") continue;
-          const d = (f.x - n.x) ** 2 + (f.y - n.y) ** 2;
-          if (d < bd) { bd = d; this._noticeFish = f; }
-        }
+    this._noticeFish = this._noticeFish.filter((f) =>
+      this.fish.includes(f) && inRange(f) &&
+      (f.state === "drift" || f.state === "turn"));
+    if (n && this._noticeFish.length < NOTICE_CAP) {
+      // Fill the open slots with the nearest drifters not already
+      // watching — a small crowd presses the glass, like the original.
+      const cand: { f: Fish; d: number }[] = [];
+      for (const f of this.fish) {
+        if (f.state !== "drift" || this._noticeFish.includes(f))
+          continue;
+        const d = (f.x - n.x) ** 2 + (f.y - n.y) ** 2;
+        if (d < NOTICE_RADIUS * NOTICE_RADIUS) cand.push({ f, d });
+      }
+      cand.sort((a, b) => a.d - b.d);
+      for (const c of cand) {
+        if (this._noticeFish.length >= NOTICE_CAP) break;
+        this._noticeFish.push(c.f);
       }
     }
     for (const f of this.fish) this.tickFish(f);
@@ -623,10 +644,27 @@ export class Sim {
         turning = this.maybeTurn(f);
       }
       let dist = Math.hypot(f.tx - f.x, f.ty - f.y);
-      const n = f === this.noticeFish ? this.notice : null;
+      const rank = this._noticeFish.indexOf(f);
+      const n = rank >= 0 ? this.notice : null;
       const nd = n ? Math.hypot(n.x - f.x, n.y - f.y) : Infinity;
-      // A big fish stops with its nose, not its middle, by the pointer.
-      const standoff = NOTICE_STANDOFF + this.halfW(f);
+      // A big fish stops with its nose, not its middle, by the
+      // pointer; later arrivals stop a step farther out so a gathered
+      // crowd reads as a loose arc, not a stack. The clamp keeps a
+      // large fish's hold point inside the notice radius — outside it
+      // the watcher would drop out of range, drift back in, and
+      // flap between watching and wandering.
+      // The cap is per-rank: a lower rank's ceiling sits one stagger
+      // inside the next rank's, so capped watchers still fan out
+      // instead of collapsing onto the same ring. The floor is
+      // rank-staggered for the same reason — a flat floor would
+      // collapse every floored rank onto one ring after a retune.
+      const cap = Math.max(
+        NOTICE_STANDOFF + Math.max(0, rank) * NOTICE_STAGGER,
+        NOTICE_RADIUS - 4 -
+          (NOTICE_CAP - 1 - Math.max(0, rank)) * NOTICE_STAGGER);
+      const standoff = Math.min(cap,
+        NOTICE_STANDOFF + this.halfW(f) +
+        Math.max(0, rank) * NOTICE_STAGGER);
       // A fish watching the pointer from inside the standoff holds
       // there instead of re-deciding.
       if (!food && !turning && nd > standoff &&
