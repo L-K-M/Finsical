@@ -41,6 +41,14 @@ describe("bootPhase", () => {
     expect(bootPhase(700, 100)).toBe("parade");
     expect(bootPhase(600 + BOOT_HOLD_MS + 10, 100)).toBe("fade");
   });
+
+  it("a restore settling mid-fade never rewinds to the parade", () => {
+    // fadeAtMs clamps the fade start at BOOT_CAP_MS, so a doneElapsed
+    // recorded after the cap leaves a running fade running.
+    expect(bootPhase(BOOT_CAP_MS + 200, BOOT_CAP_MS + 100)).toBe("fade");
+    expect(bootPhase(BOOT_CAP_MS + 200 + BOOT_FADE_MS, BOOT_CAP_MS + 100))
+      .toBe("done");
+  });
 });
 
 describe("fadeProgress", () => {
@@ -52,6 +60,15 @@ describe("fadeProgress", () => {
       .toBeCloseTo(0.5);
     expect(fadeProgress(done + BOOT_HOLD_MS + BOOT_FADE_MS * 2, done))
       .toBe(1);
+  });
+
+  it("fades on the cap path when the restore never settles", () => {
+    // render() reaches fadeProgress with done=null via the BOOT_CAP_MS
+    // branch — pin that it fades (not NaN, not a hard cut).
+    expect(fadeProgress(BOOT_CAP_MS, null)).toBe(0);
+    expect(fadeProgress(BOOT_CAP_MS + BOOT_FADE_MS / 2, null))
+      .toBeCloseTo(0.5);
+    expect(fadeProgress(BOOT_CAP_MS + BOOT_FADE_MS * 2, null)).toBe(1);
   });
 });
 
