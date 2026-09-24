@@ -1490,6 +1490,33 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
             wanted: (it: Importable) => boolean): Promise<Importable[]> {
       if (remote) return Promise.resolve([]); // the tank page owns the sim
       const failed: Importable[] = [];
+      // Warm fetches a few at a time: packCache dedupes by URL, so the
+      // serial chain below awaits work already running instead of
+      // starting each download as the previous pack applies. Four
+      // concurrent fetches hide most of restore's latency without a
+      // thundering herd against archive.org (or a decode burst on the
+      // main thread) at the moment of maximum contention. Errors
+      // surface through the chain's own catch, so the warm-up
+      // promise's rejection only needs swallowing.
+      const RESTORE_FETCH_CAP = 4;
+      const warm = list.filter((it) => !installed.has(it.url) && wanted(it));
+      let wi = 0, active = 0;
+      const pump = (): void => {
+        while (wi < warm.length && active < RESTORE_FETCH_CAP) {
+          const it = warm[wi++]!;
+          // Re-check both gates: installed can change while the pump
+          // idles between settles (a manual import landing mid-restore).
+          if (installed.has(it.url) || !wanted(it)) continue;
+          active++;
+          // The trailing catch covers a throwing re-pump (a wanted
+          // predicate throwing inside .finally) — the warm-up path can
+          // never produce an unhandled rejection.
+          void fetchPack(it.url).catch(() => {})
+            .finally(() => { active--; pump(); })
+            .catch(() => {});
+        }
+      };
+      pump();
       let p: Promise<void> = Promise.resolve();
       for (const it of list) {
         p = p.then(() => {
