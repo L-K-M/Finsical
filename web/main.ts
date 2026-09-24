@@ -1705,7 +1705,9 @@ window.addEventListener("dragleave", (e) => {
   if (!e.dataTransfer?.types.includes("Files")) return;
   if (dragDepth > 0 && --dragDepth === 0) setDragging(false);
 });
-window.addEventListener("dragover", (e) => e.preventDefault());
+// Capture phase here too: a descendant that swallows dragover would
+// keep dropEffect at "none" and the drop event would never fire.
+window.addEventListener("dragover", (e) => e.preventDefault(), true);
 // Capture phase: a drop ends the drag without a leave event, and a
 // descendant handler that stops propagation must not strand the cue —
 // nor let the browser navigate away to the dropped file.
