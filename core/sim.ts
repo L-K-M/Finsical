@@ -647,7 +647,12 @@ export class Sim {
       // large fish's hold point inside the notice radius — outside it
       // the watcher would drop out of range, drift back in, and
       // flap between watching and wandering.
-      const standoff = Math.min(NOTICE_RADIUS - 4,
+      // The cap is per-rank: a lower rank's ceiling sits one stagger
+      // inside the next rank's, so capped watchers still fan out
+      // instead of collapsing onto the same ring.
+      const cap = NOTICE_RADIUS - 4 -
+        (NOTICE_CAP - 1 - Math.max(0, rank)) * NOTICE_STAGGER;
+      const standoff = Math.min(cap,
         NOTICE_STANDOFF + this.halfW(f) +
         Math.max(0, rank) * NOTICE_STAGGER);
       // A fish watching the pointer from inside the standoff holds

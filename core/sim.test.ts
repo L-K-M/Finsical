@@ -341,6 +341,22 @@ describe("Sim", () => {
     expect(Math.abs(dc - da)).toBeGreaterThan(2);
   });
 
+  it("oversized watchers clamp inside the radius without stacking", () => {
+    // Fish this big blow past the standoff clamp; the per-rank cap
+    // must still give each watcher its own ring.
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const a = sim.addFish({ x: 130, y: 100, hunger: 0, halfW: 80 });
+    const b = sim.addFish({ x: 200, y: 110, hunger: 0, halfW: 80 });
+    const c = sim.addFish({ x: 150, y: 150, hunger: 0, halfW: 80 });
+    sim.notice = { x: 160, y: 100 };
+    for (let i = 0; i < 400; i++) sim.tick();
+    const ds = [a, b, c].map((f) => Math.hypot(f.x - 160, f.y - 100));
+    for (const d of ds) expect(d).toBeLessThan(80);
+    expect(Math.abs(ds[1]! - ds[0]!)).toBeGreaterThan(2);
+    expect(Math.abs(ds[2]! - ds[1]!)).toBeGreaterThan(2);
+    expect(Math.abs(ds[2]! - ds[0]!)).toBeGreaterThan(2);
+  });
+
   it("hunger outranks curiosity", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const f = sim.addFish({ x: 60, y: 60, hunger: 0.9 });
