@@ -27,10 +27,13 @@
 - Fish look like their species. Every AquaZone fish pack carries a
   generic hatchling set alongside the adult art, and the tank drew the
   hatchlings: a clownfish, a comet and a ryukin were the same grey fry.
-  Each fish now swims as its adult, at half the art's original size so
-  species keep their sizes relative to each other, shrunk with a box
-  filter so fins and outlines stay whole. Big fish keep their bodies
-  inside the glass and blow bubbles from their mouths.
+  Each fish now swims as its adult. Small species draw at half the
+  art's original size and bigger ones shrink further, so a discus or an
+  angelfish stands a quarter of the tank's height instead of nearly
+  half, and a bigger species still looks bigger. The art is shrunk with
+  a box filter so fins and outlines stay whole, translucent fins
+  included. Big fish keep their bodies inside the glass and blow
+  bubbles from their mouths.
   The Import Add-ons preview, its list and Tank Overview show the same
   fish in its level profile, and cached previews are redrawn.
 - The tank redraws only when the fish have moved, 30 times a second,

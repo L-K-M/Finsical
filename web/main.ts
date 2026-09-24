@@ -8,8 +8,8 @@ import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.j
 import { isPack } from "../core/data/fsh.js";
 import { decodeDroppedPacks } from "./drop.js";
 import { decorFrame, decorPhase } from "../core/data/decor.js";
-import { pickSwimSheet } from "../core/data/swimsheet.js";
-import { ART_SCALE } from "./artscale.js";
+import { bodySize, pickSwimSheet } from "../core/data/swimsheet.js";
+import { fishScale } from "./artscale.js";
 import { sanitizeSoundConfig, TankAudio } from "./audio.js";
 import { drawRipples, drawSplashes, newSplash, tickRipples,
          tickSplashes } from "./fx.js";
@@ -1801,14 +1801,23 @@ function animFrame(f: Fish, nf: number): number {
   return Math.floor(ph);
 }
 
-// Adult art draws at the shared art scale, so species keep their
-// original sizes relative to each other; a safety cap keeps an
-// unusually large sheet from filling the tank.
+// Small species draw at the shared art scale and big ones compress
+// (fishScale), judged by the body their frames paint; a safety cap
+// keeps an unusually large cell from filling the tank.
 const MAX_FISH_W = TANK.width * 0.6, MAX_FISH_H = TANK.height * 0.6;
-/** Frames are stored vertically: a profile is cellH wide once rotated. */
+const sheetScales = new WeakMap<SpriteSheet, number>();
+/** Frames are stored vertically: a profile is cellH wide once rotated.
+ * Memoized: every drawn frame asks, and measuring scans the art. */
 function sheetScale(sheet: SpriteSheet): number {
-  return Math.min(ART_SCALE, MAX_FISH_W / sheet.meta.cellH,
-                  MAX_FISH_H / sheet.meta.cellW);
+  let s = sheetScales.get(sheet);
+  if (s === undefined) {
+    const body = bodySize(sheet, restPose(sheet, 1).g);
+    s = Math.min(fishScale(body, TANK.width, TANK.height),
+                 MAX_FISH_W / sheet.meta.cellH,
+                 MAX_FISH_H / sheet.meta.cellW);
+    sheetScales.set(sheet, s);
+  }
+  return s;
 }
 
 /** Report a fish's half-extents at full growth to the sim, which

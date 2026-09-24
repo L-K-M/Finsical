@@ -1,4 +1,4 @@
-import type { SpriteSheet } from "./azpack.js";
+import type { IndexedImage, SpriteSheet } from "./azpack.js";
 
 /**
  * The sheet a fish swims with. Every AquaZone fish pack carries two
@@ -22,4 +22,35 @@ export function pickSwimSheet(
     if (dg > 0 || (dg === 0 && da > 0)) best = s;
   }
   return best;
+}
+
+/** How long and tall a fish looks in profile, in art pixels. */
+export interface BodySize { length: number; height: number }
+
+/**
+ * The opaque extent of one pose group across all of its frames, so the
+ * tail's full swing counts. Cells are padded, some to two or three
+ * times the fish, so the cell overstates how big a species looks.
+ * Frames hold the fish on its side: rows run along its length. Falls
+ * back to the cell when no frame has an opaque pixel to measure.
+ */
+export function bodySize(sheet: SpriteSheet, group: number): BodySize {
+  let x0 = Infinity, x1 = -1, y0 = Infinity, y1 = -1;
+  for (let f = 0; f < sheet.meta.framesPerGroup; f++) {
+    let img: IndexedImage;
+    try { img = sheet.frame(group, f); }
+    catch (e) {
+      if (e instanceof RangeError) continue; // a truncated pack's cell
+      throw e;
+    }
+    for (let y = 0; y < img.h; y++) {
+      for (let x = 0; x < img.w; x++) {
+        if (img.idx[y * img.w + x] === 0) continue;
+        x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+        y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+      }
+    }
+  }
+  if (x1 < 0) return { length: sheet.meta.cellH, height: sheet.meta.cellW };
+  return { length: y1 - y0 + 1, height: x1 - x0 + 1 };
 }
