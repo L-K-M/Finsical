@@ -1,5 +1,5 @@
 import { BOTTOM_PAD, CORPSE_TICKS, DAY_TICKS, FOOD_ENTRY_Y, Sim,
-         SURFACE } from "../core/sim.js";
+         SURFACE, WAKE_LIGHT } from "../core/sim.js";
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
@@ -37,13 +37,16 @@ import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
   from "./catpaw.js";
 import type { PawVisit } from "./catpaw.js";
 import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
+import { bootPhase, drawBoot, fadeProgress, paradeIcon }
+  from "./boot.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
 import { stateLabel } from "./overviewmodel.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
-import { bubblePops, drawAir, drawBubbles, drawFood, drawLight, drawMurk,
-         drawRefraction, drawSurface, feedPinch, sunFactor } from "./water.js";
+import { bubbleOffset, bubblePops, drawAir, drawBubblePop,
+         drawBubbles, drawFood, drawLight, drawMurk, drawRefraction,
+         drawSurface, feedPinch, sunFactor, tapBubble } from "./water.js";
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
   from "./surface.js";
 import {
@@ -77,6 +80,20 @@ ctx.imageSmoothingEnabled = false;
 let frameDirty = true;
 function requestPaint(): void { frameDirty = true; }
 
+/** Sim id the Overview's selection spotlights; null = none. */
+let focusId: number | null = null;
+// The Overview re-asserts its selection on a heartbeat — the focus is
+// a lease, not a toggle. BroadcastChannel has no disconnect event and
+// a bfcache eviction fires no pagehide, so without an expiry a
+// vanished overview would leave its spotlight on the fish forever.
+// Wall-clock, not ticks: a paused sim never advances tickCount, which
+// would freeze the lease mid-flight.
+let focusAt = -Infinity;
+let focusOwner = "";
+/** Wall-clock ms a focus stays live without a re-assert. Sized past
+ * the ~60 s clamp browsers put on hidden-tab timers. */
+const FOCUS_TTL = 180_000;
+
 // ---- persistence ---------------------------------------------------------
 // Tank state (fish, water, installed add-ons) survives restarts via
 // localStorage. Add-ons are re-imported on launch — archives are
@@ -94,19 +111,50 @@ interface SavedTank {
   /** The chosen scenery (see sceneryChoice) — add-on urls. */
   scenery?: SceneryChoice;
 }
+/** The structural check shared by loadTank and tank-file import:
+ * unknown keys ride along — save fields this build doesn't know yet
+ * belong to a newer version, not to us. */
+function parseTank(raw: unknown): SavedTank | null {
+  const s = raw as SavedTank;
+  if ((s?.v !== 1 && s?.v !== 2) ||
+      !Array.isArray(s.fish) || !Array.isArray(s.addons) ||
+      // Fish entries only need to be objects: the restore path's
+      // filter + sanitizeSavedFish drop or clamp anything malformed.
+      // Addons get no such treatment — they're fetched as URLs, so
+      // reject non-strings here.
+      !s.addons.every((u) => typeof u === "string"))
+    return null;
+  return s;
+}
 function loadTank(): SavedTank | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
-    const s = JSON.parse(raw) as SavedTank;
-    if ((s?.v !== 1 && s?.v !== 2) ||
-        !Array.isArray(s.fish) || !Array.isArray(s.addons))
-      return null;
-    return s;
+    return raw ? parseTank(JSON.parse(raw)) : null;
   } catch { return null; }
 }
 const saved = loadTank();
 const installedAddons: Importable[] = [...(saved?.addons ?? [])];
+
+// ---- startup parade (web/boot.ts) ---------------------------------------
+// A 90s-Mac boot over the first seconds: black, the smiling fishbowl
+// on a grey desktop, restored add-ons marching in along the bottom,
+// then a fade to the water. Skipped with nothing to restore, under
+// reduced motion, or when the Tank menu turns it off; a click or a
+// key skips it outright.
+const BOOT_KEY = "finsical:boot";
+let bootEnabled = true;
+try { bootEnabled = localStorage.getItem(BOOT_KEY) !== "off"; }
+catch { /* storage unavailable: default on */ }
+let bootT0 = bootEnabled && installedAddons.length > 0 &&
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ? performance.now() : null;
+let bootDoneAt: number | null = null; // elapsed ms when restore settled
+const paradeIcons: string[][] = [];   // one icon per restored add-on
+function skipBoot(): void {
+  if (bootT0 === null) return;
+  bootT0 = null;
+  requestPaint();
+}
 // The scenery the user chose: what their latest live install, "Use"
 // or Remove put on display. It is saved instead of what happens to be
 // showing, so a chosen pack that can't restore on one launch doesn't
@@ -246,27 +294,112 @@ const placeholderIds = new Set<number>();
 if (roster.length || keepEmpty) for (const f of roster) sim.addFish(f);
 else for (const f of DEFAULT_FISH) placeholderIds.add(sim.addFish(f).id);
 
+function tankSnapshot(): SavedTank {
+  return {
+    v: rosterComplete ? 2 : 1,
+    tickCount: sim.tickCount, waterQuality: sim.waterQuality,
+    // Corpses don't get saved — a dead fish stays dead.
+    fish: sim.fish.filter((f) => !f.dead).map((f) => ({
+      id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
+      heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
+      bandY: f.bandY, hunger: f.hunger, scale: f.scale,
+      ...(f.sick ? { sick: true, sickTicks: f.sickTicks } : {}),
+      ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
+      ...(f.pack !== undefined ? { pack: f.pack } : {}),
+    })),
+    addons: installedAddons,
+    scenery: sceneryChoice,
+  };
+}
+// Set by a tank import before it reloads: the pagehide /
+// visibilitychange handlers would otherwise save the OLD tank over
+// the freshly imported SAVE_KEY during unload.
+let suppressSave = false;
+// A bfcache restore brings back the pre-import page: clearing the
+// flag would let its stale tank overwrite the imported SAVE_KEY on
+// the next visibilitychange, so reload into the imported tank —
+// the same strategy the import flow itself uses.
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted && suppressSave) location.reload();
+});
 function saveTank(): void {
+  if (suppressSave) return;
   try {
-    const s: SavedTank = {
-      v: rosterComplete ? 2 : 1,
-      tickCount: sim.tickCount, waterQuality: sim.waterQuality,
-      // Corpses don't get saved — a dead fish stays dead.
-      fish: sim.fish.filter((f) => !f.dead).map((f) => ({
-        id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
-        heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
-        bandY: f.bandY, hunger: f.hunger, scale: f.scale,
-        ...(f.sick ? { sick: true, sickTicks: f.sickTicks } : {}),
-        ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
-        ...(f.pack !== undefined ? { pack: f.pack } : {}),
-      })),
-      addons: installedAddons,
-      scenery: sceneryChoice,
-    };
-    localStorage.setItem(SAVE_KEY, JSON.stringify(s));
+    localStorage.setItem(SAVE_KEY, JSON.stringify(tankSnapshot()));
   } catch { /* storage unavailable — the tank still runs */ }
   postState(); // panel keeps fresh state even if persistence is off
 }
+// ---- tank files -----------------------------------------------------------
+// A .fins file is the saved-tank JSON — how an aquarium moves between
+// Macs or survives a cleared profile. Add-ons are stored by URL, so an
+// imported tank re-downloads its packs on the next launch.
+function exportTank(): void {
+  const blob = new Blob([JSON.stringify(tankSnapshot(), null, 2)],
+                        { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "finsical-tank.fins";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+}
+
+const tankFile = document.createElement("input");
+tankFile.type = "file";
+tankFile.accept = ".fins,application/json";
+tankFile.style.display = "none";
+document.body.appendChild(tankFile);
+tankFile.addEventListener("change", () => {
+  const f = tankFile.files?.[0];
+  tankFile.value = ""; // picking the same file twice must re-fire
+  if (!f) return;
+  // A saved tank is a few KB of JSON; anything bigger isn't one, and
+  // a huge file would freeze the tab in JSON.parse before parseTank
+  // ever saw it.
+  if (f.size > 5_000_000) {
+    showAlert({ icon: "caution",
+                text: "That file is too big to be a Finsical tank.",
+                buttons: [{ title: "OK", default: true, cancel: true }] });
+    return;
+  }
+  void f.text().then((text) => {
+    const parsed = parseTank(JSON.parse(text));
+    if (!parsed) {
+      showAlert({ icon: "caution",
+                  text: "That file isn't a Finsical tank.",
+                  buttons: [{ title: "OK", default: true, cancel: true }] });
+      return;
+    }
+    // The launch path does the rest: roster, add-ons, scenery. Write
+    // and reload rather than swap a live tank out from under the sim.
+    try {
+      // Keep the outgoing tank recoverable — import has no confirm.
+      // Skip the write when there's nothing to back up: an empty
+      // string isn't valid JSON and would need special-casing later.
+      try {
+        const prior = localStorage.getItem(SAVE_KEY);
+        if (prior !== null)
+          localStorage.setItem(SAVE_KEY + ".bak", prior);
+      } catch { /* backup is best-effort */ }
+      localStorage.setItem(SAVE_KEY, JSON.stringify(parsed));
+    } catch {
+      showAlert({ icon: "caution",
+                  text: "The tank couldn't be saved — storage is " +
+                        "unavailable.",
+                  buttons: [{ title: "OK", default: true, cancel: true }] });
+      return;
+    }
+    // Reload fires pagehide/visibilitychange, whose saveTank calls
+    // would overwrite the import with a snapshot of the old tank.
+    suppressSave = true;
+    location.reload();
+  }).catch(() => {
+    showAlert({ icon: "caution",
+                text: "That file couldn't be read as a tank.",
+                buttons: [{ title: "OK", default: true, cancel: true }] });
+  });
+});
+function importTank(): void { tankFile.click(); }
+
 window.addEventListener("pagehide", saveTank);
 // WKWebView doesn't reliably deliver pagehide on quit; it does
 // deliver visibilitychange.
@@ -345,6 +478,7 @@ function syncFeedHover(): void {
 }
 
 canvas.addEventListener("pointerdown", (e) => {
+  if (bootT0 !== null) { skipBoot(); return; } // a click skips the boot
   if (e.button !== 0) return; // ignore right/middle clicks
   const p = tankPoint(e.clientX, e.clientY);
   if (!p) return; // letterbox bar
@@ -368,6 +502,17 @@ canvas.addEventListener("pointerdown", (e) => {
     splashAt(pellet.x, pellet.y, PUSH.pellet);
   } else {
     sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
+    // A rising bubble under the tap pops early — the knock already
+    // ripples; this is the toy on top. The nearest bubble inside its
+    // drawn radius (plus a finger's worth of slop) wins, so clustered
+    // bubbles pop the one the tap actually touched.
+    const bi = tapBubble(sim.bubbles, p.x, p.y);
+    if (bi >= 0) {
+      const [b] = sim.bubbles.splice(bi, 1);
+      // The same pop ring the waterline path draws — a tap-pop reads
+      // as a pop, not a vanish.
+      pops.push({ x: b!.x + bubbleOffset(b!.x, b!.y), y: b!.y, age: 0 });
+    }
     ripples.push({ x: p.x, y: p.y, age: 0 });
     // The glass knock slops the water a little, on the tapped side.
     disturbSurface(surface, p.x, PUSH.tap, 8);
@@ -516,9 +661,14 @@ function layoutInfo(): void {
 }
 
 // A knocking spree gets the public aquarium's sign (web/scold.ts).
+const SCOLD_KEY = "finsical:scoldSign";
 let glassTaps: number[] = [];
 let scoldedAt: number | null = null;
+let scoldOn = true;
+try { scoldOn = localStorage.getItem(SCOLD_KEY) !== "off"; }
+catch { /* storage unavailable */ }
 function noteGlassTap(): void {
+  if (!scoldOn) return;
   const now = performance.now();
   glassTaps = [...recentTaps(glassTaps, now), now];
   if (!shouldScold(glassTaps, now, scoldedAt)) return;
@@ -705,8 +855,9 @@ function applySceneryChoice(): void {
 // the tank floor whenever one is added. Animated packs loop their frames
 // on the sim clock, each item from its own phase.
 const decors: { frames: HTMLCanvasElement[]; phase: number;
-                sway: number; pack: string }[] = [];
-function addDecor(images: Iterable<IndexedImage>, src: string): void {
+                sway: number; pack: string; plant: boolean }[] = [];
+function addDecor(images: Iterable<IndexedImage>, src: string,
+                  plant: boolean): void {
   const frames = decorCanvases(images, TANK.height);
   if (!frames) return;
   const copy = decors.filter((d) => d.pack === src).length;
@@ -714,8 +865,16 @@ function addDecor(images: Iterable<IndexedImage>, src: string): void {
   // cycle of phase looks identical on every plant. sway keeps the
   // fraction so each copy drifts on its own rhythm.
   decors.push({ frames, phase: decorPhase(src, copy, frames.length),
-                sway: decorPhaseFrac(src, copy), pack: src });
+                sway: decorPhaseFrac(src, copy), pack: src, plant });
 }
+/** The floor anchor a decor piece centers on — shared by the renderer
+ * and the plant-bubble emitter so the two can't drift apart. */
+function decorAnchor(i: number, dn: number): number {
+  return TANK.width * (i + 0.5) / dn;
+}
+/** Pixels above the tank floor where decor sits — the y-axis half of
+ * the shared anchor, for the same reason. */
+const DECOR_FLOOR = 6;
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
 let nextSlot = 0;
@@ -882,7 +1041,8 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
     const imgs = [...images];
     const n = clampDecorCopies(count);
     const room = live ? decorCopyRoom(decors, src) : n;
-    for (let i = 0; i < Math.min(n, room); i++) addDecor(imgs, src);
+    for (let i = 0; i < Math.min(n, room); i++)
+      addDecor(imgs, src, section === "plants");
   }
   else if (section === "backgrounds" || section === "tanks")
     pickBackdrop(images, src);
@@ -936,7 +1096,11 @@ const importPanel = mountImportPanel({
       .catch((e) => console.warn("sound import failed:", e));
   },
   onInstall: recordInstall,
-  onRestore: refreshInstall,
+  onRestore: (it, names) => {
+    refreshInstall(it, names);
+    // A boot in progress marches each restored add-on in as an icon.
+    if (bootT0 !== null) { paradeIcons.push(paradeIcon(it.section)); }
+  },
   refuse: (it) => fishRefusal(it.section),
   preview: previewOf,
 });
@@ -1002,6 +1166,9 @@ function sendState(): void {
     // a fish add-on with a living fish doesn't repeat in Add-ons.
     fish: sim.fish.map(({ id, species, hunger, state, sick, dead, pack }) =>
       ({ id, species, hunger, state, sick, dead,
+         // Starter stand-ins read as such in the Overview — they
+         // leave when real fish arrive.
+         ...(placeholderIds.has(id) ? { standIn: true } : {}),
          ...(pack !== undefined ? { pack } : {}) })),
     waterQuality: sim.waterQuality,
     tickCount: sim.tickCount,
@@ -1138,6 +1305,26 @@ function fishOutAfter(remove: () => void): void {
 
 function onBusMessage(m: BusMsg): void {
   if (m.op === "hello") postState(HELLO_MIN_MS);
+  else if (m.op === "focusFish") {
+    // The Overview's selection spotlights a fish — null lifts it.
+    // Selection posts carry the sender's page id and claim the lease;
+    // keepAlive beats only renew it. Two Overviews then can't
+    // ping-pong the spotlight, and a non-owner's unload can't lift it.
+    const from = typeof m.from === "string" ? m.from : "";
+    const keepAlive = m.keepAlive === true;
+    const fid = typeof m.id === "number" ? m.id : null;
+    // An unowned lease (fresh tank load, or a lapse cleared the owner)
+    // is claimable by any beat — the first live Overview to ping wins,
+    // and the others' beats stay rejected, so still no ping-pong.
+    if (keepAlive ? fid !== null &&
+                    (from === focusOwner || focusOwner === "")
+                  : fid !== null || from === focusOwner) {
+      focusId = fid;
+      focusOwner = fid === null ? "" : from;
+      focusAt = Date.now();
+    }
+    requestPaint();
+  }
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
   else if (m.op === "removeFish" && typeof m.id === "number") {
@@ -1566,6 +1753,26 @@ function layoutMachine(): void {
   // The CRT canvas spans the whole glass, not just the tank, so the
   // height/width pots can grow the raster into the aperture's black
   // margins. Offsets are relative to #screen, its parent.
+  // Pixel-art scaling: upscales snap to integer multiples of the
+  // 320x200 raster on the *device* grid — a fractional contain
+  // shimmers, and so does a CSS-integer multiple under a fractional
+  // devicePixelRatio. The margin reads as the glass's inner bezel;
+  // containPoint() maps clicks off the canvas's own rect, so the
+  // wider letterbox needs no pointer change.
+  const aw = machine.sw * s, ah = machine.sh * s;
+  const k = Math.min(aw / TANK.width, ah / TANK.height);
+  const dpr = window.devicePixelRatio || 1;
+  const dev = Math.floor(k * dpr);
+  const ik = k >= 1 && dev >= 1 ? dev / dpr : k;
+  // Sub-1x can't be pixel-crisp anyway — a smooth downscale beats a
+  // ragged pixelated one in a tiny window.
+  canvas.style.imageRendering = ik >= 1 ? "pixelated" : "auto";
+  canvas.style.width = `${TANK.width * ik}px`;
+  canvas.style.height = `${TANK.height * ik}px`;
+  // Center on the device grid too — a half-px offset unevenly clips
+  // the raster's edge columns.
+  canvas.style.left = `${Math.round((aw - TANK.width * ik) / 2 * dpr) / dpr}px`;
+  canvas.style.top = `${Math.round((ah - TANK.height * ik) / 2 * dpr) / dpr}px`;
   const glass = glassRect(machine);
   crtEl.style.left = `${(glass.x - machine.sx) * s}px`;
   crtEl.style.top = `${(glass.y - machine.sy) * s}px`;
@@ -1609,6 +1816,9 @@ applyMachine(machine);
 // The machine art is pointer-events:none — a press anywhere that
 // isn't the tank or real UI means a grab on the case → window drag.
 document.addEventListener("pointerdown", (e) => {
+  // A click on the case skips the boot — it must not fall through
+  // into the window-drag path below.
+  if (bootT0 !== null) { skipBoot(); return; }
   // Native performDrag loops on real mouse state — a synthesized
   // leftMouseDown from a touch tap has none and could hang it.
   if (e.button !== 0 || e.pointerType !== "mouse") return;
@@ -1770,6 +1980,7 @@ window.addEventListener("keydown", (e) => {
   // Any key is a user gesture for WebAudio — unlock before the F/C
   // handlers so the first keyboard action also starts ambient sound.
   audio.unlock();
+  if (bootT0 !== null) { skipBoot(); return; } // a key skips the boot
   const k = e.key.toLowerCase();
   // One Escape closes one thing: the card claims it first, then Zen
   // mode, and a key another window already handled leaves both alone.
@@ -1824,15 +2035,31 @@ mountTankMenuBar({
   toggleAutoFeed,
   importAddons: openImport,
   takePicture,
+  exportTank,
+  importTank,
   toggleCrt: () => setCrt(!crtOn),
   degauss: degaussTube,
   toggleLamp: toggleLights,
   toggleMute,
   togglePause: () => { setPaused(!paused); },
   toggleZen: () => setZen(!zen),
+  toggleScold: () => {
+    scoldOn = !scoldOn;
+    // Drop the in-flight tally too, so a spree can't span the toggle:
+    // taps counted before "off" would otherwise complete the moment
+    // the sign comes back on inside the 8 s window.
+    if (!scoldOn) glassTaps = [];
+    try { localStorage.setItem(SCOLD_KEY, scoldOn ? "on" : "off"); }
+    catch { /* storage unavailable */ }
+  },
+  toggleBoot: () => {
+    bootEnabled = !bootEnabled;
+    try { localStorage.setItem(BOOT_KEY, bootEnabled ? "on" : "off"); }
+    catch { /* storage unavailable */ }
+  },
   state: () => ({ autoFeed, crtUsable: crt?.usable ?? false, crtOn,
                   lampOn: lighting.lamp, muted: soundCfg.muted, paused,
-                  zen }),
+                  zen, scoldOn, bootOn: bootEnabled }),
 });
 
 // web/pack/ is gitignored and no build ships one, so a missing
@@ -1872,7 +2099,11 @@ void (async () => {
   // rebind saved fish to their species' actual sheet slot and heal
   // pre-spawning rosters that never gained their fish.
   .then(() => importPanel.restore([...installedAddons], stillListed))
-  .then((failed) => { restoreFailed = failed; })
+  .then((failed) => {
+    restoreFailed = failed;
+    // The parade holds a beat after the last add-on settles (boot.ts).
+    if (bootT0 !== null) bootDoneAt = performance.now() - bootT0;
+  })
   // Imported 'snd ' sets persist — restore them so dropped sounds
   // survive relaunch even when no pack in use carries audio. Best
   // effort: a restore failure must not skip the fish roster healing.
@@ -2296,6 +2527,8 @@ function drawSnail(x: number, paused: boolean, dir: 1 | -1): void {
   // Foot row sits a pixel into the gravel strip so it reads planted.
   ctx.drawImage(cv, Math.round(x), TANK.height - BOTTOM_PAD - SNAIL_H + 2);
 }
+// Tap-popped bubbles: the ring lingers a few ticks where it burst.
+const pops: { x: number; y: number; age: number }[] = [];
 // The surface's springs, and the waterline drawn from them each frame.
 // Pre-filled with the rest-state swell so isFeedZone reads a real line
 // even before the first render.
@@ -2330,6 +2563,18 @@ function stirSurface(): void {
   }
 }
 function render(): void {
+  // The startup parade owns the canvas until it fades: black, desktop,
+  // marching icons — then the tank draws normally under a fading boot
+  // screen, so the crossfade needs no compositing machinery.
+  let bootFade = -1;
+  if (bootT0 !== null) {
+    const elapsed = performance.now() - bootT0;
+    const phase = bootPhase(elapsed, bootDoneAt);
+    if (phase === "done") bootT0 = null;
+    else if (phase === "fade")
+      bootFade = fadeProgress(elapsed, bootDoneAt);
+    else { drawBoot(ctx, phase, paradeIcons); return; }
+  }
   if (backdropCv) {
     ctx.drawImage(backdropCv, 0, 0);
   } else {
@@ -2351,9 +2596,9 @@ function render(): void {
     const { frames, phase, sway: swayPh } = decors[i]!;
     const d = frames[decorFrame(sim.tickCount, frames.length, phase)]!;
     const x = Math.min(Math.max(
-        Math.round(TANK.width * (i + 0.5) / dn - d.width / 2), 0),
+        Math.round(decorAnchor(i, dn) - d.width / 2), 0),
       Math.max(0, TANK.width - d.width));
-    const y = TANK.height - 6 - d.height;
+    const y = TANK.height - DECOR_FLOOR - d.height;
     if (!sway) { ctx.drawImage(d, x, y); continue; }
     // Sway per horizontal band — offsets grow toward the tip, so the
     // planted root stays glued while the top drifts. Runs on the sim
@@ -2387,6 +2632,47 @@ function render(): void {
   }
   for (const f of sim.fish) drawFish(f);
 
+  // The Overview's pick spotlights its fish with a marching-ants
+  // marquee — the Finder's own selection cue. Ants march on the sim
+  // clock so a paused tank doesn't freeze them mid-stroke.
+  if (focusId !== null) {
+    // The lease lapsed — the overview is gone and can't lift it.
+    // Clearing the owner too lets any live Overview's next beat
+    // reclaim the spotlight after the holder dies silently.
+    if (Date.now() - focusAt > FOCUS_TTL) {
+      focusId = null;
+      focusOwner = "";
+    }
+    const f = focusId === null ? null
+      : sim.fish.find((x) => x.id === focusId);
+    // The fish left the tank — lift the spotlight so a recycled id
+    // can't quietly reattach it to a new fish.
+    if (focusId !== null && !f) focusId = null;
+    if (f) {
+      // halfW/halfH are the fish's unscaled sprite extents; a
+      // juvenile's box shrinks with its growth scale. The fallbacks
+      // box a fish whose sheet hasn't bound yet.
+      const hw = (f.halfW ?? 10) * f.scale + 3;
+      const hh = (f.halfH ?? 7) * f.scale + 3;
+      const x0 = Math.max(1, Math.round(f.x - hw));
+      const y0 = Math.max(1, Math.round(f.y - hh));
+      const x1 = Math.min(TANK.width - 1, Math.round(f.x + hw));
+      const y1 = Math.min(TANK.height - 1, Math.round(f.y + hh));
+      ctx.save();
+      ctx.setLineDash([2, 2]);
+      ctx.lineWidth = 1;
+      // The ants hold still under reduced motion, like the water.
+      ctx.lineDashOffset = waterMotion === "animated"
+        ? -(sim.tickCount % 8) / 2 : 0;
+      ctx.strokeStyle = "rgba(0,0,0,.8)";
+      ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
+      ctx.lineDashOffset += 1;
+      ctx.strokeStyle = "rgba(255,255,255,.8)";
+      ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
+      ctx.restore();
+    }
+  }
+
   // Ambient motion (swell, glint, shimmer) holds still under reduced
   // motion; waves from splashes and taps still play out, like ripples.
   const t = waterMotion === "animated" ? sim.tickCount : 0;
@@ -2400,6 +2686,7 @@ function render(): void {
   // with the water instead of glowing at night.
   drawSurface(ctx, waterline, sun, t, overFeedZone);
   drawBubbles(ctx, sim.bubbles, waterline);
+  for (const p of pops) drawBubblePop(ctx, p.x, p.y);
 
   // On the glass, so over the fish: ripples and splashes paint last.
   drawRipples(ctx, ripples);
@@ -2426,6 +2713,13 @@ function render(): void {
     ctx.font = "10px monospace";
     ctx.textAlign = "center";
     ctx.fillText("PAUSED", TANK.width / 2, TANK.height / 2);
+    ctx.restore();
+  }
+
+  if (bootFade >= 0) {
+    ctx.save();
+    ctx.globalAlpha = 1 - bootFade;
+    drawBoot(ctx, "parade", paradeIcons);
     ctx.restore();
   }
 }
@@ -2541,6 +2835,9 @@ function drawPaw(cx: number, top: number): void {
 // one episode, so the latch only clears after a sustained lull.
 let bellHungry = false;
 let bellCalmTicks = 0;
+/** Per tick per plant, the chance its foliage releases an oxygen
+ * bubble — a thin stream in daylight, not a fountain. */
+const PLANT_BUBBLE = 0.006;
 
 function tickSim(): void {
   const bubbles = sim.bubbles.length;
@@ -2576,6 +2873,17 @@ function tickSim(): void {
     snail = null;
     snailNextAt = sim.tickCount + (10 + Math.random() * 15) * SNAIL_MIN_TICKS;
   }
+  // Photosynthesis: while the tank is lit, each plant leaks the odd
+  // bubble from its crown — they rise through the same sim path as
+  // gravel bubbles and pop at the waterline.
+  if (sim.light >= WAKE_LIGHT)
+    for (let i = 0; i < decors.length; i++) {
+      const d = decors[i]!;
+      if (!d.plant || Math.random() >= PLANT_BUBBLE) continue;
+      sim.spawnBubble(
+        decorAnchor(i, decors.length) + (Math.random() - 0.5) * 6,
+        TANK.height - DECOR_FLOOR - d.frames[0]!.height * 0.7);
+    }
   tickSurface(surface);
   pawTick();
   // Latch on the chime actually sounding: while the AudioContext is
@@ -2590,6 +2898,8 @@ function tickSim(): void {
   }
   tickRipples(ripples);
   tickSplashes(splashes);
+  for (let i = pops.length - 1; i >= 0; i--)
+    if (++pops[i]!.age > 8) pops.splice(i, 1);
   // Sparse bloops: only some spawns make a sound. Checked per tick so
   // the odds don't depend on how often the tank is drawn.
   if (sim.bubbles.length > bubbles && Math.random() < 0.25)
@@ -2627,9 +2937,10 @@ function frame(now: number): void {
   if (infoCard) layoutInfo();
   // The CRT's tube animations (warm-up, collapse, degauss) run on
   // their own clock — collapse in particular must keep drawing after
-  // crtOn has already cleared.
+  // crtOn has already cleared. The boot parade also animates on its
+  // own clock: it needs a draw per frame even before the first tick.
   const crtBusy = crt?.animating ?? false;
-  if (ticks === 0 && !frameDirty && !crtBusy) return;
+  if (ticks === 0 && !frameDirty && !crtBusy && bootT0 === null) return;
   frameDirty = false;
   render();
   // A parked cursor doesn't re-hit-test: hide the tip once the fish
