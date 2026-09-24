@@ -103,6 +103,13 @@
   On and Mute Sound show a checkmark while on, and CRT Effect is dimmed
   where the effect can't run. Cmd-W on the tank no longer quits the
   app; quit with Cmd-Q.
+- The browser shell now has a Mac OS 8 menu bar of its own — Platinum
+  bar, pull-down menus and a clock in the corner — with an About
+  Finsical window and a shortcuts list. It also opens Preferences and
+  Tank Overview, which were reachable only from the native app's menu
+  before. The native shell keeps its real menu; the bar stays hidden
+  there.
+
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview

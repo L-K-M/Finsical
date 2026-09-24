@@ -25,6 +25,8 @@ import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
          swimCanvas } from "./render.js";
 import { containPoint, feedZoneLineY, isFeedZoneY } from "./feedzone.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
+import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
+  from "./menubar.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { drawBubbles, drawFood, drawLight, drawMurk, feedPinch }
   from "./water.js";
@@ -1296,55 +1298,37 @@ window.addEventListener("keydown", (e) => {
   // handlers so the first keyboard action also starts ambient sound.
   audio.unlock();
   const k = e.key.toLowerCase();
+  // Bare keys stand down while a menu or the add-on window owns them.
+  const bare = !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat &&
+    !importPanel.isOpen && !menuOpen() && !docOpen();
   if ((e.metaKey || e.ctrlKey) && k === "i" && !inNativeShell()) {
     // The app's Tank menu owns Cmd-I and opens the Import Add-ons
     // window; the overlay would squeeze into the tank.
     importPanel.open(); e.preventDefault();
-  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" &&
-             !e.repeat && !importPanel.isOpen) {
+  } else if (bare && k === "f") {
     feedFish(); // bare F: Cmd-F is Find in browsers; the native menu owns ⌘F
-  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "c" &&
-             !e.repeat && !importPanel.isOpen) {
+  } else if (bare && k === "c") {
     setCrt(!crtOn); // bare C: ⌘C is Copy via the Edit menu
-  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "l" &&
-             !e.repeat && !importPanel.isOpen) {
+  } else if (bare && k === "l") {
     toggleLights(); // bare L: the lamp; ⌘L belongs to the native menu
-  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "m" &&
-             !e.repeat && !importPanel.isOpen) {
+  } else if (bare && k === "m") {
     toggleMute(); // bare M: ⌘M is Minimize
-  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "s" &&
-             !e.repeat && !importPanel.isOpen && !inNativeShell()) {
-    // Browser-only fallback — the app opens stats.html via Tank ▸
-    // Tank Stats; over BroadcastChannel the new tab finds the tank.
+  } else if (bare && k === "s" && !inNativeShell()) {
+    // Browser-only — the app opens stats.html via Tank ▸ Tank Stats.
     // Reuse without re-navigating: a reload would wipe the 90 s trend
     // window stats.ts keeps for the arrows.
-    const existing = window.open("", "finsical-stats");
-    try {
-      if (existing && !existing.closed &&
-          existing.location.pathname.endsWith("/stats.html")) {
-        existing.focus();
-      } else if (existing && !existing.closed) {
-        // Navigate the tab this gesture already grabbed — a second
-        // window.open can be blocked (one open per gesture in Safari).
-        // Resolve against our URL — assign uses the target's base.
-        existing.location.assign(
-          new URL("stats.html", location.href).href);
-        existing.focus();
-      } else {
-        window.open("stats.html", "finsical-stats");
-      }
-    } catch {
-      // The named tab went cross-origin — reading location throws
-      // SecurityError, but writing href is allowed. Steer the tab
-      // home instead of a second window.open (blocked in Safari).
-      if (existing) {
-        existing.location.href = new URL("stats.html", location.href).href;
-        existing.focus();
-      } else {
-        window.open("stats.html", "finsical-stats");
-      }
-    }
+    openClientWindow("stats");
   }
+});
+
+// The browser shell gets a Mac OS 8 menu bar of its own — the native
+// app has its real menu. Its windows (Preferences, Tank Overview, Tank
+// Stats) talk back over the BroadcastChannel bus, and About/Shortcuts
+// are little in-page documents.
+mountTankMenuBar({
+  feed: feedFish,
+  importAddons: () => importPanel.open(),
+  toggleCrt: () => setCrt(!crtOn),
 });
 
 const packFetch = async (p: string): Promise<Uint8Array> => {
