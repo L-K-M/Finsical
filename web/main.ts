@@ -721,17 +721,17 @@ function remapSheetIdx(): void {
       // share a species name, and it lets the panel dedupe by URL.
       if (f.pack === undefined) {
         const u = packBySheet.get(idx);
-        if (u !== undefined) {
-          f.pack = u;
-          // Multi-entry packs: adopt the entry that owns this slot too,
-          // or the next relaunch collapses onto the add-on's last entry.
-          for (const [k, v] of sheetByEntry)
-            if (v === idx && k.startsWith(`${u}\n`)) {
-              f.entry = k.slice(u.length + 1);
-              break;
-            }
-        }
+        if (u !== undefined) f.pack = u;
       }
+      // Backfill entry for any fish whose sheet slot is known —
+      // including ones that already had `pack` recorded — or the next
+      // relaunch still collapses them onto the add-on's last entry.
+      if (f.pack !== undefined && f.entry === undefined)
+        for (const [k, v] of sheetByEntry)
+          if (v === idx && k.startsWith(`${f.pack}\n`)) {
+            f.entry = k.slice(f.pack.length + 1);
+            break;
+          }
     } else {
       delete f.sheetIdx;
     }
