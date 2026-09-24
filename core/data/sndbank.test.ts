@@ -1,7 +1,36 @@
 import { describe, expect, it } from "vitest";
 import { fileSoundRecords } from "./snd.js";
-import { bankSounds, GAME_SOUND_NAMES } from "./sndbank.js";
+import { bankSounds, GAME_SOUND_NAMES, MAX_FILE_SOUNDS } from "./sndbank.js";
 import { buildBank, wav } from "./sndbank.fixture.js";
+
+/** A bank whose one 'snd ' entry lists `n` references, all to the
+ * same payload: the crafted shape that multiplies one WAV. */
+function sharedRefs(n: number, id = 1000): Uint8Array {
+  const body = wav(1);
+  const dataLen = 4 + body.length, typeList = 30;
+  const mapLen = typeList + 8 + n * 12, mapOff = 0x100 + dataLen;
+  const out = new Uint8Array(mapOff + mapLen);
+  const v = new DataView(out.buffer);
+  [0x100, mapOff, dataLen, mapLen].forEach((x, i) => {
+    v.setUint32(i * 4, x, true);
+    v.setUint32(mapOff + i * 4, x, true);
+  });
+  v.setUint32(0x100, body.length, true);
+  out.set(body, 0x104);
+  v.setUint16(mapOff + 24, typeList, true);
+  v.setUint16(mapOff + 26, mapLen, true);
+  v.setUint16(mapOff + 28, 0, true);
+  const e = mapOff + typeList;
+  out.set([0x20, 0x64, 0x6e, 0x73], e); // " dns"
+  v.setUint16(e + 4, n - 1, true);
+  v.setUint16(e + 6, 8, true);
+  for (let j = 0; j < n; j++) {
+    const p = e + 8 + j * 12;
+    v.setInt16(p, id, true);
+    v.setInt16(p + 2, -1, true);
+  }
+  return out;
+}
 
 describe("bankSounds", () => {
   it("names each WAV by the Mac build's name for its id", () => {
@@ -48,6 +77,34 @@ describe("bankSounds", () => {
     // The first payload's length prefix now claims the whole file.
     new DataView(bank.buffer).setUint32(0x100, bank.length, true);
     expect(bankSounds(bank).map((s) => s.name)).toEqual(["SIDE"]);
+  });
+
+  it("reads offsets past the attribute flags in their high byte", () => {
+    const bank = buildBank([{ tag: "snd ", res: [
+      { id: 1000, body: wav(1), attr: 0x20 },
+      { id: 1001, body: wav(2), attr: 0x60 },
+    ] }]);
+    expect(bankSounds(bank).map((s) => s.name)).toEqual(["CENTER*", "SIDE"]);
+  });
+
+  it("yields a payload once, however many references share it", () => {
+    const got = bankSounds(sharedRefs(65536));
+    expect(got).toEqual([{ name: "CENTER*", wav: wav(1) }]);
+  });
+
+  it("reads only the first 'snd ' entry of the type list", () => {
+    // Two entries listing the same payload would yield it twice.
+    const res = { id: 1000, body: wav(1) };
+    const bank = buildBank([{ tag: "snd ", res: [res] },
+                            { tag: "snd ", res: [res] }]);
+    expect(bankSounds(bank)).toHaveLength(1);
+  });
+
+  it("stops at MAX_FILE_SOUNDS records", () => {
+    const res = Array.from({ length: MAX_FILE_SOUNDS + 50 },
+                           (_, i) => ({ id: i + 1, body: wav(i & 0xff) }));
+    expect(bankSounds(buildBank([{ tag: "snd ", res }])))
+      .toHaveLength(MAX_FILE_SOUNDS);
   });
 
   it("returns nothing for data that isn't a pack", () => {

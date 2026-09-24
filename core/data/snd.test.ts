@@ -433,6 +433,34 @@ describe("soundsFromRsrc", () => {
     expect(out[0]!.name).toBe("snd_1");
   });
 
+  it("reads offsets past the attribute flags in their high byte", () => {
+    // resPurgeable (0x20) is common on classic 'snd ' resources.
+    for (const attr of [0x20, 0x60]) {
+      const fork = buildRsrc(new Map([["snd ", [[7, "Drop", attr, snd]]]]));
+      expect(soundsFromRsrc(fork).map((s) => s.name)).toEqual(["Drop"]);
+    }
+  });
+
+  it("reads only the first 'snd ' entry of the type list", () => {
+    const fork = buildRsrc(new Map([["snd ", [[1, "a", 0, snd]]],
+                                    ["xxxx", [[2, "b", 0, snd]]]]));
+    // Retag the second entry: a crafted map listing 'snd ' twice.
+    const dv = new DataView(fork.buffer, fork.byteOffset, fork.byteLength);
+    const tbase = dv.getUint32(4) + dv.getUint16(dv.getUint32(4) + 24);
+    fork.set([0x73, 0x6e, 0x64, 0x20], tbase + 2 + 8);
+    expect(soundsFromRsrc(fork).map((s) => s.name)).toEqual(["a"]);
+  });
+
+  it("yields a payload once, however many references share it", () => {
+    const fork = buildRsrc(new Map([["snd ", [[1, "a", 0, snd],
+                                              [2, "b", 0, snd]]]]));
+    const dv = new DataView(fork.buffer, fork.byteOffset, fork.byteLength);
+    const refs = dv.getUint32(4) + 28 + 2 + 8;
+    // Point the second reference at the first one's payload.
+    dv.setUint32(refs + 12 + 4, dv.getUint32(refs + 4));
+    expect(soundsFromRsrc(fork).map((s) => s.name)).toEqual(["a"]);
+  });
+
   it("hasSounds gates on 'snd ' presence", () => {
     expect(hasSounds(buildRsrc(new Map([["snd ", [[1, null, 0, snd]]]]))))
       .toBe(true);
@@ -521,5 +549,21 @@ describe("qualifySoundNames", () => {
     const recs = [rec("x"), rec("y")];
     qualifySoundNames(recs);
     expect(recs.map((r) => r.name)).toEqual(["x", "y"]);
+  });
+
+  it("skips a suffix the batch already holds", () => {
+    const recs = [rec("a"), rec("a (2)"), rec("a")];
+    qualifySoundNames(recs);
+    expect(recs.map((r) => r.name)).toEqual(["a", "a (2)", "a (3)"]);
+  });
+
+  it("names many copies of one name in linear time", () => {
+    // Quadratic retries took seconds here, on the main thread.
+    const recs = Array.from({ length: 20_000 }, () => rec("x"));
+    const t0 = performance.now();
+    qualifySoundNames(recs);
+    expect(performance.now() - t0).toBeLessThan(1000);
+    expect(recs.at(-1)!.name).toBe("x (20000)");
+    expect(new Set(recs.map((r) => r.name)).size).toBe(20_000);
   });
 });

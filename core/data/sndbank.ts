@@ -57,6 +57,11 @@ export const GAME_SOUND_NAMES: ReadonlyMap<number, string> = new Map([
  * first record, so the bubbling leads rather than a 40 ms tap click. */
 const LEAD_ID = 9000;
 
+/** Most sound records one file may yield, bank or resource fork. Real
+ * data holds 25; the cap stops a crafted map from multiplying a tiny
+ * WAV into millions of records, each decoded and stored for good. */
+export const MAX_FILE_SOUNDS = 1024;
+
 const SND_REVERSED = [0x20, 0x64, 0x6e, 0x73]; // " dns"
 
 export interface BankSound { name: string; wav: Uint8Array }
@@ -86,12 +91,17 @@ export function bankSounds(d: Uint8Array): BankSound[] {
     if (!SND_REVERSED.every((b, i) => d[e + i] === b)) continue;
     const count = u16(e + 4) + 1;
     const refs = typeList + u16(e + 6);
-    for (let j = 0; j < count; j++) {
+    // A payload yields one record, however many references share it.
+    const seen = new Set<number>();
+    for (let j = 0; j < count && found.length < MAX_FILE_SOUNDS; j++) {
       const r = refs + j * 12;
       if (r + 12 > d.length) break;
       const id = v.getInt16(r, true);
       const nameOff = v.getInt16(r + 2, true);
+      // The high byte holds attribute flags, not offset bits.
       const at = dataOff + (u32(r + 4) & 0xFFFFFF);
+      if (seen.has(at)) continue;
+      seen.add(at);
       if (at + 4 > d.length) continue;
       const len = u32(at);
       if (at + 4 + len > d.length) continue;
@@ -102,6 +112,9 @@ export function bankSounds(d: Uint8Array): BankSound[] {
         GAME_SOUND_NAMES.get(id) ?? `snd_${id & 0xFFFF}`;
       found.push({ id, rec: { name, wav } });
     }
+    // A map lists each type once: a second 'snd ' entry is crafted,
+    // and would replay the same references again.
+    break;
   }
   found.sort((a, b) => a.id === LEAD_ID ? -1 : b.id === LEAD_ID ? 1
                                                  : a.id - b.id);

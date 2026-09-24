@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A malformed sound file can no longer freeze the tank. A small crafted
+  sound bank or resource fork could list one sound thousands of times
+  and hold the tank up for seconds to minutes, then leave thousands of
+  sounds that came back at every launch. Each sound in a file now
+  imports once, at most 1,024 per file.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the

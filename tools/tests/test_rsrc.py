@@ -32,6 +32,39 @@ class TestRsrc(unittest.TestCase):
             rid, name, attr, blob = res[0]
             self.assertEqual((rid, name, blob), (128, "Fish", b"fakepict"))
 
+    def test_offsets_skip_attribute_flags(self):
+        # resPurgeable (0x20) and friends live in the offset's high byte.
+        rf_bytes = build_rsrc({b"snd ": [(1, "a", 0x20, b"one"),
+                                         (2, "b", 0x60, b"two")]})
+        with tempfile.TemporaryDirectory() as td:
+            rf = ResFile(_write(td, rf_bytes))
+            got = [(rid, blob) for rid, _n, _a, blob in
+                   rf.resources(b"snd ")]
+        self.assertEqual(got, [(1, b"one"), (2, b"two")])
+
+    def test_shared_payload_yields_once(self):
+        rf_bytes = bytearray(build_rsrc({b"snd ": [(1, "a", 0, b"one"),
+                                                   (2, "b", 0, b"two")]}))
+        mo = struct.unpack_from(">I", rf_bytes, 4)[0]
+        refs = mo + 28 + 2 + 8
+        # Point the second reference at the first one's payload.
+        rf_bytes[refs + 12 + 5:refs + 12 + 8] = rf_bytes[refs + 5:refs + 8]
+        with tempfile.TemporaryDirectory() as td:
+            rf = ResFile(_write(td, bytes(rf_bytes)))
+            got = [rid for rid, _n, _a, _b in rf.resources(b"snd ")]
+        self.assertEqual(got, [1])
+
+    def test_reads_first_type_entry_only(self):
+        rf_bytes = bytearray(build_rsrc({b"snd ": [(1, "a", 0, b"one")],
+                                         b"xxxx": [(2, "b", 0, b"two")]}))
+        mo = struct.unpack_from(">I", rf_bytes, 4)[0]
+        tbase = mo + struct.unpack_from(">H", rf_bytes, mo + 24)[0]
+        rf_bytes[tbase + 2 + 8:tbase + 2 + 12] = b"snd "
+        with tempfile.TemporaryDirectory() as td:
+            rf = ResFile(_write(td, bytes(rf_bytes)))
+            got = [rid for rid, _n, _a, _b in rf.resources(b"snd ")]
+        self.assertEqual(got, [1])
+
     def test_appledouble_unwrap(self):
         inner = build_rsrc({b"DATA": [(100, None, 0, b"xyz")]})
         with tempfile.TemporaryDirectory() as td:

@@ -4,6 +4,10 @@ resource forks can't survive a modern filesystem or download unwrapped,
 so the transfer encodings are peeled off here. Stdlib only."""
 import struct
 
+# Most resources of one type read from a file: MAX_FILE_SOUNDS in
+# core/data/sndbank.ts. Real forks hold a few dozen.
+MAX_RESOURCES = 1024
+
 _BINHEX_ALPHABET = (
     b'!"#$%&\'()*+,-012345689@ABCDEFGHIJKLMNPQRSTUVXYZ[`abcdefhijklmpqr')
 _BINHEX_LUT = {c: i for i, c in enumerate(_BINHEX_ALPHABET)}
@@ -166,16 +170,27 @@ class ResFile:
         return out
 
     def resources(self, rtype):
-        """rtype: 4-byte tag. Yields (id, name, attrs, rawbytes)."""
+        """rtype: 4-byte tag. Yields (id, name, attrs, rawbytes).
+
+        Like core/data/snd.ts: only the first entry for the type is
+        read, each payload yields once however many references share
+        it, and at most MAX_RESOURCES resources come back, so a
+        crafted map can't multiply one blob into millions."""
         for t, cnt, rbase in self.types():
             if t != rtype:
                 continue
+            seen = set()
             for j in range(cnt):
+                if len(seen) >= MAX_RESOURCES:
+                    break
                 r = rbase + j * 12
                 rid = struct.unpack_from('>h', self.data, r)[0]
                 noff = struct.unpack_from('>h', self.data, r + 2)[0]
                 attr = self.data[r + 4]
                 dd = struct.unpack_from('>I', self.data, r + 5)[0] >> 8
+                if dd in seen:
+                    continue
+                seen.add(dd)
                 sz = struct.unpack_from('>I', self.data, self.do + dd)[0]
                 blob = self.data[self.do + dd + 4:self.do + dd + 4 + sz]
                 name = None
@@ -191,6 +206,7 @@ class ResFile:
                         name = self.data[p + 1:p + 1 + ln] \
                             .decode('mac_roman', 'replace')
                 yield rid, name, attr, blob
+            return
 
     def summary(self):
         rows = []
