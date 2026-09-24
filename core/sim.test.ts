@@ -298,6 +298,26 @@ describe("Sim", () => {
     expect(f.tx).toBe(300);
   });
 
+  it("a watcher that finds food doesn't roll back toward the pointer", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    // Facing right, a pellet ahead and the pointer behind it: the tick
+    // it spots the food it is still the pointer's watcher.
+    const f = sim.addFish({ x: 160, y: 100, facing: 1, heading: 0,
+                            hunger: 0.9 });
+    sim.notice = { x: 120, y: 100 };
+    const fd = sim.dropFood(250);
+    let rolled = false;
+    for (let i = 0; i < 300 && !fd.eaten; i++) {
+      sim.tick();
+      // Once the pellet is eaten, rolling toward a new target is fine.
+      rolled ||= f.state === "turn" && !fd.eaten;
+    }
+    // Before the fix it rolled back and forth 171 times in 2000 ticks
+    // and never reached the pellet; alone it eats it by tick 112.
+    expect(rolled).toBe(false);
+    expect(fd.eaten).toBe(true);
+  });
+
   it("fish lose their appetite in foul water", () => {
     const sim = new Sim({ width: 200, height: 100 }, 5);
     const f = sim.addFish({ x: 40, y: 50, hunger: 0.9 });
