@@ -111,9 +111,11 @@ void main() {
   uv.x -= (uSkew - 0.5) * 0.5 * (uv.y - 0.5);
   float depth = 1.0 - (uPersp - 0.5) * 1.2 * (uv.x - 0.5);
   uv = (uv - 0.5) / depth + 0.5;
-  // The keystone magnifies texels by depth locally (it varies only
-  // with x), so the sharp-bilinear blend width tracks the warp.
-  pxScale *= depth;
+  // The keystone magnifies texels per axis: y by depth, and x by
+  // depth squared — depth itself varies with x, so the columns
+  // converge on top of the divide. The sharp-bilinear blend width
+  // tracks the warp per axis.
+  pxScale *= vec2(depth * depth, depth);
   // Power-on: a real tube lights as a bright line at the vertical
   // center that opens into the full raster. Pixels outside the
   // opening band stay black; inside it the whole raster squeezes in.
