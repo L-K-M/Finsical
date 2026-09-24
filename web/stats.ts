@@ -30,10 +30,11 @@ function field(label: string, value: HTMLElement): void {
 function text(value: string): HTMLElement {
   return el("span", "sval", value);
 }
-/** A level as a progress bar, its percentage and trend arrow. The bar
- * repeats what the text says, so assistive tech reads only the text. */
-function meter(frac: number | null, pct: string,
-               arrow: string): HTMLElement {
+/** A level as a progress bar, its percentage, trend arrow, and a
+ * sparkline of the recent samples. The bar repeats what the text says,
+ * so assistive tech reads only the text. */
+function meter(frac: number | null, pct: string, arrow: string,
+               series?: (number | null)[]): HTMLElement {
   const cell = el("span", "smeter");
   const bar = el("div", "osm-progress");
   bar.setAttribute("aria-hidden", "true");
@@ -43,7 +44,40 @@ function meter(frac: number | null, pct: string,
   track.appendChild(el("div", "osm-progress-fill"));
   bar.appendChild(track);
   cell.append(bar, el("span", "spct", pct), el("span", "strend", arrow));
+  // No framed blank: an all-gap history (null/NaN/Infinity — the
+  // same definition spark() can't draw) is "no data yet".
+  if (series && series.some((v) => Number.isFinite(v)))
+    cell.appendChild(spark(series));
   return cell;
+}
+
+/** A 1-bit sparkline of the rolling history — newest sample on the
+ * right, one canvas column each, gaps where a sample is missing. */
+function spark(series: (number | null)[]): HTMLCanvasElement {
+  const W = 44, H = 14;
+  const cv = document.createElement("canvas");
+  cv.className = "sspark";
+  cv.width = W; cv.height = H;
+  cv.setAttribute("aria-hidden", "true");
+  const c = cv.getContext("2d")!;
+  c.fillStyle = "#fff"; c.fillRect(0, 0, W, H);
+  c.fillStyle = "#000";
+  const pts = series.slice(-W);
+  const off = W - pts.length;
+  let py = -1;
+  pts.forEach((v, i) => {
+    // NaN counts as a gap too — otherwise it would no-op the fillRect
+    // and poison the next sample's connector through py.
+    if (v === null || !Number.isFinite(v)) { py = -1; return; }
+    const y = Math.round((1 - Math.min(1, Math.max(0, v))) * (H - 1));
+    if (py < 0) c.fillRect(off + i, y, 1, 1);
+    else {
+      const lo = Math.min(py, y), hi = Math.max(py, y);
+      c.fillRect(off + i, lo, 1, hi - lo + 1);
+    }
+    py = y;
+  });
+  return cv;
 }
 
 // Rolling window of recent pushes — trends compare now vs ~90 s ago.
@@ -67,11 +101,13 @@ function render(st: TankStats): void {
   const old = trendBase();
   const water = st.waterPct / 100;
   field("Water quality", meter(water, `${st.waterPct}%`,
-                               trend(old?.water ?? null, water)));
+                               trend(old?.water ?? null, water),
+                               history.map((s) => s.water)));
   field("Avg. hunger", st.avgHunger === null
     ? meter(null, "—", "")
     : meter(st.avgHunger, `${Math.round(st.avgHunger * 100)}%`,
-            trend(old?.avgHunger ?? null, st.avgHunger)));
+            trend(old?.avgHunger ?? null, st.avgHunger),
+            history.map((s) => s.avgHunger)));
   field("Hungriest", text(st.hungriest
     ? `${st.hungriest.name} — ${hungerLabel(st.hungriest.hunger)}` : "—"));
   field("Fish", text(`${st.fishCount}` +
