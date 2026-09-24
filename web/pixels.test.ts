@@ -25,4 +25,15 @@ describe("indexedPixels", () => {
     const px = indexedPixels(img([5], [[1, 2, 3]]), false);
     expect([...px]).toEqual([0, 0, 0, 255]);
   });
+
+  it("drops idx bytes beyond w*h instead of overrunning", () => {
+    // A corrupt pack's over-long idx used to be truncated by the
+    // per-pixel loop; a bare set() into ImageData would throw.
+    const over = { w: 1, h: 1, palette: [[1, 2, 3]],
+                   idx: new Uint8Array([0, 0, 0]) } as IndexedImage;
+    expect(indexedPixels(over, true)).toHaveLength(4);
+    const under = { w: 2, h: 1, palette: [[1, 2, 3]],
+                    idx: new Uint8Array([0]) } as IndexedImage;
+    expect(indexedPixels(under, true)).toHaveLength(4);
+  });
 });

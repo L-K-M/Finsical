@@ -46,10 +46,13 @@ const RGBA_LE = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
 
 /** RGBA bytes for an indexed image: opaque=false makes index 0
  * transparent (sprite convention); opaque=true keeps every pixel.
- * Palette misses render opaque black, the long-standing default. */
+ * Palette misses render opaque black, the long-standing default. The
+ * pixel count is clamped to w*h — a corrupt pack's over-long idx used
+ * to be dropped by the per-pixel loop; a bare `set` would throw. */
 export function indexedPixels(img: IndexedImage,
                               opaque: boolean): Uint8ClampedArray {
-  const out = new Uint8ClampedArray(img.idx.length * 4);
+  const n = Math.min(img.idx.length, img.w * img.h);
+  const out = new Uint8ClampedArray(n * 4);
   if (RGBA_LE) {
     // Palette → packed RGBA lookup, then one word per pixel instead of
     // a tuple destructure plus four byte writes.
@@ -59,9 +62,9 @@ export function indexedPixels(img: IndexedImage,
     });
     if (!opaque) lut[0] = 0; // index 0 is the transparent key
     const px = new Uint32Array(out.buffer);
-    for (let i = 0; i < img.idx.length; i++) px[i] = lut[img.idx[i]!]!;
+    for (let i = 0; i < n; i++) px[i] = lut[img.idx[i]!]!;
   } else {
-    for (let i = 0; i < img.idx.length; i++) {
+    for (let i = 0; i < n; i++) {
       const pi = img.idx[i] ?? 0;
       const [r, g, b] = img.palette[pi] ?? [0, 0, 0];
       out[i * 4] = r; out[i * 4 + 1] = g; out[i * 4 + 2] = b;
@@ -78,7 +81,7 @@ export function imageCanvas(img: IndexedImage,
   cv.width = img.w; cv.height = img.h;
   const c = cv.getContext("2d")!;
   const im = c.createImageData(img.w, img.h);
-  im.data.set(indexedPixels(img, opaque));
+  im.data.set(indexedPixels(img, opaque)); // bounded to w*h inside
   c.putImageData(im, 0, 0);
   return cv;
 }
