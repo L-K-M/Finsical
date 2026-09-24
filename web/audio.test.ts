@@ -260,6 +260,18 @@ describe("TankAudio.load", () => {
     expect(loops[1]!.buffer!.getChannelData(0)[12]).toBe(remaster[12]);
     expect(ac.loops()).toBe(1);
   });
+
+  it("starts ambient once bubbling arrives after an empty start", async () => {
+    // startAmbient on an empty bank records ambientKey "" — the state
+    // that must trigger a late start when bubbling lands.
+    const audio = new TankAudio();
+    wavs.set("s/bubble.wav", wav(1)); // a pack without the bubbling loop
+    await audio.load(readWav, manifestOf("bubble"));
+    audio.startAmbient();
+    wavs.set(`s/${LOOP}.wav`, wav(30));
+    await audio.load(readWav, manifestOf(LOOP));
+    expect(FakeContext.last!.loops()).toBe(1); // begins, not silent
+  });
 });
 
 describe("TankAudio options", () => {
