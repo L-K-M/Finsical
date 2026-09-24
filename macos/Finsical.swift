@@ -171,7 +171,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         host.show(hw)
         guard let w = hw.window else { return }
         w.level = window.level
-        w.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        // Off the normal level a window drops out of Cycle Through
+        // Windows (Cmd-`) unless it opts in, as the floating tank does.
+        w.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary,
+                                .participatesInCycle]
         if fresh, let vis = (window.screen ?? NSScreen.main)?.visibleFrame {
             w.setFrameTopLeftPoint(AppDelegate.besideTank(
                 window.frame, size: w.frame.size, visible: vis,
