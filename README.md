@@ -235,3 +235,7 @@ options.
 - The [Unlicense](LICENSE) covers Finsical's own code only. It does not
   cover AquaZone data, add-ons, or the case art. Ported third-party code
   carries its own notices.
+- The one exception in the code is the MACE sound decoder
+  (`core/data/mace.ts`, `tools/az/mace.py` and its tables), ported from
+  FFmpeg and licensed under the LGPL 2.1 or later; see
+  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
