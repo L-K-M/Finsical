@@ -117,7 +117,12 @@ interface SavedTank {
 function parseTank(raw: unknown): SavedTank | null {
   const s = raw as SavedTank;
   if ((s?.v !== 1 && s?.v !== 2) ||
-      !Array.isArray(s.fish) || !Array.isArray(s.addons))
+      !Array.isArray(s.fish) || !Array.isArray(s.addons) ||
+      // Fish entries only need to be objects: the restore path's
+      // filter + sanitizeSavedFish drop or clamp anything malformed.
+      // Addons get no such treatment — they're fetched as URLs, so
+      // reject non-strings here.
+      !s.addons.every((u) => typeof u === "string"))
     return null;
   return s;
 }
@@ -306,7 +311,12 @@ function tankSnapshot(): SavedTank {
     scenery: sceneryChoice,
   };
 }
+// Set by a tank import before it reloads: the pagehide /
+// visibilitychange handlers would otherwise save the OLD tank over
+// the freshly imported SAVE_KEY during unload.
+let suppressSave = false;
 function saveTank(): void {
+  if (suppressSave) return;
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(tankSnapshot()));
   } catch { /* storage unavailable — the tank still runs */ }
@@ -335,6 +345,15 @@ tankFile.addEventListener("change", () => {
   const f = tankFile.files?.[0];
   tankFile.value = ""; // picking the same file twice must re-fire
   if (!f) return;
+  // A saved tank is a few KB of JSON; anything bigger isn't one, and
+  // a huge file would freeze the tab in JSON.parse before parseTank
+  // ever saw it.
+  if (f.size > 5_000_000) {
+    showAlert({ icon: "caution",
+                text: "That file is too big to be a Finsical tank.",
+                buttons: [{ title: "OK", default: true, cancel: true }] });
+    return;
+  }
   void f.text().then((text) => {
     const parsed = parseTank(JSON.parse(text));
     if (!parsed) {
@@ -346,6 +365,11 @@ tankFile.addEventListener("change", () => {
     // The launch path does the rest: roster, add-ons, scenery. Write
     // and reload rather than swap a live tank out from under the sim.
     try {
+      // Keep the outgoing tank recoverable — import has no confirm.
+      try {
+        localStorage.setItem(SAVE_KEY + ".bak",
+                             localStorage.getItem(SAVE_KEY) ?? "");
+      } catch { /* backup is best-effort */ }
       localStorage.setItem(SAVE_KEY, JSON.stringify(parsed));
     } catch {
       showAlert({ icon: "caution",
@@ -354,6 +378,9 @@ tankFile.addEventListener("change", () => {
                   buttons: [{ title: "OK", default: true, cancel: true }] });
       return;
     }
+    // Reload fires pagehide/visibilitychange, whose saveTank calls
+    // would overwrite the import with a snapshot of the old tank.
+    suppressSave = true;
     location.reload();
   }).catch(() => {
     showAlert({ icon: "caution",
