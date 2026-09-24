@@ -11,17 +11,32 @@ final class WebHandler: NSObject, WKURLSchemeHandler {
         "wasm": "application/wasm", "bin": "application/octet-stream",
     ]
 
+    /// The bundled file a request path names, or nil when the path
+    /// would climb out of the web root. Containment is decided on the
+    /// path's own components, never by comparing standardized paths:
+    /// standardizing drops a leading /private only when the shorter
+    /// path exists, so in an app run from /private/var/folders/... (App
+    /// Translocation, when it's opened where it was unzipped) every file
+    /// failed the old prefix check against the unstandardized root, and
+    /// the tank never loaded. `urlPath` is already percent-decoded.
+    static func resolve(_ urlPath: String, in root: URL) -> URL? {
+        var path = urlPath
+        if path.isEmpty || path.hasSuffix("/") { path += "index.html" }
+        let parts = path.split(separator: "/")
+        if parts.isEmpty || parts.contains(where: { $0 == ".." }) {
+            return nil
+        }
+        return parts.reduce(root) { $0.appendingPathComponent(String($1)) }
+    }
+
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
         guard let url = task.request.url, url.scheme == WebHandler.scheme,
               let root = Bundle.main.resourceURL?.appendingPathComponent("web") else {
             task.didFailWithError(URLError(.unsupportedURL))
             return
         }
-        var path = url.path
-        if path.isEmpty || path.hasSuffix("/") { path += "index.html" }
-        let file = root.appendingPathComponent(path).standardizedFileURL
         // Stay inside the web root.
-        guard file.path.hasPrefix(root.path + "/") else {
+        guard let file = WebHandler.resolve(url.path, in: root) else {
             task.didFailWithError(URLError(.fileDoesNotExist))
             return
         }
