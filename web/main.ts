@@ -405,7 +405,7 @@ function tipForPoint(p: { x: number; y: number }): string | null {
   const f = fishToName(p);
   if (f) return fishTipLabel(f);
   if (anyOverlayOpen()) return null;
-  return isFeedZoneY(p.y) ? "Click to feed" : null;
+  return isFeedZone(p.x, p.y, waterline) ? "Click to feed" : null;
 }
 
 function placeTip(e: { clientX: number; clientY: number }): void {
