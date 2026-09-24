@@ -224,7 +224,7 @@ function render(scroll: ListScroll = "keep"): void {
   const structure = JSON.stringify(next.map((i) => i.key).sort());
   if (structure === lastStructure) {
     const byKey = new Map(next.map((it) => [it.key, it]));
-    items = items.map((old) => byKey.get(old.key)!);
+    items = items.map((old) => byKey.get(old.key) ?? old);
     items.forEach((it, i) => {
       const r = list.rows[i];
       const st = r?.querySelector(".ocell-status");

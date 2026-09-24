@@ -132,11 +132,11 @@ let tankBoot: string | undefined;
 const bus = openBus((m: BusMsg) => {
   if (m.op !== "state") return;
   greeted = true;
-  if (typeof m.boot === "string" && m.boot !== tankBoot) {
+  if (typeof m.boot === "string") {
     // A restarted tank is a different tank: its water and hunger must
     // not merge into the trends and sparklines the old one drew.
+    if (tankBoot !== undefined && m.boot !== tankBoot) history.length = 0;
     tankBoot = m.boot;
-    history.length = 0;
   }
   const st = deriveStats(m as StatsInput);
   history.push({ t: Date.now(), avgHunger: st.avgHunger,
