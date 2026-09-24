@@ -34,6 +34,9 @@ describe("itemsOf", () => {
       fish: [{ id: 9, species: "Guppy", hunger: 0.5, state: "drift",
                standIn: true }] });
     expect(items[0]!.name).toBe("Guppy (stand-in)");
+    // The label changes nothing else: a stand-in stays a plain,
+    // removable fish row.
+    expect(items[0]!.remove).toEqual({ op: "removeFish", id: 9 });
   });
 
   it("removes each line the way the tank expects", () => {
