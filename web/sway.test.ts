@@ -9,7 +9,7 @@ describe("swayOffset", () => {
       expect(swayOffset(t, 0.3, -0.5))
         .toBe(swayOffset(t, 0.3, 0)); // frac clamps at the tip
       expect(Math.abs(swayOffset(t, 0.3, 0)))
-        .toBeLessThanOrEqual(Math.ceil(SWAY_AMP));
+        .toBeLessThanOrEqual(Math.round(SWAY_AMP));
     }
   });
 
