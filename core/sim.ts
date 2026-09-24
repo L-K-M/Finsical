@@ -496,6 +496,13 @@ export class Sim {
         // Facing already flipped mid-roll; head for the target on that
         // side. The roll bled off most of the speed, and the new stroke
         // builds it back from there.
+        // A forced roll (the golden pellet's) can leave a freshly
+        // decided target behind the new facing — mirror it across the
+        // fish rather than pitch against the clamp swimming away.
+        if ((f.x - f.tx) * f.facing > TURN_SLACK) {
+          const { x0, x1 } = this.room(f);
+          f.tx = Math.min(x1, Math.max(x0, 2 * f.x - f.tx));
+        }
         const axis = f.facing > 0 ? 0 : Math.PI;
         f.heading = wrapAngle(axis + clampPitch(
           wrapAngle(Math.atan2(f.ty - f.y, f.tx - f.x) - axis)));
@@ -619,9 +626,7 @@ export class Sim {
           if (food.golden) {
             // A golden meal earns a victory roll whether or not the
             // next destination lies behind.
-            this.setState(f, "turn");
-            f.turnFrom = f.facing;
-            f.turnDir = this.rand() < 0.5 ? 1 : -1;
+            this.startTurn(f, this.rand() < 0.5 ? 1 : -1);
           } else {
             // The next destination may lie behind: roll to it now rather
             // than pitching against the clamp until the next decision.
@@ -763,13 +768,19 @@ export class Sim {
     const want = Math.atan2(f.ty - f.y, f.tx - f.x);
     if (back > TURN_SLACK ||
         Math.abs(wrapAngle(want - (f.facing > 0 ? 0 : Math.PI))) > MAX_PITCH) {
-      this.setState(f, "turn");
-      f.turnFrom = f.facing;
       // Both half-rings reach the opposite profile; pick randomly.
-      f.turnDir = this.rand() < 0.5 ? 1 : -1;
+      this.startTurn(f, this.rand() < 0.5 ? 1 : -1);
       return true;
     }
     return false;
+  }
+
+  /** Enter the roll-through-edge-on turn: resets the roll clock and
+   * remembers the entry profile so the mid-roll flip can fire once. */
+  private startTurn(f: Fish, dir: 1 | -1): void {
+    this.setState(f, "turn");
+    f.turnFrom = f.facing;
+    f.turnDir = dir;
   }
 
   /** Half the body's drawn width and height at its current growth. */
