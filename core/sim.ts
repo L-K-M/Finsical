@@ -112,8 +112,9 @@ const FOOD_SINK = 0.35;
 /** Ticks a settled pellet takes to dissolve away (~45 s at 30 tps). */
 export const FOOD_ROT_TICKS = 30 * 45;
 /** Uneaten pellets the tank holds before dropFood refuses: past it a
- * feed only adds waste, so a feeding spree can't foul the water faster
- * than filtration and water changes can keep up with. */
+ * feed only adds waste. Even at the cap, six rotting pellets drain
+ * quality ~7x faster than the filter recovers it, so sustained
+ * overfeeding still fouls the tank without a water change. */
 export const MAX_UNEATEN = 6;
 /** Quality drained per tick per rotting pellet (~0.14 over a full rot). */
 const WASTE_PER_TICK = 1 / 10000;
