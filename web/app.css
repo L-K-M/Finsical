@@ -245,6 +245,13 @@ body.crt canvas#tank { opacity: 0; }
 #oempty { position: absolute; left: 22px; top: 5px; color: #a00; }
 #oempty[data-armed] { font-weight: bold; }
 
+/* Hover a fish: its species in a System 7 Balloon-Help-style tip. */
+#fishtip {
+  position: fixed; z-index: 60; pointer-events: none;
+  background: #ffc; border: 1px solid #000; border-radius: 4px;
+  padding: 2px 6px; font: var(--osm-font-small); color: #000;
+}
+
 /* ---- the add-on browser (web/import.ts) ----------------------------------
    Laid out like the Chooser: Show: pop-up across the top, the section's
    add-ons in a list on the left, the chosen one's preview and details on

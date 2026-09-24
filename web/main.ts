@@ -27,6 +27,7 @@ import { containPoint, feedZoneLineY, isFeedZoneY } from "./feedzone.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
+import { stateLabel } from "./overviewmodel.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { drawBubbles, drawFood, drawLight, drawMurk, feedPinch }
   from "./water.js";
@@ -275,14 +276,51 @@ canvas.addEventListener("pointerdown", (e) => {
 });
 // The nearest calm fish notices the hovering pointer and drifts over
 // to look — hunger and panic still outrank curiosity in the sim.
+
+// Hover a fish and its species (and mood) pops up in a little
+// balloon — a nod to System 7's Balloon Help.
+const fishTip = document.createElement("div");
+fishTip.id = "fishtip";
+fishTip.style.display = "none";
+document.body.appendChild(fishTip);
+const fishNear = (p: { x: number; y: number }): Fish | null => {
+  let best: Fish | null = null, bd = 18 * 18;
+  for (const f of sim.fish) {
+    const d = (f.x - p.x) ** 2 + (f.y - p.y) ** 2;
+    if (d < bd) { bd = d; best = f; }
+  }
+  return best;
+};
+const fishTipLabel = (f: Fish): string =>
+  (f.species || "Fish") +
+  (f.state === "drift" ? "" : ` — ${stateLabel(f.state)}`);
+// Tank coords of the last hover — the frame loop re-checks it so the
+// tip doesn't linger when the fish swims away from a parked cursor.
+let lastHover: { x: number; y: number } | null = null;
+
 canvas.addEventListener("pointermove", (e) => {
   if (!lastClient) requestPaint(); // the zone line appears
   lastClient = { x: e.clientX, y: e.clientY };
   if (!e.isPrimary) return; // one pointer drives curiosity
-  sim.notice = tankPoint(e.clientX, e.clientY);
+  const p = tankPoint(e.clientX, e.clientY);
+  sim.notice = p;
+  if (e.pointerType === "touch") return; // no hover on touch
+  lastHover = p;
+  const best = p && fishNear(p);
+  if (!best) { fishTip.style.display = "none"; return; }
+  fishTip.textContent = fishTipLabel(best);
+  fishTip.style.display = "";
+  // Clamp inside the viewport — the tank usually fills the window,
+  // so an unclamped +14 offset clips at the right and bottom edges.
+  fishTip.style.left = `${Math.max(4, Math.min(e.clientX + 14,
+    innerWidth - fishTip.offsetWidth - 4))}px`;
+  fishTip.style.top = `${Math.max(4, Math.min(e.clientY + 14,
+    innerHeight - fishTip.offsetHeight - 4))}px`;
 });
 canvas.addEventListener("pointerleave", (e) => {
   lastClient = null;
+  lastHover = null;
+  fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
   requestPaint(); // and the zone line goes
   if (!e.isPrimary) return; // don't clear the primary's curiosity
@@ -1871,6 +1909,17 @@ function frame(now: number): void {
   if (ticks === 0 && !frameDirty && !warming) return;
   frameDirty = false;
   render();
+  // A parked cursor doesn't re-hit-test: hide the tip once the fish
+  // under it has swum off, and refresh the label while it stays —
+  // the state word would otherwise go stale between pointermoves.
+  if (lastHover && fishTip.style.display !== "none") {
+    const best = fishNear(lastHover);
+    if (!best) fishTip.style.display = "none";
+    else {
+      const label = fishTipLabel(best);
+      if (fishTip.textContent !== label) fishTip.textContent = label;
+    }
+  }
   if (crtOn) crt?.render();
 }
 // A resize changes the CRT buffer size, and resizing a WebGL canvas

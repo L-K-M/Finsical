@@ -53,6 +53,10 @@ const STATES: Record<string, string> = {
 // floor, backgrounds/tanks fill the walls (aspect decides which at
 // decode). Plants/accessories stack as decor; nothing to switch.
 const USABLE = new Set(["gravel", "backgrounds", "tanks"]);
+/** Display label for a fish's sim state — the hover tip shares it. */
+export function stateLabel(state: string): string {
+  return STATES[state] ?? state;
+}
 
 /** The Finder-style header line: "8 fish, 3 add-ons, water 96%, up
  * 2h 3m" (the sim ticks 30 times a second). */
