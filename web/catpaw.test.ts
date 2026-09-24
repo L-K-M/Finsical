@@ -10,6 +10,7 @@ const SPAN = PAW_DESCEND + VISIT.swats * PAW_SWAT_LEN + PAW_RETREAT;
 
 describe("PAW_ART", () => {
   it("is exactly PAW_W wide in every row — the margin math trusts it", () => {
+    expect(PAW_ART.length).toBe(PAW_H);
     for (const row of PAW_ART) {
       expect(row.length).toBe(PAW_W);
       expect(row).toMatch(/^[.K]*$/);
