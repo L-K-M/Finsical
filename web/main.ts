@@ -1261,6 +1261,9 @@ const PAUSE_KEY = "finsical:paused";
 function setPaused(on: boolean): boolean {
   if (paused !== on) {
     paused = on;
+    // Pause is also a feed-hover input — without a pointer event the
+    // affordance would lag the state until the mouse next moved.
+    syncFeedHover();
     requestPaint(); // the banner comes and goes without a tick
     try { localStorage.setItem(PAUSE_KEY, on ? "1" : "0"); }
     catch { /* storage unavailable — pause is session-only */ }

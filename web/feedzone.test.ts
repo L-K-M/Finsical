@@ -43,6 +43,13 @@ describe("feed zone", () => {
     expect(isFeedZone(-5, SURFACE, flat)).toBe(true);
     expect(isFeedZone(400, SURFACE, flat)).toBe(true);
     expect(isFeedZone(400, SURFACE + 1, flat)).toBe(false);
+    // Edges raised 4px: clamping to the edge column would read the
+    // raised waterline; the contract is the rest height instead, so
+    // just under SURFACE must still count as above water.
+    const raised = new Int16Array(320).fill(SURFACE);
+    raised[0] = raised[319] = SURFACE - 4;
+    expect(isFeedZone(-5, SURFACE - 3, raised)).toBe(true);
+    expect(isFeedZone(400, SURFACE - 3, raised)).toBe(true);
   });
 });
 
