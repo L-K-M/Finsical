@@ -2,10 +2,10 @@
  * Minimal ZIP reader — enough for archive.org add-on packs, which are
  * single-file zips (one .fsh/.grv inside). Handles the central directory
  * and stored/deflated entries; no multi-disk, encryption, or ZIP64.
- * Environment-agnostic: deflate goes through DecompressionStream, which
- * exists in both node >= 18 and WebKit.
+ * Environment-agnostic: deflate goes through DecompressionStream where
+ * it exists, fflate's inflate where it doesn't (see inflate.ts).
  */
-import { ownBytes } from "./bytes.js";
+import { inflateCap } from "./inflate.js";
 
 export interface ZipEntry {
   name: string;
@@ -97,24 +97,12 @@ export async function zipRead(d: Uint8Array, e: ZipEntry, maxBytes = MAX_ENTRY):
     throw new Error(`zip ${e.name}: unsupported method ${e.method}`);
   if (e.usize > maxBytes)
     throw new Error(`zip ${e.name}: entry too large (${e.usize} bytes)`);
-  const ds = new DecompressionStream("deflate-raw");
-  const stream = new Blob([ownBytes(data)]).stream().pipeThrough(ds);
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel();
-      throw new Error(`zip ${e.name}: inflate exceeded ${maxBytes} bytes`);
-    }
-    chunks.push(value);
+  let out: Uint8Array;
+  try { out = await inflateCap(data, "deflate-raw", maxBytes); }
+  catch (err) {
+    throw new Error(`zip ${e.name}: ` +
+      (err instanceof Error ? err.message : String(err)));
   }
-  const out = new Uint8Array(total);
-  let o = 0;
-  for (const c of chunks) { out.set(c, o); o += c.byteLength; }
   if (out.length !== e.usize)
     throw new Error(`zip ${e.name}: expected ${e.usize} bytes, got ${out.length}`);
   return out;

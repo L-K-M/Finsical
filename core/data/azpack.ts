@@ -5,7 +5,7 @@
  * under sprites/ and images/. This module is environment-agnostic: the
  * caller supplies file bytes (fs in node, fetch in the browser shell).
  */
-import { ownBytes } from "./bytes.js";
+import { inflateCap } from "./inflate.js";
 
 export interface SpriteSheetMeta {
   image: string;
@@ -57,24 +57,15 @@ const MAX_SCANLINE_BYTES = 1 << 26;
 const MAX_PALETTE_ENTRIES = 256;
 
 async function inflate(data: Uint8Array, expected: number): Promise<Uint8Array> {
-  const ds = new DecompressionStream("deflate");
-  const stream = new Blob([ownBytes(data)]).stream().pipeThrough(ds);
-  const reader = stream.getReader();
-  const out = new Uint8Array(expected);
-  let offset = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value.byteLength > expected - offset) {
-        await reader.cancel();
-        throw new Error("png: excess pixel data");
-      }
-      out.set(value, offset);
-      offset += value.byteLength;
-    }
-  } finally { reader.releaseLock(); }
-  if (offset !== expected) throw new Error("png: short pixel data");
+  let out: Uint8Array;
+  try { out = await inflateCap(data, "deflate", expected); }
+  catch (e) {
+    // The byte cap doubles as the excess-pixels check.
+    if (e instanceof Error && /exceeded/.test(e.message))
+      throw new Error("png: excess pixel data");
+    throw e;
+  }
+  if (out.length !== expected) throw new Error("png: short pixel data");
   return out;
 }
 
