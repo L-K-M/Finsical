@@ -1944,7 +1944,7 @@ function drawFish(f: Fish): void {
     if (f.dead) {
       // Belly-up at the surface, fading as the corpse dissolves.
       ctx.globalAlpha =
-        Math.max(0.15, 1 - f.deadTicks / CORPSE_TICKS);
+        Math.max(0, 1 - f.deadTicks / CORPSE_TICKS);
       ctx.scale(1, -1);
     } else if (f.sick) {
       ctx.globalAlpha = 0.55; // wan, but still swimming
@@ -1969,7 +1969,7 @@ function drawPlaceholder(f: Fish): void {
   ctx.save();
   ctx.translate(Math.round(f.x), Math.round(f.y));
   if (f.dead) {
-    ctx.globalAlpha = Math.max(0.15, 1 - f.deadTicks / CORPSE_TICKS);
+    ctx.globalAlpha = Math.max(0, 1 - f.deadTicks / CORPSE_TICKS);
     ctx.scale(-f.facing * scale, -scale); // belly-up
   } else {
     if (f.sick) ctx.globalAlpha = 0.55;
@@ -2157,18 +2157,20 @@ function tickSim(): void {
   sim.tick();
   // Lifecycle: each transition rings its original event sound. A birth
   // also binds the fry's sprite extents and splashes it in.
+  let rosterChanged = false;
   for (const e of sim.events.splice(0)) {
     if (e.type === "sick") audio.sick();
     else if (e.type === "dead") {
       audio.dead();
-      saveTank(); // the roster shrank — don't resurrect it on reload
+      rosterChanged = true; // the roster shrank — don't resurrect it on reload
     } else if (e.type === "birth") {
       bindExtents(e.fish);
       splashAt(e.fish.x, e.fish.y, PUSH.newFish);
       audio.birth();
-      saveTank(); // the roster grew
+      rosterChanged = true; // the roster grew
     }
   }
+  if (rosterChanged) saveTank();
   tickSurface(surface);
   tickRipples(ripples);
   tickSplashes(splashes);
