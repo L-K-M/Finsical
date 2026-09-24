@@ -185,8 +185,9 @@ describe("milestone", () => {
     expect(milestone(24 * 60)).toMatch(/full day/);
     expect(milestone(7 * 24 * 60)).toMatch(/week/);
     expect(milestone(30 * 24 * 60)).toMatch(/month/);
-    // A veteran tank keeps its senior title, not the junior ones.
-    expect(milestone(365 * 24 * 60)).toMatch(/month/);
+    // A veteran tank keeps its senior title, not the junior ones —
+    // and "or more": a year-old tank isn't exactly one month old.
+    expect(milestone(365 * 24 * 60)).toMatch(/month or more/);
   });
 });
 
