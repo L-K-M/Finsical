@@ -218,6 +218,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         return NSPoint(x: x, y: top)
     }
 
+    /// Apply the saved tank frame, or center. OsmiumFrameStore.restore
+    /// accepts any 1 pt edge overlap with any screen — a tank parked
+    /// 99 % off a now-smaller display restores as an unreachable
+    /// sliver. Require a patch big enough to see and grab (the case
+    /// drags from anywhere, but 44 pt is the drag strip twice over).
+    private func restoreTankFrame() {
+        let key = "FinsicalTank"
+        guard let f = frames.frame(for: key),
+              NSScreen.screens.contains(where: {
+                  let i = $0.visibleFrame.intersection(f)
+                  return i.width >= 64 && i.height >= 44
+              })
+        else { window.center(); return }
+        window.setFrame(f, display: false)
+    }
+
     /// The tank window's shape follows the selected machine case.
     /// Applied only when the id changes — state pushes every ~2s.
     private var machineId = ""
@@ -236,16 +252,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         pauseMenuItem?.title = paused ? "Resume Simulation" : "Pause Simulation"
     }
     private var machineMaskImage: CGImage?
+    /// The drag strip's height constraint — applyMachine shrinks it
+    /// for the Bare tank, where a 22 pt strip covers the feed zone.
+    private var stripHeight: NSLayoutConstraint?
     /// Smallest tank window, as a fraction of the machine's viewBox
     /// (1 pt per viewBox unit). A quarter lets the tank shrink to a
     /// desk-corner ornament (Plus: 205x265 pt; Bare: 80x50 pt).
     private static let tankMinScale: CGFloat = 0.25
+    /// The swap resize pins to the top edge, so a taller machine can
+    /// push the bottom under the Dock or off the display — keep the
+    /// whole window inside the screen's visible frame.
+    private func clampToVisible(_ f: NSRect) -> NSRect {
+        guard let vis = (window.screen ?? NSScreen.main)?.visibleFrame
+        else { return f }
+        var r = f
+        r.origin.x = r.width >= vis.width ? vis.minX
+            : max(vis.minX, min(r.minX, vis.maxX - r.width))
+        r.origin.y = r.height >= vis.height ? vis.minY
+            : max(vis.minY, min(r.minY, vis.maxY - r.height))
+        return r
+    }
     private func applyMachine(id: String, w: CGFloat, h: CGFloat,
                               shape: [(CGRect, CGFloat)],
                               maskPath: String?, hole: CGRect?) {
         guard id != machineId, w > 0, h > 0 else { return }
         let old = machineVbW
         machineId = id
+        // On the Bare tank a 22 pt strip is most of the feed zone —
+        // the case edges still drag, so a thin strip is enough.
+        stripHeight?.constant = id == "bare" ? 8 : 22
         machineVbW = w
         machineVbH = h
         machineShape = shape
@@ -264,9 +299,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             // user happens to resize.
             let f = window.frame
             let nw = f.height * w / h
-            window.setFrame(NSRect(x: f.midX - nw / 2, y: f.minY,
-                                   width: nw, height: f.height),
-                            display: true, animate: false)
+            window.setFrame(clampToVisible(
+                NSRect(x: f.midX - nw / 2, y: f.minY,
+                       width: nw, height: f.height)),
+                display: true, animate: false)
             return
         }
         // Keep the screen the same size across a case swap — scale the
@@ -275,9 +311,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         let f = window.frame
         let nw = f.width * (w / old)
         let nh = nw * h / w
-        window.setFrame(NSRect(x: f.minX, y: f.maxY - nh,
-                               width: nw, height: nh),
-                        display: true, animate: true)
+        window.setFrame(clampToVisible(
+            NSRect(x: f.minX, y: f.maxY - nh, width: nw, height: nh)),
+            display: true, animate: true)
     }
 
     /// Load a mask image shipped under Resources/web/ — the raster
@@ -388,11 +424,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             mask.contents = img
             mask.contentsGravity = .resize
             layer.mask = mask
+            window.invalidateShadow() // the silhouette is the shadow
             return
         }
         let s = webView.frame.width / machineVbW
         guard s > 0, !machineShape.isEmpty else {
             layer.mask = nil
+            window.invalidateShadow()
             return
         }
         let path = CGMutablePath()
@@ -412,6 +450,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         mask.contentsScale = window.backingScaleFactor
         mask.path = path
         layer.mask = mask
+        window.invalidateShadow() // the silhouette is the shadow's shape
     }
 
     // Every move and resize rewrites the tank's saved frame, so the
@@ -714,6 +753,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         decisionHandler(.allow)
     }
 
+    /// A WebContent crash leaves a floating, always-on-top window that
+    /// paints nothing and answers nothing. Reload the affected webview —
+    /// the tank page restores its save; a client window reloads its page.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        NSLog("Finsical: WebContent process terminated — reloading")
+        webView.reload()
+    }
+
     /// target=_blank links (the donate link) have no host view; open them
     /// in the default browser instead.
     func webView(_ webView: WKWebView,
@@ -779,17 +826,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         let strip = DragStrip()
         strip.translatesAutoresizingMaskIntoConstraints = false
         webView.addSubview(strip)
+        let stripH = strip.heightAnchor.constraint(equalToConstant: 22)
         NSLayoutConstraint.activate([
             strip.topAnchor.constraint(equalTo: webView.topAnchor),
             strip.leadingAnchor.constraint(equalTo: webView.leadingAnchor),
             strip.trailingAnchor.constraint(equalTo: webView.trailingAnchor),
-            strip.heightAnchor.constraint(equalToConstant: 22),
+            stripH,
         ])
+        stripHeight = stripH // applyMachine shrinks it for Bare
 
-        // Exactly where the user left it, even partly offscreen. A
-        // frame on no attached screen still comes back centered.
+        // Exactly where the user left it, even partly offscreen — but
+        // a sliver (a 1 pt edge overlap) is a lost window: require a
+        // grabbable patch on some screen, else center.
         window.keepingFrame {
-            frames.restore(window, key: "FinsicalTank")
+            restoreTankFrame()
             window.makeKeyAndOrderFront(nil)
         }
 
