@@ -126,11 +126,11 @@ const plus: Machine = {
 const performa: Machine = {
   id: "performa", name: "Macintosh Performa 450",
   blurb: "A pizza-box desktop under an Apple RGB monitor.",
-  vbW: 1063, vbH: 956,
-  hole: { x: 195, y: 141, w: 674, h: 486, r: 0 },
-  sx: 195, sy: 173, sw: 674, sh: 421,
+  vbW: 1090, vbH: 977,
+  hole: { x: 144, y: 128, w: 802, h: 551, r: 0 },
+  sx: 144, sy: 153, sw: 802, sh: 501,
   image: "assets/performa-450.png",
-  shape: [{ x: 0, y: 0, w: 1063, h: 956, r: 0 }],
+  shape: [{ x: 0, y: 0, w: 1090, h: 977, r: 0 }],
   svg: "",
 };
 

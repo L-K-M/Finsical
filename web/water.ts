@@ -1,6 +1,6 @@
 /**
- * Living water: bubbles, food pellets, the surface, caustics, sun shafts
- * and murk. Everything here is render-only. Looks derive from sim data
+ * Living water: bubbles, food pellets, the surface and the hood above
+ * it, refraction, caustics, sun shafts and murk. Everything here is render-only. Looks derive from sim data
  * (positions, tickCount, light, water quality) rather than per-frame
  * randomness, so drawing the same sim state twice gives the same frame.
  * Sprites, tiles and gradients are built once on first use; the per-frame
@@ -9,13 +9,15 @@
 import { DEMO_NIGHT_LIGHT } from "../core/light.js";
 import { BOTTOM_PAD, BUBBLE_RISE, FOOD_ROT_TICKS, SURFACE }
   from "../core/sim.js";
+import { SURFACE_MAX } from "./surface.js";
 import type { Bubble, Food } from "../core/sim.js";
 
 const W = 320;
 const H = 200;
 
 /** Whether ambient light animates. 'still' honours prefers-reduced-motion:
- * caustics, shafts and the surface glint freeze in place. */
+ * caustics, shafts, the surface swell and glint and the refraction
+ * shimmer freeze in place. */
 export type WaterMotion = "animated" | "still";
 
 function clamp01(v: number): number {
@@ -125,8 +127,11 @@ function spriteOf(art: readonly string[]): HTMLCanvasElement {
 let bubbleSprites: HTMLCanvasElement[] | null = null;
 let popSprites: HTMLCanvasElement[] | null = null;
 
+/** `line` is the drawn waterline (see surfaceLine): a bubble pops
+ * where the moving surface is, not at its resting row. */
 export function drawBubbles(ctx: CanvasRenderingContext2D,
-                            bubbles: readonly Bubble[]): void {
+                            bubbles: readonly Bubble[],
+                            line?: Int16Array): void {
   bubbleSprites ??= BUBBLE_ART.map(spriteOf);
   popSprites ??= [spriteOf(POP_ART_INNER), spriteOf(POP_ART)];
   for (const b of bubbles) {
@@ -135,7 +140,8 @@ export function drawBubbles(ctx: CanvasRenderingContext2D,
       // Alternate the two ring sizes on the x parity so simultaneous
       // pops don't look stamped.
       const p = popSprites[Math.round(b.x) & 1]!;
-      ctx.drawImage(p, x - 2, SURFACE - 2);
+      const col = Math.min(W - 1, Math.max(0, x));
+      ctx.drawImage(p, x - 2, (line?.[col] ?? SURFACE) - 2);
       continue;
     }
     const s = bubbleSprites[bubbleSize(b.y) - 1]!;
@@ -223,13 +229,15 @@ export function drawFood(ctx: CanvasRenderingContext2D,
   ctx.globalAlpha = 1;
 }
 
-// ---- surface, caustics, shafts ---------------------------------------------
+// ---- caustics, shafts ------------------------------------------------------
 
 export const CAUSTIC_TILE_W = 64;
 export const CAUSTIC_TILE_H = 32;
 /** Caustics cover the lower tank, fading in from here down. */
-const CAUSTIC_TOP = 104;
-const CAUSTIC_ALPHA = 0.1;
+const CAUSTIC_TOP = 88;
+const CAUSTIC_ALPHA = 0.14;
+/** Caustic rows shimmer sideways in bands this tall, px. */
+const CAUSTIC_BAND = 4;
 const SHAFT_ALPHA = 0.04;
 
 /**
@@ -292,29 +300,25 @@ const SHAFTS: readonly (readonly [number, number, number])[] =
 /** One sway cycle of the shafts, ticks (a minute at 30 tps). */
 const SHAFT_SWAY_TICKS = 1800;
 
+/** Sideways shimmer of one caustic band, px: the surface waves bend
+ * the light, so the web wavers instead of sliding rigidly. */
+export function causticShimmer(band: number, t: number): number {
+  return Math.round(Math.sin(band * 0.7 + t * 0.06) * 1.5 +
+                    Math.sin(band * 1.9 - t * 0.041) * 0.8);
+}
+
 /**
- * Sunlight in the water: gentle slanted shafts, caustics over the lower
- * tank and a faint surface line with a travelling glint. Drawn behind
- * the fish, and scaled by daylight so nights stay dark.
+ * Sunlight in the water: gentle slanted shafts and caustics over the
+ * lower tank. Drawn behind the fish, and scaled by daylight so nights
+ * stay dark. The waterline is drawSurface's, drawn every frame, nights
+ * included.
  */
 export function drawLight(ctx: CanvasRenderingContext2D, light: number,
                           tick: number, motion: WaterMotion,
                           nightFloor = DEMO_NIGHT_LIGHT): void {
   const sun = sunFactor(light, nightFloor);
   const t = motion === "animated" ? tick : 0;
-
-  // Surface: moonlight keeps a trace of the line after dark.
-  ctx.fillStyle = "#e8f6ff";
-  ctx.globalAlpha = 0.12 + 0.16 * sun;
-  ctx.fillRect(0, SURFACE, W, 1);
-  const gx = Math.round(W / 2 + (Math.sin(t * 0.011) * 0.6 +
-                                 Math.sin(t * 0.027 + 1) * 0.4) * W * 0.42);
-  ctx.globalAlpha = 0.2 + 0.35 * sun;
-  ctx.fillRect(gx - 9, SURFACE, 18, 1);
-  ctx.globalAlpha = 0.35 + 0.5 * sun;
-  ctx.fillRect(gx - 3, SURFACE, 6, 1);
-
-  if (sun <= 0.01) { ctx.globalAlpha = 1; return; }
+  if (sun <= 0.01) return;
   ctx.globalCompositeOperation = "lighter";
 
   if (!shaftFill) {
@@ -340,29 +344,171 @@ export function drawLight(ctx: CanvasRenderingContext2D, light: number,
   const h = H - CAUSTIC_TOP;
   const a = Math.floor(t * 0.3) % CAUSTIC_TILE_W;
   const b = CAUSTIC_TILE_W - 1 - Math.floor(t * 0.2) % CAUSTIC_TILE_W;
-  ctx.drawImage(strips[0]!, a, 0, W, h, 0, CAUSTIC_TOP, W, h);
-  ctx.drawImage(strips[1]!, b, 0, W, h, 0, CAUSTIC_TOP, W, h);
+  const tw = CAUSTIC_TILE_W;
+  for (let y = 0, band = 0; y < h; y += CAUSTIC_BAND, band++) {
+    const bh = Math.min(CAUSTIC_BAND, h - y);
+    // The strips repeat every tile, so wrapping the source x keeps a
+    // shimmered read inside the strip.
+    const sa = ((a + causticShimmer(band, t)) % tw + tw) % tw;
+    const sb = ((b - causticShimmer(band + 11, t)) % tw + tw) % tw;
+    ctx.drawImage(strips[0]!, sa, y, W, bh, 0, CAUSTIC_TOP + y, W, bh);
+    ctx.drawImage(strips[1]!, sb, y, W, bh, 0, CAUSTIC_TOP + y, W, bh);
+  }
 
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
 }
 
+// ---- refraction ------------------------------------------------------------
+
+/** Rows under the waterline that waver, fading out with depth. */
+export const REFRACT_ROWS = 18;
+
+/** Sideways shift of the scene at row `y` under the surface, px: the
+ * moving surface bends the view just beneath it, strongest at the top
+ * and gone by REFRACT_ROWS down. */
+export function refractShift(y: number, t: number): number {
+  const depth = y - SURFACE;
+  if (depth < 1 || depth > REFRACT_ROWS) return 0;
+  const fade = 1 - (depth - 1) / REFRACT_ROWS;
+  return Math.round((Math.sin(y * 0.8 + t * 0.09) * 1.1 +
+                     Math.sin(y * 0.37 - t * 0.057) * 0.6) * fade);
+}
+
+let refractScratch: HTMLCanvasElement | null = null;
+
+/** Waver the band just under the surface: fish, plants and backdrop
+ * seen through the top of the water shift a pixel or two row by row.
+ * Reads back what is already drawn, so call it after the fish and
+ * before the air. */
+export function drawRefraction(ctx: CanvasRenderingContext2D,
+                               t: number): void {
+  const top = SURFACE - SURFACE_MAX;
+  const rows = SURFACE_MAX + REFRACT_ROWS + 1;
+  if (!refractScratch) {
+    refractScratch = document.createElement("canvas");
+    refractScratch.width = W;
+    refractScratch.height = rows;
+  }
+  const g = refractScratch.getContext("2d")!;
+  g.clearRect(0, 0, W, rows);
+  g.drawImage(ctx.canvas, 0, top, W, rows, 0, 0, W, rows);
+  for (let r = 0; r < rows; r++) {
+    // A crest lifts water above SURFACE; waver those rows as the top.
+    const dx = refractShift(Math.max(top + r, SURFACE + 1), t);
+    if (dx === 0) continue;
+    ctx.drawImage(refractScratch, 0, r, W, 1, dx, top + r, W, 1);
+  }
+}
+
 // ---- air -------------------------------------------------------------------
 
-let airFill: CanvasGradient | null = null;
+/** How much of the scene behind still shows through the air, at the
+ * hood's lip and at the waterline, with the lamp off and on. */
+const AIR_SHADE = { lipOff: 0.1, lipOn: 0.22, lowOff: 0.3, lowOn: 0.58 };
+/** Rows of the tank's top frame. They stay above SURFACE - SURFACE_MAX,
+ * the highest a wave reaches. */
+const RIM_ROWS = 2;
 
-/** The air under the hood, above the surface line. Backdrops are
- * underwater scenes, so this covers them there, and a leaf or fin
- * reaching past the surface passes behind the hood's lip. Drawn after
- * the fish; bubble pops and splash drops go on top of it. */
-export function drawAir(ctx: CanvasRenderingContext2D): void {
-  if (!airFill) {
-    airFill = ctx.createLinearGradient(0, 0, 0, SURFACE);
-    airFill.addColorStop(0, "#07090c");
-    airFill.addColorStop(1, "#1b2632");
+function grey(v: number): string {
+  const c = Math.round(255 * v);
+  return `rgb(${c},${c},${c})`;
+}
+
+/** Per-column fill of the air: the rows above each column's
+ * waterline. Runs of equal height share one rect. */
+function fillAboveLine(ctx: CanvasRenderingContext2D,
+                       line: Int16Array | undefined): void {
+  if (!line) { ctx.fillRect(0, 0, W, SURFACE); return; }
+  let x0 = 0;
+  for (let x = 1; x <= W; x++) {
+    if (x < W && line[x] === line[x0]) continue;
+    ctx.fillRect(x0, 0, x - x0, line[x0]!);
+    x0 = x;
   }
-  ctx.fillStyle = airFill;
-  ctx.fillRect(0, 0, W, SURFACE);
+}
+
+/**
+ * The air above the waterline. The back of the tank carries on behind
+ * it, as in a real tank, but dry: drained of color and dimmed, darkest
+ * under the hood's lip and brightest where the lamp (`lamp`, 0 = off,
+ * 1 = full) reaches down to the water. Fins poking above the surface
+ * dim with it. The tank's top frame runs along the very top. `line` is
+ * the drawn waterline (see surfaceLine); without it the air ends at the
+ * resting surface. Drawn after the fish; bubble pops and splash drops
+ * go on top of it.
+ */
+export function drawAir(ctx: CanvasRenderingContext2D, lamp = 0,
+                        line?: Int16Array): void {
+  const mix = (off: number, on: number): number => off + (on - off) * lamp;
+  // Built per call: the shade follows the lamp, which dims at dusk.
+  const shade = ctx.createLinearGradient(0, RIM_ROWS, 0, SURFACE + SURFACE_MAX);
+  shade.addColorStop(0, grey(mix(AIR_SHADE.lipOff, AIR_SHADE.lipOn)));
+  shade.addColorStop(1, grey(mix(AIR_SHADE.lowOff, AIR_SHADE.lowOn)));
+
+  ctx.globalCompositeOperation = "saturation";
+  ctx.globalAlpha = 0.8;
+  ctx.fillStyle = "#808080";
+  fillAboveLine(ctx, line);
+  ctx.globalCompositeOperation = "multiply";
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = shade;
+  fillAboveLine(ctx, line);
+  ctx.globalCompositeOperation = "source-over";
+
+  // Top frame: a black lip with a faint lit edge on its underside.
+  ctx.fillStyle = "#050607";
+  ctx.fillRect(0, 0, W, RIM_ROWS - 1);
+  ctx.fillStyle = "#1c2024";
+  ctx.fillRect(0, RIM_ROWS - 1, W, 1);
+}
+
+// ---- surface line ----------------------------------------------------------
+
+/** Brightness of the silvery band under the waterline, row by row
+ * down from the line, at full daylight. */
+const UNDERSIDE = [0.3, 0.14, 0.05] as const;
+
+/**
+ * The waterline itself, following the waves: a faint line (moonlight
+ * keeps a trace of it after dark), brighter where the water slopes and
+ * catches the lamp, with a glint travelling along it. Under it the
+ * surface's underside mirrors the light as a silvery band, which is
+ * what makes a waterline read from the front. `highlight` brightens the
+ * whole line while a click would feed.
+ */
+export function drawSurface(ctx: CanvasRenderingContext2D,
+                            line: Int16Array, sun: number, t: number,
+                            highlight: boolean): void {
+  const gx = W / 2 + (Math.sin(t * 0.011) * 0.6 +
+                      Math.sin(t * 0.027 + 1) * 0.4) * W * 0.42;
+  // Screen-blended, so the band lifts what is under it instead of
+  // painting over it.
+  ctx.globalCompositeOperation = "screen";
+  ctx.fillStyle = "#dff4ff";
+  let x0 = 0;
+  for (let x = 1; x <= W; x++) {
+    if (x < W && line[x] === line[x0]) continue;
+    for (let r = 0; r < UNDERSIDE.length; r++) {
+      ctx.globalAlpha = UNDERSIDE[r]! * (0.35 + 0.65 * sun);
+      ctx.fillRect(x0, line[x0]! + 1 + r, x - x0, 1);
+    }
+    x0 = x;
+  }
+  ctx.globalCompositeOperation = "source-over";
+
+  const base = highlight ? 0.6 : 0.3 + 0.25 * sun;
+  ctx.fillStyle = highlight ? "#ffffff" : "#e8f6ff";
+  for (let x = 0; x < W; x++) {
+    const y = line[x]!;
+    const slope = Math.abs(line[Math.min(W - 1, x + 1)]! -
+                           line[Math.max(0, x - 1)]!);
+    const d = Math.abs(x - gx);
+    const glint = d < 3 ? 0.35 + 0.5 * sun : d < 9 ? 0.2 + 0.35 * sun : 0;
+    ctx.globalAlpha = Math.min(1, Math.max(base, glint) + slope * 0.18 * sun);
+    ctx.fillRect(x, y, 1, 1);
+  }
+  ctx.globalAlpha = 1;
 }
 
 // ---- murk ------------------------------------------------------------------

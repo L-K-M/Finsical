@@ -64,6 +64,8 @@ class FakeContext {
 }
 
 const wav = (seconds: number): Uint8Array => new Uint8Array(seconds);
+/** The original's filter bubbling, the one sound it loops. */
+const LOOP = "AZ bubble 9003";
 
 async function tank(names: Record<string, number>):
     Promise<{ audio: TankAudio; ac: FakeContext; master: FakeGain }> {
@@ -172,7 +174,7 @@ describe("TankAudio options", () => {
 
   it("ambient off stops a live loop and startAmbient does nothing",
      async () => {
-    const { audio, ac } = await tank({ aqua: 30 });
+    const { audio, ac } = await tank({ [LOOP]: 30 });
     audio.startAmbient();
     const loop = ac.sources[0]!;
     expect(loop.loop).toBe(true);
@@ -188,7 +190,7 @@ describe("TankAudio options", () => {
   });
 
   it("ambient off aborts a loop waiting on a locked context", async () => {
-    const { audio, ac } = await tank({ aqua: 30 });
+    const { audio, ac } = await tank({ [LOOP]: 30 });
     ac.state = "suspended";
     audio.startAmbient(); // queues a resume() retry
     audio.setOptions({ ambient: false });
@@ -245,7 +247,7 @@ const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 describe("TankAudio.setHidden", () => {
   it("keeps the device asleep when a gesture unlocks while hidden", async () => {
-    const { audio, ac } = await tank({ aqua: 30, bubble: 1 });
+    const { audio, ac } = await tank({ [LOOP]: 30, bubble: 1 });
     audio.setHidden(true);
     await flush();
     audio.unlock();
@@ -255,7 +257,7 @@ describe("TankAudio.setHidden", () => {
   });
 
   it("suspends while hidden and resumes the same loop", async () => {
-    const { audio, ac } = await tank({ aqua: 30, bubble: 1 });
+    const { audio, ac } = await tank({ [LOOP]: 30, bubble: 1 });
     audio.startAmbient();
     expect(ac.loops()).toBe(1);
 
@@ -270,7 +272,7 @@ describe("TankAudio.setHidden", () => {
   });
 
   it("plays nothing and doesn't wake the device while hidden", async () => {
-    const { audio, ac } = await tank({ aqua: 30, bubble: 1 });
+    const { audio, ac } = await tank({ [LOOP]: 30, bubble: 1 });
     audio.setHidden(true);
     await flush();
     audio.bubble();
@@ -287,7 +289,7 @@ describe("TankAudio.setHidden", () => {
 
   it("never stacks a second loop when a pending start races the hide",
      async () => {
-    const { audio, ac } = await tank({ aqua: 30, bubble: 1 });
+    const { audio, ac } = await tank({ [LOOP]: 30, bubble: 1 });
     ac.state = "suspended"; // autoplay-gated until a gesture
     audio.startAmbient();   // queues a resume() retry
     audio.setHidden(true);
@@ -303,7 +305,7 @@ describe("TankAudio.setHidden", () => {
   it("creates the context suspended when hidden", async () => {
     const audio = new TankAudio();
     audio.setHidden(true);
-    await audio.addWavs([{ name: "aqua", wav: wav(30) }]);
+    await audio.addWavs([{ name: LOOP, wav: wav(30) }]);
     audio.startAmbient();
     await flush();
     const ac = FakeContext.last!;
@@ -312,6 +314,93 @@ describe("TankAudio.setHidden", () => {
     audio.setHidden(false);
     await flush();
     expect(ac.loops()).toBe(1);
+  });
+});
+
+// The original game's event sounds, by the names its 'snd ' resources
+// carry (core/data/sndbank.ts). Durations tell the buffers apart.
+describe("TankAudio event sounds", () => {
+  const played = (ac: FakeContext): (number | undefined)[] =>
+    ac.sources.map((s) => s.buffer?.duration);
+
+  it("plays each event's own sound", async () => {
+    const { audio, ac } = await tank({
+      ChangeWater: 1, Switch: 2, IntoWaterBig: 3, letoutWater: 4,
+    });
+    audio.changeWater();
+    audio.lampSwitch();
+    audio.sceneryIn();
+    audio.fishOut();
+    expect(played(ac)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("matches names exactly, so a song can't take an event", async () => {
+    const { audio, ac } = await tank({
+      "Switchfoot live": 1, "IntoWaterBig remix": 2, IntoWater: 3,
+    });
+    audio.lampSwitch();
+    audio.sceneryIn();
+    audio.fishOut();
+    expect(ac.sources).toHaveLength(0);
+  });
+
+  it("splashes for a water change when the set has no sound for it",
+     async () => {
+    const { audio, ac } = await tank({ IntoWater: 5 });
+    audio.changeWater();
+    expect(played(ac)).toEqual([5]);
+  });
+});
+
+describe("TankAudio bubbles, as the original plays them", () => {
+  const played = (ac: FakeContext) =>
+    ac.sources.map((s) => [s.buffer?.duration, s.loop]);
+
+  it("loops the filter's bubbling and never plays it per bubble",
+     async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30, aqua: 5 });
+    audio.bubble();
+    expect(ac.sources).toHaveLength(0);
+    audio.startAmbient();
+    expect(played(ac)).toEqual([[30, true]]);
+  });
+
+  it("plays a separate bubble sound for single bubbles", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30, "bubble pop": 2 });
+    audio.bubble();
+    expect(played(ac)).toEqual([[2, false]]);
+  });
+
+  it("plays the opening sound once as the tank opens", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30, aqua: 5 });
+    audio.open();
+    audio.unlock();
+    await flush();
+    expect(played(ac)).toEqual([[30, true], [5, false]]);
+  });
+
+  it("holds the opening sound for the first unlock when audio is locked",
+     async () => {
+    const { audio, ac } = await tank({ aqua: 5 });
+    ac.state = "suspended";
+    audio.open();
+    await flush();
+    expect(ac.sources).toHaveLength(0);
+    audio.unlock();
+    await flush();
+    audio.unlock();
+    await flush();
+    expect(played(ac)).toEqual([[5, false]]);
+  });
+
+  it("owes no opening sound for a set installed after opening",
+     async () => {
+    const audio = new TankAudio();
+    audio.open();
+    await audio.addWavs([{ name: "aqua", wav: wav(5) }]);
+    audio.unlock();
+    await flush();
+    expect(FakeContext.last!.sources).toHaveLength(0);
   });
 });
 

@@ -11,8 +11,8 @@ import { resolveStarter, starterCollection } from "./starter.js";
 const WELCOMED_KEY = "finsical:welcomed";
 
 const WELCOME_TEXT = "Welcome to Finsical. Your tank has four stand-in " +
-  "fish. Finsical can stock it with the original Aquazone fish, plants " +
-  "and scenery from the Internet Archive.";
+  "fish. Finsical can stock it with the original Aquazone fish, plants, " +
+  "scenery and sound effects from the Internet Archive.";
 
 export interface StarterHooks {
   /** The tank's own install path; rejects when the add-on can't be

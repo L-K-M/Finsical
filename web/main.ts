@@ -40,8 +40,10 @@ import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
 import { stateLabel } from "./overviewmodel.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
-import { drawAir, drawBubbles, drawFood, drawLight, drawMurk, feedPinch }
-  from "./water.js";
+import { bubblePops, drawAir, drawBubbles, drawFood, drawLight, drawMurk,
+         drawRefraction, drawSurface, feedPinch, sunFactor } from "./water.js";
+import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
+  from "./surface.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
   from "./machines.js";
 import type { CrtConfig } from "./crt.js";
@@ -194,7 +196,9 @@ function syncLight(now: Date): void {
 syncLight(new Date());
 /** Merge a partial schedule (prefs pop-up) onto the current one. */
 function applyLighting(raw: unknown): void {
+  const lampWas = lighting.lamp;
   lighting = sanitizeLighting(raw, lighting);
+  if (lighting.lamp !== lampWas) audio.lampSwitch();
   syncLight(new Date());
   requestPaint(); // shows at once, even while no tick runs
   try { localStorage.setItem(LIGHTING_KEY, JSON.stringify(lighting)); }
@@ -331,7 +335,7 @@ function tankPoint(clientX: number, clientY: number):
 }
 
 /** The fish under a tank point. None in the air above the waterline:
- * a fin reaching up there is hidden behind the air strip, and a click
+ * a fin reaching up there only shows dimmed through the air, and a click
  * there feeds. */
 function fishAtPoint(p: { x: number; y: number }): Fish | null {
   return isFeedZoneY(p.y) ? null : sim.fishAt(p.x, p.y);
@@ -374,10 +378,12 @@ canvas.addEventListener("pointerdown", (e) => {
   if (isFeedZoneY(p.y)) {
     const pellet = sim.dropFood(p.x);
     audio.feed();
-    splashes.push(newSplash(pellet.x, pellet.y));
+    splashAt(pellet.x, pellet.y, PUSH.pellet);
   } else {
     sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
     ripples.push({ x: p.x, y: p.y, age: 0 });
+    // The glass knock slops the water a little, on the tapped side.
+    disturbSurface(surface, p.x, PUSH.tap, 8);
     noteGlassTap();
   }
   requestPaint();
@@ -585,7 +591,7 @@ function spawnFish(sheetIdx: number, species: string, pack?: string,
   bindExtents(f);
   // A new fish enters through the surface — pair the splash sound
   // with droplets where it went in.
-  splashes.push(newSplash(x, FOOD_ENTRY_Y));
+  splashAt(x, FOOD_ENTRY_Y, PUSH.newFish);
   saveTank();
   requestPaint();
   return f;
@@ -868,6 +874,7 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
   else if (section === "backgrounds" || section === "tanks")
     pickBackdrop(images, src);
   else return;
+  if (live) audio.sceneryIn();
   // A live install shows its art and so becomes the choice; a restore
   // only puts art back and leaves the choice alone.
   if (live && backdropSrc === src) chooseScenery("backdrop", src);
@@ -1100,20 +1107,29 @@ function sweepThumbs(): void {
   for (const k of [...pendingThumbs]) if (!alive(k)) pendingThumbs.delete(k);
 }
 
+/** Run a removal the user asked for, and let the water out once if it
+ * took fish with it. */
+function fishOutAfter(remove: () => void): void {
+  const before = sim.fish.length;
+  remove();
+  if (sim.fish.length < before) audio.fishOut();
+}
+
 function onBusMessage(m: BusMsg): void {
   if (m.op === "hello") postState();
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
   else if (m.op === "removeFish" && typeof m.id === "number") {
-    if (sim.removeFish(m.id)) { sweepThumbs(); saveTank(); }
+    if (sim.removeFish(m.id)) { audio.fishOut(); sweepThumbs(); saveTank(); }
   } else if (m.op === "removeAddon" &&
              typeof m.url === "string" && m.url !== "") {
-    removeAddon(m.url);
+    const url = m.url;
+    fishOutAfter(() => removeAddon(url));
   } else if (m.op === "useAddon" &&
              typeof m.url === "string" && m.url !== "") {
     useScenery(m.url);
   } else if (m.op === "emptyTank") {
-    emptyTank();
+    fishOutAfter(emptyTank);
   } else if (m.op === "wantThumbs" && Array.isArray(m.keys)) {
     serveThumbs(m.keys);
   } else if (m.op === "changeWater") {
@@ -1557,7 +1573,7 @@ function feedFish(): void {
   for (const p of feedPinch(Math.random, hungry)) {
     setTimeout(() => {
       const pellet = sim.dropFood(x + p.dx);
-      splashes.push(newSplash(pellet.x, pellet.y));
+      splashAt(pellet.x, pellet.y, PUSH.pellet);
       requestPaint();
     }, p.delay);
   }
@@ -1605,7 +1621,7 @@ function changeWater(cfg: Partial<WaterChange> = {}): void {
   catch { /* storage unavailable */ }
   sim.changeWater(f, t);
   collectEvents();
-  audio.splash();
+  audio.changeWater();
   requestPaint(); // the murk clears at once, even while paused
   saveTank(); // persists + pushes fresh state to open panels
 }
@@ -1765,6 +1781,9 @@ void (async () => {
   .then((recs) => recs?.length ? audio.addWavs(recs).catch((e) =>
     console.warn("snd decode failed:", e)) : undefined)
   .then(() => {
+    // The saved sounds are back: the bubbling starts, and the opening
+    // sound plays now or on the first click.
+    audio.open();
     // The user's chosen scenery wins over install-recency — applied
     // once every pack has had its restore chance. A pack that failed
     // to restore leaves whatever the chain picked, until a retry.
@@ -1904,7 +1923,20 @@ window.addEventListener("drop", (e) => {
         continue;
       }
       const [p] = decodeDroppedPacks([[name, data]]);
-      if (!p) continue;
+      if (!p) {
+        // No art: it may be the game's sound bank (AZ_WAVES.REZ). Its
+        // records persist like any dropped sound; the pack isn't kept.
+        const bank = fileSoundRecords(name, data);
+        if (!bank.length) continue;
+        try {
+          await handleSounds(bank);
+          imported++;
+          console.info(`${name}: ${bank.length} sounds imported`);
+        } catch (e) {
+          console.warn("sound import failed:", e);
+        }
+        continue;
+      }
       // A full tank takes no new fish: say so rather than store and
       // record a pack whose fish never spawns.
       const refusal = p.sheets.size ? fishRefusal("fish") : null;
@@ -2088,6 +2120,37 @@ reducedMotion.addEventListener("change", (e) => {
 // sim clock so they animate even while fish pause between decisions.
 const ripples: Ripple[] = [];
 const splashes: Splash[] = [];
+// The surface's springs, and the waterline drawn from them each frame.
+const surface = newSurface();
+const waterline = new Int16Array(SURFACE_W);
+
+/** How hard things push the surface, px/tick. */
+const PUSH = { pellet: 1.6, newFish: 3.2, pop: 0.35, tap: 0.6 } as const;
+/** A fish whose back is within this many px of the surface stirs it. */
+const WAKE_DEPTH = 4;
+/** Surface push per px/tick of a fish's speed at the top. */
+const WAKE_PUSH = 0.05;
+
+/** Droplets where something enters the water, and the waves it makes. */
+function splashAt(x: number, y: number, push: number): void {
+  splashes.push(newSplash(x, y));
+  disturbSurface(surface, x, push);
+}
+
+/** Per-tick surface forcing: bubbles popping and fish cruising along
+ * the top. Taps and splashes push it where they happen. */
+function stirSurface(): void {
+  for (const b of sim.bubbles)
+    if (bubblePops(b.y)) disturbSurface(surface, b.x, PUSH.pop, 1);
+  for (const f of sim.fish) {
+    const back = f.y - (f.halfH ?? 0) * f.scale;
+    if (back > SURFACE + WAKE_DEPTH || f.speed < 0.2) continue;
+    // Alternate the sign with the stroke so a wake ripples rather
+    // than pressing a trough that follows the fish.
+    const sign = f.phase & 4 ? 1 : -1;
+    disturbSurface(surface, f.x, sign * f.speed * WAKE_PUSH, 2);
+  }
+}
 function render(): void {
   if (backdropCv) {
     ctx.drawImage(backdropCv, 0, 0);
@@ -2113,29 +2176,32 @@ function render(): void {
                   TANK.height - 6 - d.height);
   }
 
-  drawLight(ctx, sim.light, sim.tickCount, waterMotion, nightFloor(lighting));
+  const floor = nightFloor(lighting);
+  drawLight(ctx, sim.light, sim.tickCount, waterMotion, floor);
 
   drawFood(ctx, sim.food);
   for (const f of sim.fish) drawFish(f);
 
-  drawAir(ctx);
-  drawBubbles(ctx, sim.bubbles);
+  // Ambient motion (swell, glint, shimmer) holds still under reduced
+  // motion; waves from splashes and taps still play out, like ripples.
+  const t = waterMotion === "animated" ? sim.tickCount : 0;
+  surfaceLine(surface, t, waterline);
+  drawRefraction(ctx, t);
+  // The lamp lights the air as brightly as the daylight in the water.
+  const sun = sunFactor(sim.light, floor);
+  drawAir(ctx, sun, waterline);
+  // The waterline divides feeding from tapping, so it brightens while
+  // a click would feed. Under the murk and night overlays, so it dims
+  // with the water instead of glowing at night.
+  drawSurface(ctx, waterline, sun, t, overFeedZone);
+  drawBubbles(ctx, sim.bubbles, waterline);
 
   // On the glass, so over the fish: ripples and splashes paint last.
   drawRipples(ctx, ripples);
   drawSplashes(ctx, splashes);
 
-  // The waterline divides feeding from tapping, so it brightens while
-  // a click would feed. Under the murk and night overlays, so it dims
-  // with the water instead of glowing at night.
-  if (overFeedZone) {
-    ctx.fillStyle = "rgba(255,255,255,0.45)";
-    ctx.fillRect(0, SURFACE, TANK.width, 1);
-  }
-
   // Fouled water murks the whole scene.
-  drawMurk(ctx, sim.waterQuality,
-           waterMotion === "animated" ? sim.tickCount : 0);
+  drawMurk(ctx, sim.waterQuality, t);
 
   drawNight(new Date());
 
@@ -2209,7 +2275,9 @@ function drawNight(now: Date): void {
 
 function tickSim(): void {
   const bubbles = sim.bubbles.length;
+  stirSurface();
   sim.tick();
+  tickSurface(surface);
   tickRipples(ripples);
   tickSplashes(splashes);
   // Sparse bloops: only some spawns make a sound. Checked per tick so

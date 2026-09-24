@@ -47,8 +47,9 @@ source](#build-from-source), which compiles for the Mac that runs the build.
 macOS remembers your choice; later launches open normally.
 
 A new tank starts with four stand-in fish, and Finsical offers to
-stock it with a starter set of Aquazone fish, a gravel, a plant and a
-background from the Internet Archive (about 1 MB). Choose **Not Now**
+stock it with a starter set of Aquazone fish, a gravel, a plant, a
+background and the game's sound effects from the Internet Archive
+(about 2 MB). Choose **Not Now**
 to keep the stand-ins; you can add the same things later from Import
 Add-ons.
 
@@ -148,10 +149,7 @@ up to 24 fish. The sections are:
 | Gravel | Gravel packs from both archive.org items |
 | Plants, Accessories | Meka Asia packs and the Japanese release's item library |
 | Backgrounds, Tanks | The Japanese release's backdrops and tank sets |
-| Sounds | Audio from the Japanese set's non-retail bonus bundle, such as its CD bonus track |
-
-The game's own sound effects are not on archive.org; drop your copy onto the
-tank or the Import Add-ons window to add them.
+| Sounds | The game's own sound effects (AZ_WAVES), and audio from the Japanese set's non-retail bonus bundle, such as its CD bonus track |
 
 You can also drag files from the Finder onto the tank:
 
@@ -159,7 +157,7 @@ You can also drag files from the Finder onto the tank:
 | --- | --- |
 | An `.azpack` folder (made by the [asset tools](#asset-tools)) | Its fish, art and sounds are imported |
 | Aquazone pack files: fish (`.fsh`), gravel (`.grv`), plants (`.plt`), accessories (`.acc`), tanks (`.azn`), or the base library (`.REZ`, fish and scenery) | Imported into their section and kept, so they come back at every launch |
-| Resource files with `snd ` resources: `.rsrc`, MacBinary `.bin`, BinHex `.hqx`, AppleDouble | Their sounds are imported and kept |
+| Resource files with `snd ` resources: `.rsrc`, MacBinary `.bin`, BinHex `.hqx`, AppleDouble, and the Windows game's sound bank `AZ_WAVES.REZ` | Their sounds are imported and kept |
 | Audio files: `.wav`, `.mp3`, `.aif`, `.aiff`, `.m4a`, `.ogg`, `.flac` | Imported as sounds and kept |
 
 Sound files over 32 MB are skipped. The Import Add-ons window accepts the
@@ -169,11 +167,34 @@ Installed archive.org add-ons come back at every launch. Remove fish and
 add-ons in Tank Overview, choose which installed gravel or background
 is on display with **Use**, or start over with **Empty Tank…**.
 
+## Sounds
+
+With the game's sound effects installed, the tank plays them when
+AquaZone did:
+
+| When | Sound |
+| --- | --- |
+| Always, under everything else | The filter's bubbling, on a loop (**Water ambience** in Preferences) |
+| The tank opens | The water sound, once per session. In a browser it waits for your first click. |
+| You feed the fish | Food dropping in |
+| You tap the glass | A knock that depends on where you tap: the middle, a side, the top or the bottom |
+| A fish goes in | A small splash |
+| A backdrop, gravel, plant or accessory goes in | A bigger splash |
+| You remove a fish | Water running out |
+| Change Water | The water change |
+| The lamp goes on or off | The light switch |
+
+The game has no sound for a single rising bubble. **Bubble sounds**
+plays one only if you add a short sound with "bubble" in its name.
+The rest of the set, for breeding, sickness, medicine, the filter,
+timers and the game's dialogs, has no matching feature in Finsical
+yet.
+
 ## Windows
 
 | Window | What it does |
 | --- | --- |
-| Preferences | **Machine**: the computer case around the tank (Macintosh Plus, Performa 450, 20th Anniversary Mac, iMac G3 and G4 variants, or a bare tank). **Monitor**: the CRT effect, presets and its picture tube sliders. **Picture**: the monitor's front-panel controls. **Lighting**: the day and night cycle, a light timer that follows your Mac's clock, or lights always on, and the lamp. **Sound**: volume, mute, and switches for bubble sounds and the water ambience. |
+| Preferences | **Machine**: the computer case around the tank (Macintosh Plus, Performa 450, 20th Anniversary Mac, iMac G3 and G4 variants, or a bare tank). **Monitor**: the CRT effect, presets and its picture tube sliders. **Picture**: the monitor's front-panel controls. **Lighting**: the day and night cycle, a light timer that follows your Mac's clock, or lights always on, and the lamp. **Sound**: volume, mute, and switches for bubble sounds and the water ambience (see [Sounds](#sounds)). |
 | Tank Overview | Everything in the tank as a sortable Name, Kind and Status list, with **Remove**, **Use** for scenery and **Empty Tank…** |
 | Import Add-ons | The archive.org add-on browser described above |
 | Tank Stats | Water quality and average hunger with recent history, the hungriest fish, fish and food counts, day or night, tank age, care hints, and **Change Water** |

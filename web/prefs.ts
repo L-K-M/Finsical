@@ -734,12 +734,13 @@ captioned({ label: "Mute", input: muteBox,
               "stays where it is for when you turn sound back on." },
           document.getElementById("pfmute")!);
 captioned({ label: "Bubble sounds", input: bubblesBox,
-            blurb: "An occasional soft bloop as bubbles rise through " +
-              "the water." },
+            blurb: "A soft bloop now and then as a bubble rises. The " +
+              "game's own sounds have none, so this plays a short " +
+              "bubble sound you add." },
           document.getElementById("pfbubbles")!);
 captioned({ label: "Water ambience", input: ambientBox,
-            blurb: "The quiet loop of running water that plays under " +
-              "everything else." },
+            blurb: "The filter's steady bubbling, looped under " +
+              "everything else as in the original game." },
           document.getElementById("pfambient")!);
 
 volInput.addEventListener("input", () =>

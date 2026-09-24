@@ -16,6 +16,17 @@
   and five water treatments) and a Time setting from real time to 100
   times faster. The filter is what aerates the water, as in the
   original.
+- The tank plays AquaZone's own sound effects. Finsical downloads the
+  game's 25 sounds (AZ_WAVES) from the Internet Archive: the first-run
+  starter set now includes them, and Import Add-ons lists them under
+  Sounds. They play when the original game played them. The filter's
+  bubbling loops under everything, and the game's water sound plays
+  once as the tank opens. Feeding, tapping the glass by where you tap,
+  a fish going in or out, scenery going in, Change Water and the lamp
+  switch each have their own sound. Dropping your copy of AZ_WAVES.REZ
+  on the tank works too. Water ambience now switches the bubbling;
+  Bubble sounds only plays a short bubble sound you add, since the game
+  has none for single bubbles.
 - Until your first pack lands, the stand-in fish are a pixel-art guppy
   with a wagging tail instead of a few rectangles.
 - Fish swim more calmly: they stroke and glide toward where they are
@@ -86,11 +97,16 @@
   on, whatever the Lighting setting: Tank > Lamp On (Cmd-L) in the
   app, the L key, or Lamp on in the Lighting pane. It is kept with the
   lighting settings, and Tank Stats says when the lamp is off.
-- The water comes alive. It ends at a surface line that catches the
-  light, with a strip of dark air above it instead of more background.
-  Bubbles wobble, grow as they rise and pop at the surface, and by day
-  sunlight slants through the water and ripples over the gravel (held
-  still if you prefer reduced motion). Feed Fish scatters a pinch of pellets, one per
+- The water comes alive. It ends at a surface that moves: food, new
+  fish, bubbles popping, knocks on the glass and fish cruising along
+  the top send waves along it that spread, bounce off the glass and
+  settle. A silvery band under the waterline catches the light, and
+  above it the back of the tank carries on behind dry air, dimmed and
+  drained of color, under the tank's top frame. Just under the surface the view
+  wavers, bubbles wobble, grow as they rise and pop where the surface
+  is, and by day sunlight slants through the water and shimmering
+  caustics ripple over the lower tank and the gravel (the swell and
+  shimmer hold still if you prefer reduced motion). Feed Fish scatters a pinch of pellets, one per
   hungry fish, around a spot on the surface; they drift as they sink
   instead of stacking in one column in the middle. Fouled water now
   turns visibly green-brown and murky, with debris drifting in it.
