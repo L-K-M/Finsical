@@ -298,6 +298,26 @@ describe("Sim", () => {
     expect(f.tx).toBe(300);
   });
 
+  it("a watcher that finds food doesn't roll back toward the pointer", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    // Facing right, a pellet ahead and the pointer behind it: the tick
+    // it spots the food it is still the pointer's watcher.
+    const f = sim.addFish({ x: 160, y: 100, facing: 1, heading: 0,
+                            hunger: 0.9 });
+    sim.notice = { x: 120, y: 100 };
+    const fd = sim.dropFood(250);
+    let rolled = false;
+    for (let i = 0; i < 300 && !fd.eaten; i++) {
+      sim.tick();
+      // Once the pellet is eaten, rolling toward a new target is fine.
+      rolled ||= f.state === "turn" && !fd.eaten;
+    }
+    // Before the fix it rolled back and forth 171 times in 2000 ticks
+    // and never reached the pellet; alone it eats it by tick 112.
+    expect(rolled).toBe(false);
+    expect(fd.eaten).toBe(true);
+  });
+
   it("fish lose their appetite in foul water", () => {
     const sim = new Sim({ width: 200, height: 100 }, 5);
     const f = sim.addFish({ x: 40, y: 50, hunger: 0.9 });
@@ -445,6 +465,24 @@ describe("Sim", () => {
     expect(ate).toBe(true);
     for (let i = 0; i < 100; i++) sim.tick();
     expect(f.state).toBe("sleep");
+  });
+
+  it("a big fish sleeps inside its room, not in the gravel", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    // Half-height 30: room() keeps its centre 24 px (0.8 of that) off
+    // the floor, above the sleep line 4 px over the gravel.
+    const f = sim.addFish({ x: 160, y: 60, cruise: 1.4, scale: 1,
+                            halfW: 40, halfH: 30 });
+    const bed = 200 - 30 * 0.8;
+    sim.setLight(1);
+    sim.tick(); // the tank has seen daylight
+    sim.setLight(CLOCK_NIGHT_LIGHT);
+    for (let i = 0; i < 900; i++) {
+      sim.tick();
+      expect(f.y).toBeLessThanOrEqual(bed);
+    }
+    expect(f.state).toBe("sleep");
+    expect(f.y).toBeCloseTo(bed, 9);
   });
 
   it("darts out of each decision — quadratic ramp capped at cruise", () => {
@@ -854,15 +892,15 @@ describe("Sim", () => {
   it("a fish startled into the glass bounces off it", () => {
     const sim = new Sim({ width: 300, height: 200 }, 9);
     const f = sim.addFish({ x: 22, y: 100, cruise: 1.5 });
-    sim.tap(36, 100); // scares it toward the left wall (MARGIN 16)
+    sim.tap(36, 100); // scares it toward the left wall
     expect(f.state).toBe("startle");
     let touched = false;
     for (let i = 0; i < 12; i++) {
       sim.tick();
-      touched ||= f.x <= 16;
+      touched ||= f.x <= MARGIN;
     }
     expect(touched).toBe(true);
-    expect(f.x).toBeGreaterThan(16 + 5);
+    expect(f.x).toBeGreaterThan(MARGIN + 5);
   });
 
   it("stops seeking when the water turns foul", () => {

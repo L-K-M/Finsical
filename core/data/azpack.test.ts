@@ -86,6 +86,17 @@ describe("decodeIndexedPng", () => {
     expect(inflate).not.toHaveBeenCalled();
   });
 
+  it("caps the scanline buffer, not just the pixel count", async () => {
+    // 1 x 2^26 is 2^26 pixels but 2^27 scanline bytes (a filter byte
+    // per row) — past the cap, so nothing is allocated or inflated.
+    const png = encodeIndexedPng(1, 1, new Uint8Array(1), PAL,
+                                 undefined, [1, 1 << 26]);
+    const inflate = vi.fn();
+    vi.stubGlobal("DecompressionStream", inflate);
+    await expect(decodeIndexedPng(png)).rejects.toThrow("png: image too large");
+    expect(inflate).not.toHaveBeenCalled();
+  });
+
   it("rejects pixel data longer than the declared image", async () => {
     const png = encodeIndexedPng(2, 1, new Uint8Array(2), PAL,
                                  undefined, [1, 1]);

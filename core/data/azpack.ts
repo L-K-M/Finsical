@@ -50,7 +50,9 @@ export interface IndexedImage {
 }
 
 const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-const MAX_PNG_PIXELS = 1 << 26;
+/** Cap on an image's inflated scanlines, h * (w + 1) bytes: the
+ * buffer decodeIndexedPng allocates before inflating. */
+const MAX_SCANLINE_BYTES = 1 << 26;
 const MAX_PALETTE_ENTRIES = 256;
 
 async function inflate(data: Uint8Array, expected: number): Promise<Uint8Array> {
@@ -140,7 +142,10 @@ export async function decodeIndexedPng(d: Uint8Array): Promise<IndexedImage> {
   }
   if (!w || !h || !idat.length) throw new Error("png: missing IHDR/IDAT");
   if (!palette.length) throw new Error("png: missing PLTE");
-  if (w * h > MAX_PNG_PIXELS) throw new Error("png: image too large");
+  // The scanline buffer, not just w * h: a filter byte per row makes a
+  // 1-px-wide image allocate twice its pixel count.
+  if (h * (w + 1) > MAX_SCANLINE_BYTES)
+    throw new Error("png: image too large");
   const zlen = idat.reduce((n, c) => n + c.length, 0);
   const z = new Uint8Array(zlen);
   let o = 0;

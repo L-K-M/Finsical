@@ -767,6 +767,8 @@ function fishThumb(f: Fish): string | null {
 /** A sheet's right-facing profile, box-filtered down to thumb size. */
 function thumbFrame(sheet: SpriteSheet): HTMLCanvasElement {
   const pose = restPose(sheet, 1);
+  // Cells hold the fish on its side (swimFrame rotates it upright), so
+  // the drawn width is cellH and the drawn height cellW.
   const s = Math.min(1, THUMB_W / sheet.meta.cellH, THUMB_H / sheet.meta.cellW);
   return swimCanvas(sheet, 0, pose.mir, pose.g, s);
 }
@@ -1573,8 +1575,10 @@ function sheetScale(sheet: SpriteSheet): number {
                   MAX_FISH_H / sheet.meta.cellW);
 }
 
-/** Report a fish's drawn half-extents to the sim, which keeps big
- * bodies inside the glass by them. Called wherever the fish's sheet can
+/** Report a fish's half-extents at full growth to the sim, which
+ * scales them by the fish's growth and keeps big bodies inside the
+ * glass by them. Cells hold the fish on its side, so cellH is its
+ * drawn width. Called wherever the fish's sheet can
  * change (spawn, a pack landing re-dealing round-robin sheets, restore
  * remaps) rather than while drawing, so no tick runs on stale extents
  * and a newly bound big fish doesn't snap inward on its next tick. */

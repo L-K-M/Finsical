@@ -201,7 +201,8 @@ const PELLET_SHADE = "#8a6a14";
 export function drawFood(ctx: CanvasRenderingContext2D,
                          food: readonly Food[]): void {
   for (const fd of food) {
-    // Rotting pellets dissolve: fade them out over their rot lifetime.
+    // Rotting pellets dissolve: they fade to about a third over their
+    // rot lifetime, staying visible (and findable) until removed.
     ctx.globalAlpha = 1 - 0.65 * Math.min(1, fd.settled / FOOD_ROT_TICKS);
     const x = Math.round(fd.x + pelletDrift(fd.x, fd.y));
     const y = Math.round(fd.y);
@@ -382,26 +383,29 @@ export function murkParams(q: number): MurkParams {
 
 let murkFill: CanvasGradient | null = null;
 
-/** Green-brown wash over the scene plus 1-px debris drifting in it. */
+/** Green-brown wash over the water plus 1-px debris drifting in it.
+ * The wash starts at the surface line (the air above stays clear) and
+ * reaches full thickness at the gravel line, then covers the gravel. */
 export function drawMurk(ctx: CanvasRenderingContext2D, quality: number,
                          tick: number): void {
   const m = murkParams(quality);
   if (m.strength <= 0.01) return;
   if (!murkFill) {
     // Built at unit strength; globalAlpha scales it to m.bottom.
-    murkFill = ctx.createLinearGradient(0, 0, 0, H);
+    murkFill = ctx.createLinearGradient(0, SURFACE, 0, H - BOTTOM_PAD);
     murkFill.addColorStop(0, `rgba(70,90,30,${MURK_TOP / MURK_BOTTOM})`);
     murkFill.addColorStop(1, "rgba(62,74,26,1)");
   }
   ctx.fillStyle = murkFill;
   ctx.globalAlpha = m.bottom;
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(0, SURFACE, W, H - SURFACE);
 
   const span = H - BOTTOM_PAD - SURFACE - 16;
   for (let i = 0; i < m.particles; i++) {
     const r = hash01(i), s = hash01(i + 97), k = hash01(i + 211);
-    const x = (r * W + tick * (0.03 + 0.06 * s) +
-               Math.sin(tick * 0.02 + i) * 3) % W;
+    // Wrap-safe: the sway can take a fresh tank's speck below 0.
+    const x = ((r * W + tick * (0.03 + 0.06 * s) +
+                Math.sin(tick * 0.02 + i) * 3) % W + W) % W;
     const y = SURFACE + 12 + s * span + Math.sin(tick * 0.013 + i * 2.3) * 5;
     ctx.fillStyle = k < 0.7 ? "#3a3a14" : "#8c8a4a";
     ctx.globalAlpha = 0.35 + 0.45 * m.strength;

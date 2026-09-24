@@ -515,7 +515,10 @@ export class Sim {
       // it just hovers there. The guard measures fish-to-pointer, not
       // fish-to-target: a fresh decide() re-rolls tx/ty, so `dist`
       // alone would re-pin a hovering fish to the cursor forever.
-      if (n && nd > standoff) {
+      // The watcher is picked before this tick's food check, so a fish
+      // that just found a pellet is still it: without `!food` a pointer
+      // behind it rolls it away from the pellet, every time it re-aims.
+      if (n && !food && nd > standoff) {
         // Aim just short of the pointer, on the fish's side of it, and
         // roll to face it: steering alone can't reverse, so a pointer
         // behind the fish would pin it at the pitch limit.
@@ -607,7 +610,8 @@ export class Sim {
           f.heading = wrapAngle(Math.PI - f.heading);
       }
       // Drift and seek keep their heading: mirroring it would swim the
-      // fish backwards. The early decision below rolls it around.
+      // fish backwards. Drift re-decides early below and rolls toward
+      // its new target; seek rolls when it re-aims at the pellet.
     }
     if (f.y < y0) {
       f.y = y0; hit = true;

@@ -40,8 +40,7 @@ export function soundIcon(): HTMLCanvasElement {
 }
 
 /** Rasterize an indexed image to a canvas. opaque=false makes index 0
- * transparent (sprite convention); opaque=true keeps every pixel. A
- * mask overrides both — 0 = transparent, 1 = opaque. */
+ * transparent (sprite convention); opaque=true keeps every pixel. */
 export function imageCanvas(img: IndexedImage,
                             opaque: boolean): HTMLCanvasElement {
   const cv = document.createElement("canvas");
