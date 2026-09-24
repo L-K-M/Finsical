@@ -277,6 +277,17 @@ export class Sim {
    * Read-only view: tick() owns the pick. */
   get noticeFish(): Fish | null { return this._noticeFish; }
   private _noticeFish: Fish | null = null;
+
+  /** The same condition decide() uses to send a fish begging at the
+   * surface: starving, and water clean enough to keep an appetite. */
+  isBegging(f: Fish): boolean {
+    return f.hunger > BEG_HUNGER && this.waterQuality > QUALITY_SEEK;
+  }
+
+  /** True while any fish is begging — the dinner-bell predicate. */
+  get anyBegging(): boolean {
+    return this.fish.some((f) => this.isBegging(f));
+  }
   private rand: () => number;
   private nextId = 0;
   /** Fish only bed down after the tank has seen daylight once — a
@@ -765,8 +776,7 @@ export class Sim {
     }
     // A starving fish begs where the food lands — while the water is
     // still clean enough to keep an appetite (the seek gate).
-    const begging =
-      f.hunger > BEG_HUNGER && this.waterQuality > QUALITY_SEEK;
+    const begging = this.isBegging(f);
     if (begging) f.bandY = Math.min(f.bandY, y0 + BAND_HALF);
     // Gasping: foul water shrinks the usable depth toward the surface,
     // so fish hang just under it until filtration recovers. A little
