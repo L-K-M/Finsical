@@ -453,10 +453,13 @@ describe("TankAudio event sounds", () => {
     expect(played(ac)).toEqual([5]);
   });
 
-  // Every name the original game's sound bank ships (sndbank.ts)
-  // resolves to its own event — none sits past SUBSTRING_SLACK of its
-  // needle. A future bank name that did would go silently unheard.
-  it("reaches every 'snd ' bank name through its event", async () => {
+  // The original game's sound bank ships these names (sndbank.ts) —
+  // the ones TankAudio has events for each resolve through their own
+  // event, and the unexercised ones prove nothing hijacks a needle
+  // from outside its family. A future bank name that drifted past
+  // SUBSTRING_SLACK of its needle would go silently unheard.
+  it("reaches each exercised 'snd ' bank name through its event",
+     async () => {
     const { audio, ac } = await tank({
       "CENTER*": 1, SIDE: 2, "TOP*": 3, "BOTTOM*": 4, Drop: 5,
       IntoWater: 6, ChangeWater: 7, Switch: 8, IntoWaterBig: 9,
