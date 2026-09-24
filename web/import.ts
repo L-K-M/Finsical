@@ -126,11 +126,17 @@ export interface Importable {
  * decor on relaunch. */
 export const DECOR_COPIES_MAX = 16;
 
+/** The single clamp for decor copy counts — persisted records and
+ * live Add Again clicks both pass through it, so session state can
+ * never grow past what a save can restore. */
+export function clampDecorCopies(n: unknown): number {
+  return Number.isInteger(n)
+    ? Math.min(DECOR_COPIES_MAX, Math.max(1, n as number)) : 1;
+}
+
 /** The persisted copy count, clamped to sanity (storage is untrusted). */
 function decorCopies(it: Importable): number {
-  const n = it.copies;
-  return Number.isInteger(n) ? Math.min(DECOR_COPIES_MAX,
-                                        Math.max(1, n!)) : 1;
+  return clampDecorCopies(it.copies);
 }
 
 /** Raw zip bytes, memoized by URL and persisted in IndexedDB — nested
