@@ -140,7 +140,7 @@ export function summaryText(st: TankStats): string {
       (st.foodSettled ? `, ${st.foodSettled} rotting` : "")
     : "none";
   const lines = [
-    `Tank Stats — ${fish}; water ${st.waterPct}%; ${hunger}; ` +
+    `Tank Stats — ${fish}; water ${Math.round(st.waterPct)}%; ${hunger}; ` +
       `up ${uptime(st.uptimeMin)}`,
     `Hungriest: ${st.hungriest
       ? `${st.hungriest.name} — ${hungerLabel(st.hungriest.hunger)}`

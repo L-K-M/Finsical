@@ -175,26 +175,33 @@ pushButton(document.getElementById("schange") as HTMLButtonElement,
 const copyBtn = document.getElementById("scopy") as HTMLButtonElement;
 pushButton(copyBtn, () => {
   const st = lastStats;
-  if (!st) return;
-  const done = (ok: boolean): void => {
-    copyBtn.textContent = ok ? "Copied!" : "Copy failed";
+  const done = (label: string): void => {
+    copyBtn.textContent = label;
     setTimeout(() => { copyBtn.textContent = "Copy Summary"; }, 1500);
   };
-  navigator.clipboard.writeText(summaryText(st))
-    .then(() => done(true))
-    .catch(() => {
-      // Older WebKit without the async clipboard API: the textarea +
-      // execCommand fallback still works there.
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = summaryText(st);
-        ta.style.cssText = "position:fixed;opacity:0";
-        document.body.appendChild(ta);
-        ta.select();
-        done(document.execCommand("copy"));
-        ta.remove();
-      } catch { done(false); }
-    });
+  if (!st) { done("No data yet"); return; }
+  const text = summaryText(st);
+  // Older WebKit and non-secure (plain-http) contexts have no async
+  // clipboard API at all — the textarea + execCommand fallback covers
+  // them, and also catches writeText rejections (denied permission).
+  const fallback = (): void => {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;opacity:0";
+    document.body.appendChild(ta);
+    try {
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length); // older iOS
+      done(document.execCommand("copy") ? "Copied!" : "Copy failed");
+    } catch { done("Copy failed"); }
+    finally { ta.remove(); }
+  };
+  if (typeof navigator.clipboard?.writeText === "function")
+    navigator.clipboard.writeText(text)
+      .then(() => done("Copied!"))
+      .catch(fallback);
+  else fallback();
 });
 
 // Ungated on `greeted`: if the tank tab opens after the greet retries
