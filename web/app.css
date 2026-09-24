@@ -284,6 +284,13 @@ body.crt canvas#tank { opacity: 0; }
   padding: 2px 6px; font: var(--osm-font-small); color: #000;
 }
 
+/* Zen mode (Tank ▸ Zen Mode, or bare Z): every piece of chrome hides;
+   the tank and its sounds keep running. !important beats the inline
+   display the tip and trigger set on themselves. */
+body.zen #menubar, body.zen #fishtip, body.zen #opentrigger {
+  display: none !important;
+}
+
 /* ---- the add-on browser (web/import.ts) ----------------------------------
    Laid out like the Chooser: Show: pop-up across the top, the section's
    add-ons in a list on the left, the chosen one's preview and details on
