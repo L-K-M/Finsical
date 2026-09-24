@@ -687,6 +687,27 @@ export function loadProblem(e: unknown): string {
   return "Check the connection and try again.";
 }
 
+/** True when a failure could be a transient download hiccup — HTTP
+ * statuses, short/empty bodies and network/timeout errors. Decode and
+ * validation failures recur identically on retry, so the panel must
+ * not offer Try Again for them. */
+export function transientFailure(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /: \d{3}$/.test(msg) || /: (empty|entry missing)$/.test(msg) ||
+         /abort|failed to fetch|networkerror|load failed|timeout/i.test(msg);
+}
+
+/** One user-facing line for a failed install: archive.org fetch
+ * errors go through loadProblem; errors the tank raised itself
+ * (cancelled installs, decode failures, refusals) already read as
+ * plain prose and pass through. */
+export function installProblem(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  return transientFailure(msg) || msg === "no pack inside"
+    ? loadProblem(msg)
+    : msg;
+}
+
 export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     { open(): void; close(): void; readonly isOpen: boolean;
       /** Resolves to the add-ons that failed to restore. */
@@ -789,6 +810,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   // One button carries the browser's next step: add the shown add-on,
   // add it again, or retry whatever failed.
   let addAction: (() => void) | null = null;
+  // A double-click on a row whose detail is still fetching: the add
+  // fires as soon as the fetch lands and offers an action.
+  let dblAdd = false;
   function setAdd(title: string, action: (() => void) | null): void {
     addAction = action;
     add.disabled = !action;
@@ -847,6 +871,15 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     onSelect: (i) => {
       const it = rows[i];
       if (it) showDetail(it); else clearDetail();
+    },
+    // Chooser convention: double-click installs the add-on. While its
+    // detail is still fetching there's no action yet — queue the add
+    // and fire it when the fetch lands and offers one.
+    onOpen: (i) => {
+      const it = rows[i];
+      if (!it || detailRef?.url !== it.url) return;
+      if (addAction) addAction();
+      else dblAdd = true;
     },
   });
 
@@ -981,6 +1014,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     releaseSound();
     pending = null;
     offer = null;
+    dblAdd = false;
     shownPreview = null;
     pvBox.textContent = "";
     dname.textContent = it.inner;
@@ -1065,11 +1099,21 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         setAdd(again ? "Add Again" : "Add to Tank", () => addIt(again));
       };
       offer();
+      // The row was double-clicked while the detail fetched — the
+      // offered action is what that click meant.
+      if (dblAdd) { dblAdd = false; addAction?.(); }
     }).catch((e) => {
       if (detailRef !== ref) return;
+      dblAdd = false;
       console.warn(`add-on ${it.inner} failed to load:`, e);
-      status.textContent = `Couldn't load it. ${loadProblem(e)}`;
-      setAdd("Try Again", () => showDetail(it));
+      // installProblem, not loadProblem: a deterministic failure keeps
+      // the tank's own message instead of "try again" beside a disabled
+      // Try Again button.
+      status.textContent = `Couldn't load it. ${installProblem(e)}`;
+      // A decode or validation failure recurs identically — retrying
+      // only repeats the same dead end, so the button stays off.
+      setAdd("Try Again", transientFailure(e) ? () => showDetail(it)
+                                              : null);
     });
   }
 
@@ -1351,6 +1395,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       byUrl.clear();
       for (const it of items) byUrl.set(it.url, it);
       sections = [...new Set(items.map((x) => x.section))];
+      // Archive order scatters near-identical names across the list —
+      // show each section alphabetically like a Finder window would.
+      all.sort((a, b) =>
+        a.inner.localeCompare(b.inner, undefined, { sensitivity: "base" }));
       let start = sections[0]!;
       try {
         const saved = localStorage.getItem(SECTION_KEY);

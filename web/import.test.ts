@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { browserGeometry, importAddon, listAddons, loadProblem,
+import { browserGeometry, importAddon, installProblem, listAddons,
+         loadProblem, transientFailure,
          isListed, orphanedSounds, qualifySoundItemName, recordAddon }
   from "./import.js";
 import type { Importable } from "./import.js";
@@ -257,5 +258,41 @@ describe("loadProblem", () => {
   it("falls back to the connection for network failures", () => {
     expect(loadProblem(new TypeError("Failed to fetch")))
       .toBe("Check the connection and try again.");
+  });
+});
+
+describe("transientFailure", () => {
+  it("treats HTTP, empty, missing-entry and network errors as retriable", () => {
+    expect(transientFailure(new Error("https://a/b.zip: 503"))).toBe(true);
+    expect(transientFailure(new Error("https://a/b.zip: empty"))).toBe(true);
+    expect(transientFailure(new Error("https://a/b.zip: entry missing")))
+      .toBe(true);
+    expect(transientFailure(new TypeError("Failed to fetch"))).toBe(true);
+    expect(transientFailure(new Error("The user aborted a request.")))
+      .toBe(true);
+  });
+  it("treats decode and validation failures as final", () => {
+    expect(transientFailure(new Error("no pack inside"))).toBe(false);
+    expect(transientFailure(new Error("png: bad signature"))).toBe(false);
+    expect(transientFailure(new Error("bad pack format 9"))).toBe(false);
+  });
+});
+
+describe("installProblem", () => {
+  it("explains archive.org failures in one line", () => {
+    expect(installProblem(new Error(
+      "https://archive.org/download/x/y.zip: 404")))
+      .toBe("archive.org answered with error 404.");
+    expect(installProblem(new Error("no pack inside")))
+      .toBe("The download has no add-on in it.");
+  });
+  it("passes the tank's own messages through untouched", () => {
+    expect(installProblem(
+      new Error("cancelled — the tank was emptied mid-install")))
+      .toBe("cancelled — the tank was emptied mid-install");
+    expect(installProblem(new Error("png: bad signature")))
+      .toBe("png: bad signature");
+    expect(installProblem("The tank already has 12 fish."))
+      .toBe("The tank already has 12 fish.");
   });
 });

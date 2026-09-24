@@ -20,8 +20,8 @@ import { alertOpen, showAlert } from "./alert.js";
 import { recentTaps, shouldScold } from "./scold.js";
 import { backfillStarterSounds, showWelcome, wantsWelcome }
   from "./welcome.js";
-import { fetchAddon, mountImportPanel, orphanedSounds, recordAddon,
-         qualifySoundItemName, isListed, COLLECTIONS }
+import { fetchAddon, installProblem, mountImportPanel, orphanedSounds,
+         recordAddon, qualifySoundItemName, isListed, COLLECTIONS }
   from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
@@ -1209,7 +1209,10 @@ function installAddon(it: Importable, again: boolean): Promise<void> {
     importPanel.notify({ op: "installed", url: it.url });
     bus.post({ op: "installed", url: it.url });
   }, (e: unknown) => {
-    bus.post({ op: "installFailed", url: it.url, error: String(e) });
+    // String(e) would ship "Error: https://archive.org/…long-url…: 404"
+    // to the panel's status line — send the one-line explanation.
+    bus.post({ op: "installFailed", url: it.url,
+               error: installProblem(e) });
     throw e;
   }).finally(() => installsInFlight.delete(it.url));
   installsInFlight.set(it.url, run);
