@@ -26,8 +26,8 @@ const SWAY_RATE = (Math.PI * 2) / SWAY_PERIOD_TICKS;
 export function swayOffset(tick: number, phase: number,
                            frac: number): number {
   const lift = 1 - Math.min(Math.max(frac, 0), 1);
-  // `|| 0` folds Math.round's -0 back to +0 — and any NaN (e.g. a
-  // zero-height image) to 0 — so offsets stay plain ints.
+  // `|| 0` folds Math.round's -0 back to +0 — and any NaN to 0 — so
+  // offsets stay plain ints.
   return Math.round(SWAY_AMP * lift * lift *
                     Math.sin(tick * SWAY_RATE + phase * Math.PI * 2)) || 0;
 }

@@ -5,6 +5,9 @@ describe("swayOffset", () => {
   it("keeps the root planted and lets the tip swing", () => {
     for (let t = 0; t < 600; t += 7) {
       expect(swayOffset(t, 0.3, 1)).toBe(0); // root never moves
+      expect(swayOffset(t, 0.3, 2)).toBe(0); // frac clamps at the root
+      expect(swayOffset(t, 0.3, -0.5))
+        .toBe(swayOffset(t, 0.3, 0)); // frac clamps at the tip
       expect(Math.abs(swayOffset(t, 0.3, 0)))
         .toBeLessThanOrEqual(Math.ceil(SWAY_AMP));
     }
@@ -20,8 +23,8 @@ describe("swayOffset", () => {
   });
 
   it("offsets decrease monotonically from tip to root at the peak", () => {
-    // sin hits +1 near t = 67.5 (a quarter cycle at phase 0).
-    const t = 68;
+    // sin hits +1 a quarter cycle in (phase 0).
+    const t = Math.round(SWAY_PERIOD_TICKS / 4);
     expect(swayOffset(t, 0, 0)).toBe(2);   // tip at peak ≈ SWAY_AMP
     expect(swayOffset(t, 0, 0.5)).toBe(1); // quarter lift ≈ 0.6 → 1
     expect(swayOffset(t, 0, 1)).toBe(0);
