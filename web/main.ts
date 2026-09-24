@@ -1251,7 +1251,7 @@ function feedFish(): void {
 /** Lamp switch: off holds the tank at night, on hands it back to the
  * Lighting mode. Persisted with the lighting settings. */
 function toggleLights(): void {
-  audio.unlock(); // Tank > Toggle Lights can be the first gesture
+  audio.unlock(); // Tank > Lamp On can be the first gesture
   applyLighting({ lamp: !lighting.lamp });
 }
 (window as unknown as { finsical?: unknown }).finsical =

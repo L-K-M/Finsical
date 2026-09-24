@@ -398,12 +398,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 OsmiumWindowHost.drag(window, firstResponder: webView)
                 return
             }
-            // The live CRT state (off when GL is unavailable) for the
-            // CRT Effect checkmark. Falls through like the machine.
+            // The live CRT, lamp and sound state for the Tank menu's
+            // checkmarks (CRT off and unavailable without GL). Falls
+            // through like the machine.
             if body["op"] as? String == "state",
-               message.webView === webView,
-               let crt = body["crt"] as? [String: Any] {
-                crtOn = crt["on"] as? Bool == true
+               message.webView === webView {
+                if let crt = body["crt"] as? [String: Any] {
+                    crtOn = crt["on"] as? Bool == true
+                    crtAvailable = crt["available"] as? Bool == true
+                }
+                if let lighting = body["lighting"] as? [String: Any] {
+                    lampOn = lighting["lamp"] as? Bool != false
+                }
+                if let sound = body["sound"] as? [String: Any] {
+                    soundMuted = sound["muted"] as? Bool == true
+                }
             }
             // Tank state carries the machine's viewBox aspect —
             // retune the frame to the case outline. Falls through:
@@ -540,8 +549,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
     }
 
-    /// The tank's live CRT state, from its last state push.
+    /// The tank's live CRT, lamp and sound state, from its last state
+    /// push. Until the first push the CRT item stays disabled.
     private var crtOn = false
+    private var crtAvailable = false
+    private var lampOn = true
+    private var soundMuted = false
 
     /// UserDefaults keys for the tank's Window-menu toggles. Both
     /// default on, which is how the tank behaved before they existed.
@@ -572,13 +585,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         for hw in host.windows { hw.window?.level = window.level }
     }
 
-    /// Checkmarks for the toggles. Every other item of ours is always
-    /// enabled.
+    /// Checkmarks for the toggles. CRT Effect is disabled where the
+    /// tank has no WebGL; every other item of ours is always enabled.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         let defaults = UserDefaults.standard
         switch menuItem.action {
         case #selector(toggleCrt):
             menuItem.state = crtOn ? .on : .off
+            return crtAvailable
+        case #selector(toggleLights):
+            menuItem.state = lampOn ? .on : .off
+        case #selector(toggleMute):
+            menuItem.state = soundMuted ? .on : .off
         case #selector(toggleFloat):
             menuItem.state = defaults.bool(forKey: WindowPref.float)
                 ? .on : .off
@@ -760,7 +778,7 @@ enum FinsicalApp {
         tankMenu.addItem(withTitle: "CRT Effect",
                          action: #selector(AppDelegate.toggleCrt),
                          keyEquivalent: "r")
-        tankMenu.addItem(withTitle: "Toggle Lights",
+        tankMenu.addItem(withTitle: "Lamp On",
                          action: #selector(AppDelegate.toggleLights),
                          keyEquivalent: "l")
         let muteItem = tankMenu.addItem(withTitle: "Mute Sound",
