@@ -45,6 +45,7 @@ uniform float uVSize; // raster height pot (0.5 = neutral)
 uniform float uRed;   // per-channel gain trims
 uniform float uGreen;
 uniform float uBlue;
+uniform float uPower; // 1 = settled; <1 = power-on warm-up in progress
 
 vec3 gamePx(vec2 lp) {
   vec2 t = clamp(lp, vec2(0.5), uTank - 0.5) / uTank;
@@ -70,6 +71,17 @@ void main() {
   // bows with the tube. 0.75–1.25 is a service-adjustment range.
   uv = (uv - 0.5) / vec2(0.75 + 0.5 * uHSize,
                          0.75 + 0.5 * uVSize) + 0.5;
+  // Power-on: a real tube lights as a bright line at the vertical
+  // center that opens into the full raster. Pixels outside the
+  // opening band stay black; inside it the whole raster squeezes in.
+  if (uPower < 1.0) {
+    float sq = max(pow(uPower, 0.55), 0.015);
+    if (abs(uv.y - 0.5) > sq * 0.5) {
+      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+      return;
+    }
+    uv.y = (uv.y - 0.5) / sq + 0.5;
+  }
   // Barrel curve: sample positions bow outward like curved tube glass.
   vec2 cc = uv * 2.0 - 1.0;
   uv = (cc * (1.0 + (0.10 * uCurve) * dot(cc, cc))) * 0.5 + 0.5;
@@ -139,6 +151,11 @@ void main() {
   c = (c - 0.40) * (0.55 + 0.90 * uContr) + 0.40;
   c *= 0.5 + uBright;
   c *= vec3(0.6 + 0.8 * uRed, 0.6 + 0.8 * uGreen, 0.6 + 0.8 * uBlue);
+  // The collapsed line burns hot and settles as the raster opens:
+  // the boost tracks openness, so total emitted light stays roughly
+  // constant through warm-up instead of flashing mid-animation.
+  float open = (uPower >= 1.0) ? 1.0 : max(pow(uPower, 0.55), 0.015);
+  c *= 1.0 + 2.0 * (1.0 - open);
 
   gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
 }
@@ -283,7 +300,9 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   const uTank = gl.getUniformLocation(prog, "uTank");
   const uRect = gl.getUniformLocation(prog, "uRect");
   const uTime = gl.getUniformLocation(prog, "uTime");
+  const uPower = gl.getUniformLocation(prog, "uPower");
   gl.uniform2f(uTank, src.width, src.height);
+  gl.uniform1f(uPower, 1);
 
   // Trait uniforms — config keys pair with shader names.
   const TRAIT_UNIFORMS: Record<keyof CrtConfig, string> = {
@@ -335,6 +354,16 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     gl.viewport(0, 0, w, h);
   }
 
+  // Power-on warm-up: ~0.45 s of the raster opening from a bright
+  // center line, replayed on every enable. Skipped when the user asks
+  // for reduced motion.
+  const POWERON_MS = 450;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  // -Infinity reads as "already settled" until the first enable —
+  // 0 would mean page-load time and could play a stray warm-up if a
+  // frame draws before setEnabled(true) is ever called.
+  let powerT0 = -Infinity;
+
   return {
     get enabled() { return enabled; },
     get usable() { return !lost; },
@@ -345,7 +374,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       if (on && lost) return; // dead context — stay on the plain path
       enabled = on;
       document.body.classList.toggle("crt", on);
-      if (on) resize();
+      if (on) { powerT0 = performance.now(); resize(); }
     },
     configure(p: Partial<CrtConfig>): void {
       // Merge onto the current config, then sanitize: unknown keys
@@ -367,6 +396,8 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       // Bound the clock: mediump floats lose sin() precision fast once
       // uTime*61 grows — wrap every 100s (flicker is noise-like anyway).
       gl.uniform1f(uTime, (performance.now() / 1000) % 100);
+      gl.uniform1f(uPower, reducedMotion.matches ? 1 :
+        Math.min(1, (performance.now() - powerT0) / POWERON_MS));
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA,
         gl.UNSIGNED_BYTE, src);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
