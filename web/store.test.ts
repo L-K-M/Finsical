@@ -65,7 +65,7 @@ describe("sndsMergeInto", () => {
 
   it("rejects when the write resolves falsy", async () => {
     await expect(sndsMergeInto(async () => null,
-                               async () => null,
+                               async () => false,
                                [rec("x", 4)])).rejects.toThrow();
   });
 
