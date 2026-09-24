@@ -274,6 +274,12 @@ export class Sim {
   readonly fish: Fish[] = [];
   readonly food: Food[] = [];
   readonly bubbles: Bubble[] = [];
+  /** Spawn a bubble at a point — the view emits these for decor
+   * (plants oxygenating); the lifecycle (rise, surface pop) is the
+   * same as a gravel bubble's. */
+  spawnBubble(x: number, y: number): void {
+    this.bubbles.push({ x, y });
+  }
   tickCount = 0;
   /** 1 = clean, 0 = foul. Rotted food fouls it; filtration recovers it. */
   waterQuality = 1;

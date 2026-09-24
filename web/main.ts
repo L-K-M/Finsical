@@ -731,6 +731,11 @@ function addDecor(images: Iterable<IndexedImage>, src: string,
   decors.push({ frames, phase: decorPhase(src, copy, frames.length),
                 sway: decorPhaseFrac(src, copy), pack: src, plant });
 }
+/** The floor anchor a decor piece centers on — shared by the renderer
+ * and the plant-bubble emitter so the two can't drift apart. */
+function decorAnchor(i: number, dn: number): number {
+  return TANK.width * (i + 0.5) / dn;
+}
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
 let nextSlot = 0;
@@ -2387,7 +2392,7 @@ function render(): void {
     const { frames, phase, sway: swayPh } = decors[i]!;
     const d = frames[decorFrame(sim.tickCount, frames.length, phase)]!;
     const x = Math.min(Math.max(
-        Math.round(TANK.width * (i + 0.5) / dn - d.width / 2), 0),
+        Math.round(decorAnchor(i, dn) - d.width / 2), 0),
       Math.max(0, TANK.width - d.width));
     const y = TANK.height - 6 - d.height;
     if (!sway) { ctx.drawImage(d, x, y); continue; }
@@ -2563,7 +2568,6 @@ function drawNight(now: Date): void {
   ctx.restore();
 }
 
-<<<<<<< HEAD
 // ---- the cat ------------------------------------------------------------
 // AquaZone's signature visitor: a paw drops from the top edge every few
 // minutes, bats at the glass a couple of times, and leaves. Tick-driven,
@@ -2627,7 +2631,6 @@ function tickSim(): void {
   const bubbles = sim.bubbles.length;
   stirSurface();
   sim.tick();
-<<<<<<< HEAD
   // Lifecycle: each transition rings its original event sound. A birth
   // also binds the fry's sprite extents and splashes it in.
   let rosterChanged = false;
@@ -2665,11 +2668,9 @@ function tickSim(): void {
     for (let i = 0; i < decors.length; i++) {
       const d = decors[i]!;
       if (!d.plant || Math.random() >= PLANT_BUBBLE) continue;
-      const ax = TANK.width * (i + 0.5) / decors.length; // render's anchor
-      sim.bubbles.push({
-        x: ax + (Math.random() - 0.5) * 6,
-        y: TANK.height - 6 - d.frames[0]!.height * 0.7,
-      });
+      sim.spawnBubble(
+        decorAnchor(i, decors.length) + (Math.random() - 0.5) * 6,
+        TANK.height - 6 - d.frames[0]!.height * 0.7);
     }
   tickSurface(surface);
   pawTick();
