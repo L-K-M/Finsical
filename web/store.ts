@@ -72,9 +72,14 @@ function rw<T>(store: string, mode: IDBTransactionMode,
         // A read that found something counts as stored data too —
         // read-mostly sessions deserve the eviction grant the same as
         // writers (the ask still never precedes a populated store).
+        // Empty enumerations prove nothing: getAll/getAllKeys resolve
+        // to [] and count() to 0 on an empty store.
         tx.oncomplete = () => {
-          if (mode === "readonly" && rq.result != null) askPersist();
-          res(rq.result ?? null); // get-miss → null
+          const v = rq.result;
+          const found = v != null &&
+            (Array.isArray(v) ? v.length > 0 : v !== 0);
+          if (mode === "readonly" && found) askPersist();
+          res(v ?? null); // get-miss → null
         };
         rq.onerror = () => res(null);
         tx.onerror = tx.onabort = () => res(null);
