@@ -287,7 +287,9 @@ export function drawBoot(ctx: CanvasRenderingContext2D, phase: BootPhase,
   for (let i = 0; i < icons.length; i++) {
     const s = paradeSlot(i);
     // Slots are laid out for a 320x200 tank; never paint outside.
-    if (s.x + 32 > w || s.y + 32 > h) break;
+    // Rows stack upward — also stop below the welcome box so a tall
+    // parade can't scribble over it or clip off the top edge.
+    if (s.x + 32 > w || s.y + 32 > h || s.y < by + 18) break;
     blit(ctx, icons[i]!, s.x, s.y, 2);
   }
 }
