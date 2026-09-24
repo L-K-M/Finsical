@@ -259,15 +259,19 @@ function describe(spec: SliderSpec | LightSpec | SoundItem | null,
       return;
     }
   }
+  // `pane` is a closed PaneId union and PANES covers every pane, so
+  // this lookup cannot miss; both hint paths below share it. Only the
+  // Monitor and Picture panes mount "key" sliders, both define offHint,
+  // and syncEnabled dims exactly those sliders while off — onBox is the
+  // switch they depend on, not some other pane's.
+  const p = PANES.find((x) => x.id === pane)!;
   if (!spec) {
-    const p = PANES.find((x) => x.id === pane)!;
     descEl.textContent = !onBox.checked && p.offHint ? p.offHint : p.hint;
     return;
   }
   // A dimmed tube slider explains the switch instead of showing a
   // value that cannot apply (tubeCaption pins the wording).
   if ("key" in spec) {
-    const p = PANES.find((x) => x.id === pane)!;
     const c = tubeCaption({
       label: spec.label,
       valueText: (spec.fmt ?? pct)(cfg[spec.key]),

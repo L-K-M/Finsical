@@ -22,7 +22,9 @@ export interface Caption {
 }
 
 export function tubeCaption(t: TubeCaption): Caption {
-  if (!t.crtOn && t.offHint !== undefined)
+  // Truthy check, like the checkbox branch in describe: an empty off
+  // hint means no off hint, and the value shows as usual.
+  if (!t.crtOn && t.offHint)
     return { label: "", tail: t.offHint };
   return { label: `${t.label}: ${t.valueText}`, tail: ` — ${t.blurb}` };
 }

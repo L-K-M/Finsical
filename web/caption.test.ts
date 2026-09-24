@@ -22,4 +22,11 @@ describe("tubeCaption", () => {
       crtOn: false,
     })).toEqual({ label: "Scanlines: 42%", tail: " — Dark gaps." });
   });
+
+  it("treats an empty off hint as no off hint", () => {
+    expect(tubeCaption({
+      label: "Scanlines", valueText: "42%", blurb: "Dark gaps.",
+      offHint: "", crtOn: false,
+    })).toEqual({ label: "Scanlines: 42%", tail: " — Dark gaps." });
+  });
 });
