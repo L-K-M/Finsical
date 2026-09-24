@@ -96,7 +96,7 @@ describe("machine silhouettes", () => {
     // layoutMachine pads #screenback past the hole so a few px of
     // translucent glass rim past the measured aperture still has black
     // behind it. The pad must land on opaque art; per the art audit
-    // every hole keeps >= 46px to the nearest see-through pixel. This
+    // every hole keeps >= 44px to the nearest see-through pixel. This
     // test can't measure that, so it pins the weaker invariant: the
     // hole stays pad + 8 slack inside the viewBox.
     for (const m of MACHINES) {

@@ -21,7 +21,7 @@ export interface ShapeRect {
 /** How far #screenback extends past `hole`, in viewBox units — covers
  * a few px of translucent glass rim that can outrun the measured
  * aperture. Must stay under every machine's clearance to the nearest
- * see-through pixel (>= 46px as of the current art). */
+ * see-through pixel (>= 44px as of the current art). */
 export const SCREENBACK_HOLE_PAD = 32;
 
 export interface Machine {
@@ -211,6 +211,28 @@ const flowerPower2: Machine = {
   svg: "",
 };
 
+const powerbookG3: Machine = {
+  id: "powerbook-g3", name: "PowerBook G3",
+  blurb: "The black PowerPC notebook.",
+  vbW: 1072, vbH: 994,
+  hole: { x: 317, y: 60, w: 705, h: 499, r: 0 },
+  sx: 317, sy: 89, sw: 705, sh: 441,
+  image: "assets/powerbook-g3.png",
+  shape: [{ x: 0, y: 0, w: 1072, h: 994, r: 0 }],
+  svg: "",
+};
+
+const ibook: Machine = {
+  id: "ibook-tangerine", name: "iBook (Tangerine)",
+  blurb: "The orange clamshell.",
+  vbW: 1284, vbH: 1161,
+  hole: { x: 423, y: 120, w: 714, h: 495, r: 0 },
+  sx: 423, sy: 144, sw: 714, sh: 446,
+  image: "assets/ibook-tangerine.png",
+  shape: [{ x: 0, y: 0, w: 1284, h: 1161, r: 0 }],
+  svg: "",
+};
+
 const imacg4: Machine = {
   id: "imacg4", name: "iMac G4",
   blurb: "The sunflower — dome base, chrome arm, floating panel.",
@@ -232,7 +254,7 @@ const bare: Machine = {
 
 export const MACHINES: readonly Machine[] =
   [plus, performa, tam, bondi, bondi2, strawberry, strawberry2,
-   flowerPower, flowerPower2, imacg4, bare];
+   flowerPower, flowerPower2, powerbookG3, ibook, imacg4, bare];
 export const DEFAULT_MACHINE = "plus";
 export function machineById(id: string): Machine | undefined {
   return MACHINES.find((m) => m.id === id);

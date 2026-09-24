@@ -1396,7 +1396,7 @@ function layoutMachine(): void {
       // Pad past the measured aperture: the art's translucent glass rim
       // can run a few px outside it and would otherwise leak the
       // desktop. The overshoot hides behind the opaque bezel — every
-      // machine keeps >= 46px of opaque art around its hole.
+      // machine keeps >= 44px of opaque art around its hole.
       const pad = SCREENBACK_HOLE_PAD;
       backEl.style.left = `${ox + (hole.x - pad) * s}px`;
       backEl.style.top = `${oy + (hole.y - pad) * s}px`;
