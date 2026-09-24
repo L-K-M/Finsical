@@ -296,7 +296,7 @@ canvas.addEventListener("pointerdown", (e) => {
   }
   if (isFeedZoneY(p.y)) {
     const pellet = sim.dropFood(p.x);
-    audio.feed(panFor(p.x, TANK.width));
+    audio.feed(panFor(pellet.x, TANK.width)); // dropFood clamps to the walls
     splashAt(pellet.x, pellet.y, PUSH.pellet);
   } else {
     sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
