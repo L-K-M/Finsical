@@ -453,6 +453,23 @@ describe("soundsFromRsrc", () => {
 });
 
 describe("fileSoundRecords", () => {
+  it("reads a fork whose data starts at 64 KB, which looks like a pack",
+     () => {
+    // Bytes 00 01 00 00 up front read as a 9003 pack's 0x100.
+    const fork = buildRsrc(new Map([["snd ", [[7, "Drop", 0,
+      sndFmt1U8(new Uint8Array(32).fill(0x80))]]]]));
+    const v = new DataView(fork.buffer);
+    const dataLen = v.getUint32(8), mapLen = v.getUint32(12);
+    const moved = new Uint8Array(0x10000 + dataLen + mapLen);
+    const mv = new DataView(moved.buffer);
+    mv.setUint32(0, 0x10000); mv.setUint32(4, 0x10000 + dataLen);
+    mv.setUint32(8, dataLen); mv.setUint32(12, mapLen);
+    moved.set(fork.subarray(256, 256 + dataLen), 0x10000);
+    moved.set(fork.subarray(256 + dataLen), 0x10000 + dataLen);
+    expect(fileSoundRecords("AQUAZONE.rsrc", moved).map((r) => r.name))
+      .toEqual(["Drop"]);
+  });
+
   const pcm = new Uint8Array(64).fill(0x80);
   const snd = sndFmt1U8(pcm);
   const fork = buildRsrc(new Map([["snd ", [[1, "tap", 0, snd]]]]));

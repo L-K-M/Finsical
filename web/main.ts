@@ -1759,10 +1759,13 @@ window.addEventListener("drop", (e) => {
         // records persist like any dropped sound; the pack isn't kept.
         const bank = fileSoundRecords(name, data);
         if (!bank.length) continue;
-        await handleSounds(bank)
-          .catch((e) => console.warn("sound import failed:", e));
-        imported++;
-        console.info(`${name}: ${bank.length} sounds imported`);
+        try {
+          await handleSounds(bank);
+          imported++;
+          console.info(`${name}: ${bank.length} sounds imported`);
+        } catch (e) {
+          console.warn("sound import failed:", e);
+        }
         continue;
       }
       // A full tank takes no new fish: say so rather than store and

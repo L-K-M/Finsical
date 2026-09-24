@@ -340,7 +340,10 @@ export function fileSoundRecords(name: string, data: Uint8Array):
   // fall through to the fork path (or [] when it holds no 'snd ').
   if (!base.startsWith("._") && AUDIO_FILE_EXT.test(base))
     return [{ name: base.replace(/\.[^.]+$/, ""), wav: data }];
-  if (isPack(data)) return bankSounds(data);
+  // A fork whose data starts at 64 KB opens with the bytes a pack
+  // does, so an empty bank falls through to the fork path.
+  const bank = isPack(data) ? bankSounds(data) : [];
+  if (bank.length) return bank;
   try {
     return soundsFromRsrc(data)
       .map((s) => ({ name: s.name, wav: wavBytes(s) }));
