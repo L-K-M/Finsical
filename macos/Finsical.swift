@@ -47,6 +47,19 @@ final class WebHandler: NSObject, WKURLSchemeHandler {
             task.didReceive(res)
             task.didReceive(data)
             task.didFinish()
+        } catch let err as CocoaError where err.code == .fileReadNoSuchFile {
+            // A missing file answers 404, as a web server would: fetch()
+            // sees the status (the page takes a missing bundled pack as
+            // normal) instead of failing with a network error.
+            guard let res = HTTPURLResponse(
+                url: url, statusCode: 404, httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Length": "0",
+                               "Cache-Control": "no-store"]) else {
+                task.didFailWithError(err)
+                return
+            }
+            task.didReceive(res)
+            task.didFinish()
         } catch {
             task.didFailWithError(error)
         }

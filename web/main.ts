@@ -299,10 +299,10 @@ fishTip.id = "fishtip";
 fishTip.style.display = "none";
 document.body.appendChild(fishTip);
 /** The fish to name under a hovered point — none while Get Info, a
- * menu, the add-on window or a document window is up (the tip would
- * float over them). */
+ * menu, the add-on window, a document window or an alert is up (the
+ * tip would float over them). */
 const fishToName = (p: { x: number; y: number }): Fish | null =>
-  infoCard || importPanel.isOpen || menuOpen() || docOpen()
+  infoCard || importPanel.isOpen || menuOpen() || docOpen() || alertOpen()
     ? null : sim.fishAt(p.x, p.y);
 const fishTipLabel = (f: Fish): string =>
   (f.species || "Fish") +
@@ -1502,15 +1502,17 @@ window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   // One Escape closes one thing: the card claims it first, and a key
   // another window already handled leaves the card alone.
-  if (k === "escape" && infoCard && !e.defaultPrevented) {
+  if (k === "escape" && infoCard && !e.defaultPrevented && !alertOpen()) {
     closeInfo();
     e.preventDefault();
     return;
   }
-  // Bare keys stand down while a menu or the add-on window owns them.
+  // Bare keys stand down while a menu, the add-on window or a modal
+  // alert owns them.
   const bare = !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat &&
-    !importPanel.isOpen && !menuOpen() && !docOpen();
-  if ((e.metaKey || e.ctrlKey) && k === "i" && !inNativeShell()) {
+    !importPanel.isOpen && !menuOpen() && !docOpen() && !alertOpen();
+  if ((e.metaKey || e.ctrlKey) && k === "i" && !inNativeShell() &&
+      !alertOpen()) {
     // The app's Tank menu owns Cmd-I and opens the Import Add-ons
     // window; the overlay would squeeze into the tank.
     importPanel.open(); e.preventDefault();
@@ -1612,7 +1614,7 @@ function removePlaceholders(): void {
   let gone = false;
   for (const id of placeholderIds) gone = sim.removeFish(id) || gone;
   placeholderIds.clear();
-  if (gone) { sweepThumbs(); saveTank(); }
+  if (gone) { sweepThumbs(); requestPaint(); saveTank(); }
 }
 
 // Drag an .azpack folder onto the window to import it.

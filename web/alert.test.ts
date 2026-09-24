@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alertOrigin, alertWidth } from "./alert.js";
+import { alertOrigin, alertWidth, focusStep } from "./alert.js";
 
 describe("alertWidth", () => {
   it("is the standard width in a roomy window", () => {
@@ -27,5 +27,19 @@ describe("alertOrigin", () => {
 
   it("keeps the top edge on screen when the alert is taller", () => {
     expect(alertOrigin(330, 100, 314, 200).top).toBe(8);
+  });
+});
+
+describe("focusStep", () => {
+  it("cycles Tab through the buttons and wraps both ways", () => {
+    expect(focusStep(2, -1, false)).toBe(0);
+    expect(focusStep(2, -1, true)).toBe(1);
+    expect(focusStep(2, 0, false)).toBe(1);
+    expect(focusStep(2, 1, false)).toBe(0);
+    expect(focusStep(2, 0, true)).toBe(1);
+  });
+
+  it("keeps focus on the alert when it has no buttons", () => {
+    expect(focusStep(0, -1, false)).toBe(-1);
   });
 });

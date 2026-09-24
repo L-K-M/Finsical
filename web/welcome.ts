@@ -3,7 +3,7 @@
 // a note alert, then shows each download's progress in the same alert.
 // Failures end in a caution alert with Try Again, never silently.
 import { showAlert } from "./alert.js";
-import type { Alert } from "./alert.js";
+import type { Alert, AlertButton } from "./alert.js";
 import { listAddons, loadProblem } from "./import.js";
 import type { Importable } from "./import.js";
 import { resolveStarter, starterCollection } from "./starter.js";
@@ -11,7 +11,7 @@ import { resolveStarter, starterCollection } from "./starter.js";
 const WELCOMED_KEY = "finsical:welcomed";
 
 const WELCOME_TEXT = "Welcome to Finsical. Your tank has four stand-in " +
-  "fish. Finsical can stock it with the original AquaZone fish, plants " +
+  "fish. Finsical can stock it with the original Aquazone fish, plants " +
   "and scenery from the Internet Archive.";
 
 export interface StarterHooks {
@@ -61,26 +61,31 @@ function listNames(names: readonly string[]): string {
  * didn't make it. */
 async function stock(alert: Alert, hooks: StarterHooks,
                      retry: Importable[] | null): Promise<void> {
-  let items = retry;
-  if (!items) {
-    alert.update({ icon: "note", buttons: [], progress: 0,
-                   text: "Looking up the starter set on the Internet " +
-                         "Archive…" });
-    items = resolveStarter(await listAddons(starterCollection));
-    if (!items.length) {
-      offerRetry(alert, hooks, null,
-                 "Finsical couldn't reach the Internet Archive. Check " +
-                 "the connection and try again.");
-      return;
-    }
+  // A network that never answers must not hold the page under a modal
+  // alert: Stop closes it at once and ends the run before the next
+  // item. A download already under way still lands (fetches can't be
+  // recalled), which is also why the stand-ins may still leave.
+  let stopped = false;
+  const stop: AlertButton = { title: "Stop", cancel: true,
+    action: (a) => { stopped = true; a.close(); } };
+  alert.update({ icon: "note", buttons: [stop], progress: 0,
+                 text: "Looking up the starter set on the Internet " +
+                       "Archive…" });
+  const items = retry ?? resolveStarter(await listAddons(starterCollection));
+  if (stopped) return;
+  if (!items.length) {
+    offerRetry(alert, hooks, null,
+               "Finsical couldn't reach the Internet Archive. Check " +
+               "the connection and try again.");
+    return;
   }
 
   const failed: Importable[] = [];
   let problem: unknown = null;
   for (const [i, it] of items.entries()) {
-    alert.update({ icon: "note", buttons: [], progress: i / items.length,
-                   text: `Adding ${i + 1} of ${items.length}: ` +
-                         `${it.inner}…` });
+    if (stopped) return;
+    alert.progress(`Adding ${i + 1} of ${items.length}: ${it.inner}…`,
+                   i / items.length);
     try {
       await hooks.install(it);
     } catch (e) {
@@ -91,6 +96,7 @@ async function stock(alert: Alert, hooks: StarterHooks,
     }
     if (it.section === "fish") hooks.fishArrived();
   }
+  if (stopped) return;
   if (!failed.length) { alert.close(); return; }
 
   const what = !retry && failed.length === items.length

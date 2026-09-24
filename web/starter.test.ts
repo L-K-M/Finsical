@@ -54,7 +54,11 @@ describe("STARTER_SET", () => {
         c.section === s.section && starterCollection(c)), s.inner)
         .toBe(true);
     }
-    expect(COLLECTIONS.filter(starterCollection)
-      .every((c) => !c.outer.includes("/"))).toBe(true);
+    // A nested collection is left out even when its section is one the
+    // starter set draws on (mekasia's plants, say).
+    const nested = COLLECTIONS.find((c) => c.outer.includes("/") &&
+      STARTER_SET.some((s) => s.section === c.section));
+    expect(nested).toBeDefined();
+    expect(starterCollection(nested!)).toBe(false);
   });
 });

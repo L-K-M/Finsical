@@ -34,6 +34,9 @@ export interface AlertSpec {
 export interface Alert {
   /** Replace the icon, text, buttons and progress in place. */
   update(spec: AlertSpec): void;
+  /** Change only the text and the progress bar: the buttons and their
+   * keys stay, so a download's ticks don't rebuild its Stop button. */
+  progress(text: string, value: number): void;
   close(): void;
   readonly isOpen: boolean;
 }
@@ -66,6 +69,15 @@ export function alertOpen(): boolean {
   return openCount > 0;
 }
 
+/** Where Tab moves focus among `n` buttons from index `i` (-1: none of
+ * them), wrapping; -1 when there are no buttons (focus stays on the
+ * alert itself). */
+export function focusStep(n: number, i: number, back: boolean): number {
+  if (n <= 0) return -1;
+  if (i < 0) return back ? n - 1 : 0;
+  return (i + (back ? -1 : 1) + n) % n;
+}
+
 function div(cls: string): HTMLDivElement {
   const e = document.createElement("div");
   e.className = cls;
@@ -81,14 +93,21 @@ export function showAlert(spec: AlertSpec): Alert {
   const win = div("alertwin osm-system");
   win.setAttribute("role", "alertdialog");
   win.setAttribute("aria-modal", "true");
+  // Focusable itself, so Return and Escape reach bindDialogKeys (it
+  // leaves keys aimed at buttons alone) while nothing else is focused.
+  win.tabIndex = -1;
   const icon = div("alerticon");
   const text = div("alerttext");
   text.id = `alerttext${Math.random().toString(36).slice(2)}`;
+  text.setAttribute("aria-live", "polite"); // progress steps are read out
   // Mac OS alerts have no title; the app is the alert's name and its
   // text the description.
   win.setAttribute("aria-label", "Finsical");
   win.setAttribute("aria-describedby", text.id);
   const bar = div("osm-progress alertprogress");
+  bar.setAttribute("role", "progressbar");
+  bar.setAttribute("aria-valuemin", "0");
+  bar.setAttribute("aria-valuemax", "100");
   const track = div("osm-progress-track");
   track.append(div("osm-progress-fill"));
   bar.append(track);
@@ -110,7 +129,35 @@ export function showAlert(spec: AlertSpec): Alert {
       e.stopPropagation();
     });
 
+  // Keyboard stays inside the modal alert: Tab cycles its buttons (the
+  // page behind can't take focus), and Escape cancels even while a
+  // button has focus, where bindDialogKeys stands aside.
+  let cancelBtn: HTMLButtonElement | null = null;
+  win.addEventListener("keydown", (e) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const bs = Array.from(row.querySelectorAll("button"));
+      const i = bs.indexOf(document.activeElement as HTMLButtonElement);
+      const next = focusStep(bs.length, i, e.shiftKey);
+      (next < 0 ? win : bs[next]!).focus();
+    } else if ((e.key === "Escape" || (e.metaKey && e.key === ".")) &&
+               (e.target as HTMLElement).closest("button") && cancelBtn) {
+      e.preventDefault();
+      cancelBtn.click();
+    }
+  });
+
   let open = true;
+  // Bumped by each update: a press meant for a set of buttons that has
+  // since been replaced (a second Return inside the first one's button
+  // flash) does nothing instead of running the old step again.
+  let generation = 0;
+  const opener = document.activeElement as HTMLElement | null;
+  const setProgress = (value: number | undefined): void => {
+    bar.hidden = value === undefined;
+    bar.style.setProperty("--osm-value", String(value ?? 0));
+    bar.setAttribute("aria-valuenow", String(Math.round((value ?? 0) * 100)));
+  };
   const place = () => {
     win.style.width = `${alertWidth(window.innerWidth)}px`;
     const o = alertOrigin(window.innerWidth, window.innerHeight,
@@ -125,8 +172,9 @@ export function showAlert(spec: AlertSpec): Alert {
     update(s: AlertSpec) {
       icon.style.backgroundImage = `var(--osm-sprite-alert-${s.icon})`;
       text.textContent = s.text;
-      bar.hidden = s.progress === undefined;
-      bar.style.setProperty("--osm-value", String(s.progress ?? 0));
+      setProgress(s.progress);
+      const gen = ++generation;
+      const hadFocus = win.contains(document.activeElement);
       row.replaceChildren();
       let ok: HTMLButtonElement | null = null;
       let cancel: HTMLButtonElement | null = null;
@@ -136,13 +184,17 @@ export function showAlert(spec: AlertSpec): Alert {
         el.textContent = b.title;
         row.append(el);
         pushButton(el, () => {
-          if (!open) return;
+          if (!open || gen !== generation) return;
           if (b.action) b.action(alert);
           else alert.close();
         });
         if (b.default) ok = el;
         if (b.cancel) cancel = el;
       }
+      cancelBtn = cancel;
+      // A focused button that was just replaced drops focus to the
+      // page; hand it back to the alert.
+      if (hadFocus && !win.contains(document.activeElement)) win.focus();
       // One binding per set of buttons: bindDialogKeys has no unbind,
       // but it skips buttons no longer in the page, so replaced sets
       // go quiet. Progress steps carry no buttons and bind nothing, so
@@ -156,6 +208,10 @@ export function showAlert(spec: AlertSpec): Alert {
       }
       if (open) place();
     },
+    progress(t: string, value: number) {
+      text.textContent = t;
+      setProgress(value);
+    },
     close() {
       if (!open) return;
       open = false;
@@ -163,6 +219,7 @@ export function showAlert(spec: AlertSpec): Alert {
       ro.disconnect();
       window.removeEventListener("resize", place);
       scrim.remove();
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
     },
     get isOpen() { return open; },
   };
@@ -170,6 +227,7 @@ export function showAlert(spec: AlertSpec): Alert {
   openCount++;
   document.body.append(scrim);
   alert.update(spec);
+  win.focus({ preventScroll: true });
   ro.observe(win);
   window.addEventListener("resize", place);
   return alert;
