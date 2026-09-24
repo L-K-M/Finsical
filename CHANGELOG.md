@@ -12,7 +12,9 @@
   switch each have their own sound. Dropping your copy of AZ_WAVES.REZ
   on the tank works too. Water ambience now switches the bubbling;
   Bubble sounds only plays a short bubble sound you add, since the game
-  has none for single bubbles.
+  has none for single bubbles. A tank set up before this gets the
+  game's sounds once on its next launch; removing them afterwards
+  sticks.
 - Until your first pack lands, the stand-in fish are a pixel-art guppy
   with a wagging tail instead of a few rectangles.
 - Fish swim more calmly: they stroke and glide toward where they are

@@ -40,3 +40,15 @@ export function resolveStarter(listing: readonly Importable[]): Importable[] {
   }
   return out;
 }
+
+/** Whether this launch should install the starter set's sounds on its
+ * own. Tanks set up before the set had sounds answered the welcome
+ * without them and play nothing. Only a tank that already answered the
+ * welcome, holds no sounds and was never given the chance before gets
+ * them: a first launch has the welcome offer them, and once they are
+ * handled, removing them sticks. */
+export function wantsStarterSounds(s: { welcomePending: boolean;
+                                        soundsHandled: boolean;
+                                        hasSounds: boolean }): boolean {
+  return !s.welcomePending && !s.soundsHandled && !s.hasSounds;
+}

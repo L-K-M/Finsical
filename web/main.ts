@@ -18,7 +18,8 @@ import type { Ripple, Splash } from "./fx.js";
 import { pushButton } from "osmium-ui";
 import { alertOpen, showAlert } from "./alert.js";
 import { recentTaps, shouldScold } from "./scold.js";
-import { showWelcome, wantsWelcome } from "./welcome.js";
+import { backfillStarterSounds, showWelcome, wantsWelcome }
+  from "./welcome.js";
 import { fetchAddon, mountImportPanel, orphanedSounds, recordAddon,
          qualifySoundItemName, isListed, COLLECTIONS }
   from "./import.js";
@@ -1586,6 +1587,11 @@ const packFetch = async (p: string): Promise<Uint8Array> => {
 // Add-ons the launch-time restore couldn't fetch — retried in the
 // background by retryRestores once the chain settles.
 let restoreFailed: Importable[] = [];
+// Sound records the launch restored from storage (dropped files and
+// installed sound add-ons alike).
+let storedSounds = 0;
+// Decided before the restore chain can save a tank.
+const welcomePending = wantsWelcome(saved !== null);
 void (async () => {
   const pack = await loadAzpack(packFetch);
   const idx = usePack(pack, packFetch);
@@ -1613,8 +1619,11 @@ void (async () => {
   .then(() => sndsGet().catch((e) => {
     console.warn("snd restore failed:", e); return null;
   }))
-  .then((recs) => recs?.length ? audio.addWavs(recs).catch((e) =>
-    console.warn("snd decode failed:", e)) : undefined)
+  .then((recs) => {
+    storedSounds = recs?.length ?? 0;
+    return storedSounds ? audio.addWavs(recs!).catch((e) =>
+      console.warn("snd decode failed:", e)) : undefined;
+  })
   .then(() => {
     // The saved sounds are back: the bubbling starts, and the opening
     // sound plays now or on the first click.
@@ -1625,12 +1634,18 @@ void (async () => {
     applySceneryChoice();
     remapSheetIdx(); reconcileFish();
     retryRestores(restoreFailed);
+    backfillStarterSounds({
+      welcomePending,
+      hasSounds: storedSounds > 0 ||
+        installedAddons.some((a) => a.section === "sounds"),
+      install: (it) => installAddon(it, false),
+    }).catch((e) => console.warn("starter sounds skipped:", e));
   });
 
 // First launch: offer to stock the tank (web/welcome.ts). Accepting
 // installs through the same path as the Import Add-ons window, and the
 // stand-ins leave once a real fish is in; declining keeps them.
-if (wantsWelcome(saved !== null)) {
+if (welcomePending) {
   showWelcome({
     install: (it) => installAddon(it, false),
     fishArrived: removePlaceholders,
