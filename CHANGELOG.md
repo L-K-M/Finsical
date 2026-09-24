@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Preferences fits its window again. The Picture pane's Color group
+  ran past the line above the description at the bottom, and the
+  Monitor pane's lower group ended right on it, since Skew and
+  Perspective were added. In the Machine list the Performas drop
+  "Macintosh" from their names, so "Performa 5200 (Black)" and
+  "Performa 450 (II)" are no longer cut off mid-letter.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the

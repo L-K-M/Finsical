@@ -120,6 +120,8 @@ const MONITOR_GROUPS: Group[] = [
   { title: "Glass & Signal",
     rows: [["curvature", "vignette"], ["flicker", "grain"]] },
 ];
+// At most four slider rows fit the Picture pane in the fixed 565x457
+// window (app.css, #pfpicture): a fifth runs into the caption area.
 const PICTURE_GROUPS: Group[] = [
   { title: "Picture", rows: [["brightness", "contrast", "zoom"]] },
   { title: "Geometry", rows: [["hsize", "vsize"],

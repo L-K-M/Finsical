@@ -168,7 +168,7 @@ yet.
 
 | Window | What it does |
 | --- | --- |
-| Preferences | **Machine**: the computer case around the tank (Macintosh Plus, Performa 450, 20th Anniversary Mac, iMac G3 and G4 variants, or a bare tank). **Monitor**: the CRT effect, presets and its picture tube sliders. **Picture**: the monitor's front-panel controls. **Lighting**: the day and night cycle, a light timer that follows your Mac's clock, or lights always on, and the lamp. **Sound**: volume, mute, and switches for bubble sounds and the water ambience (see [Sounds](#sounds)). |
+| Preferences | **Machine**: the computer case around the tank (Macintosh Plus, Performa 450 and 5200, 20th Anniversary Mac, iMac G3 and G4, PowerBook G3, iBook, or a bare tank). **Monitor**: the CRT effect, presets and its picture tube sliders. **Picture**: the monitor's front-panel controls. **Lighting**: the day and night cycle, a light timer that follows your Mac's clock, or lights always on, and the lamp. **Sound**: volume, mute, and switches for bubble sounds and the water ambience (see [Sounds](#sounds)). |
 | Tank Overview | Everything in the tank as a sortable Name, Kind and Status list, with **Remove**, **Use** for scenery and **Empty Tank…** |
 | Import Add-ons | The archive.org add-on browser described above |
 | Tank Stats | Water quality and average hunger with recent history, the hungriest fish, fish and food counts, day or night, tank age, care hints, and **Change Water** |
