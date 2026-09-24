@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { COLLECTIONS } from "./import.js";
 import type { Importable } from "./import.js";
-import { resolveStarter, STARTER_SET, starterCollection, wantsStarterSounds }
-  from "./starter.js";
+import { resolveStarter, STARTER_SET, starterCollection, wantsStarterSounds,
+         welcomeOffer } from "./starter.js";
 
 const item = (section: string, inner: string): Importable =>
   ({ section, inner,
@@ -84,5 +84,31 @@ describe("wantsStarterSounds", () => {
   it("does not bring back sounds once handled", () => {
     expect(wantsStarterSounds({ ...tank, soundsHandled: true }))
       .toBe(false);
+  });
+});
+
+describe("welcomeOffer", () => {
+  it("greets a new tank", () => {
+    expect(welcomeOffer({ answer: null, pristine: true })).toBe("welcome");
+  });
+
+  it("greets again when the welcome was left unanswered", () => {
+    for (const pristine of [true, false])
+      expect(welcomeOffer({ answer: "pending", pristine })).toBe("welcome");
+  });
+
+  it("offers the rest once after stocking didn't finish", () => {
+    for (const pristine of [true, false])
+      expect(welcomeOffer({ answer: "retry", pristine })).toBe("retry");
+  });
+
+  it("leaves an answered offer alone, including the old answer", () => {
+    for (const answer of ["declined", "stocked", "1"])
+      for (const pristine of [true, false])
+        expect(welcomeOffer({ answer, pristine })).toBeNull();
+  });
+
+  it("leaves a tank set up before the welcome alone", () => {
+    expect(welcomeOffer({ answer: null, pristine: false })).toBeNull();
   });
 });

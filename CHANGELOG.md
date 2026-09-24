@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- If you close Finsical before answering the offer to stock your tank,
+  the next launch asks again. The offer used to be lost for good, and
+  the game's sounds then downloaded without asking. If stocking the
+  tank fails or you stop it, the next launch offers the rest once more;
+  choosing Not Now there ends it.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the

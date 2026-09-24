@@ -45,10 +45,30 @@ export function resolveStarter(listing: readonly Importable[]): Importable[] {
  * own. Tanks set up before the set had sounds answered the welcome
  * without them and play nothing. Only a tank that already answered the
  * welcome, holds no sounds and was never given the chance before gets
- * them: a first launch has the welcome offer them, and once they are
- * handled, removing them sticks. */
+ * them: a launch that offers the starter set (the welcome or its retry)
+ * leaves them to it, and once they are handled, removing them sticks. */
 export function wantsStarterSounds(s: { welcomePending: boolean;
                                         soundsHandled: boolean;
                                         hasSounds: boolean }): boolean {
   return !s.welcomePending && !s.soundsHandled && !s.hasSounds;
+}
+
+/** Where the first-run offer stands, as web/welcome.ts stores it:
+ * "pending" while the welcome is up unanswered, "retry" once stocking
+ * started and until it finishes (a failure or Stop leaves it there),
+ * "declined" and "stocked" for good. Before these, "1" meant either
+ * answer. */
+export type WelcomeAnswer = "pending" | "retry" | "declined" | "stocked";
+
+/** What a launch offers: the welcome, the rest of a starter set that
+ * didn't finish installing, or nothing. `answer` is the stored one
+ * (null: never stored); `pristine`: the tank holds only stand-ins and
+ * no add-ons. A tank with no answer that isn't pristine was set up
+ * before the welcome existed; an unknown answer counts as answered. */
+export function welcomeOffer(s: { answer: string | null;
+                                  pristine: boolean }):
+    "welcome" | "retry" | null {
+  if (s.answer === "pending") return "welcome";
+  if (s.answer === "retry") return "retry";
+  return s.answer === null && s.pristine ? "welcome" : null;
 }

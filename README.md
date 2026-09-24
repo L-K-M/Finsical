@@ -51,7 +51,9 @@ stock it with a starter set of Aquazone fish, a gravel, a plant, a
 background and the game's sound effects from the Internet Archive
 (about 2 MB). Choose **Not Now**
 to keep the stand-ins; you can add the same things later from Import
-Add-ons.
+Add-ons. If you close Finsical before answering, it asks again next
+time; if stocking the tank doesn't finish, the next launch offers the
+rest once more.
 
 ## Using Finsical
 
@@ -183,8 +185,8 @@ Everything stays on your Mac:
   hides), the CRT switch and settings (`finsical:crt`,
   `finsical:crt-cfg`), the machine case (`finsical:machine`), lighting
   and sound settings (`finsical:lighting`, `finsical:sound`), whether
-  the tank is paused (`finsical:paused`), whether the first-run offer
-  was answered (`finsical:welcomed`), and the last Preferences pane and
+  the tank is paused (`finsical:paused`), how far the first-run offer
+  got (`finsical:welcomed`), and the last Preferences pane and
   add-on section (`finsical:prefsPane`, `finsical:addonSection`).
 - **IndexedDB** database `finsical`: downloaded add-on archives,
   thumbnails and archive.org listing pages, so installed add-ons restore
