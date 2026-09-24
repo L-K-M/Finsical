@@ -86,10 +86,16 @@ function rwStrict<T>(store: string, mode: IDBTransactionMode,
         const tx = d.transaction(store, mode);
         const rq = run(tx.objectStore(store));
         tx.oncomplete = () => res(rq.result ?? null);
-        const fail = () =>
+        const fail = (ev?: Event) => {
+          // stopPropagation, not preventDefault — a request error's
+          // default action aborts the transaction, and we want the
+          // abort; the rejection is already handled by callers, so the
+          // event must not also bubble to window.onerror.
+          ev?.stopPropagation();
           rej(rq.error ?? tx.error ?? new Error("IndexedDB error"));
+        };
         rq.onerror = fail;
-        tx.onerror = tx.onabort = fail;
+        tx.onerror = tx.onabort = () => fail();
       } catch (e) { rej(e); }
     });
   });
