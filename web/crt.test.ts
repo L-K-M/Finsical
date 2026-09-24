@@ -137,10 +137,19 @@ describe("degaussAmp", () => {
   it("starts at full swing and settles inside DEGAUSS_MS", () => {
     expect(degaussAmp(0)).toBe(1);
     expect(degaussAmp(DEGAUSS_MS)).toBe(0);
-    // Monotonic decay through the middle of the ring.
-    const a = degaussAmp(100), b = degaussAmp(400);
-    expect(a).toBeGreaterThan(b);
-    expect(b).toBeGreaterThan(0);
+    // Strictly decreasing across the whole ring — two interior
+    // samples would miss a mid-decay wiggle — then floored at zero
+    // once the exponential clips.
+    let prev = degaussAmp(0);
+    let settled = false;
+    for (let ms = 50; ms < DEGAUSS_MS; ms += 50) {
+      const amp = degaussAmp(ms);
+      if (settled) { expect(amp).toBe(0); continue; }
+      if (amp === 0) { settled = true; continue; }
+      expect(amp).toBeLessThan(prev);
+      prev = amp;
+    }
+    expect(settled).toBe(true); // it does reach the floor inside
   });
 
   it("reads settled before it ever fires (and for bad inputs)", () => {
