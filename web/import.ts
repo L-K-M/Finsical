@@ -602,6 +602,10 @@ function audioType(d: Uint8Array): string {
 // Bounded: a PackResult holds decoded sheets and images — browsing the
 // whole catalog without a cap would pin hundreds of MB of Uint8Arrays.
 const packCache = new Map<string, Promise<PackResult[]>>();
+// URLs whose import promise has resolved — eviction victims are chosen
+// only among these, so a burst can't evict an in-flight import and
+// immediately duplicate its download.
+const packSettled = new Set<string>();
 const PACK_CACHE_MAX = 16;
 /** The sound preview's live Blob URL — one at a time, revoked when the
  * detail pane rebuilds. */
@@ -617,12 +621,23 @@ export function fetchAddon(url: string): Promise<PackResult[]> {
   }
   p = importAddon(url);
   packCache.set(url, p);
-  // Least-recently-used eviction — insertion order is LRU order.
+  // Least-recently-used eviction — insertion order is LRU order —
+  // skipping in-flight entries: a burst may exceed the cap by its
+  // pending count rather than evict work that's still downloading.
   if (packCache.size > PACK_CACHE_MAX)
-    packCache.delete(packCache.keys().next().value!);
+    for (const k of packCache.keys())
+      if (packSettled.has(k)) {
+        packCache.delete(k);
+        packSettled.delete(k);
+        break;
+      }
   // Failed fetches stay retryable; only evict if the entry is still
   // this promise (a rider may have replaced it already).
-  p.catch(() => { if (packCache.get(url) === p) packCache.delete(url); });
+  p.then(() => { if (packCache.get(url) === p) packSettled.add(url); },
+         () => { if (packCache.get(url) === p) {
+           packCache.delete(url);
+           packSettled.delete(url);
+         } });
   return p;
 }
 

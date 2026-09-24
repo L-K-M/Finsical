@@ -117,7 +117,9 @@ export function swimCanvas(sheet: SpriteSheet, f: number,
   if (!byScale) swimCache.set(sheet, (byScale = new Map()));
   let cache = byScale.get(scale);
   if (!cache) byScale.set(scale, (cache = new Map()));
-  const key = group * 64 + f * 2 + (facing > 0 ? 1 : 0);
+  // Stride 8192: collision-free for up to 4095 frames per group —
+  // beyond any plausible sheet. (Stride 64 collided at f = 32.)
+  const key = group * 8192 + f * 2 + (facing > 0 ? 1 : 0);
   let cv = cache.get(key);
   if (cv) return cv;
   const img = swimFrame(sheet, f, facing, group);
