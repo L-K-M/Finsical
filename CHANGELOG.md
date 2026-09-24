@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The tank reopens exactly where you left it, even when part of it was
+  off the edge of the screen. It used to be pushed back onto the
+  screen at launch.
 - With the CRT effect on, the Height control can now stretch the
   picture to fill the whole screen glass. On machines whose glass is
   taller than the tank, such as the Performa 450, the stretched
