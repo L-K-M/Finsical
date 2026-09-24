@@ -5,11 +5,15 @@ import { BOOT_CAP_MS, BOOT_FADE_MS, BOOT_HOLD_MS, BOWL_ART, bootPhase,
 describe("pixel art", () => {
   it("gives every glyph a palette color", () => {
     for (const [name, art] of Object.entries({ bowl: BOWL_ART,
-                                             ...SECTION_ART }))
-      for (const row of art)
+                                             ...SECTION_ART })) {
+      expect(art.length, `${name} has 16 rows`).toBe(16);
+      for (const row of art) {
+        expect(row.length, `${name} row is 16 glyphs`).toBe(16);
         for (const ch of row)
           if (ch !== ".")
             expect(PALETTE[ch], `${name} uses "${ch}"`).toBeDefined();
+      }
+    }
   });
 });
 
