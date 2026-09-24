@@ -29,7 +29,14 @@ describe("clientWindowFeatures", () => {
     const f = parse(clientWindowFeatures("prefs",
       { ...AT, screenX: 1300, screenY: 800 }));
     expect(f.left).toBe(1440 - 565);
-    expect(f.top).toBe(25 + 875 - 457);
+    expect(f.top).toBe(25 + 875 - 40 - 457); // title bar kept clear
+  });
+
+  it("pins to the screen's corner when the window is bigger than it", () => {
+    const f = parse(clientWindowFeatures("addons",
+      { ...AT, availWidth: 400, availHeight: 300 }));
+    expect(f.left).toBe(0);
+    expect(f.top).toBe(25);
   });
 
   it("stays on a second screen to the left of the main one", () => {
