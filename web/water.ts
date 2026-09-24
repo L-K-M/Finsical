@@ -401,20 +401,19 @@ export function drawRefraction(ctx: CanvasRenderingContext2D,
   }
 }
 
-// ---- air and hood ----------------------------------------------------------
+// ---- air -------------------------------------------------------------------
 
-let airFill: CanvasGradient | null = null;
-let lampGlow: CanvasGradient | null = null;
+/** How much of the scene behind still shows through the air, at the
+ * hood's lip and at the waterline, with the lamp off and on. */
+const AIR_SHADE = { lipOff: 0.1, lipOn: 0.22, lowOff: 0.3, lowOn: 0.58 };
+/** Rows of the tank's top frame. They stay above SURFACE - SURFACE_MAX,
+ * the highest a wave reaches. */
+const RIM_ROWS = 2;
 
-/** Top row of the lamp tube. The hood's parts all sit above
- * SURFACE - SURFACE_MAX, the highest a wave reaches. */
-const TUBE_Y = 2;
-/** Lamp tube span and the sockets at its ends, px. */
-const TUBE_X0 = 16;
-const TUBE_X1 = W - 16;
-const SOCKET_W = 4;
-/** Condensation beads on the glass under the hood. */
-const BEADS = 22;
+function grey(v: number): string {
+  const c = Math.round(255 * v);
+  return `rgb(${c},${c},${c})`;
+}
 
 /** Per-column fill of the air: the rows above each column's
  * waterline. Runs of equal height share one rect. */
@@ -430,98 +429,75 @@ function fillAboveLine(ctx: CanvasRenderingContext2D,
 }
 
 /**
- * The air under the hood, above the waterline. Backdrops are underwater
- * scenes, so this covers them there, and a leaf or fin reaching past
- * the surface passes behind the hood's lip. The hood carries the tank's
- * lamp: a tube lit as bright as the daylight in the water (`lamp`,
- * 0 = off, 1 = full), glowing down into the air and catching a few
- * beads of condensation. `line` is the drawn waterline (see
- * surfaceLine); without it the air ends at the resting surface. Drawn
- * after the fish; bubble pops and splash drops go on top of it.
+ * The air above the waterline. The back of the tank carries on behind
+ * it, as in a real tank, but dry: drained of color and dimmed, darkest
+ * under the hood's lip and brightest where the lamp (`lamp`, 0 = off,
+ * 1 = full) reaches down to the water. Fins poking above the surface
+ * dim with it. The tank's top frame runs along the very top. `line` is
+ * the drawn waterline (see surfaceLine); without it the air ends at the
+ * resting surface. Drawn after the fish; bubble pops and splash drops
+ * go on top of it.
  */
 export function drawAir(ctx: CanvasRenderingContext2D, lamp = 0,
                         line?: Int16Array): void {
-  if (!airFill) {
-    airFill = ctx.createLinearGradient(0, 0, 0, SURFACE + SURFACE_MAX);
-    airFill.addColorStop(0, "#07090c");
-    airFill.addColorStop(1, "#1b2632");
-  }
-  ctx.fillStyle = airFill;
+  const mix = (off: number, on: number): number => off + (on - off) * lamp;
+  // Built per call: the shade follows the lamp, which dims at dusk.
+  const shade = ctx.createLinearGradient(0, RIM_ROWS, 0, SURFACE + SURFACE_MAX);
+  shade.addColorStop(0, grey(mix(AIR_SHADE.lipOff, AIR_SHADE.lipOn)));
+  shade.addColorStop(1, grey(mix(AIR_SHADE.lowOff, AIR_SHADE.lowOn)));
+
+  ctx.globalCompositeOperation = "saturation";
+  ctx.globalAlpha = 0.8;
+  ctx.fillStyle = "#808080";
   fillAboveLine(ctx, line);
-  if (lamp > 0.01) {
-    lampGlow ??= (() => {
-      const g = ctx.createLinearGradient(0, TUBE_Y, 0, SURFACE + SURFACE_MAX);
-      g.addColorStop(0, "rgba(255,244,214,0.3)");
-      g.addColorStop(1, "rgba(255,244,214,0.03)");
-      return g;
-    })();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = lamp;
-    ctx.fillStyle = lampGlow;
-    fillAboveLine(ctx, line);
-    ctx.globalCompositeOperation = "source-over";
-    ctx.globalAlpha = 1;
-  }
-  drawHood(ctx, lamp);
-}
-
-function drawHood(ctx: CanvasRenderingContext2D, lamp: number): void {
-  // Lid underside: a dark lip with a faint edge where it meets the glass.
-  ctx.fillStyle = "#040507";
-  ctx.fillRect(0, 0, W, 1);
-  ctx.fillStyle = "#11151a";
-  ctx.fillRect(0, 1, W, 1);
-
-  // The tube, off, then lit over it by the lamp level.
-  ctx.fillStyle = "#3a424b";
-  ctx.fillRect(TUBE_X0, TUBE_Y, TUBE_X1 - TUBE_X0, 1);
-  ctx.fillStyle = "#262c33";
-  ctx.fillRect(TUBE_X0, TUBE_Y + 1, TUBE_X1 - TUBE_X0, 1);
-  if (lamp > 0.01) {
-    ctx.globalAlpha = lamp;
-    ctx.fillStyle = "#fffbea";
-    ctx.fillRect(TUBE_X0, TUBE_Y, TUBE_X1 - TUBE_X0, 1);
-    ctx.fillStyle = "#cfe4ee";
-    ctx.fillRect(TUBE_X0, TUBE_Y + 1, TUBE_X1 - TUBE_X0, 1);
-    ctx.globalAlpha = 1;
-  }
-  // Sockets holding the tube, with a lit edge facing it.
-  ctx.fillStyle = "#23272c";
-  ctx.fillRect(TUBE_X0 - SOCKET_W, 1, SOCKET_W, 4);
-  ctx.fillRect(TUBE_X1, 1, SOCKET_W, 4);
-  ctx.fillStyle = "#4a525b";
-  ctx.fillRect(TUBE_X0 - 1, 1, 1, 4);
-  ctx.fillRect(TUBE_X1, 1, 1, 4);
-
-  // Condensation: a bead is a bright pixel over its darker shadow.
-  // Fixed spots; they glint with the lamp and keep a trace at night.
-  for (let i = 0; i < BEADS; i++) {
-    const x = Math.floor(hash01(i + 401) * W);
-    const y = TUBE_Y + 2 + Math.floor(hash01(i + 577) * 2);
-    ctx.globalAlpha = 0.25 + 0.55 * lamp;
-    ctx.fillStyle = "#dff2ff";
-    ctx.fillRect(x, y, 1, 1);
-    ctx.globalAlpha = 0.3;
-    ctx.fillStyle = "#05080b";
-    ctx.fillRect(x, y + 1, 1, 1);
-  }
+  ctx.globalCompositeOperation = "multiply";
   ctx.globalAlpha = 1;
+  ctx.fillStyle = shade;
+  fillAboveLine(ctx, line);
+  ctx.globalCompositeOperation = "source-over";
+
+  // Top frame: a black lip with a faint lit edge on its underside.
+  ctx.fillStyle = "#050607";
+  ctx.fillRect(0, 0, W, RIM_ROWS - 1);
+  ctx.fillStyle = "#1c2024";
+  ctx.fillRect(0, RIM_ROWS - 1, W, 1);
 }
 
 // ---- surface line ----------------------------------------------------------
 
+/** Brightness of the silvery band under the waterline, row by row
+ * down from the line, at full daylight. */
+const UNDERSIDE = [0.3, 0.14, 0.05] as const;
+
 /**
  * The waterline itself, following the waves: a faint line (moonlight
  * keeps a trace of it after dark), brighter where the water slopes and
- * catches the lamp, with a glint travelling along it. `highlight`
- * brightens the whole line while a click would feed.
+ * catches the lamp, with a glint travelling along it. Under it the
+ * surface's underside mirrors the light as a silvery band, which is
+ * what makes a waterline read from the front. `highlight` brightens the
+ * whole line while a click would feed.
  */
 export function drawSurface(ctx: CanvasRenderingContext2D,
                             line: Int16Array, sun: number, t: number,
                             highlight: boolean): void {
   const gx = W / 2 + (Math.sin(t * 0.011) * 0.6 +
                       Math.sin(t * 0.027 + 1) * 0.4) * W * 0.42;
-  const base = highlight ? 0.45 : 0.12 + 0.16 * sun;
+  // Screen-blended, so the band lifts what is under it instead of
+  // painting over it.
+  ctx.globalCompositeOperation = "screen";
+  ctx.fillStyle = "#dff4ff";
+  let x0 = 0;
+  for (let x = 1; x <= W; x++) {
+    if (x < W && line[x] === line[x0]) continue;
+    for (let r = 0; r < UNDERSIDE.length; r++) {
+      ctx.globalAlpha = UNDERSIDE[r]! * (0.35 + 0.65 * sun);
+      ctx.fillRect(x0, line[x0]! + 1 + r, x - x0, 1);
+    }
+    x0 = x;
+  }
+  ctx.globalCompositeOperation = "source-over";
+
+  const base = highlight ? 0.6 : 0.3 + 0.25 * sun;
   ctx.fillStyle = highlight ? "#ffffff" : "#e8f6ff";
   for (let x = 0; x < W; x++) {
     const y = line[x]!;

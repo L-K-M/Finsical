@@ -249,7 +249,7 @@ function tankPoint(clientX: number, clientY: number):
 }
 
 /** The fish under a tank point. None in the air above the waterline:
- * a fin reaching up there is hidden behind the air strip, and a click
+ * a fin reaching up there only shows dimmed through the air, and a click
  * there feeds. */
 function fishAtPoint(p: { x: number; y: number }): Fish | null {
   return isFeedZoneY(p.y) ? null : sim.fishAt(p.x, p.y);
@@ -1984,8 +1984,7 @@ function render(): void {
   const t = waterMotion === "animated" ? sim.tickCount : 0;
   surfaceLine(surface, t, waterline);
   drawRefraction(ctx, t);
-  // The hood lamp is what lights the tank, so it shines as brightly as
-  // the daylight in the water.
+  // The lamp lights the air as brightly as the daylight in the water.
   const sun = sunFactor(sim.light, floor);
   drawAir(ctx, sun, waterline);
   // The waterline divides feeding from tapping, so it brightens while

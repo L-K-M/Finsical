@@ -170,7 +170,7 @@ describe("drawAir", () => {
     const { ctx, rects } = recorder();
     drawAir(ctx, 1);
     expect(rects[0]).toEqual([0, 0, SURFACE_W, SURFACE]);
-    // The hood and its lamp stay in the air, clear of the water.
+    // The shading and the frame stay in the air, clear of the water.
     for (const [, y, , h] of rects) expect(y! + h!).toBeLessThanOrEqual(SURFACE);
   });
 
@@ -182,13 +182,13 @@ describe("drawAir", () => {
     drawAir(ctx, 0, line);
     const cover = new Array<number>(SURFACE_W).fill(-1);
     for (const [x, y, w, h] of rects) {
-      if (y !== 0 || h! < SURFACE - 3) continue; // hood details
+      if (y !== 0 || h! < SURFACE - 3) continue; // the frame
       for (let i = x!; i < x! + w!; i++) cover[i] = h!;
     }
     expect(cover).toEqual([...line]);
   });
 
-  it("keeps every hood detail above the highest wave", () => {
+  it("keeps the top frame above the highest wave", () => {
     const { ctx, rects } = recorder();
     drawAir(ctx, 0.5, new Int16Array(SURFACE_W).fill(SURFACE));
     const details = rects.filter(([, y, , h]) => !(y === 0 && h! >= SURFACE));
