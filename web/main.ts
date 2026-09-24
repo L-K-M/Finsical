@@ -1701,7 +1701,9 @@ applyMachine(machine);
 // The machine art is pointer-events:none — a press anywhere that
 // isn't the tank or real UI means a grab on the case → window drag.
 document.addEventListener("pointerdown", (e) => {
-  if (bootT0 !== null) skipBoot(); // a click on the case skips too
+  // A click on the case skips the boot — it must not fall through
+  // into the window-drag path below.
+  if (bootT0 !== null) { skipBoot(); return; }
   // Native performDrag loops on real mouse state — a synthesized
   // leftMouseDown from a touch tap has none and could hang it.
   if (e.button !== 0 || e.pointerType !== "mouse") return;
