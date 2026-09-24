@@ -268,6 +268,7 @@ describe("TankAudio.load", () => {
     wavs.set("s/bubble.wav", wav(1)); // a pack without the bubbling loop
     await audio.load(readWav, manifestOf("bubble"));
     audio.startAmbient();
+    expect(FakeContext.last!.loops()).toBe(0); // empty start stays silent
     wavs.set(`s/${LOOP}.wav`, wav(30));
     await audio.load(readWav, manifestOf(LOOP));
     expect(FakeContext.last!.loops()).toBe(1); // begins, not silent
