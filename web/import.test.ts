@@ -447,9 +447,10 @@ describe("usablePacks", () => {
     expect(usablePacks(rs, "fish")).toEqual(rs);
     expect(usablePacks(rs, "gravel")).toEqual(rs);
   });
-  it("reports the generic problem for other sections", () => {
+  it("names the missing piece for scenery sections", () => {
     expect(usablePacks([res({})], "backgrounds")).toEqual([]);
-    expect(usableProblem("backgrounds")).toBe("no pack inside");
+    expect(usableProblem("backgrounds")).toBe("no scenery art inside");
+    expect(usableProblem("tanks")).toBe("no scenery art inside");
   });
 });
 

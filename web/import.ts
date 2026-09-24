@@ -539,6 +539,8 @@ export function usablePacks(rs: PackResult[], section: PackSection):
 export function usableProblem(section: PackSection): string {
   return section === "fish" ? "no drawable fish inside"
        : section === "gravel" ? "no gravel art inside"
+       : section === "backgrounds" || section === "tanks"
+         ? "no scenery art inside"
        : "no pack inside";
 }
 
