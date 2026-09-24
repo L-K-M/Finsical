@@ -15,7 +15,12 @@ import type { StatsInput, TankStats } from "./statsmodel.js";
 
 // A file dropped on this window must not navigate it to the file —
 // only the tank page and the Add-ons window accept drops.
-window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  // Reject file drops with the OS "no drop" cursor instead of a copy cursor.
+  if (e.dataTransfer?.types.includes("Files"))
+    e.dataTransfer.dropEffect = "none";
+});
 window.addEventListener("drop", (e) => e.preventDefault());
 
 const win = document.getElementById("swin")!;
