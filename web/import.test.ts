@@ -177,6 +177,18 @@ describe("archive.org nested collections", () => {
     // Every delivered item carries its collection's section.
     expect(batches.flat().every((i) => i.section !== "")).toBe(true);
   });
+
+  it("keeps the listing when the progressive callback throws", async () => {
+    // A throwing UI callback must not reject Promise.all — that would
+    // void every collection's items and masquerade as a fetch failure.
+    let calls = 0;
+    const items = await listAddons(undefined, () => {
+      if (calls++ === 0) throw new Error("ui bug");
+    });
+    expect(calls).toBeGreaterThan(0);
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.some((i) => i.section === "sounds")).toBe(true);
+  });
 });
 
 describe("qualifySoundItemName", () => {

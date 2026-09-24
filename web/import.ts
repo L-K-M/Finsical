@@ -632,9 +632,17 @@ export async function listAddons(
       console.warn(`archive.org listing failed for ${col.outer}:`, e);
       items = [];
     }
-    // Outside the try: a throwing UI callback must not masquerade as
-    // a fetch failure or drop the collection's items.
-    if (items.length) onItems?.(items);
+    // Outside the fetch try: a throwing UI callback must not
+    // masquerade as a fetch failure or drop the collection's items.
+    // But it still needs its own guard — an escape here would reject
+    // Promise.all and void every other collection's results.
+    if (items.length) {
+      try {
+        onItems?.(items);
+      } catch (cbErr) {
+        console.warn(`onItems callback failed for ${col.outer}:`, cbErr);
+      }
+    }
     return items;
   }));
   return lists.flat().sort((a, b) =>
