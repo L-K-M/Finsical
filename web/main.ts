@@ -1582,7 +1582,20 @@ document.addEventListener("pointerdown", (e) => {
       + " select, label, [contenteditable]"))
     return;
   e.preventDefault();
+  document.body.classList.add("grabbing");
   bus.post({ op: "dragWindow" }); // native shell → performDrag
+});
+// The case grab is :active's job done in JS: a native performDrag
+// loops on real mouse state and the page may never see the pointerup,
+// so every plausible release signal clears the class.
+const endGrab = (): void => document.body.classList.remove("grabbing");
+window.addEventListener("pointerup", endGrab);
+window.addEventListener("pointercancel", endGrab);
+window.addEventListener("blur", endGrab);
+// A native modal drag can bounce focus on its way out.
+window.addEventListener("focus", endGrab);
+document.addEventListener("pointermove", (e) => {
+  if (!e.buttons) endGrab(); // drag ended while the OS owned the mouse
 });
 // Seed clients + the native aspect before the first save/heartbeat —
 // a launch with no open windows otherwise waits for the 10s save.

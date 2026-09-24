@@ -32,7 +32,9 @@ html, body { margin: 0; height: 100%; background: #000; }
   user-select: none;
 }
 body.tankpage { cursor: grab; }
-body.tankpage:active { cursor: grabbing; }
+/* JS-set, not :active — a native performDrag owns the mouse and the
+ * page may never see the pointerup that ends :active. */
+body.tankpage.grabbing { cursor: grabbing; }
 canvas#tank {
   display: block; width: 100%; height: 100%; object-fit: contain;
   image-rendering: pixelated; /* keep the crunch */
