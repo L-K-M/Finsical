@@ -106,7 +106,8 @@ function advice(st: TankStats, water: number): string[] {
   }
   if (water < QUALITY_SEEK) {
     out.push("Water is foul — fish won't eat until it clears. " +
-             "Stop feeding and let the filter catch up.");
+             "Stop feeding and change some water, or let the filter " +
+             "catch up.");
   }
   // Foul water already says "stop feeding" — the portion-size hint
   // would contradict it, so it only runs once water is recovering.

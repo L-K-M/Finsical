@@ -849,6 +849,8 @@ function onBusMessage(m: BusMsg): void {
     emptyTank();
   } else if (m.op === "wantThumbs" && Array.isArray(m.keys)) {
     serveThumbs(m.keys);
+  } else if (m.op === "changeWater") {
+    changeWater();
   } else if (m.op === "crtEnabled") {
     setCrt(m.on === true);
   } else if (m.op === "crtConfig") {
@@ -1254,8 +1256,14 @@ function toggleLights(): void {
   audio.unlock(); // Tank > Lamp On can be the first gesture
   applyLighting({ lamp: !lighting.lamp });
 }
+// A partial water change, also callable from the stats window's bus op.
+function changeWater(): void {
+  sim.changeWater();
+  audio.splash();
+  saveTank(); // persists + pushes fresh state to open panels
+}
 (window as unknown as { finsical?: unknown }).finsical =
-  { openImport: () => importPanel.open(), feedFish, toggleLights,
+  { openImport: () => importPanel.open(), feedFish, changeWater, toggleLights,
     // Menu clicks land here via evaluateJavaScript — not always a
     // user activation, but unlock() is harmless if resume is blocked.
     toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute };
