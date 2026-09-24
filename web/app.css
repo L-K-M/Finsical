@@ -64,8 +64,9 @@ body.crt canvas#tank { opacity: 0; }
   pointer-events: none;
 }
 /* ---- document windows (About, Shortcuts) ------------------------------- */
-/* Narrow viewports shrink the window instead of clipping its content. */
-.dbwin { width: 344px; max-width: calc(100vw - 16px); }
+/* Narrow viewports shrink the window instead of clipping its content;
+   the margin also covers a classic (non-overlay) scrollbar inside 100vw. */
+.dbwin { width: 344px; max-width: calc(100vw - 24px); }
 /* Osmium positions window content absolutely inside a sized window; a
    document window sizes to its content instead, so the content flows. */
 .dbwin .osm-content { position: static; margin: 21px 5px 5px; }
