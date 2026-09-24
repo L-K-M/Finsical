@@ -123,9 +123,11 @@ describe("lru", () => {
   it("even `throw undefined` propagates after the trim", () => {
     const m = new Map<string, number>();
     lruSet(m, "a", 1, 1);
-    expect(() => lruSet(m, "b", 2, 1, undefined, () => {
-      throw undefined; // eslint-disable-line no-throw-literal
-    })).toThrow();
+    let caught: unknown = "not-thrown";
+    try {
+      lruSet(m, "b", 2, 1, undefined, () => { throw undefined; });
+    } catch (e) { caught = e; }
+    expect(caught).toBeUndefined(); // the thrown value, verbatim
     expect(m.size).toBe(1);
     expect([...m.keys()]).toEqual(["b"]);
   });
