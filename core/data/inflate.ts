@@ -9,7 +9,6 @@
  * inside fflate's ondata, which propagates out of push() and stops
  * decoding.
  */
-import { Inflate, Unzlib } from "fflate";
 import { ownBytes } from "./bytes.js";
 
 export type InflateFormat = "deflate" | "deflate-raw";
@@ -80,6 +79,9 @@ export async function inflateFflate(data: Uint8Array,
   // Feed bounded slices: even if fflate buffers a full push's expansion
   // before flushing ondata, 4 KiB in caps the transient at ~4 MiB
   // (deflate's maximum expansion ratio is 1032:1).
+  // Lazy: modern hosts take the native path, so fflate stays out of
+  // their bundle graph until a fallback actually needs it.
+  const { Inflate, Unzlib } = await import("fflate");
   const inf = format === "deflate" ? new Unzlib(ondata) : new Inflate(ondata);
   const STEP = 1 << 12;
   for (let i = 0; ; i += STEP) {
