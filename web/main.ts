@@ -626,8 +626,9 @@ function addDecor(images: Iterable<IndexedImage>, src: string): void {
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
 let nextSlot = 0;
-/** One quota alert per session — a multi-file drop shouldn't stack them. */
-let storageWarned = false;
+/** One storage alert per drop event — a multi-file drop shouldn't
+ * stack them, but a later failing drop deserves its own warning. */
+let storageWarnedAt = -1;
 function sheetOf(f: Fish): SpriteSheet | null {
   if (!fishSheets.length) return null;
   // Fish spawned by a specific pack keep its sheet; the rest round-robin.
@@ -1828,12 +1829,15 @@ window.addEventListener("drop", (e) => {
         console.warn(`drop: ${name} could not be stored — it won't ` +
           "survive a relaunch");
         // The fish swims on, so a silent skip would read as a save —
-        // say once (per session) that this pack is session-only.
-        if (!storageWarned) {
-          storageWarned = true;
+        // say once per drop that this pack is session-only. packPut
+        // can also fail for non-quota reasons (private mode, a dead
+        // IndexedDB), so the wording stays cause-agnostic.
+        if (storageWarnedAt !== e.timeStamp) {
+          storageWarnedAt = e.timeStamp;
           showAlert({ icon: "caution",
-            text: "Storage is full — dropped add-ons will be gone " +
-              "after you reload. Remove some add-ons to make room.",
+            text: "Couldn't save dropped add-ons — they'll be gone " +
+              "after you reload. If storage is full, remove some " +
+              "add-ons to make room.",
             buttons: [{ title: "OK", default: true, cancel: true }] });
         }
       }
