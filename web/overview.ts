@@ -178,6 +178,7 @@ const armOrRemove = (): void => {
           "Selection changed — press again to confirm.";
       }, 0);
     } else {
+      window.clearTimeout(statusTimer); // a queued drift write can't clobber
       removeStatus.textContent = "Press again to confirm.";
     }
     removeArmedAt = performance.now();
