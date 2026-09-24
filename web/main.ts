@@ -1179,11 +1179,11 @@ function installAddon(it: Importable, again: boolean): Promise<void> {
   if (running) {
     if (!again) return running;
     // "Add Again" means one more copy — riding the in-flight run would
-    // install just the one. Chain a real install behind it. Only our
-    // own run's slot may be cleared: a second queued tail fires after
-    // the first has already registered a fresh run, and an
-    // unconditional delete would drop that registration and let two
-    // installs of one add-on overlap.
+    // install just the one. Chain a real install behind it. The guard
+    // is defensive: the anchor's own finally clears its slot before any
+    // tail runs (it attaches first), so the slot is already gone or
+    // holds a newer run — an unconditional delete could drop that
+    // newer registration and let two installs overlap.
     return running.then(() => {
       if (installsInFlight.get(it.url) === running)
         installsInFlight.delete(it.url);
