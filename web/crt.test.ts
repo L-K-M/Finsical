@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  CRT_DEFAULTS, CRT_PRESETS, sanitizeCrtConfig,
+  CRT_DEFAULTS, CRT_PRESETS, PICTURE_KEYS, presetTube, sanitizeCrtConfig,
 } from "./crt.js";
 import type { CrtConfig } from "./crt.js";
 
@@ -61,27 +61,26 @@ describe("CRT_PRESETS", () => {
     expect(auth?.config).toEqual(CRT_DEFAULTS);
   });
 
-  it("Pixel Perfect zeros every tube trait and neutralizes the picture", () => {
+  it("Pixel Perfect zeros every tube trait", () => {
     const flat = CRT_PRESETS.find((p) => p.id === "pixel-perfect");
     expect(flat).toBeDefined();
-    // Derive tube keys from CRT_DEFAULTS minus the picture controls so a
-    // new trait can't silently keep a nonzero Pixel Perfect default.
-    const picture: (keyof CrtConfig)[] = [
-      "brightness", "contrast", "zoom", "hsize", "vsize",
-      "red", "green", "blue",
-    ];
-    const tube = (Object.keys(CRT_DEFAULTS) as (keyof CrtConfig)[])
-      .filter((k) => !picture.includes(k));
+    // Tube keys are everything but the picture controls, so a new trait
+    // can't silently keep a nonzero Pixel Perfect default.
+    const tube = Object.keys(presetTube(flat!)) as (keyof CrtConfig)[];
     expect(tube.length).toBeGreaterThan(0);
     for (const k of tube) expect(flat!.config[k]).toBe(0);
-    expect(flat!.config.brightness).toBe(0.5);
-    expect(flat!.config.contrast).toBe(0.5);
-    expect(flat!.config.zoom).toBe(0);
-    expect(flat!.config.hsize).toBe(0.5);
-    expect(flat!.config.vsize).toBe(0.5);
-    expect(flat!.config.red).toBe(0.5);
-    expect(flat!.config.green).toBe(0.5);
-    expect(flat!.config.blue).toBe(0.5);
+  });
+
+  it("a preset sets the tube and leaves the picture trims alone", () => {
+    // The Picture pane's brightness, geometry and color gains are the
+    // user's; a preset clicked on the Monitor pane must not reset them.
+    const mine: CrtConfig = { ...CRT_DEFAULTS, brightness: 0.9, red: 0.2,
+                              zoom: 0.7, grain: 0.8 };
+    for (const p of CRT_PRESETS) {
+      const next = { ...mine, ...presetTube(p) };
+      for (const k of PICTURE_KEYS) expect(next[k]).toBe(mine[k]);
+      expect(next.grain).toBe(p.config.grain);
+    }
   });
 
   it("configs are frozen so a click cannot mutate the shared object", () => {

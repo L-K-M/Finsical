@@ -1,5 +1,6 @@
 import { openBus } from "./bus.js";
-import { CRT_DEFAULTS, CRT_PRESETS, sanitizeCrtConfig } from "./crt.js";
+import { CRT_DEFAULTS, CRT_PRESETS, presetTube, sanitizeCrtConfig }
+  from "./crt.js";
 import { MACHINES, previewMarkup } from "./machines.js";
 import type { CrtConfig, CrtPreset } from "./crt.js";
 import { centerText, hostWindow, mountList, mountPopup, pushButton,
@@ -364,11 +365,13 @@ const presetBtns: HTMLButtonElement[] = [];
 
 function applyPreset(p: CrtPreset): void {
   if (!onBox.checked) return;
-  // Drop coalesced slider changes still awaiting their rAF post —
-  // they carry pre-preset values for keys the preset overwrites.
-  pendingCfg = null;
-  cfg = { ...p.config };
-  bus.post({ op: "crtConfig", cfg: { ...p.config } });
+  const tube = presetTube(p);
+  // Drop coalesced slider changes still awaiting their rAF post for
+  // the keys the preset overwrites — they carry pre-preset values.
+  for (const k of Object.keys(tube) as (keyof CrtConfig)[])
+    if (pendingCfg) delete pendingCfg[k];
+  cfg = { ...cfg, ...tube };
+  bus.post({ op: "crtConfig", cfg: tube });
   syncControls();
 }
 

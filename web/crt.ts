@@ -229,6 +229,20 @@ export interface CrtPreset {
   readonly config: Readonly<CrtConfig>;
 }
 
+/** The Picture pane's keys: the monitor's front-panel trims, which
+ * are the user's. Every other key is the tube itself. */
+export const PICTURE_KEYS: readonly (keyof CrtConfig)[] = Object.freeze([
+  "brightness", "contrast", "zoom", "hsize", "vsize", "red", "green", "blue",
+]);
+
+/** What a preset sets: its tube keys only. It is picked on the Monitor
+ * pane, so it leaves the Picture pane's trims alone. */
+export function presetTube(p: CrtPreset): Partial<CrtConfig> {
+  const out: Partial<CrtConfig> = { ...p.config };
+  for (const k of PICTURE_KEYS) delete out[k];
+  return out;
+}
+
 /** Full config = defaults plus overrides; frozen so a click can't mutate
  * the shared preset object. */
 const withDefaults = (over: Partial<CrtConfig>): Readonly<CrtConfig> =>
@@ -266,14 +280,12 @@ export const CRT_PRESETS: readonly CrtPreset[] = Object.freeze([
   {
     id: "pixel-perfect",
     label: "Pixel Perfect",
-    blurb: "Every tube trait off and the picture neutral — a flat-panel " +
-      "look while the effect stays on.",
+    blurb: "Every tube trait off — a flat-panel look while the " +
+      "effect stays on.",
     config: withDefaults({
       scanlines: 0, beam: 0, bloom: 0, overdrive: 0,
       misconvergence: 0, grille: 0, curvature: 0, vignette: 0,
       flicker: 0, grain: 0,
-      brightness: 0.5, contrast: 0.5, zoom: 0,
-      hsize: 0.5, vsize: 0.5, red: 0.5, green: 0.5, blue: 0.5,
     }),
   },
 ]);
