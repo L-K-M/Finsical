@@ -1453,6 +1453,8 @@ const endGrab = (): void => document.body.classList.remove("grabbing");
 window.addEventListener("pointerup", endGrab);
 window.addEventListener("pointercancel", endGrab);
 window.addEventListener("blur", endGrab);
+// A native modal drag can bounce focus on its way out.
+window.addEventListener("focus", endGrab);
 document.addEventListener("pointermove", (e) => {
   if (!e.buttons) endGrab(); // drag ended while the OS owned the mouse
 });
