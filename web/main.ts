@@ -1176,7 +1176,16 @@ function installAddon(it: Importable, again: boolean): Promise<void> {
   // running, and a starter install can overlap a panel request: a second
   // request for the same url rides the first instead of double-installing.
   const running = installsInFlight.get(it.url);
-  if (running) return running;
+  if (running) {
+    if (!again) return running;
+    // "Add Again" means one more copy — riding the in-flight run would
+    // install just the one. Chain a real install behind it; the slot
+    // clears inside the callback (the run's finally may have deleted it
+    // already), so the inner call can't find and re-ride the settled
+    // promise, and extra clicks each queue their own tail.
+    return running.then(() => { installsInFlight.delete(it.url);
+                                return installAddon(it, again); });
+  }
   // A restore may have landed this add-on while the panel's detail fetch
   // was in flight — unless the user clicked "Add again", that's a dup.
   if (!again && installedAddons.some((a) => a.url === it.url)) {
@@ -1455,6 +1464,9 @@ postState();
  * neither stack into one sinking column nor always pile up in the
  * middle. Each pellet splashes where it goes in. */
 function feedFish(): void {
+  // The click and key paths already check, but Tank ▸ Feed Fish can
+  // arrive while a modal alert is up — don't drop food behind its scrim.
+  if (alertOpen()) return;
   // Bare F is a real user gesture, but Tank ▸ Feed Fish arrives via
   // evaluateJavaScript with no user activation — without unlock() the
   // context stays suspended until the first tank click.
