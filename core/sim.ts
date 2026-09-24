@@ -17,7 +17,11 @@ export interface Fish {
   /** Install URL of the add-on that spawned this fish — the precise
    * identity when two packs share a species name. */
   pack?: string;
-  /** Renderer sheet index; undefined = round-robin assignment. */
+  /** The pack entry (zip member) inside `pack` this fish came from —
+   * set for multi-entry add-ons so each fish rebinds to its own blob's
+   * sheet after relaunch instead of the last entry's. */
+  entry?: string;
+  /** Renderer sheet index; undefined = no sheet bound. */
   sheetIdx?: number;
   x: number;
   y: number;
