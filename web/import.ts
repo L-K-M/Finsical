@@ -15,6 +15,7 @@ import { zipEntries, zipRead } from "../core/data/zip.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
 import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
+import { bankSounds } from "../core/data/sndbank.js";
 import { isLocalPack, metaGet, metaPut, packDelete, packGet, packPut }
   from "./store.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
@@ -34,6 +35,10 @@ const JPN_ROOT = "AQUAZONE (JPN) SET/AQUAZONE ITEM/";
  * (with its CD bonus track) nested a level deeper. */
 const JPN_BONUS = `${JPN_ZIP}/AQUAZONE (JPN) SET/` +
   "AQUAZONE 非売品詰め合わせ.zip";
+/** The main item's English library, a 7z that archive.org's archive
+ * view lists and serves entry by entry, like a zip. */
+const MISSING_7Z = "Missing addons Aquazone.7z";
+const MISSING_ROOT = "Missing addons Aquazone/";
 
 export interface Collection {
   section: string;
@@ -58,6 +63,10 @@ export interface Collection {
    * open; their `exts`-matching entries import too — the add-on sits
    * two archives deep, past what archive.org's zip view serves. */
   inside?: RegExp;
+  /** Loose-file mode: the listing names entries under the wrong top
+   * folder. Listed paths starting with `listed` are read (and fetched)
+   * as starting with `stored`, before `prefix` is matched. */
+  rename?: { listed: string; stored: string };
 }
 
 /** Outer archives that hold importable add-on packs. The JPN SET item
@@ -84,6 +93,11 @@ export const COLLECTIONS: Collection[] = [
   // archive (マッキンフィッシュ（MAC専用）.zip) holds the CD bonus track.
   { section: "fish", item: JPN_ITEM, outer: JPN_BONUS,
     exts: /\.fsh$/i, deep: true },
+  // The Windows game's own sound effects. The 7z's listing drops the
+  // first word of its top folder, and the listed URLs serve 0 bytes.
+  { section: "sounds", outer: MISSING_7Z, prefix: MISSING_ROOT + "System/",
+    exts: /\/AZ_WAVES\.REZ$/i,
+    rename: { listed: "addons Aquazone/", stored: MISSING_ROOT } },
   { section: "sounds", item: JPN_ITEM, outer: JPN_BONUS,
     exts: AUDIO_FILE_EXT, deep: true, inside: /\.zip$/i },
 ];
@@ -172,6 +186,9 @@ function fetchZip(url: string): Promise<Uint8Array> {
         if (!r.ok) throw new Error(`${url}: ${r.status}`);
         return readBody(r, kick);
       });
+      // archive.org answers a path its archive view can't find with an
+      // empty 200. Persisted, that would stand in for the file forever.
+      if (!d.length) throw new Error(`${url}: empty`);
       if (immutableHost(url)) void packPut(url, d).catch(() => {});
       return d;
     })();
@@ -313,8 +330,13 @@ async function listCollection(col: Collection): Promise<Importable[]> {
     try { path = decodeURIComponent(u.pathname); }
     catch { continue; } // malformed escape — not an entry link
     if (!path.startsWith(hrefPref)) continue;
-    const rel = path.slice(hrefPref.length);
-    const url = u.href;
+    let rel = path.slice(hrefPref.length);
+    let url = u.href;
+    if (col.rename && rel.startsWith(col.rename.listed)) {
+      rel = col.rename.stored + rel.slice(col.rename.listed.length);
+      url = `${BASE}/${item}/${encodeURIComponent(outer)}/` +
+        encodeURIComponent(rel);
+    }
     if (col.prefix !== undefined) {
       // Loose pack files inside the collection zip, listed at any depth.
       // `inner` is the entry's basename (minus extension) for display.
@@ -459,8 +481,11 @@ export async function importAddon(url: string): Promise<PackResult[]> {
   const out: PackResult[] = [];
   for (const b of blobs) {
     if (isPack(b.data)) {
-      out.push({ sheets: fshToSheets(b.data), images: packImages(b.data),
-                 sounds: [] });
+      const sheets = fshToSheets(b.data), images = packImages(b.data);
+      // A sound bank (AZ_WAVES.REZ) has WAVs and no art. A pack with
+      // art brings no sounds: one kind of content per add-on.
+      const sounds = sheets.size || images.size ? [] : bankSounds(b.data);
+      out.push({ sheets, images, sounds });
     } else if (isBmp(b.data)) {
       const img = decodeBmp(b.data);
       if (img) out.push({ sheets: new Map(), sounds: [],
@@ -653,6 +678,8 @@ export function loadProblem(e: unknown): string {
   if (http) return `archive.org answered with error ${http[1]}.`;
   if (msg === "no pack inside")
     return "The download has no add-on in it.";
+  if (msg.endsWith(": empty"))
+    return "archive.org sent an empty file. Try again later.";
   if (msg.endsWith(": entry missing"))
     return "The download is missing the add-on's file.";
   if (/abort/i.test(msg))
@@ -912,8 +939,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     dmeta.textContent = "";
     showPlay(false);
     status.textContent = section === "sounds"
-      ? "The game's own sound effects aren't on archive.org — drop its " +
-        ".rsrc, .bin or .hqx file on the tank or this window to add them."
+      ? "AZ_WAVES holds the game's own sound effects. You can also drop " +
+        "your copy's .rsrc, .bin, .hqx or .REZ file on the tank or this " +
+        "window."
       : all.length ? "Select an add-on to preview it." : "";
     if (all.length) setAdd("Add to Tank", null);
   }

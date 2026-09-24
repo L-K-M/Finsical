@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- The tank plays AquaZone's own sound effects. Finsical downloads the
+  game's 25 sounds (AZ_WAVES) from the Internet Archive: the first-run
+  starter set now includes them, and Import Add-ons lists them under
+  Sounds. They play when the original game played them. The filter's
+  bubbling loops under everything, and the game's water sound plays
+  once as the tank opens. Feeding, tapping the glass by where you tap,
+  a fish going in or out, scenery going in, Change Water and the lamp
+  switch each have their own sound. Dropping your copy of AZ_WAVES.REZ
+  on the tank works too. Water ambience now switches the bubbling;
+  Bubble sounds only plays a short bubble sound you add, since the game
+  has none for single bubbles.
 - Until your first pack lands, the stand-in fish are a pixel-art guppy
   with a wagging tail instead of a few rectangles.
 - Fish swim more calmly: they stroke and glide toward where they are

@@ -147,7 +147,9 @@ function syncLight(now: Date): void {
 syncLight(new Date());
 /** Merge a partial schedule (prefs pop-up) onto the current one. */
 function applyLighting(raw: unknown): void {
+  const lampWas = lighting.lamp;
   lighting = sanitizeLighting(raw, lighting);
+  if (lighting.lamp !== lampWas) audio.lampSwitch();
   syncLight(new Date());
   requestPaint(); // shows at once, even while no tick runs
   try { localStorage.setItem(LIGHTING_KEY, JSON.stringify(lighting)); }
@@ -773,6 +775,7 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
   else if (section === "backgrounds" || section === "tanks")
     pickBackdrop(images, src);
   else return;
+  if (live) audio.sceneryIn();
   // A live install shows its art and so becomes the choice; a restore
   // only puts art back and leaves the choice alone.
   if (live && backdropSrc === src) chooseScenery("backdrop", src);
@@ -984,20 +987,29 @@ function sweepThumbs(): void {
   for (const k of [...pendingThumbs]) if (!alive(k)) pendingThumbs.delete(k);
 }
 
+/** Run a removal the user asked for, and let the water out once if it
+ * took fish with it. */
+function fishOutAfter(remove: () => void): void {
+  const before = sim.fish.length;
+  remove();
+  if (sim.fish.length < before) audio.fishOut();
+}
+
 function onBusMessage(m: BusMsg): void {
   if (m.op === "hello") postState();
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
   else if (m.op === "removeFish" && typeof m.id === "number") {
-    if (sim.removeFish(m.id)) { sweepThumbs(); saveTank(); }
+    if (sim.removeFish(m.id)) { audio.fishOut(); sweepThumbs(); saveTank(); }
   } else if (m.op === "removeAddon" &&
              typeof m.url === "string" && m.url !== "") {
-    removeAddon(m.url);
+    const url = m.url;
+    fishOutAfter(() => removeAddon(url));
   } else if (m.op === "useAddon" &&
              typeof m.url === "string" && m.url !== "") {
     useScenery(m.url);
   } else if (m.op === "emptyTank") {
-    emptyTank();
+    fishOutAfter(emptyTank);
   } else if (m.op === "wantThumbs" && Array.isArray(m.keys)) {
     serveThumbs(m.keys);
   } else if (m.op === "changeWater") {
@@ -1467,7 +1479,7 @@ function takePicture(): void {
 function changeWater(): void {
   audio.unlock(); // Tank ▸ Change Water can be the first gesture
   sim.changeWater();
-  audio.splash();
+  audio.changeWater();
   requestPaint(); // the murk clears at once, even while paused
   saveTank(); // persists + pushes fresh state to open panels
 }
@@ -1600,6 +1612,9 @@ void (async () => {
   .then((recs) => recs?.length ? audio.addWavs(recs).catch((e) =>
     console.warn("snd decode failed:", e)) : undefined)
   .then(() => {
+    // The saved sounds are back: the bubbling starts, and the opening
+    // sound plays now or on the first click.
+    audio.open();
     // The user's chosen scenery wins over install-recency — applied
     // once every pack has had its restore chance. A pack that failed
     // to restore leaves whatever the chain picked, until a retry.
@@ -1739,7 +1754,17 @@ window.addEventListener("drop", (e) => {
         continue;
       }
       const [p] = decodeDroppedPacks([[name, data]]);
-      if (!p) continue;
+      if (!p) {
+        // No art: it may be the game's sound bank (AZ_WAVES.REZ). Its
+        // records persist like any dropped sound; the pack isn't kept.
+        const bank = fileSoundRecords(name, data);
+        if (!bank.length) continue;
+        await handleSounds(bank)
+          .catch((e) => console.warn("sound import failed:", e));
+        imported++;
+        console.info(`${name}: ${bank.length} sounds imported`);
+        continue;
+      }
       // A full tank takes no new fish: say so rather than store and
       // record a pack whose fish never spawns.
       const refusal = p.sheets.size ? fishRefusal("fish") : null;

@@ -42,6 +42,17 @@ const FEEDBACK_FADE_S = 0.6;
 /** Time constant of a master level change (about 3 tau to settle). */
 const LEVEL_GLIDE_S = 0.01;
 
+// The original game's sounds, by the names its 'snd ' resources carry
+// (core/data/sndbank.ts), lowercased for lookup.
+/** The filter's bubbling: the one sound the original loops, under all
+ * the others. */
+const FILTER_BUBBLING = "az bubble 9003";
+/** Played once as an aquarium opens. */
+const OPENING = "aqua";
+/** The bubbling's own level is close to the effects', so it loops at
+ * the gain single bubbles play at, under them. */
+const AMBIENT_GAIN = 0.4;
+
 export class TankAudio {
   private ctx: AudioContext | null = null;
   // Every sound's per-play gain feeds this one node, created with the
@@ -66,6 +77,9 @@ export class TankAudio {
   private ambientGen = 0;
   // Page hidden: rAF stops and the sim freezes, so the device sleeps too.
   private hidden = false;
+  // The opening sound plays once per session: due from open() when the
+  // set has one, and played as soon as audio runs.
+  private openingDue = false;
 
   async load(read: (path: string) => Promise<Uint8Array>,
              manifest: AzpackManifest): Promise<void> {
@@ -116,10 +130,10 @@ export class TankAudio {
       }));
       for (const d of decoded) if (d) this.imported.set(d.name, d.data);
     }
-    // A dropped "aqua" can outrank what's looping (or supply the ambient
-    // an earlier startAmbient found missing) — restart when the buffer
-    // that would play now differs from the one currently selected.
-    const now = this.find("aqua");
+    // A dropped bubbling sound can replace what's looping (or supply the
+    // loop an earlier startAmbient found missing) — restart when the
+    // buffer that would play now differs from the one currently selected.
+    const now = this.named(FILTER_BUBBLING);
     if (this.ambientWanted && now !== null && now !== this.ambientBuf) {
       if (this.ambientSrc) {
         try { this.ambientSrc.stop(); } catch { /* already ended */ }
@@ -202,6 +216,7 @@ export class TankAudio {
     void this.ctx.resume()
       .then(() => {
         resumed = true;
+        this.playOpening();
         return this.startAmbient();
       })
       .catch((err) => {
@@ -228,17 +243,19 @@ export class TankAudio {
     }
     void ac.resume()
       .then(() => {
-        if (!this.hidden && this.ambientWanted) this.startAmbient();
+        if (this.hidden) return;
+        this.playOpening();
+        if (this.ambientWanted) this.startAmbient();
       })
       .catch(() => { /* resume blocked until a user gesture */ });
   }
 
   /** Drop imported records (add-on uninstall). If the ambient loop was
-   * playing one, restart it on whatever "aqua" remains — same restart
+   * playing one, restart it on whatever bubbling remains — same restart
    * rule as addWavs. */
   removeWavs(names: Iterable<string>): void {
     for (const n of names) this.imported.delete(n);
-    const now = this.find("aqua");
+    const now = this.named(FILTER_BUBBLING);
     if (this.ambientWanted && now !== this.ambientBuf) {
       if (this.ambientSrc) {
         try { this.ambientSrc.stop(); } catch { /* already ended */ }
@@ -279,19 +296,33 @@ export class TankAudio {
     this.feedbackSrc = src;
   }
 
-  private find(...subs: string[]): AudioBuffer | null {
-    // Exact names beat substring hits globally — a bundled "aqua" keeps
-    // the ambient slot over an unrelated import that merely contains
-    // the substring. Within each pass, imported (user-dropped) sounds
+  /** The first sound named one of `subs`, else the first whose name
+   * contains one, passing over the sound named `skip`. */
+  private find(subs: readonly string[], skip = ""): AudioBuffer | null {
+    // Exact names beat substring hits globally — a bundled "drop" keeps
+    // the feed slot over an unrelated import that merely contains the
+    // substring. Within each pass, imported (user-dropped) sounds
     // still outrank bundled manifest ones — the drop is the more
     // deliberate, more recent act.
     for (const exact of [true, false])
       for (const map of [this.imported, this.buffers])
         for (const [name, buf] of map) {
           const n = name.toLowerCase();
+          if (n === skip) continue;
           if (subs.some((s) => exact ? n === s : n.includes(s)))
             return buf;
         }
+    return null;
+  }
+
+  /** Exact-name lookup (case-insensitive) for the original game's event
+   * sounds. find()'s substring pass would let an unrelated import, a
+   * song called "Switchfoot" say, stand in for the lamp's click. */
+  private named(name: string): AudioBuffer | null {
+    const want = name.toLowerCase();
+    for (const map of [this.imported, this.buffers])
+      for (const [n, buf] of map)
+        if (n.toLowerCase() === want) return buf;
     return null;
   }
 
@@ -328,12 +359,34 @@ export class TankAudio {
   }
 
   feed(): void {
-    this.play(this.find("drop", "intowater"), 0.7);
+    this.play(this.find(["drop", "intowater"]), 0.7);
   }
 
   /** Fish entering the tank — the original's water-entry sound. */
   splash(): void {
-    this.play(this.find("intowater", "drop"), 0.7);
+    this.play(this.find(["intowater", "drop"]), 0.7);
+  }
+
+  /** A water change. Sets without the original's own sound for it
+   * splash instead. */
+  changeWater(): void {
+    this.play(this.named("changewater") ?? this.find(["intowater", "drop"]),
+              0.7);
+  }
+
+  /** The lamp's switch. */
+  lampSwitch(): void {
+    this.play(this.named("switch"), 0.8);
+  }
+
+  /** Scenery going in: a backdrop, gravel, plant or accessory. */
+  sceneryIn(): void {
+    this.play(this.named("intowaterbig"), 0.7);
+  }
+
+  /** A fish taken out of the tank. */
+  fishOut(): void {
+    this.play(this.named("letoutwater"), 0.7);
   }
 
   /** Tap sounds are positional in the original app. */
@@ -344,19 +397,39 @@ export class TankAudio {
       // Compare normalized distances — the tank is wider than tall,
       // so raw pixels call near-side taps "top"/"bottom".
       sub = dx / w < dy / h ? "side" : (y < h - y ? "top" : "bottom");
-    this.play(this.find(sub) ?? this.find("center", "side"), 0.8);
+    this.play(this.find([sub]) ?? this.find(["center", "side"]), 0.8);
   }
 
+  /** A bubble rising. The original has no sound for one, so this plays
+   * a short bubble sound the user added, never the filter's loop. */
   bubble(): void {
     if (!this.bubblesOn) return;
-    this.play(this.find("bubble"), 0.4);
+    this.play(this.find(["bubble"], FILTER_BUBBLING), 0.4);
   }
 
+  /** The tank has opened with its saved sounds loaded: start the
+   * bubbling, and play the opening sound now if audio may start by
+   * itself (the app), else on the first unlock (a browser). */
+  open(): void {
+    this.openingDue = this.named(OPENING) !== null;
+    this.startAmbient();
+    this.playOpening();
+  }
+
+  private playOpening(): void {
+    if (!this.openingDue || this.hidden || this.ctx?.state !== "running")
+      return;
+    this.openingDue = false;
+    this.play(this.named(OPENING), 0.7, false, false);
+  }
+
+  /** Loop the filter's bubbling under everything, as the original does.
+   * The "Water ambience" switch (setOptions' `ambient`) turns it off. */
   startAmbient(): void {
     if (!this.ambientOn || this.ambientSrc) return; // off, or already live
     this.ambientWanted = true;
-    this.ambientBuf = this.find("aqua");
+    this.ambientBuf = this.named(FILTER_BUBBLING);
     this.ambientGen++; // stale pending starts abort in play()
-    this.ambientSrc = this.play(this.ambientBuf, 0.12, true);
+    this.ambientSrc = this.play(this.ambientBuf, AMBIENT_GAIN, true);
   }
 }
