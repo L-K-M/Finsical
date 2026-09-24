@@ -12,6 +12,8 @@ export interface FishSnap {
   sick?: boolean;
   dead?: boolean;
   pack?: string;
+  /** Starter art a fish pack will replace — label it honestly. */
+  standIn?: boolean;
 }
 export interface TankState extends BusMsg {
   addons?: Importable[];
@@ -83,7 +85,8 @@ export function itemsOf(s: TankState): Item[] {
   const items: Item[] = fish.map((f) => ({
     key: fishThumbKey(f),
     thumb: fishThumbKey(f),
-    name: f.species || "Fish",
+    name: f.standIn ? `${f.species || "Fish"} (stand-in)`
+                    : f.species || "Fish",
     kind: "Fish",
     // Bus data is untrusted: an unknown state reads as swimming.
     status: `${f.dead === true ? "Dead" : f.sick === true ? "Sick" :

@@ -1038,6 +1038,9 @@ function sendState(): void {
     // a fish add-on with a living fish doesn't repeat in Add-ons.
     fish: sim.fish.map(({ id, species, hunger, state, sick, dead, pack }) =>
       ({ id, species, hunger, state, sick, dead,
+         // Starter stand-ins read as such in the Overview — they
+         // leave when real fish arrive.
+         ...(placeholderIds.has(id) ? { standIn: true } : {}),
          ...(pack !== undefined ? { pack } : {}) })),
     waterQuality: sim.waterQuality,
     tickCount: sim.tickCount,
