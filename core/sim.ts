@@ -17,6 +17,9 @@ export interface Fish {
   /** Install URL of the add-on that spawned this fish — the precise
    * identity when two packs share a species name. */
   pack?: string;
+  /** Which of the add-on's packs this fish is (its entry name), when
+   * one add-on holds several: angels.zip has an angel and a blackangel. */
+  packPart?: string;
   /** Renderer sheet index; undefined = round-robin assignment. */
   sheetIdx?: number;
   x: number;

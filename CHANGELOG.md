@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Fish add-ons that hold several fish keep each fish's own look after a
+  relaunch. Adding angels.zip gave an angel and a black angel, but the
+  next launch turned both into black angels, and 17 of the Internet
+  Archive's fish add-ons did the same (goldfish, discus, guppies, tama
+  and more). Each fish is now named after its own pack ("angel",
+  "blackangel") instead of the add-on, and tanks that already lost
+  their looks get them back. An add-on whose fish don't all fit in the
+  tank is refused as a whole, instead of adding some and reporting
+  success.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the

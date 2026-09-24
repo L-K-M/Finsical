@@ -31,6 +31,7 @@ import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
 import { placeholderFrames } from "./placeholder.js";
 import { containPoint, isFeedZoneY } from "./feedzone.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
+import { migrateParts, partName } from "./tankmodel.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
 import { stateLabel } from "./overviewmodel.js";
@@ -203,6 +204,7 @@ function sanitizeSavedFish(f: Partial<Fish> & { x: number; y: number }):
   if (Number.isInteger(f.sheetIdx) && f.sheetIdx! >= 0)
     out.sheetIdx = f.sheetIdx!;
   if (typeof f.pack === "string") out.pack = f.pack;
+  if (typeof f.packPart === "string") out.packPart = f.packPart;
   return out;
 }
 const roster = (saved?.fish ?? [])
@@ -229,6 +231,7 @@ function saveTank(): void {
         bandY: f.bandY, hunger: f.hunger, scale: f.scale,
         ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
         ...(f.pack !== undefined ? { pack: f.pack } : {}),
+        ...(f.packPart !== undefined ? { packPart: f.packPart } : {}),
       })),
       addons: installedAddons,
       scenery: sceneryChoice,
@@ -473,10 +476,15 @@ type CapRule = "enforce" | "bypass";
 /** Why the tank refuses a new fish, or null when there is room. Both
  * install paths (the in-page panel and the Import Add-ons window) ask
  * this before fetching, so neither reports a fish that never spawns. */
-function fishRefusal(section: string): string | null {
-  if (section !== "fish" || sim.fish.length < FISH_CAP) return null;
-  return `The tank is full: ${FISH_CAP} fish is plenty. ` +
-         "Release one from Tank Overview first.";
+function fishRefusal(section: string, fish = 1): string | null {
+  const room = FISH_CAP - sim.fish.length;
+  if (section !== "fish" || fish <= room) return null;
+  if (room <= 0)
+    return `The tank is full: ${FISH_CAP} fish is plenty. ` +
+           "Release one from Tank Overview first.";
+  // A multi-pack add-on adds a fish per pack: all of them or none.
+  return `This add-on brings ${fish} fish, and the tank has room for ` +
+         `${room} more. Release some from Tank Overview first.`;
 }
 
 /** A newly installed fish pack adds one fish bound to its sheet —
@@ -484,7 +492,7 @@ function fishRefusal(section: string): string | null {
  * install URL: the precise identity when packs share a species name.
  * Returns the new fish, or null when the tank is already full. */
 function spawnFish(sheetIdx: number, species: string, pack?: string,
-                   cap: CapRule = "enforce"): Fish | null {
+                   cap: CapRule = "enforce", packPart?: string): Fish | null {
   if (cap === "enforce" && sim.fish.length >= FISH_CAP) return null;
   const facing = Math.random() < 0.5 ? 1 : -1;
   const x = 60 + Math.random() * (TANK.width - 120);
@@ -497,6 +505,7 @@ function spawnFish(sheetIdx: number, species: string, pack?: string,
     hunger: SPAWN_HUNGER,
     sheetIdx, species,
     ...(pack !== undefined ? { pack } : {}),
+    ...(packPart !== undefined ? { packPart } : {}),
   });
   bindExtents(f);
   // A new fish enters through the surface — pair the splash sound
@@ -651,14 +660,22 @@ function sheetOf(f: Fish): SpriteSheet | null {
 // bind to sheets by position, which drifts if a pack fails to restore
 // or a drag-dropped pack isn't restorable — remap by species instead.
 const sheetBySpecies = new Map<string, number>();
-// Add-on URL → sheet slot: the precise binding when two packs share a
-// species name (basenames collide across collections).
-const sheetByPack = new Map<string, number>();
-// Reverse of sheetByPack — which pack owns a slot, for migrating
+// Add-on URL → its packs' entry names → sheet slot: the precise binding
+// when two packs share a species name (basenames collide across
+// collections) and when one add-on holds several fish packs. Nested
+// maps, not joined keys: URLs already contain '#'. Parts keep the order
+// they loaded in, which is the add-on's entry order.
+const sheetByPack = new Map<string, Map<string, number>>();
+// Reverse of sheetByPack — which pack part owns a slot, for migrating
 // species-bound fish onto the URL binding of the sheet they render.
-const packBySheet = new Map<number, string>();
+const packBySheet = new Map<number, { url: string; part: string }>();
+/** An add-on's first loaded slot: what stands for it as a whole (its
+ * thumbnail, a legacy roster's healing). */
+const firstSlot = (url: string): number | undefined =>
+  sheetByPack.get(url)?.values().next().value;
 function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
-                      url: string, section: string, live: boolean): void {
+                      url: string, section: string, live: boolean,
+                      part: string): void {
   // Only fish sections register sheets — a tank/scenery pack's sprite
   // streams mustn't join the fish pool or starter fish could
   // round-robin onto art nobody chose.
@@ -666,15 +683,17 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
   const idx = usePack({ sheets });
   if (idx >= 0) {
     sheetBySpecies.set(name, idx);
-    // A reinstall can rebind the url to a new slot — drop the old
+    // A reinstall can rebind the part to a new slot — drop the old
     // reverse entry so the two maps stay exact inverses.
-    const prior = sheetByPack.get(url);
+    let parts = sheetByPack.get(url);
+    if (!parts) sheetByPack.set(url, parts = new Map());
+    const prior = parts.get(part);
     if (prior !== undefined && prior !== idx) packBySheet.delete(prior);
-    sheetByPack.set(url, idx);
-    packBySheet.set(idx, url);
+    parts.set(part, idx);
+    packBySheet.set(idx, { url, part });
     // A live fish-pack install adds a real fish; restores replay sheets
     // only — the saved roster already carries those fish.
-    if (live && spawnFish(idx, name, url)) audio.splash();
+    if (live && spawnFish(idx, name, url, "enforce", part)) audio.splash();
   }
   console.info(`archive.org: imported ${section} ${name}`);
   requestPaint(); // restores can rebind existing fish to new art
@@ -685,11 +704,30 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
  * landed this session. Unknown species keep in-range bindings (the
  * bundled pack registers its tag too) — only out-of-range ones drop. */
 function remapSheetIdx(): void {
+  // Fish saved before parts were recorded all rebound to an add-on's
+  // last pack on relaunch; give them back a part each (web/tankmodel.ts).
+  const legacy = new Map<string, Fish[]>();
+  for (const f of sim.fish)
+    if (f.pack !== undefined && f.packPart === undefined &&
+        sheetByPack.has(f.pack))
+      legacy.set(f.pack, [...legacy.get(f.pack) ?? [], f]);
+  for (const [url, fish] of legacy) {
+    const entries = [...sheetByPack.get(url)!.keys()];
+    const parts = migrateParts(fish.map((f) => f.id), entries);
+    for (const f of fish) {
+      const part = parts.get(f.id);
+      if (part === undefined) continue;
+      f.packPart = part;
+      // They were all named after the add-on; name each after its pack.
+      f.species = partName(f.species, part, entries.length);
+    }
+  }
   for (const f of sim.fish) {
-    // Fish spawned by an add-on rebind by pack URL; older saves carry
-    // only a species name — fall back to it (collisions just share art).
+    // Fish spawned by an add-on rebind by pack URL and part; older
+    // saves carry only a species name — fall back to it (collisions
+    // just share art).
     const idx = f.pack !== undefined
-      ? sheetByPack.get(f.pack)
+      ? sheetByPack.get(f.pack)?.get(f.packPart ?? "")
       : f.species ? sheetBySpecies.get(f.species) : undefined;
     if (idx !== undefined) {
       f.sheetIdx = idx;
@@ -698,7 +736,7 @@ function remapSheetIdx(): void {
       // share a species name, and it lets the panel dedupe by URL.
       if (f.pack === undefined) {
         const u = packBySheet.get(idx);
-        if (u !== undefined) f.pack = u;
+        if (u !== undefined) { f.pack = u.url; f.packPart = u.part; }
       }
     } else if (f.sheetIdx !== undefined &&
                (f.sheetIdx < 0 || f.sheetIdx >= fishSheets.length))
@@ -723,11 +761,11 @@ function reconcileFish(): void {
     if (sim.fish.some((f) => f.pack === it.url ||
         (f.pack === undefined && f.species === it.inner)))
       continue;
-    const idx = sheetByPack.get(it.url) ?? sheetBySpecies.get(it.inner);
+    const idx = firstSlot(it.url) ?? sheetBySpecies.get(it.inner);
     if (idx === undefined) { pending = true; continue; } // restore failed — retry next launch
     // These packs were installed before fish spawned on install (and
     // before the cap), so healing them isn't a new fish: bypass it.
-    spawnFish(idx, it.inner, it.url, "bypass");
+    spawnFish(idx, it.inner, it.url, "bypass", packBySheet.get(idx)?.part);
   }
   // spawnFish's own saves went out as v=1 — stamp the reconciled roster.
   rosterComplete = !pending;
@@ -832,7 +870,7 @@ const importPanel = mountImportPanel({
   },
   onInstall: recordInstall,
   onRestore: refreshInstall,
-  refuse: (it) => fishRefusal(it.section),
+  refuse: (it, fish) => fishRefusal(it.section, fish),
   preview: previewOf,
 });
 
@@ -938,7 +976,7 @@ function addonThumb(url: string): string | null {
   const hit = thumbMemo.get(key);
   if (hit) return hit;
   let cv: HTMLCanvasElement | null = null;
-  const i = sheetByPack.get(url);
+  const i = firstSlot(url);
   if (i !== undefined && fishSheets[i]) {
     try { cv = thumbFrame(fishSheets[i]!); } catch { /* scenery below */ }
   }
@@ -1111,11 +1149,10 @@ function removeAddon(url: string): void {
       .catch((e) => console.warn("snd removal failed:", e));
   }
   for (const s of orphaned) sheetBySpecies.delete(s);
-  const slot = sheetByPack.get(url);
-  // Only delete the reverse entry it still owns — a rebind may have
-  // handed the slot to a different pack since.
-  if (slot !== undefined && packBySheet.get(slot) === url)
-    packBySheet.delete(slot);
+  // Only delete the reverse entries it still owns — a rebind may have
+  // handed a slot to a different pack since.
+  for (const slot of sheetByPack.get(url)?.values() ?? [])
+    if (packBySheet.get(slot)?.url === url) packBySheet.delete(slot);
   sheetByPack.delete(url);
   // A dropped pack's stored bytes are the only copy — uninstall
   // deletes them (archive packs keep their cache entries).
@@ -1214,9 +1251,14 @@ async function downloadAddon(it: Importable): Promise<void> {
   const usable = rs.filter(
     (r) => r.sheets.size || r.images.size || r.sounds.length);
   if (!usable.length) throw new Error("no pack inside");
+  // Every pack of a multi-pack fish add-on adds a fish: all or none.
+  const parts = usable.filter((r) => r.sheets.size).length;
+  const refusal = fishRefusal(it.section, parts);
+  if (refusal) throw new Error(refusal);
   for (const r of usable) {
     if (r.sheets.size)
-      handleSheets(r.sheets, it.inner, it.url, it.section, true);
+      handleSheets(r.sheets, partName(it.inner, r.entry, parts), it.url,
+                   it.section, true, r.entry);
     if (r.images.size)
       handleImages(r.images.values(), it.url, it.section, true);
   }
@@ -1828,7 +1870,8 @@ window.addEventListener("drop", (e) => {
       // The archive install path: handleSheets binds the sheet to the
       // url and spawns the fish; scenery keys by url so Overview's
       // Remove clears it.
-      if (p.sheets.size) handleSheets(p.sheets, p.name, url, "fish", true);
+      if (p.sheets.size)
+        handleSheets(p.sheets, p.name, url, "fish", true, name);
       if (p.images.size)
         handleImages(p.images.values(), url, p.section, true);
       // Only when the bytes persisted — a dangling record would throw

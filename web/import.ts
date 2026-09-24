@@ -16,8 +16,9 @@ import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
 import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
 import { bankSounds } from "../core/data/sndbank.js";
-import { isLocalPack, metaGet, metaPut, packDelete, packGet, packPut }
-  from "./store.js";
+import { isLocalPack, LOCAL_PREFIX, metaGet, metaPut, packDelete, packGet,
+         packPut } from "./store.js";
+import { partName } from "./tankmodel.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
@@ -395,6 +396,9 @@ async function fetchInnerBlobs(url: string): Promise<RawBlob[]> {
 }
 
 export interface PackResult {
+  /** The pack's entry name inside its add-on: a multi-pack fish add-on
+   * binds each of its fish to the part that spawned it. */
+  entry: string;
   sheets: Map<string, SpriteSheet>;
   images: Map<string, IndexedImage>;
   /** Sound records — `wav` is the encoded payload (literal WAV for
@@ -474,8 +478,8 @@ export async function importAddon(url: string): Promise<PackResult[]> {
     // Same shape as the remote isPack branch: a pack blob yields no
     // sound records — dropped loose audio already persisted via
     // handleSounds/sndsPut at drop time.
-    return [{ sheets: fshToSheets(d), images: packImages(d),
-              sounds: [] }];
+    return [{ entry: url.slice(LOCAL_PREFIX.length), sheets: fshToSheets(d),
+              images: packImages(d), sounds: [] }];
   }
   const blobs = await fetchInnerBlobs(url);
   const out: PackResult[] = [];
@@ -485,15 +489,16 @@ export async function importAddon(url: string): Promise<PackResult[]> {
       // A sound bank (AZ_WAVES.REZ) has WAVs and no art. A pack with
       // art brings no sounds: one kind of content per add-on.
       const sounds = sheets.size || images.size ? [] : bankSounds(b.data);
-      out.push({ sheets, images, sounds });
+      out.push({ entry: b.name, sheets, images, sounds });
     } else if (isBmp(b.data)) {
       const img = decodeBmp(b.data);
-      if (img) out.push({ sheets: new Map(), sounds: [],
+      if (img) out.push({ entry: b.name, sheets: new Map(), sounds: [],
                          images: new Map([[url, img]]) });
     } else {
       const sounds = fileSoundRecords(b.name, b.data);
       if (sounds.length)
-        out.push({ sheets: new Map(), images: new Map(), sounds });
+        out.push({ entry: b.name, sheets: new Map(), images: new Map(),
+                   sounds });
     }
   }
   return out;
@@ -532,7 +537,7 @@ export interface ImportHandlers {
    * `live` = user-initiated install; false on launch-time restore, which
    * must not spawn fish (the saved roster already holds them). */
   onSheets(sheets: Map<string, SpriteSheet>, name: string, url: string,
-           section: string, live: boolean): void;
+           section: string, live: boolean, part: string): void;
   /** `live` as for onSheets: a restore must not change the choice of
    * scenery on display. */
   onImages(images: Iterable<IndexedImage>, src: string, section: string,
@@ -554,8 +559,9 @@ export interface ImportHandlers {
   onRestore?(it: Importable, soundNames: string[]): void;
   /** Why the tank can't take this add-on right now (e.g. it is full),
    * or null. Asked before a local install; the Import Add-ons window
-   * gets the same answer from the tank page as an installFailed. */
-  refuse?(it: Importable): string | null;
+   * gets the same answer from the tank page as an installFailed.
+   * `fish` is how many fish the install adds: one per sheet pack. */
+  refuse?(it: Importable, fish: number): string | null;
   /** Render decoded packs to a preview canvas; null = nothing to show. */
   preview(rs: PackResult[]): HTMLCanvasElement | null;
 }
@@ -1029,7 +1035,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       // paths drop a first add of something already in the tank, which
       // is what "Add to Tank" promises.
       const addIt = (again: boolean) => {
-        const refusal = remote ? null : h.refuse?.(it) ?? null;
+        const refusal = remote ? null
+          : h.refuse?.(it, usable.filter((x) => x.sheets.size).length) ??
+            null;
         if (refusal) {
           status.textContent = refusal;
           return;
@@ -1285,9 +1293,11 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       (r) => r.sheets.size || r.images.size || r.sounds.length);
     if (!usable.length) throw new Error("no pack inside");
     const soundNames: string[] = [];
+    const parts = usable.filter((r) => r.sheets.size).length;
     for (const r of usable) {
       if (r.sheets.size)
-        h.onSheets(r.sheets, it.inner, it.url, it.section, live);
+        h.onSheets(r.sheets, partName(it.inner, r.entry, parts), it.url,
+                   it.section, live, r.entry);
       if (r.images.size)
         h.onImages(r.images.values(), it.url, it.section, live);
       if (r.sounds.length) {
