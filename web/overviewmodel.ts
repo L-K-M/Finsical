@@ -12,6 +12,8 @@ export interface FishSnap {
   sick?: boolean;
   dead?: boolean;
   pack?: string;
+  /** Starter art a fish pack will replace — label it honestly. */
+  standIn?: boolean;
 }
 export interface TankState extends BusMsg {
   addons?: Importable[];
@@ -35,6 +37,8 @@ export interface Item {
   remove: BusMsg;
   /** "Use" intent for scenery packs not currently on display. */
   use?: BusMsg | undefined;
+  /** Fish rows carry the sim id so a selection can spotlight it. */
+  fishId?: number;
 }
 
 export type Column = "name" | "kind" | "status";
@@ -81,7 +85,8 @@ export function itemsOf(s: TankState): Item[] {
   const items: Item[] = fish.map((f) => ({
     key: fishThumbKey(f),
     thumb: fishThumbKey(f),
-    name: f.species || "Fish",
+    name: f.standIn ? `${f.species || "Fish"} (stand-in)`
+                    : f.species || "Fish",
     kind: "Fish",
     // Bus data is untrusted: an unknown state reads as swimming.
     status: `${f.dead === true ? "Dead" : f.sick === true ? "Sick" :
@@ -89,6 +94,7 @@ export function itemsOf(s: TankState): Item[] {
       hungerLabel(f.hunger),
     rank: 0,
     remove: { op: "removeFish", id: f.id },
+    fishId: f.id,
   }));
   const showing = new Set(
     [s.scenery?.backdrop, s.scenery?.gravel].filter(
