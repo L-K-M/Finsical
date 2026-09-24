@@ -83,9 +83,13 @@ let focusId: number | null = null;
 // a lease, not a toggle. BroadcastChannel has no disconnect event and
 // a bfcache eviction fires no pagehide, so without an expiry a
 // vanished overview would leave its spotlight on the fish forever.
+// Wall-clock, not ticks: a paused sim never advances tickCount, which
+// would freeze the lease mid-flight.
 let focusAt = -Infinity;
-/** Ticks a focus stays live without a re-assert (~40 s at 30 tps). */
-const FOCUS_TTL = 40 * 30;
+let focusOwner = "";
+/** Wall-clock ms a focus stays live without a re-assert. Sized past
+ * the ~60 s clamp browsers put on hidden-tab timers. */
+const FOCUS_TTL = 180_000;
 
 // ---- persistence ---------------------------------------------------------
 // Tank state (fish, water, installed add-ons) survives restarts via
@@ -1150,8 +1154,18 @@ function onBusMessage(m: BusMsg): void {
   if (m.op === "hello") postState(HELLO_MIN_MS);
   else if (m.op === "focusFish") {
     // The Overview's selection spotlights a fish — null lifts it.
-    focusId = typeof m.id === "number" ? m.id : null;
-    focusAt = sim.tickCount;
+    // Selection posts carry the sender's page id and claim the lease;
+    // keepAlive beats only renew it. Two Overviews then can't
+    // ping-pong the spotlight, and a non-owner's unload can't lift it.
+    const from = typeof m.from === "string" ? m.from : "";
+    const keepAlive = m.keepAlive === true;
+    const fid = typeof m.id === "number" ? m.id : null;
+    if (keepAlive ? from === focusOwner && fid === focusId
+                  : fid !== null || from === focusOwner) {
+      focusId = fid;
+      focusOwner = fid === null ? "" : from;
+      focusAt = Date.now();
+    }
     requestPaint();
   }
   else if (m.op === "install")
@@ -2408,7 +2422,7 @@ function render(): void {
   // clock so a paused tank doesn't freeze them mid-stroke.
   if (focusId !== null) {
     // The lease lapsed — the overview is gone and can't lift it.
-    if (sim.tickCount - focusAt > FOCUS_TTL) focusId = null;
+    if (Date.now() - focusAt > FOCUS_TTL) focusId = null;
     const f = focusId === null ? null
       : sim.fish.find((x) => x.id === focusId);
     // The fish left the tank — lift the spotlight so a recycled id

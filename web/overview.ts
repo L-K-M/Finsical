@@ -72,6 +72,9 @@ removeStatus.style.cssText = "position:absolute;width:1px;height:1px;" +
 removeBtn.after(removeStatus);
 
 let tankBoot: string | undefined;
+// Identifies this page instance to the tank's focus lease — two
+// Overviews can be open, and only the claim holder may renew or lift.
+const pageId = crypto.randomUUID();
 const bus = openBus((m) => {
   if (m.op === "state") {
     greeted = true;
@@ -143,9 +146,10 @@ const list = mountList(listEl, {
     syncRemove();
     // Picking a fish spotlights it in the tank — like double-clicking
     // a Finder item to see it. Add-on rows and a cleared selection
-    // lift the marker.
+    // lift the marker. The page id claims the lease, so a second
+    // Overview's heartbeats can't steal it.
     const it = items[list.selected];
-    bus.post({ op: "focusFish", id: it?.fishId ?? null });
+    bus.post({ op: "focusFish", id: it?.fishId ?? null, from: pageId });
   },
 });
 // Until the first state push lands, blank is "not heard yet", not
@@ -357,17 +361,21 @@ document.addEventListener("visibilitychange", () => {
 // but a bfcache pagehide keeps the DOM's selection, so only a real
 // unload lifts it, and a restore re-asserts it.
 window.addEventListener("pagehide", (e) => {
-  if (!e.persisted) bus.post({ op: "focusFish", id: null });
+  if (!e.persisted)
+    bus.post({ op: "focusFish", id: null, from: pageId });
 });
 window.addEventListener("pageshow", (e) => {
   if (e.persisted)
-    bus.post({ op: "focusFish", id: items[list.selected]?.fishId ?? null });
+    bus.post({ op: "focusFish",
+               id: items[list.selected]?.fishId ?? null, from: pageId });
 });
 // A bfcache eviction fires no event and BroadcastChannel has no
 // disconnect — the spotlight is a lease: keep re-asserting it and the
-// tank lets a silent overview's focus lapse.
+// tank lets a silent overview's focus lapse. keepAlive marks the beat
+// as a renewal, so it can't steal another Overview's claim.
 setInterval(() => {
   const it = items[list.selected];
   if (it?.fishId != null)
-    bus.post({ op: "focusFish", id: it.fishId });
+    bus.post({ op: "focusFish", id: it.fishId, from: pageId,
+               keepAlive: true });
 }, 10_000);
