@@ -51,7 +51,8 @@ export function decodeDroppedPacks(
       const images = section === "fish"
         ? new Map<string, IndexedImage>() : packImages(data);
       if (!sheets.size && !images.size) continue;
-      out.push({ name: name.replace(/\.[^.]*$/, ""), section, sheets,
+      // The same extension dropSection reads: never across a slash.
+      out.push({ name: name.replace(/\.[^./]+$/, ""), section, sheets,
                  images });
     } catch (e) {
       console.warn(`drop: skipping undecodable pack ${name}:`, e);

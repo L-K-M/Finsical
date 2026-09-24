@@ -91,6 +91,12 @@ describe("decodeDroppedPacks", () => {
     expect(packs[0]!.name).toBe("a/b/ANGEL");
   });
 
+  it("keeps a dotted folder name when the file has no extension", () => {
+    // Only the file's own extension goes, as dropSection reads it.
+    const packs = decodeDroppedPacks([["backup.v2/Guppy", packA]]);
+    expect(packs[0]!.name).toBe("backup.v2/Guppy");
+  });
+
   it("skips a corrupt pack without losing the rest of the drop", () => {
     // Truncated mid-directory: isPack still sees the magic, decoding
     // must not take the healthy sibling down with it.
