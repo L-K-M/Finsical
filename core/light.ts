@@ -88,7 +88,8 @@ export function demoLight(cycle: number): number {
 
 /** The light a night bottoms out at under these settings: a light
  * timer's nights stay brighter than the demo's, and the lamp switched
- * off holds the demo floor. */
+ * off holds the demo floor. "Always" has no night; it keeps the demo
+ * floor so daylight normalized against it (sunFactor) stays defined. */
 export function nightFloor(s: Lighting): number {
   return s.lamp && s.mode === "timer" ? CLOCK_NIGHT_LIGHT : DEMO_NIGHT_LIGHT;
 }

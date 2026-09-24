@@ -467,6 +467,24 @@ describe("Sim", () => {
     expect(f.state).toBe("sleep");
   });
 
+  it("a big fish sleeps inside its room, not in the gravel", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    // Half-height 30: room() keeps its centre 24 px (0.8 of that) off
+    // the floor, above the sleep line 4 px over the gravel.
+    const f = sim.addFish({ x: 160, y: 60, cruise: 1.4, scale: 1,
+                            halfW: 40, halfH: 30 });
+    const bed = 200 - 30 * 0.8;
+    sim.setLight(1);
+    sim.tick(); // the tank has seen daylight
+    sim.setLight(CLOCK_NIGHT_LIGHT);
+    for (let i = 0; i < 900; i++) {
+      sim.tick();
+      expect(f.y).toBeLessThanOrEqual(bed);
+    }
+    expect(f.state).toBe("sleep");
+    expect(f.y).toBeCloseTo(bed, 9);
+  });
+
   it("darts out of each decision — quadratic ramp capped at cruise", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const f = sim.addFish({ x: 60, y: 100, cruise: 1.4, speed: 0 });
@@ -874,15 +892,15 @@ describe("Sim", () => {
   it("a fish startled into the glass bounces off it", () => {
     const sim = new Sim({ width: 300, height: 200 }, 9);
     const f = sim.addFish({ x: 22, y: 100, cruise: 1.5 });
-    sim.tap(36, 100); // scares it toward the left wall (MARGIN 16)
+    sim.tap(36, 100); // scares it toward the left wall
     expect(f.state).toBe("startle");
     let touched = false;
     for (let i = 0; i < 12; i++) {
       sim.tick();
-      touched ||= f.x <= 16;
+      touched ||= f.x <= MARGIN;
     }
     expect(touched).toBe(true);
-    expect(f.x).toBeGreaterThan(16 + 5);
+    expect(f.x).toBeGreaterThan(MARGIN + 5);
   });
 
   it("stops seeking when the water turns foul", () => {

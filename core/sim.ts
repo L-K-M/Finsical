@@ -610,7 +610,8 @@ export class Sim {
           f.heading = wrapAngle(Math.PI - f.heading);
       }
       // Drift and seek keep their heading: mirroring it would swim the
-      // fish backwards. The early decision below rolls it around.
+      // fish backwards. Drift re-decides early below and rolls toward
+      // its new target; seek rolls when it re-aims at the pellet.
     }
     if (f.y < y0) {
       f.y = y0; hit = true;
