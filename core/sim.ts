@@ -217,6 +217,19 @@ export const DAY_TICKS = 24000;
  * fluttering between states. Exported for the sleep test. */
 export const SLEEP_LIGHT = DUSK_LIGHT;
 export const WAKE_LIGHT = 0.6;
+/** Each fish beds down this many ticks into the dark (2 to 22 s) and
+ * lies in this many into the light (under 11 s), by its id: the tank
+ * settles and stirs one fish at a time rather than all on one tick. */
+const BEDTIME_MIN = 60, BEDTIME_SPREAD = 600;
+const LIE_IN_MIN = 20, LIE_IN_SPREAD = 300;
+
+/** A well-spread 32-bit hash of an integer (murmur3's finalizer), so
+ * neighbouring ids get unrelated bedtimes. */
+function mix32(x: number): number {
+  x = Math.imul(x ^ (x >>> 16), 0x85ebca6b);
+  x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35);
+  return (x ^ (x >>> 16)) >>> 0;
+}
 
 /** Pitch off the facing axis, limited to MAX_PITCH either way. */
 function clampPitch(p: number): number {
@@ -243,10 +256,13 @@ export class Sim {
   private _noticeFish: Fish | null = null;
   private rand: () => number;
   private nextId = 0;
-  /** Fish only bed down after the tank has seen daylight once — a
-   * sim created or restored mid-night keeps its fish awake until
-   * the first dawn rather than knocking them out on tick one. */
-  private seenDay = false;
+  /** Consecutive ticks below SLEEP_LIGHT, and at or above WAKE_LIGHT.
+   * Fish bed down and wake by these, each after its own delay, so a sim
+   * created or restored in the dark (a timer night, the lamp saved off)
+   * settles its fish over the first seconds: never on tick one, and
+   * not only after the next dawn either. */
+  private darkTicks = 0;
+  private brightTicks = 0;
 
   constructor(tank: Tank, seed = 1) {
     this.tank = tank;
@@ -359,7 +375,9 @@ export class Sim {
 
   tick(): void {
     this.tickCount++;
-    if (this.light >= WAKE_LIGHT) this.seenDay = true;
+    const lt = this.light;
+    this.darkTicks = lt < SLEEP_LIGHT ? this.darkTicks + 1 : 0;
+    this.brightTicks = lt >= WAKE_LIGHT ? this.brightTicks + 1 : 0;
     // The hovered pointer is noticed by the closest calm fish — only
     // drifters look up; seeking and startled fish have other business.
     // The watcher keeps watching while it stays in range (a roll to
@@ -438,14 +456,18 @@ export class Sim {
     // starve until dawn with pellets rotting under its nose.
     const peckish = f.hunger > HUNGER_SEEK &&
       this.waterQuality > QUALITY_SEEK && this.nearestFood(f) !== null;
+    // Its own bedtime and lie-in, fixed by its id: no rand() draw, so
+    // seeded runs elsewhere don't shift.
+    const h = mix32(f.id + 1);
     if (f.state === "sleep") {
-      if (this.light >= WAKE_LIGHT || peckish) {
+      if (this.brightTicks > LIE_IN_MIN + (h >>> 16) % LIE_IN_SPREAD ||
+          peckish) {
         this.setState(f, "drift");
         this.decide(f);
         this.maybeTurn(f); // like the startle exit: roll, don't pitch over
       }
-    } else if (f.state !== "startle" && this.seenDay &&
-               this.light < SLEEP_LIGHT && !peckish) {
+    } else if (f.state !== "startle" && !peckish &&
+               this.darkTicks > BEDTIME_MIN + h % BEDTIME_SPREAD) {
       this.setState(f, "sleep");
     }
 

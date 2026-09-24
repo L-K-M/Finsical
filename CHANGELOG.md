@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fish go to sleep in a tank that opens in the dark. With the light
+  timer past its off hour, or the lamp left off, they used to swim all
+  night, because they only bedded down after seeing daylight first.
+  Fish also settle one at a time over a few seconds at dusk, and wake
+  one by one at dawn, instead of all on the same instant.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the
