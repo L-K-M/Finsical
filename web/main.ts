@@ -674,17 +674,17 @@ const packBySheet = new Map<number, { url: string; part: string }>();
 const firstSlot = (url: string): number | undefined =>
   sheetByPack.get(url)?.values().next().value;
 /** One pack's sheets arriving. `inner` is the add-on's listing name,
- * `part` the pack's entry in it and `parts` how many sheet packs the
- * add-on holds: a fish is named after its own pack when there are
+ * `part` the pack's entry in it and `partCount` how many sheet packs
+ * the add-on holds: a fish is named after its own pack when there are
  * several. */
 function handleSheets(sheets: Map<string, SpriteSheet>, inner: string,
                       url: string, section: string, live: boolean,
-                      part: string, parts: number): void {
+                      part: string, partCount: number): void {
   // Only fish sections register sheets — a tank/scenery pack's sprite
   // streams mustn't join the fish pool or starter fish could
   // round-robin onto art nobody chose.
   if (section !== "fish") return;
-  const name = partName(inner, part, parts);
+  const name = partName(inner, part, partCount);
   const idx = usePack({ sheets });
   if (idx >= 0) {
     sheetBySpecies.set(name, idx);
