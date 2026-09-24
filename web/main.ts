@@ -8,7 +8,8 @@ import { planFrame } from "../core/loop.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { isPack } from "../core/data/fsh.js";
 import { decodeDroppedPacks } from "./drop.js";
-import { decorFrame, decorPhase } from "../core/data/decor.js";
+import { decorFrame, decorPhase, decorPhaseFrac }
+  from "../core/data/decor.js";
 import { bodySize, pickSwimSheet } from "../core/data/swimsheet.js";
 import { fishScale } from "./artscale.js";
 import { sanitizeSoundConfig, TankAudio } from "./audio.js";
@@ -704,13 +705,16 @@ function applySceneryChoice(): void {
 // the tank floor whenever one is added. Animated packs loop their frames
 // on the sim clock, each item from its own phase.
 const decors: { frames: HTMLCanvasElement[]; phase: number;
-                pack: string }[] = [];
+                sway: number; pack: string }[] = [];
 function addDecor(images: Iterable<IndexedImage>, src: string): void {
   const frames = decorCanvases(images, TANK.height);
   if (!frames) return;
   const copy = decors.filter((d) => d.pack === src).length;
+  // phase is an integer frame index — useless for sway, where a whole
+  // cycle of phase looks identical on every plant. sway keeps the
+  // fraction so each copy drifts on its own rhythm.
   decors.push({ frames, phase: decorPhase(src, copy, frames.length),
-                pack: src });
+                sway: decorPhaseFrac(src, copy), pack: src });
 }
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
@@ -2344,7 +2348,7 @@ function render(): void {
   const dn = decors.length;
   const sway = waterMotion === "animated";
   for (let i = 0; i < dn; i++) {
-    const { frames, phase } = decors[i]!;
+    const { frames, phase, sway: swayPh } = decors[i]!;
     const d = frames[decorFrame(sim.tickCount, frames.length, phase)]!;
     const x = Math.min(Math.max(
         Math.round(TANK.width * (i + 0.5) / dn - d.width / 2), 0),
@@ -2358,7 +2362,7 @@ function render(): void {
       const y0 = Math.floor(b * d.height / SWAY_BANDS);
       const y1 = Math.floor((b + 1) * d.height / SWAY_BANDS);
       if (y1 <= y0) continue;
-      const dx = swayOffset(sim.tickCount, phase,
+      const dx = swayOffset(sim.tickCount, swayPh,
                             (y0 + y1) / 2 / d.height);
       ctx.drawImage(d, 0, y0, d.width, y1 - y0,
                     x + dx, y + y0, d.width, y1 - y0);
