@@ -34,8 +34,10 @@ import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
 import { stateLabel } from "./overviewmodel.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
-import { drawAir, drawBubbles, drawFood, drawLight, drawMurk, feedPinch }
-  from "./water.js";
+import { bubblePops, drawAir, drawBubbles, drawFood, drawLight, drawMurk,
+         drawRefraction, drawSurface, feedPinch, sunFactor } from "./water.js";
+import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
+  from "./surface.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
   from "./machines.js";
 import type { CrtConfig } from "./crt.js";
@@ -290,10 +292,12 @@ canvas.addEventListener("pointerdown", (e) => {
   if (isFeedZoneY(p.y)) {
     const pellet = sim.dropFood(p.x);
     audio.feed();
-    splashes.push(newSplash(pellet.x, pellet.y));
+    splashAt(pellet.x, pellet.y, PUSH.pellet);
   } else {
     sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
     ripples.push({ x: p.x, y: p.y, age: 0 });
+    // The glass knock slops the water a little, on the tapped side.
+    disturbSurface(surface, p.x, PUSH.tap, 8);
     noteGlassTap();
   }
   requestPaint();
@@ -492,7 +496,7 @@ function spawnFish(sheetIdx: number, species: string, pack?: string,
   bindExtents(f);
   // A new fish enters through the surface — pair the splash sound
   // with droplets where it went in.
-  splashes.push(newSplash(x, FOOD_ENTRY_Y));
+  splashAt(x, FOOD_ENTRY_Y, PUSH.newFish);
   saveTank();
   requestPaint();
   return f;
@@ -1432,7 +1436,7 @@ function feedFish(): void {
   for (const p of feedPinch(Math.random, hungry)) {
     setTimeout(() => {
       const pellet = sim.dropFood(x + p.dx);
-      splashes.push(newSplash(pellet.x, pellet.y));
+      splashAt(pellet.x, pellet.y, PUSH.pellet);
       requestPaint();
     }, p.delay);
   }
@@ -1913,6 +1917,37 @@ reducedMotion.addEventListener("change", (e) => {
 // sim clock so they animate even while fish pause between decisions.
 const ripples: Ripple[] = [];
 const splashes: Splash[] = [];
+// The surface's springs, and the waterline drawn from them each frame.
+const surface = newSurface();
+const waterline = new Int16Array(SURFACE_W);
+
+/** How hard things push the surface, px/tick. */
+const PUSH = { pellet: 1.6, newFish: 3.2, pop: 0.35, tap: 0.6 } as const;
+/** A fish whose back is within this many px of the surface stirs it. */
+const WAKE_DEPTH = 4;
+/** Surface push per px/tick of a fish's speed at the top. */
+const WAKE_PUSH = 0.05;
+
+/** Droplets where something enters the water, and the waves it makes. */
+function splashAt(x: number, y: number, push: number): void {
+  splashes.push(newSplash(x, y));
+  disturbSurface(surface, x, push);
+}
+
+/** Per-tick surface forcing: bubbles popping and fish cruising along
+ * the top. Taps and splashes push it where they happen. */
+function stirSurface(): void {
+  for (const b of sim.bubbles)
+    if (bubblePops(b.y)) disturbSurface(surface, b.x, PUSH.pop, 1);
+  for (const f of sim.fish) {
+    const back = f.y - (f.halfH ?? 0) * f.scale;
+    if (back > SURFACE + WAKE_DEPTH || f.speed < 0.2) continue;
+    // Alternate the sign with the stroke so a wake ripples rather
+    // than pressing a trough that follows the fish.
+    const sign = f.phase & 4 ? 1 : -1;
+    disturbSurface(surface, f.x, sign * f.speed * WAKE_PUSH, 2);
+  }
+}
 function render(): void {
   if (backdropCv) {
     ctx.drawImage(backdropCv, 0, 0);
@@ -1938,25 +1973,30 @@ function render(): void {
                   TANK.height - 6 - d.height);
   }
 
-  drawLight(ctx, sim.light, sim.tickCount, waterMotion, nightFloor(lighting));
+  const floor = nightFloor(lighting);
+  drawLight(ctx, sim.light, sim.tickCount, waterMotion, floor);
 
   drawFood(ctx, sim.food);
   for (const f of sim.fish) drawFish(f);
 
-  drawAir(ctx);
-  drawBubbles(ctx, sim.bubbles);
+  // Ambient motion (swell, glint, shimmer) holds still under reduced
+  // motion; waves from splashes and taps still play out, like ripples.
+  const t = waterMotion === "animated" ? sim.tickCount : 0;
+  surfaceLine(surface, t, waterline);
+  drawRefraction(ctx, t);
+  // The hood lamp is what lights the tank, so it shines as brightly as
+  // the daylight in the water.
+  const sun = sunFactor(sim.light, floor);
+  drawAir(ctx, sun, waterline);
+  // The waterline divides feeding from tapping, so it brightens while
+  // a click would feed. Under the murk and night overlays, so it dims
+  // with the water instead of glowing at night.
+  drawSurface(ctx, waterline, sun, t, overFeedZone);
+  drawBubbles(ctx, sim.bubbles, waterline);
 
   // On the glass, so over the fish: ripples and splashes paint last.
   drawRipples(ctx, ripples);
   drawSplashes(ctx, splashes);
-
-  // The waterline divides feeding from tapping, so it brightens while
-  // a click would feed. Under the murk and night overlays, so it dims
-  // with the water instead of glowing at night.
-  if (overFeedZone) {
-    ctx.fillStyle = "rgba(255,255,255,0.45)";
-    ctx.fillRect(0, SURFACE, TANK.width, 1);
-  }
 
   // Fouled water murks the whole scene.
   drawMurk(ctx, sim.waterQuality,
@@ -2034,7 +2074,9 @@ function drawNight(now: Date): void {
 
 function tickSim(): void {
   const bubbles = sim.bubbles.length;
+  stirSurface();
   sim.tick();
+  tickSurface(surface);
   tickRipples(ripples);
   tickSplashes(splashes);
   // Sparse bloops: only some spawns make a sound. Checked per tick so
