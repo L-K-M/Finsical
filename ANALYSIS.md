@@ -5433,18 +5433,18 @@ steady state and was left open for human review and merge):
 ### Twelfth pass (this pass, PRs #185-#201)
 
 Automated GLM 5.3 reviewer rounds; PRs are left open for human review
-and merge. Round counts at fold time (two PRs still had a review
-round running on the latest commit — marked "running"):
+and merge. Round counts at fold time (#201 still had a review round
+running on its latest commit — marked "running"):
 
 | PR | Branch | Items | Rounds | State |
 | --- | --- | --- | --- | --- |
 | #185 | `devin/audio-fixes` | B-17, B-19 length cap | 1 (R1: 1 declined nit) | quiet |
 | #186 | `devin/client-drop-guard` | B-25 web half | 2 (R1 applied `1b942e6`; R2 clean) | steady |
-| #187 | `devin/fetch-py-fixes` | T-21, T-22, T-23 | 3 (R1 applied `ad68d38`; R2 applied `11813e5`; R3 running) | open |
+| #187 | `devin/fetch-py-fixes` | T-21, T-22, T-23 | 3 (R1 applied `ad68d38`; R2 applied `11813e5`; R3 clean) | steady |
 | #189 | `devin/food-cap` | U-01 | 3 (R1 applied `0eb894b`; R2 applied `88e573d`; R3 clean) | steady |
 | #192 | `devin/stereo-sound` | D-08 | 2 (R1 applied `8ef6619`; R2 clean) | steady |
 | #197 | `devin/small-ui` | V-19 favicon, B-44 UI, B-51 | 2 (R1 applied `e7ec845`; R2 clean) | steady |
-| #201 | `devin/snds-merge-strict` | B-39 main case | 3 (R1 applied `86874ea`; R2 applied `0783cc1`; R3 running) | open |
+| #201 | `devin/snds-merge-strict` | B-39 main case | 4 (R1 applied `86874ea`; R2 applied `0783cc1`; R3 applied `d154201`; R4 running) | open |
 
 - Applied:
   - #186: `dropEffect: 'none'` on file drags for an honest no-drop
@@ -5461,8 +5461,9 @@ round running on the latest commit — marked "running"):
   - #192: feed pans to the clamped `pellet.x`, not the requested x
     (`8ef6619`).
   - #197: legacy-pack status line reuses `loadProblem` (`e7ec845`).
-  - #201: `sndsPut` resolves an explicit `true` and is typed
-    `Promise<boolean>` (`86874ea`, `0783cc1`).
+  - #201: `sndsPut` resolves an explicit `true`, is typed
+    `Promise<boolean>`, and the falsy-write stub uses `false`
+    (`86874ea`, `0783cc1`, `d154201`).
 - Declined with reasons: #185 R1 — an explicit
   `vi.unstubAllGlobals()` inside one test; the file's `afterEach`
   already unstubs every global for every test.
@@ -5479,8 +5480,8 @@ round running on the latest commit — marked "running"):
   without new entries — P-21 (weak premise), B-35 (same fix as
   N-12); dropped by the reviewer — N-6 (notice in the feed zone is
   desirable).
-- Review gaps: #187 and #201 had a review round still running at
-  fold time; all other PRs reached two quiet rounds or steady state.
+- Review gaps: #201 had a review round still running at fold time;
+  all other PRs reached two quiet rounds or steady state.
   A heartbeat keeps polling the open PRs.
 
 ## Implementation Order (suggested)
