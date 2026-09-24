@@ -109,4 +109,14 @@ describe("lru", () => {
     })).toThrow("boom");
     expect(m.get("a")).toBe(2); // replace, not silent delete
   });
+
+  it("a throwing onEvict mid-trim still finishes evicting", () => {
+    const m = new Map<string, number>();
+    lruSet(m, "a", 1, 1);
+    expect(() => lruSet(m, "b", 2, 1, undefined, () => {
+      throw new Error("boom");
+    })).toThrow("boom");
+    expect(m.size).toBe(1); // the cap held despite the throw
+    expect([...m.keys()]).toEqual(["b"]);
+  });
 });

@@ -38,10 +38,14 @@ export function lruSet<K, V>(m: Map<K, V>, k: K, v: V, cap: number,
     // A throwing callback must not turn a replace into a delete.
     m.set(k, v);
   }
+  // A throwing callback mid-trim must not abandon the loop with the
+  // map still over cap — finish evicting, then rethrow the first error.
+  let trimErr: unknown;
   while (m.size > cap) {
     const [k0, v0] = m.entries().next().value!;
     if (canEvict && !canEvict(v0)) break;
     m.delete(k0);
-    onEvict?.(k0, v0);
+    try { onEvict?.(k0, v0); } catch (e) { trimErr ??= e; }
   }
+  if (trimErr !== undefined) throw trimErr;
 }
