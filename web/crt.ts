@@ -74,13 +74,13 @@ void main() {
   // Power-on: a real tube lights as a bright line at the vertical
   // center that opens into the full raster. Pixels outside the
   // opening band stay black; inside it the whole raster squeezes in.
-  if (uPower < 1.0) {
-    float sq = max(pow(uPower, 0.55), 0.015);
-    if (abs(uv.y - 0.5) > sq * 0.5) {
+  float open = (uPower >= 1.0) ? 1.0 : max(pow(uPower, 0.55), 0.015);
+  if (open < 1.0) {
+    if (abs(uv.y - 0.5) > open * 0.5) {
       gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
       return;
     }
-    uv.y = (uv.y - 0.5) / sq + 0.5;
+    uv.y = (uv.y - 0.5) / open + 0.5;
   }
   // Barrel curve: sample positions bow outward like curved tube glass.
   vec2 cc = uv * 2.0 - 1.0;
@@ -154,7 +154,6 @@ void main() {
   // The collapsed line burns hot and settles as the raster opens:
   // the boost tracks openness, so total emitted light stays roughly
   // constant through warm-up instead of flashing mid-animation.
-  float open = (uPower >= 1.0) ? 1.0 : max(pow(uPower, 0.55), 0.015);
   c *= 1.0 + 2.0 * (1.0 - open);
 
   gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
@@ -226,6 +225,9 @@ export interface CrtFilter {
   readonly enabled: boolean;
   /** False once the GL context is lost — the effect can't re-enable. */
   readonly usable: boolean;
+  /** True while the power-on warm-up plays: the page must draw every
+   * frame then, not only on sim ticks. */
+  readonly animating: boolean;
   setEnabled(on: boolean): void;
   /** Live-update shader params; `config` reflects the merged result. */
   configure(cfg: Partial<CrtConfig>): void;
@@ -367,6 +369,10 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   return {
     get enabled() { return enabled; },
     get usable() { return !lost; },
+    get animating() {
+      return enabled && !reducedMotion.matches &&
+        performance.now() - powerT0 < POWERON_MS;
+    },
     // A copy — the live cfg could otherwise be mutated without the
     // shader ever seeing it, and goes stale once configure() swaps it.
     get config(): CrtConfig { return { ...cfg }; },

@@ -1866,7 +1866,9 @@ function frame(now: number): void {
   if (paused) acc = 0;
   const ticks = paused ? 0 : plan.ticks;
   for (let i = 0; i < ticks; i++) tickSim();
-  if (ticks === 0 && !frameDirty) return;
+  // The CRT's power-on warm-up animates on its own clock.
+  const warming = crtOn && (crt?.animating ?? false);
+  if (ticks === 0 && !frameDirty && !warming) return;
   frameDirty = false;
   render();
   if (crtOn) crt?.render();
