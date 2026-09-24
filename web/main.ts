@@ -1396,6 +1396,9 @@ function setCrt(on: boolean): void {
 function degaussTube(): void {
   if (!crtOn) return;
   crt?.degauss();
+  // Menu/keyboard paths may carry activation — degauss() itself stays
+  // silent when the context can't run, but unlock() costs nothing.
+  audio.unlock();
   audio.degauss();
 }
 /** Merge a partial config (prefs slider) onto the current one, clamp,

@@ -449,6 +449,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     e.preventDefault();
     lost = true;
     enabled = false;
+    offT0 = -Infinity; // a collapse in flight dies with the context
     document.body.classList.remove("crt");
   });
 
@@ -578,18 +579,21 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     get enabled() { return enabled; },
     get usable() { return !lost; },
     get animating() {
+      // A collapse in flight must finish even if reduced-motion flips
+      // on mid-flight — render() is the only place its state cleans up.
+      if (Number.isFinite(offT0) && enabled) return true;
       if (reducedMotion.matches) return false;
       const now = performance.now();
-      return (Number.isFinite(offT0) && enabled) ||
-        (enabled &&
-         (now - powerT0 < POWERON_MS || now - degaussT0 < DEGAUSS_MS));
+      return enabled &&
+        (now - powerT0 < POWERON_MS || now - degaussT0 < DEGAUSS_MS);
     },
     // A copy — the live cfg could otherwise be mutated without the
     // shader ever seeing it, and goes stale once configure() swaps it.
     get config(): CrtConfig { return { ...cfg }; },
     setEnabled(on: boolean): void {
       if (on && lost) return; // dead context — stay on the plain path
-      if (!on && enabled && !reducedMotion.matches) {
+      if (!on && enabled && !Number.isFinite(offT0) &&
+          !reducedMotion.matches) {
         // Real tubes don't cut to black — the raster collapses to a
         // hot line first. enabled stays true so render() keeps drawing
         // the fall; render() clears the flag when the line dies.
@@ -636,20 +640,20 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       gl.uniform3f(uPhase, (t * FLICKER_RATE) % TAU,
                    (t * BAND_RATE) % TAU, t % 1);
       let power = 1;
-      if (!reducedMotion.matches) {
-        if (Number.isFinite(offT0)) {
-          power = Math.max(0, 1 - (now - offT0) / POWEROFF_MS);
-          if (power === 0) {
-            // The line died: the tube is off. The last drawn frame
-            // stays in the buffer but the class drop hides the canvas.
-            enabled = false;
-            offT0 = -Infinity;
-            document.body.classList.remove("crt");
-            return;
-          }
-        } else {
-          power = Math.min(1, (now - powerT0) / POWERON_MS);
+      // The collapse runs outside the reduced-motion gate: a flip
+      // mid-fall must still finish and run its cleanup, not freeze.
+      if (Number.isFinite(offT0)) {
+        power = Math.max(0, 1 - (now - offT0) / POWEROFF_MS);
+        if (power === 0) {
+          // The line died: the tube is off. The last drawn frame
+          // stays in the buffer but the class drop hides the canvas.
+          enabled = false;
+          offT0 = -Infinity;
+          document.body.classList.remove("crt");
+          return;
         }
+      } else if (!reducedMotion.matches) {
+        power = Math.min(1, (now - powerT0) / POWERON_MS);
       }
       gl.uniform1f(uPower, power);
       gl.uniform1f(uDegauss,
