@@ -26,6 +26,7 @@ import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
          sndsMerge, sndsRemove } from "./store.js";
 import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
          swimCanvas } from "./render.js";
+import { placeholderFrames } from "./placeholder.js";
 import { containPoint, feedZoneLineY, isFeedZoneY } from "./feedzone.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
@@ -1838,7 +1839,7 @@ function drawScale(sheet: SpriteSheet, f: Fish): number {
 
 function drawFish(f: Fish): void {
   const sheet = sheetOf(f);
-  if (!sheet) return drawPlaceholder(f.x, f.y, f.facing, pitch(f), f.scale);
+  if (!sheet) return drawPlaceholder(f);
   let cv: HTMLCanvasElement;
   try {
     const pose = fishPose(sheet, f);
@@ -1848,7 +1849,7 @@ function drawFish(f: Fish): void {
     if (!(e instanceof RangeError)) throw e;
     // A truncated pack can legitimately lack this cell; an uncaught
     // RangeError here would abort the rest of every frame, so fall back.
-    return drawPlaceholder(f.x, f.y, f.facing, pitch(f), f.scale);
+    return drawPlaceholder(f);
   }
   ctx.save();
   // finally: a throwing drawImage must not leave its transform behind
@@ -1863,20 +1864,20 @@ function drawFish(f: Fish): void {
   }
 }
 
-// Placeholder sprite until real Aquazone assets are imported.
-function drawPlaceholder(x: number, y: number, facing: number,
-                         dev = 0, scale = 1): void {
+// Placeholder until real Aquazone assets are imported: a pixel guppy
+// (web/placeholder.ts) whose tail wags on the same clock as real fish.
+function drawPlaceholder(f: Fish): void {
+  // Takes the fish, not loose numbers: the frame, pitch and growth all
+  // come from it, so no caller can pass a pitch where a frame goes.
+  const frames = placeholderFrames();
+  const cv = frames[animFrame(f, frames.length)]!;
+  const scale = Math.round(f.scale * 20) / 20; // as drawScale rounds it
   ctx.save();
-  ctx.translate(Math.round(x), Math.round(y));
-  ctx.scale(-facing * scale, scale);
+  ctx.translate(Math.round(f.x), Math.round(f.y));
+  ctx.scale(-f.facing * scale, scale);
   // In the mirrored draw space the pitch angle flips sign.
-  ctx.rotate(-facing * dev);
-  ctx.fillStyle = "#e8a33d";
-  ctx.fillRect(-8, -4, 14, 8);   // body
-  ctx.fillRect(6, -6, 6, 12);    // tail
-  ctx.fillRect(-2, -7, 6, 3);    // dorsal
-  ctx.fillStyle = "#1a1a2e";
-  ctx.fillRect(-6, -2, 2, 2);    // eye
+  ctx.rotate(-f.facing * pitch(f));
+  ctx.drawImage(cv, -(cv.width >> 1), -(cv.height >> 1));
   ctx.restore();
 }
 
