@@ -304,6 +304,8 @@ export class TankAudio {
 
   /** The first sound named one of `subs`, else the first with one as
    * a whole word in its name, passing over the sound named `skip`.
+   * Each sub must be a single lowercase word ("center", "drop"):
+   * multi-word subs can never match in the word pass.
    * Whole-word: "Centerfold" must not answer a "center" tap, while
    * "CENTER*" (tokens: center) and "bubble pop" still match. */
   private find(subs: readonly string[], skip = ""): AudioBuffer | null {
