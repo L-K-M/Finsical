@@ -18,20 +18,37 @@ describe("sanitizeCrtConfig", () => {
     const c = sanitizeCrtConfig({ scanlines: 0.7, bogus: 1 });
     expect(c.scanlines).toBe(0.7);
     expect("bogus" in c).toBe(false);
-    expect(c.beam).toBe(CRT_DEFAULTS.beam); // untouched key = default
+    expect(c.softening).toBe(CRT_DEFAULTS.softening); // untouched key = default
   });
 
   it("clamps out-of-range and rejects non-numbers", () => {
     const c = sanitizeCrtConfig({
       bloom: 5, curvature: -1, grille: "high", flicker: NaN,
-      overdrive: Infinity, beam: 0.25,
+      overdrive: Infinity, softening: 0.25,
     });
     expect(c.bloom).toBe(1);
     expect(c.curvature).toBe(0);
     expect(c.grille).toBe(CRT_DEFAULTS.grille);
     expect(c.flicker).toBe(CRT_DEFAULTS.flicker);
     expect(c.overdrive).toBe(CRT_DEFAULTS.overdrive);
-    expect(c.beam).toBe(0.25);
+    expect(c.softening).toBe(0.25);
+  });
+
+  it("converts a stored legacy beam onto the wider softening range", () => {
+    // The old slider's full range is the new one's lower 40%, so a
+    // saved config keeps its look after the upgrade.
+    expect(sanitizeCrtConfig({ beam: 1 }).softening).toBeCloseTo(0.4);
+    expect(sanitizeCrtConfig({ beam: 0.25 }).softening).toBeCloseTo(0.1);
+    expect(sanitizeCrtConfig({ beam: 0 }).softening).toBe(0);
+    expect("beam" in sanitizeCrtConfig({ beam: 1 })).toBe(false);
+  });
+
+  it("prefers softening over a legacy beam and validates the beam", () => {
+    expect(sanitizeCrtConfig({ beam: 1, softening: 0.9 }).softening)
+      .toBe(0.9);
+    expect(sanitizeCrtConfig({ beam: "x" }).softening)
+      .toBe(CRT_DEFAULTS.softening);
+    expect(sanitizeCrtConfig({ beam: 9 }).softening).toBe(1);
   });
 
   it("round-trips a full config", () => {
