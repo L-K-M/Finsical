@@ -74,7 +74,11 @@ removeBtn.after(removeStatus);
 let tankBoot: string | undefined;
 // Identifies this page instance to the tank's focus lease — two
 // Overviews can be open, and only the claim holder may renew or lift.
-const pageId = crypto.randomUUID();
+// randomUUID is secure-context-only; on a plain-HTTP origin a throw
+// here would break the whole module, and uniqueness is all the lease
+// needs — not crypto strength.
+const pageId = crypto.randomUUID?.() ??
+  `o-${Date.now()}-${Math.random()}`;
 const bus = openBus((m) => {
   if (m.op === "state") {
     greeted = true;

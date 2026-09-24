@@ -1160,7 +1160,11 @@ function onBusMessage(m: BusMsg): void {
     const from = typeof m.from === "string" ? m.from : "";
     const keepAlive = m.keepAlive === true;
     const fid = typeof m.id === "number" ? m.id : null;
-    if (keepAlive ? from === focusOwner && fid === focusId
+    // An unowned lease (fresh tank load, or a lapse cleared the owner)
+    // is claimable by any beat — the first live Overview to ping wins,
+    // and the others' beats stay rejected, so still no ping-pong.
+    if (keepAlive ? fid !== null &&
+                    (from === focusOwner || focusOwner === "")
                   : fid !== null || from === focusOwner) {
       focusId = fid;
       focusOwner = fid === null ? "" : from;
@@ -2422,7 +2426,12 @@ function render(): void {
   // clock so a paused tank doesn't freeze them mid-stroke.
   if (focusId !== null) {
     // The lease lapsed — the overview is gone and can't lift it.
-    if (Date.now() - focusAt > FOCUS_TTL) focusId = null;
+    // Clearing the owner too lets any live Overview's next beat
+    // reclaim the spotlight after the holder dies silently.
+    if (Date.now() - focusAt > FOCUS_TTL) {
+      focusId = null;
+      focusOwner = "";
+    }
     const f = focusId === null ? null
       : sim.fish.find((x) => x.id === focusId);
     // The fish left the tank — lift the spotlight so a recycled id
