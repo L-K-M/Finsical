@@ -20,6 +20,11 @@ import type { SoundConfig } from "./audio.js";
 // carries `crt`, `machine`, `lighting` and `sound` snapshots) and posts
 // intents: crtEnabled, crtConfig, machine, lighting, soundConfig.
 
+// A file dropped on this window must not navigate it to the file —
+// only the tank page and the Add-ons window accept drops.
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
+
 interface SliderSpec {
   key: keyof CrtConfig;
   label: string;
