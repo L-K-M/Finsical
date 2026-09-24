@@ -42,8 +42,9 @@ import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
 import { stateLabel } from "./overviewmodel.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
-import { bubblePops, drawAir, drawBubbles, drawFood, drawLight, drawMurk,
-         drawRefraction, drawSurface, feedPinch, sunFactor } from "./water.js";
+import { bubbleOffset, bubblePops, drawAir, drawBubbles, drawFood,
+         drawLight, drawMurk, drawRefraction, drawSurface, feedPinch,
+         sunFactor } from "./water.js";
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
   from "./surface.js";
 import {
@@ -382,6 +383,12 @@ canvas.addEventListener("pointerdown", (e) => {
     splashAt(pellet.x, pellet.y, PUSH.pellet);
   } else {
     sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
+    // A rising bubble under the tap pops early — the knock already
+    // ripples; this is the toy on top.
+    const bi = sim.bubbles.findIndex((b) =>
+      (b.x + bubbleOffset(b.x, b.y) - p.x) ** 2 +
+      (b.y - p.y) ** 2 < 36);
+    if (bi >= 0) sim.bubbles.splice(bi, 1);
     ripples.push({ x: p.x, y: p.y, age: 0 });
     // The glass knock slops the water a little, on the tapped side.
     disturbSurface(surface, p.x, PUSH.tap, 8);
