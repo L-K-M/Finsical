@@ -758,10 +758,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         decisionHandler(.allow)
     }
 
-    /// WebContent crash times within the last minute — a page that
-    /// deterministically kills its renderer would otherwise loop
-    /// spawn-crash-reload forever in an always-on-top window.
-    private var recentWebCrashes: [Date] = []
+    /// WebContent crash times within the last minute, per webview —
+    /// a page that deterministically kills its renderer would
+    /// otherwise loop spawn-crash-reload forever in an always-on-top
+    /// window, and a global count would let one crasher starve every
+    /// other window's reload.
+    private var recentWebCrashes: [ObjectIdentifier: [Date]] = [:]
+    /// Rolling window, retry cap, and settling delay for WebContent
+    /// crash recovery.
+    private static let crashRetryWindow: TimeInterval = 60
+    private static let crashRetryLimit = 3
+    private static let crashRetryDelay: TimeInterval = 0.5
 
     /// A WebContent crash leaves a floating, always-on-top window that
     /// paints nothing and answers nothing. Reload the affected webview —
@@ -771,15 +778,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     /// than burning CPU on process spawns.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         let now = Date()
-        recentWebCrashes.removeAll { now.timeIntervalSince($0) > 60 }
-        recentWebCrashes.append(now)
+        let key = ObjectIdentifier(webView)
+        let crashes = (recentWebCrashes[key] ?? [])
+            .filter { now.timeIntervalSince($0) <= Self.crashRetryWindow }
+            + [now]
+        recentWebCrashes[key] = crashes
         NSLog("Finsical: WebContent process terminated "
-              + "(\(recentWebCrashes.count) in the last minute)")
-        guard recentWebCrashes.count <= 3 else { return }
+              + "(\(crashes.count) in the last minute)")
+        guard crashes.count <= Self.crashRetryLimit else { return }
         // A beat of delay — reloading synchronously inside the
         // termination callback can wedge the fresh process.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            [weak webView] in webView?.reload()
+        DispatchQueue.main.asyncAfter(deadline: .now()
+                + Self.crashRetryDelay) { [weak webView] in
+            webView?.reload()
         }
     }
 
