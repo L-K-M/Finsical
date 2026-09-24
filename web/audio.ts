@@ -81,35 +81,42 @@ export class TankAudio {
   // set has one, and played as soon as audio runs.
   private openingDue = false;
 
+  /** Merge a pack's manifest sounds into the table — a later pack
+   * replaces only its same-named entries instead of wiping an earlier
+   * pack's bindings. The ambient loop restarts when the bubbling pick
+   * changed (addWavs' rule); callers still run startAmbient() for the
+   * not-yet-playing case. */
   async load(read: (path: string) => Promise<Uint8Array>,
              manifest: AzpackManifest): Promise<void> {
-    if (this.ambientSrc) {
-      try { this.ambientSrc.stop(); } catch { /* already ended */ }
-      this.ambientSrc = null;
-    }
-    this.ambientBuf = null;
-    this.ambientWanted = false;
-    this.buffers.clear();
     const sounds = manifest.sounds ?? [];
-    if (!sounds.length) return;
-    // context(), not a bare AudioContext: it also builds the master
-    // gain every play() connects to.
-    const ac = this.context();
-    // Decode concurrently — sequential awaits made a 25-sound set
-    // ~25x slower than the decoders allow. Each entry still fails
-    // alone so one bad file keeps the rest.
-    const decoded = await Promise.all(sounds.map(async (s) => {
-      try {
-        const raw = await read(s.file);
-        // A copy: decodeAudioData detaches the buffer it is given.
-        return { name: s.name,
-                 data: await ac.decodeAudioData(raw.slice().buffer) };
-      } catch (e) {
-        console.warn(`audio skip ${s.file}:`, e);
-        return null; // undecodable entry — keep the rest
+    if (sounds.length) {
+      // context(), not a bare AudioContext: it also builds the master
+      // gain every play() connects to.
+      const ac = this.context();
+      // Decode concurrently — sequential awaits made a 25-sound set
+      // ~25x slower than the decoders allow. Each entry still fails
+      // alone so one bad file keeps the rest.
+      const decoded = await Promise.all(sounds.map(async (s) => {
+        try {
+          const raw = await read(s.file);
+          // A copy: decodeAudioData detaches the buffer it is given.
+          return { name: s.name,
+                   data: await ac.decodeAudioData(raw.slice().buffer) };
+        } catch (e) {
+          console.warn(`audio skip ${s.file}:`, e);
+          return null; // undecodable entry — keep the rest
+        }
+      }));
+      for (const d of decoded) if (d) this.buffers.set(d.name, d.data);
+    }
+    const now = this.named(FILTER_BUBBLING);
+    if (this.ambientWanted && now !== null && now !== this.ambientBuf) {
+      if (this.ambientSrc) {
+        try { this.ambientSrc.stop(); } catch { /* already ended */ }
+        this.ambientSrc = null;
       }
-    }));
-    for (const d of decoded) if (d) this.buffers.set(d.name, d.data);
+      this.startAmbient();
+    }
   }
 
   /** Merge decoded WAVs (e.g. from a dropped .rsrc) under their resource

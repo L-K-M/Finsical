@@ -159,6 +159,55 @@ describe("TankAudio.load", () => {
     expect(ac.sources).toHaveLength(1);
     expect(sinkOf(ac.sources[0]!)).toBe(master);
   });
+
+  const manifestOf = (...sounds: [string, number][]): AzpackManifest => ({
+    format: "azpack/1", tag: "T", version: 1, chunks: [], names: [],
+    sounds: sounds.map(([name]) => ({ name, file: `s/${name}.wav` })),
+  });
+  const wavs = new Map<string, Uint8Array>();
+  const readWav = async (path: string): Promise<Uint8Array> =>
+    wavs.get(path)!;
+
+  it("a second pack's load keeps the first pack's other sounds", async () => {
+    // Manifests merge: pack B replaces its same-named entries, not the
+    // whole table — dropping two .azpacks must not mute pack A.
+    const audio = new TankAudio();
+    wavs.set("s/drop.wav", wav(1)); wavs.set("s/bubble.wav", wav(1));
+    await audio.load(readWav, manifestOf(["drop", 1]));
+    await audio.load(readWav, manifestOf(["bubble", 1]));
+    const ac = FakeContext.last!;
+    audio.bubble();
+    audio.feed(); // plays pack A's "drop" — wiped before the fix
+    expect(ac.sources).toHaveLength(2);
+  });
+
+  it("restarts the ambient loop when a pack replaces its bubbling",
+     async () => {
+    const audio = new TankAudio();
+    wavs.set(`s/${LOOP}.wav`, wav(30));
+    await audio.load(readWav, manifestOf([LOOP, 30]));
+    audio.startAmbient();
+    const ac = FakeContext.last!;
+    expect(ac.loops()).toBe(1);
+    wavs.set(`s/${LOOP}.wav`, wav(60)); // same name, new take
+    await audio.load(readWav, manifestOf([LOOP, 60]));
+    const loops = ac.sources.filter((s) => s.loop);
+    expect(loops[0]!.stops).toHaveLength(1); // old loop stopped
+    expect(loops[1]!.starts).toBe(1);        // replacement running
+    expect(ac.loops()).toBe(1);
+  });
+
+  it("leaves the loop alone when a load doesn't touch its bubbling",
+     async () => {
+    const audio = new TankAudio();
+    wavs.set(`s/${LOOP}.wav`, wav(30)); wavs.set("s/bubble.wav", wav(1));
+    await audio.load(readWav, manifestOf([LOOP, 30]));
+    audio.startAmbient();
+    const ac = FakeContext.last!;
+    await audio.load(readWav, manifestOf(["bubble", 1]));
+    const loop = ac.sources.filter((s) => s.loop)[0]!;
+    expect(loop.stops).toHaveLength(0);
+  });
 });
 
 describe("TankAudio options", () => {
