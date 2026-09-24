@@ -20,7 +20,8 @@ import { alertOpen, showAlert } from "./alert.js";
 import { recentTaps, shouldScold } from "./scold.js";
 import { backfillStarterSounds, showWelcome, wantsWelcome }
   from "./welcome.js";
-import { fetchAddon, installProblem, mountImportPanel, orphanedSounds,
+import { DECOR_COPIES_MAX, fetchAddon, installProblem,
+         mountImportPanel, orphanedSounds,
          recordAddon, qualifySoundItemName, isListed, COLLECTIONS }
   from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
@@ -831,11 +832,18 @@ function retryRestores(failed: Importable[], attempt = 0): void {
   }, RESTORE_RETRY_DELAYS[attempt]);
 }
 function handleImages(images: Iterable<IndexedImage>, src: string,
-                      section: string, live: boolean): void {
+                      section: string, live: boolean,
+                      count = 1): void {
   // fish packs carry portraits too — only scenery sections touch the tank
   if (section === "gravel") pickGravel(images, src);
-  else if (section === "plants" || section === "accessories")
-    addDecor(images, src);
+  else if (section === "plants" || section === "accessories") {
+    // A restore replays the persisted copy count; `images` may be a
+    // single-use Map iterator, so materialize before looping.
+    const imgs = [...images];
+    const n = Number.isInteger(count)
+      ? Math.min(DECOR_COPIES_MAX, Math.max(1, count)) : 1;
+    for (let i = 0; i < n; i++) addDecor(imgs, src);
+  }
   else if (section === "backgrounds" || section === "tanks")
     pickBackdrop(images, src);
   else return;

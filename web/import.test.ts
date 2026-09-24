@@ -218,6 +218,28 @@ describe("recordAddon", () => {
     expect(recordAddon(list, it0("gone.zip"), ["z"], "refresh")).toBe(false);
     expect(list).toHaveLength(1);
   });
+  it("counts Add Again copies on decor sections only", () => {
+    const plant = (url: string): Importable =>
+      ({ url, inner: url, section: "plants" });
+    const list: Importable[] = [];
+    recordAddon(list, plant("a.plt"), [], "install");
+    recordAddon(list, plant("a.plt"), [], "install");
+    recordAddon(list, plant("a.plt"), [], "install");
+    expect(list[0]!.copies).toBe(3);
+    // A restore refreshes the record — it isn't another copy.
+    recordAddon(list, plant("a.plt"), [], "refresh");
+    expect(list[0]!.copies).toBe(3);
+    // Fish and sound packs never carry a count.
+    recordAddon(list, it0("s.rez"), [], "install");
+    recordAddon(list, it0("s.rez"), [], "install");
+    expect(list[1]!.copies).toBeUndefined();
+  });
+  it("strips a caller-supplied copies field on first install", () => {
+    const list: Importable[] = [];
+    recordAddon(list, { url: "a.plt", inner: "a.plt",
+                        section: "plants", copies: 99 }, [], "install");
+    expect(list[0]!.copies).toBeUndefined();
+  });
 });
 
 describe("isListed", () => {

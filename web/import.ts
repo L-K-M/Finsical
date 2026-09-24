@@ -116,6 +116,21 @@ export interface Importable {
   /** Sound record names this add-on contributed — persisted with the
    * install so uninstall can drop exactly these from the bank. */
   sounds?: string[];
+  /** Plants/accessories only: how many copies "Add Again" put in the
+   * tank. Absent means one — and every other section ignores it. */
+  copies?: number;
+}
+
+/** "Add Again" is unbounded in-session; the persisted count caps so a
+ * corrupt save or a bus-injected field can't spawn a floor full of
+ * decor on relaunch. */
+export const DECOR_COPIES_MAX = 16;
+
+/** The persisted copy count, clamped to sanity (storage is untrusted). */
+function decorCopies(it: Importable): number {
+  const n = it.copies;
+  return Number.isInteger(n) ? Math.min(DECOR_COPIES_MAX,
+                                        Math.max(1, n!)) : 1;
 }
 
 /** Raw zip bytes, memoized by URL and persisted in IndexedDB — nested
@@ -458,10 +473,19 @@ export function recordAddon(list: Importable[], it: Importable,
   const rec = list.find((a) => a.url === it.url);
   if (!rec) {
     if (mode === "refresh") return false;
+    // A bus-sent item could carry a copies field — a fresh record
+    // always starts at one; re-installs grow it below.
+    const clean = { ...it };
+    delete clean.copies;
     list.push(soundNames.length
-      ? { ...it, sounds: [...new Set(soundNames)] } : it);
+      ? { ...clean, sounds: [...new Set(soundNames)] } : clean);
     return true;
   }
+  // Add Again on a decor pack persists one more copy; scenery and
+  // fish records carry no count.
+  if (mode === "install" &&
+      (it.section === "plants" || it.section === "accessories"))
+    rec.copies = Math.min(DECOR_COPIES_MAX, (decorCopies(rec)) + 1);
   if (soundNames.length)
     rec.sounds = [...new Set([...(rec.sounds ?? []), ...soundNames])];
   return true;
@@ -564,9 +588,10 @@ export interface ImportHandlers {
   onSheets(sheets: Map<string, SpriteSheet>, name: string, url: string,
            section: string, live: boolean): void;
   /** `live` as for onSheets: a restore must not change the choice of
-   * scenery on display. */
+   * scenery on display. `count` is the persisted decor copy count —
+   * 1 on a live install, `copies` on restore. */
   onImages(images: Iterable<IndexedImage>, src: string, section: string,
-           live: boolean): void;
+           live: boolean, count?: number): void;
   /** Sound records from a sound-bearing add-on — audio files and
    * 'snd ' resource forks alike arrive pre-flattened to {name, wav}.
    * `live` marks user installs vs restores (a restore must not play). */
@@ -1392,7 +1417,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       if (r.sheets.size)
         h.onSheets(r.sheets, it.inner, it.url, it.section, live);
       if (r.images.size)
-        h.onImages(r.images.values(), it.url, it.section, live);
+        h.onImages(r.images.values(), it.url, it.section, live,
+                   live ? 1 : decorCopies(it));
       if (r.sounds.length) {
         const recs = qualifySoundItemName(r.sounds, it.inner);
         // The handler may rename colliding records in place — read the
