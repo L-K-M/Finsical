@@ -97,20 +97,37 @@ export function claimTank(onLost: () => void,
     return { owned: false,
              ownerGone: () =>
                !leaseAlive(readLease(storage.get()), Date.now()) };
-  // The write must read back — an unwritable store can't coordinate,
-  // so treat the claim as held rather than heartbeat into a loss.
-  if (readLease(storage.get())?.id !== id) return { owned: true, ownerGone: () => false };
+  // Null read-back = unwritable store (private mode): nothing to
+  // coordinate with, hold the claim without a heartbeat. A different
+  // id = a rival's claim landed between our write and this read —
+  // fresh rival: we lost the race and spectate; stale rival: retake.
+  const back = readLease(storage.get());
+  if (back === null) return { owned: true, ownerGone: () => false };
+  if (back.id !== id) {
+    if (leaseAlive(back, Date.now()))
+      return { owned: false,
+               ownerGone: () =>
+                 !leaseAlive(readLease(storage.get()), Date.now()) };
+    storage.set(JSON.stringify({ id, at: Date.now() }));
+  }
   const beat = setInterval(() => {
     if (beatLease(storage, id, Date.now())) return;
     clearInterval(beat);
     onLost();
   }, LEASE_BEAT_MS);
-  // Node tests drive the pure functions; the pagehide release is
-  // browser-only.
-  if (typeof window !== "undefined")
+  // Node tests drive the pure functions; the pagehide/pageshow pair
+  // is browser-only.
+  if (typeof window !== "undefined") {
     window.addEventListener("pagehide", () => {
       clearInterval(beat);
       releaseLease(storage, id);
     });
+    // A pagehide into the bfcache released the lease and stopped the
+    // heartbeat — on restore someone else may own the tank now, so
+    // re-run the claim from scratch (onLost reloads in main.ts).
+    window.addEventListener("pageshow", (e) => {
+      if (e.persisted) onLost();
+    });
+  }
   return { owned: true, ownerGone: () => false };
 }

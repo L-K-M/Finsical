@@ -74,6 +74,22 @@ describe("tank lease", () => {
     expect(c.ownerGone()).toBe(false);
   });
 
+  it("claimTank spectates when a rival's write lands mid-claim", () => {
+    // Two tabs claiming in the same instant: our set() lands, then the
+    // rival's overwrites before our read-back — we lost, not degraded.
+    const { store, setRaw } = fakeStore();
+    const racing: LeaseStore = {
+      get: store.get,
+      set: (v) => { store.set(v);
+                    setRaw(JSON.stringify({ id: "b",
+                                            at: Date.now() })); },
+      clear: store.clear,
+    };
+    const c = claimTank(() => {}, racing);
+    expect(c.owned).toBe(false);
+    expect(readLease(store.get())?.id).toBe("b");
+  });
+
   it("onLost fires when the lease is stolen mid-session", () => {
     vi.useFakeTimers();
     const { store, setRaw } = fakeStore();
