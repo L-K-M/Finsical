@@ -34,6 +34,7 @@ import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
          PAW_GAP_RANGE, PAW_H, PAW_W, pawPose, pawSpawnX, pawSwatAt }
   from "./catpaw.js";
 import type { PawVisit } from "./catpaw.js";
+import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
@@ -55,6 +56,7 @@ import type { Lighting } from "../core/light.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
 import type { Fish } from "../core/sim.js";
+import type { SnailVisit } from "./snail.js";
 import type { AzpackManifest, IndexedImage } from "../core/data/azpack.js";
 
 const TANK = { width: 320, height: 200 };
@@ -2207,6 +2209,20 @@ reducedMotion.addEventListener("change", (e) => {
 // sim clock so they animate even while fish pause between decisions.
 const ripples: Ripple[] = [];
 const splashes: Splash[] = [];
+// The snail visitor: armed on the first tick (so a restored tickCount
+// counts from the restore, not from zero), then re-armed after each
+// crossing. Deliberately rare — minutes between visits.
+let snail: SnailVisit | null = null;
+let snailNextAt = -1;
+const SNAIL_MIN_TICKS = 1800; // one tank minute at 30 tps
+const snailSprite = new Map<string, HTMLCanvasElement>();
+function drawSnail(x: number, paused: boolean, dir: 1 | -1): void {
+  const key = `${dir}${paused ? "p" : ""}`;
+  let cv = snailSprite.get(key);
+  if (!cv) { cv = snailCanvas(dir, paused); snailSprite.set(key, cv); }
+  // Foot row sits a pixel into the gravel strip so it reads planted.
+  ctx.drawImage(cv, Math.round(x), TANK.height - BOTTOM_PAD - SNAIL_H + 2);
+}
 // The surface's springs, and the waterline drawn from them each frame.
 // Pre-filled with the rest-state swell so isFeedZone reads a real line
 // even before the first render.
@@ -2269,6 +2285,12 @@ function render(): void {
   drawLight(ctx, sim.light, sim.tickCount, waterMotion, floor);
 
   drawFood(ctx, sim.food);
+  // The snail crawls the gravel behind the fish — under them like the
+  // decor, not floating over the water.
+  if (snail) {
+    const p = snailPose(snail, sim.tickCount, TANK.width);
+    if (p) drawSnail(p.x, p.paused, snail.dir);
+  }
   for (const f of sim.fish) drawFish(f);
 
   // Ambient motion (swell, glint, shimmer) holds still under reduced
@@ -2451,6 +2473,15 @@ function tickSim(): void {
   if (autoFeed && sim.fish.length && sim.food.length < AUTOFEED_MAX_FOOD &&
       sim.tickCount % AUTOFEED_TICKS === 0)
     feederDrop();
+  // Snail visits run on the sim clock so a paused tank's snail waits.
+  if (snailNextAt < 0)
+    snailNextAt = sim.tickCount + (6 + Math.random() * 8) * SNAIL_MIN_TICKS;
+  if (!snail && sim.tickCount >= snailNextAt)
+    snail = snailSpawn(sim.tickCount, Math.random);
+  if (snail && !snailPose(snail, sim.tickCount, TANK.width)) {
+    snail = null;
+    snailNextAt = sim.tickCount + (10 + Math.random() * 15) * SNAIL_MIN_TICKS;
+  }
   tickSurface(surface);
   pawTick();
   // Latch on the chime actually sounding: while the AudioContext is
