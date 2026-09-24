@@ -1442,6 +1442,16 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
             wanted: (it: Importable) => boolean): Promise<Importable[]> {
       if (remote) return Promise.resolve([]); // the tank page owns the sim
       const failed: Importable[] = [];
+      // Warm every fetch up front: packCache dedupes by URL, so the
+      // serial chain below awaits work already running instead of
+      // starting each download as the previous pack applies. Parallel
+      // fetches hide restore's dominant latency while applyPack still
+      // runs in install order (slot/backdrop assignment unchanged).
+      // Errors surface through the chain's own catch, so the warm-up
+      // promise's rejection only needs swallowing.
+      for (const it of list)
+        if (!installed.has(it.url) && wanted(it))
+          void fetchPack(it.url).catch(() => {});
       let p: Promise<void> = Promise.resolve();
       for (const it of list) {
         p = p.then(() => {
