@@ -8,6 +8,9 @@ import { hungerLabel, uptime } from "./statsmodel.js";
 
 export interface FishSnap {
   id: number; species: string; hunger: number; state: string;
+  /** Lifecycle flags — sick outranks the swim state, dead outranks all. */
+  sick?: boolean;
+  dead?: boolean;
   pack?: string;
 }
 export interface TankState extends BusMsg {
@@ -81,7 +84,8 @@ export function itemsOf(s: TankState): Item[] {
     name: f.species || "Fish",
     kind: "Fish",
     // Bus data is untrusted: an unknown state reads as swimming.
-    status: `${STATES[f.state as FishState] ?? "Swimming"}, ` +
+    status: `${f.dead === true ? "Dead" : f.sick === true ? "Sick" :
+      STATES[f.state as FishState] ?? "Swimming"}, ` +
       hungerLabel(f.hunger),
     rank: 0,
     remove: { op: "removeFish", id: f.id },

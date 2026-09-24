@@ -1,5 +1,5 @@
-import { BOTTOM_PAD, DAY_TICKS, FOOD_ENTRY_Y, Sim, SURFACE }
-  from "../core/sim.js";
+import { BOTTOM_PAD, CORPSE_TICKS, DAY_TICKS, FOOD_ENTRY_Y, Sim,
+         SURFACE } from "../core/sim.js";
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
@@ -196,6 +196,10 @@ function sanitizeSavedFish(f: Partial<Fish> & { x: number; y: number }):
     scale: typeof f.scale === "number" && Number.isFinite(f.scale)
       ? f.scale : 1,
     species: typeof f.species === "string" ? f.species : "",
+    // Sickness persists across launches; corpses never get saved.
+    sick: f.sick === true,
+    sickTicks: Number.isFinite(f.sickTicks)
+      ? Math.max(0, f.sickTicks!) : 0,
   };
   // Optional fields drop rather than zero out — a bogus sheetIdx or
   // pack must read as "no binding", not bind to slot 0.
@@ -223,10 +227,12 @@ function saveTank(): void {
     const s: SavedTank = {
       v: rosterComplete ? 2 : 1,
       tickCount: sim.tickCount, waterQuality: sim.waterQuality,
-      fish: sim.fish.map((f) => ({
+      // Corpses don't get saved — a dead fish stays dead.
+      fish: sim.fish.filter((f) => !f.dead).map((f) => ({
         id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
         heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
         bandY: f.bandY, hunger: f.hunger, scale: f.scale,
+        ...(f.sick ? { sick: true, sickTicks: f.sickTicks } : {}),
         ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
         ...(f.pack !== undefined ? { pack: f.pack } : {}),
       })),
@@ -324,7 +330,8 @@ const fishToName = (p: { x: number; y: number }): Fish | null =>
     ? null : fishAtPoint(p);
 const fishTipLabel = (f: Fish): string =>
   (f.species || "Fish") +
-  (f.state === "drift" ? "" : ` — ${stateLabel(f.state)}`);
+  (f.dead ? " — Dead" : f.sick ? " — Sick" :
+   f.state === "drift" ? "" : ` — ${stateLabel(f.state)}`);
 // Tank coords of the last hover — the frame loop re-checks it so the
 // tip doesn't linger when the fish swims away from a parked cursor.
 let lastHover: { x: number; y: number } | null = null;
@@ -423,7 +430,7 @@ function layoutInfo(): void {
   card.root.style.top =
     `${Math.max(0, Math.min(py, sr.height - ch))}px`;
   const hunger = `Hunger  ${Math.round(f.hunger * 100)}%`;
-  const mood = stateLabel(f.state);
+  const mood = f.dead ? "Dead" : f.sick ? "Sick" : stateLabel(f.state);
   if (card.hunger.textContent !== hunger)
     card.hunger.textContent = hunger;
   if (card.mood.textContent !== mood) card.mood.textContent = mood;
@@ -867,8 +874,8 @@ function postState(): void {
     scenery: { backdrop: backdropSrc, gravel: gravelSrc },
     // `pack` lets the panel tell pack-bound fish from loose ones —
     // a fish add-on with a living fish doesn't repeat in Add-ons.
-    fish: sim.fish.map(({ id, species, hunger, state, pack }) =>
-      ({ id, species, hunger, state,
+    fish: sim.fish.map(({ id, species, hunger, state, sick, dead, pack }) =>
+      ({ id, species, hunger, state, sick, dead,
          ...(pack !== undefined ? { pack } : {}) })),
     waterQuality: sim.waterQuality,
     tickCount: sim.tickCount,
@@ -1934,6 +1941,14 @@ function drawFish(f: Fish): void {
   // frame would otherwise sit on a half pixel.
   try {
     ctx.translate(Math.round(f.x), Math.round(f.y));
+    if (f.dead) {
+      // Belly-up at the surface, fading as the corpse dissolves.
+      ctx.globalAlpha =
+        Math.max(0.15, 1 - f.deadTicks / CORPSE_TICKS);
+      ctx.scale(1, -1);
+    } else if (f.sick) {
+      ctx.globalAlpha = 0.55; // wan, but still swimming
+    }
     ctx.rotate(pitch(f));
     ctx.drawImage(cv, -(cv.width >> 1), -(cv.height >> 1));
   } finally {
@@ -1951,7 +1966,13 @@ function drawPlaceholder(f: Fish): void {
   const scale = Math.round(f.scale * 20) / 20; // as drawScale rounds it
   ctx.save();
   ctx.translate(Math.round(f.x), Math.round(f.y));
-  ctx.scale(-f.facing * scale, scale);
+  if (f.dead) {
+    ctx.globalAlpha = Math.max(0.15, 1 - f.deadTicks / CORPSE_TICKS);
+    ctx.scale(-f.facing * scale, -scale); // belly-up
+  } else {
+    if (f.sick) ctx.globalAlpha = 0.55;
+    ctx.scale(-f.facing * scale, scale);
+  }
   // In the mirrored draw space the pitch angle flips sign.
   ctx.rotate(-f.facing * pitch(f));
   ctx.drawImage(cv, -(cv.width >> 1), -(cv.height >> 1));
@@ -2132,6 +2153,18 @@ function tickSim(): void {
   const bubbles = sim.bubbles.length;
   stirSurface();
   sim.tick();
+  // Lifecycle: each transition rings its original event sound. A birth
+  // also binds the fry's sprite extents and splashes it in.
+  for (const e of sim.events.splice(0)) {
+    if (e.type === "sick") audio.sick();
+    else if (e.type === "dead") audio.dead();
+    else {
+      bindExtents(e.fish);
+      splashAt(e.fish.x, e.fish.y, PUSH.newFish);
+      audio.birth();
+      saveTank(); // the roster grew
+    }
+  }
   tickSurface(surface);
   tickRipples(ripples);
   tickSplashes(splashes);

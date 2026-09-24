@@ -1,5 +1,5 @@
 import { makeRng } from "./rng.js";
-import { HUNGER_SEEK, QUALITY_SEEK } from "./tuning.js";
+import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK } from "./tuning.js";
 import { demoLight, DUSK_LIGHT } from "./light.js";
 
 export interface Tank {
@@ -70,6 +70,22 @@ export interface Fish {
    * enough for the fixed margins. */
   halfW?: number;
   halfH?: number;
+  /** Under sustained illness pressure (starving or foul water): the
+   * fish is listless, and dead if nothing improves. */
+  sick: boolean;
+  /** Ticks of accumulated illness pressure — decays when the cause
+   * clears, kills the fish at SICK_ONSET + DEATH_TICKS. */
+  sickTicks: number;
+  /** A corpse floats belly-up at the surface until it dissolves. */
+  dead: boolean;
+  deadTicks: number;
+}
+
+/** Lifecycle transitions queued for the renderer/audio to react to;
+ * the caller drains the array each tick. */
+export interface SimEvent {
+  type: "sick" | "dead" | "birth";
+  fish: Fish;
 }
 
 export interface Food {
@@ -217,6 +233,24 @@ export const DAY_TICKS = 24000;
  * fluttering between states. Exported for the sleep test. */
 export const SLEEP_LIGHT = DUSK_LIGHT;
 export const WAKE_LIGHT = 0.6;
+/** Hunger or foul water at these levels pressures a fish toward
+ * sickness — ~30 s of either brings it on, ~5 min untreated kills.
+ * A fish recovers while neither holds; pressure decays twice as fast
+ * as it builds, so one bad spell leaves it fragile for a while. */
+const SICK_HUNGER = 0.95;
+const SICK_QUALITY = 0.12;
+const SICK_ONSET = 900;
+const DEATH_TICKS = 9000;
+/** A corpse dissolves ~2 min after death unless flushed first. */
+export const CORPSE_TICKS = 3600;
+/** Two healthy, well-fed, grown fish of a species occasionally have a
+ * fry — ~one birth per 10 min in a thriving tank. FRY_SCALE is the
+ * juvenile minimum addFish clamps to, so a newborn reads visibly
+ * smaller than its parents and grows up on its meals. */
+const BIRTH_HUNGER = 0.3;
+const BIRTH_SCALE = 0.9;
+const BIRTH_CHANCE = 1 / 18000;
+const FRY_SCALE = SPAWN_SCALE_MIN;
 
 /** Pitch off the facing axis, limited to MAX_PITCH either way. */
 function clampPitch(p: number): number {
@@ -232,6 +266,8 @@ export class Sim {
   tickCount = 0;
   /** 1 = clean, 0 = foul. Rotted food fouls it; filtration recovers it. */
   waterQuality = 1;
+  /** Lifecycle transitions since the last drain (sound/UI hooks). */
+  readonly events: SimEvent[] = [];
   /** Pointer position in tank px while the tank is hovered — the
    * nearest calm fish notices it and drifts over. null when it
    * leaves. */
@@ -260,7 +296,8 @@ export class Sim {
       speed: 1, vy: 0, tx: 0, ty: 0, turnDir: 1, turnFrom: 1,
       strokes: 0, bandY: 0, scale: 1, hunger: 0.2,
       state: "drift", stateTicks: 0, startleLen: STARTLE_TICKS,
-      panicHops: 0, ...fish,
+      panicHops: 0, sick: false, sickTicks: 0, dead: false,
+      deadTicks: 0, ...fish,
     };
     // Steering keeps heading on the facing side. A fish given only a
     // facing, or saved mid-roll, would otherwise start swimming
@@ -285,6 +322,15 @@ export class Sim {
     else
       // Bad saves shouldn't render invisible or dwarf the tank.
       f.scale = Math.min(Math.max(f.scale, SPAWN_SCALE_MIN), MAX_SCALE);
+    // Lifecycle fields from a save sanitize like scale did: only a
+    // genuine `true` carries over (a corpse in a save dissolves on
+    // restore), bogus values can't fake an illness.
+    if (f.sick !== true) f.sick = false;
+    if (f.dead !== true) f.dead = false;
+    if (!Number.isFinite(f.sickTicks)) f.sickTicks = 0;
+    else f.sickTicks = Math.max(0, f.sickTicks);
+    if (!Number.isFinite(f.deadTicks)) f.deadTicks = 0;
+    else f.deadTicks = Math.max(0, f.deadTicks);
     this.fish.push(f);
     return f;
   }
@@ -320,6 +366,7 @@ export class Sim {
    * with distance like the original's 1 − dist/radius falloff. */
   tap(x: number, y: number): void {
     for (const f of this.fish) {
+      if (f.dead) continue; // the dead do not startle
       const dx = f.x - x, dy = f.y - y;
       if (dx * dx + dy * dy < STARTLE_RADIUS * STARTLE_RADIUS) {
         const d = Math.max(Math.hypot(dx, dy), 1);
@@ -382,13 +429,18 @@ export class Sim {
       }
     }
     for (const f of this.fish) this.tickFish(f);
+    // Corpses dissolve once their time at the surface is up.
+    for (let i = this.fish.length - 1; i >= 0; i--)
+      if (this.fish[i]!.dead && this.fish[i]!.deadTicks >= CORPSE_TICKS)
+        this.fish.splice(i, 1);
+    this.maybeBirth();
     // Panic propagates: a freshly darting fish startles close
     // neighbors — fish-on-fish reaction on the same distance falloff.
     for (const a of this.fish) {
-      if (a.state !== "startle" || a.stateTicks > 4 ||
+      if (a.dead || a.state !== "startle" || a.stateTicks > 4 ||
           a.panicHops >= MAX_PANIC_HOPS) continue;
       for (const b of this.fish) {
-        if (b === a || b.state === "startle") continue;
+        if (b === a || b.dead || b.state === "startle") continue;
         const dx = b.x - a.x, dy = b.y - a.y;
         if (dx * dx + dy * dy >= PROP_RADIUS * PROP_RADIUS) continue;
         const d = Math.max(Math.hypot(dx, dy), 1);
@@ -426,9 +478,41 @@ export class Sim {
   private tickFish(f: Fish): void {
     f.stateTicks++;
     f.phase++;
+    // A corpse ignores hunger, panic and the sleep clock: it rides up
+    // to the surface belly-up, drifts, and dissolves at CORPSE_TICKS.
+    if (f.dead) {
+      f.deadTicks++;
+      f.y += (SURFACE + 3 - f.y) * 0.03;
+      f.x += 0.06 * f.facing;
+      if (f.x < MARGIN || f.x > this.tank.width - MARGIN)
+        f.facing = (-f.facing) as 1 | -1;
+      f.speed = 0; f.vy = 0;
+      return;
+    }
     f.hunger = Math.min(1, f.hunger + HUNGER_PER_TICK);
-    // Foul water makes fish sluggish; panic (startle) ignores it.
-    const vigor = 0.5 + 0.5 * this.waterQuality;
+    // Illness pressure: sustained starvation or foul water makes a
+    // fish sick, and staying sick kills it. Relief decays pressure
+    // twice as fast as it builds — one bad spell leaves it fragile.
+    const ill = f.hunger >= SICK_HUNGER ||
+                this.waterQuality < SICK_QUALITY;
+    f.sickTicks = ill ? Math.min(f.sickTicks + 1, SICK_ONSET + DEATH_TICKS)
+                      : Math.max(0, f.sickTicks - 2);
+    if (f.sickTicks >= SICK_ONSET + DEATH_TICKS) {
+      f.dead = true;
+      f.sick = false;
+      f.deadTicks = 0;
+      this.events.push({ type: "dead", fish: f });
+      return;
+    }
+    if (!f.sick && f.sickTicks >= SICK_ONSET) {
+      f.sick = true;
+      this.events.push({ type: "sick", fish: f });
+    } else if (f.sick && f.sickTicks === 0) {
+      f.sick = false; // fed, or the water cleared
+    }
+    // Foul water makes fish sluggish; illness halves it again. Panic
+    // (startle) ignores it.
+    const vigor = (0.5 + 0.5 * this.waterQuality) * (f.sick ? 0.45 : 1);
 
     // Night falls: any unpanicked fish beds down. A sleeping fish
     // wakes at dawn; a knock on the glass wakes it instantly (the
@@ -772,6 +856,34 @@ export class Sim {
     const y0 = Math.min(SURFACE + Math.max(MARGIN, ky), h / 2);
     return { x0, x1: w - x0, y0,
              y1: Math.max(y0, h - Math.max(BOTTOM_PAD, ky)) };
+  }
+
+  /** A thriving pair occasionally produces a fry — the original's
+   * quiet reward for a well-kept tank. One roll per eligible species
+   * per tick keeps a crowded healthy tank from baby-booming. */
+  private maybeBirth(): void {
+    if (this.fish.length >= FISH_CAP) return;
+    const seen = new Set<string>();
+    const parents = new Map<string, Fish>();
+    for (const f of this.fish) {
+      if (!f.species || f.dead || f.sick || f.hunger > BIRTH_HUNGER ||
+          f.scale < BIRTH_SCALE) continue;
+      if (seen.has(f.species)) parents.set(f.species, f);
+      seen.add(f.species);
+    }
+    for (const [species, parent] of parents) {
+      if (this.rand() >= BIRTH_CHANCE) continue;
+      const fry = this.addFish({
+        species, x: parent.x,
+        y: Math.min(parent.y + 10, this.tank.height - BOTTOM_PAD - 4),
+        facing: parent.facing, heading: parent.heading,
+        cruise: parent.cruise, hunger: 0.3, scale: FRY_SCALE,
+        ...(parent.sheetIdx !== undefined ? { sheetIdx: parent.sheetIdx } : {}),
+        ...(parent.pack !== undefined ? { pack: parent.pack } : {}),
+      });
+      this.events.push({ type: "birth", fish: fry });
+      return; // at most one birth per tick
+    }
   }
 
   private setState(f: Fish, s: FishState): void {
