@@ -534,9 +534,11 @@ export async function listAddons(
 export interface ImportHandlers {
   /** `name` is the display/species label; `url` is the add-on identity.
    * `live` = user-initiated install; false on launch-time restore, which
-   * must not spawn fish (the saved roster already holds them). */
+   * must not spawn fish (the saved roster already holds them). `entry`
+   * is the pack's own name inside the add-on — fish bind to (url, entry)
+   * so a multi-pack add-on can't collapse its fish onto the last entry. */
   onSheets(sheets: Map<string, SpriteSheet>, name: string, url: string,
-           section: string, live: boolean): void;
+           section: string, live: boolean, entry?: string): void;
   /** `live` as for onSheets: a restore must not change the choice of
    * scenery on display. */
   onImages(images: Iterable<IndexedImage>, src: string, section: string,
@@ -1291,7 +1293,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     const soundNames: string[] = [];
     for (const r of usable) {
       if (r.sheets.size)
-        h.onSheets(r.sheets, it.inner, it.url, it.section, live);
+        h.onSheets(r.sheets, it.inner, it.url, it.section, live, r.entry);
       if (r.images.size)
         h.onImages(r.images.values(), it.url, it.section, live);
       if (r.sounds.length) {

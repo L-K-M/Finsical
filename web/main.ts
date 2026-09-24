@@ -115,7 +115,7 @@ let rosterComplete = saved?.v !== 1;
 
 // A fixed seed would replay the identical wander/turn/bubble sequence
 // at every launch. Tests construct their own seeded Sim; the tank is
-// allowed to surprise. */
+// allowed to surprise.
 const sim = new Sim(TANK, (Math.random() * 0x100000000) >>> 0);
 const audio = new TankAudio();
 // Hidden (Cmd-H, minimized, background tab): rAF stops and the sim
@@ -721,7 +721,16 @@ function remapSheetIdx(): void {
       // share a species name, and it lets the panel dedupe by URL.
       if (f.pack === undefined) {
         const u = packBySheet.get(idx);
-        if (u !== undefined) f.pack = u;
+        if (u !== undefined) {
+          f.pack = u;
+          // Multi-entry packs: adopt the entry that owns this slot too,
+          // or the next relaunch collapses onto the add-on's last entry.
+          for (const [k, v] of sheetByEntry)
+            if (v === idx && k.startsWith(`${u}\n`)) {
+              f.entry = k.slice(u.length + 1);
+              break;
+            }
+        }
       }
     } else {
       delete f.sheetIdx;
@@ -1853,7 +1862,10 @@ window.addEventListener("drop", (e) => {
       // The archive install path: handleSheets binds the sheet to the
       // url and spawns the fish; scenery keys by url so Overview's
       // Remove clears it.
-      if (p.sheets.size) handleSheets(p.sheets, p.name, url, "fish", true);
+      // importAddon gives a stored local pack entry === url; record the
+      // same binding so the fish's saved identity matches its restore.
+      if (p.sheets.size)
+        handleSheets(p.sheets, p.name, url, "fish", true, url);
       if (p.images.size)
         handleImages(p.images.values(), url, p.section, true);
       // Only when the bytes persisted — a dangling record would throw
