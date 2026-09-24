@@ -54,11 +54,12 @@ export interface TankMenuActions {
   toggleCrt(): void;
   toggleLamp(): void;
   toggleMute(): void;
+  togglePause(): void;
   /** Live state, read each time a menu opens. Osmium's items have no
    * checkmark, so toggles name the action they would take instead,
    * like System 8's Show Balloons / Hide Balloons. */
   state(): { crtUsable: boolean; crtOn: boolean; lampOn: boolean;
-             muted: boolean };
+             muted: boolean; paused: boolean };
 }
 
 /** True while a pull-down menu is open — the tank page's bare-key
@@ -200,6 +201,7 @@ function shortcutsContent(c: HTMLElement): void {
     ["F", "Feed the fish"],
     ["L", "Switch the lamp off or on"],
     ["M", "Mute or unmute the sound"],
+    ["P", "Pause or resume the tank"],
     ["C", "Toggle the CRT effect"],
     ["S", "Open Tank Stats"],
     ["⌘I / Ctrl-I", "Import add-ons"],
@@ -285,6 +287,8 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
           { title: "Feed Fish", action: a.feed },
           { title: "Change Water", action: a.changeWater },
           MENU_SEPARATOR,
+          { title: s.paused ? "Resume Simulation" : "Pause Simulation",
+            action: a.togglePause },
           { title: s.lampOn ? "Turn Lamp Off" : "Turn Lamp On",
             action: a.toggleLamp },
           { title: s.muted ? "Unmute Sound" : "Mute Sound",

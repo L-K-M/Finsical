@@ -409,11 +409,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 OsmiumWindowHost.drag(window, firstResponder: webView)
                 return
             }
-            // The live CRT, lamp and sound state for the Tank menu's
-            // checkmarks (CRT off and unavailable without GL). Falls
-            // through like the machine.
+            // Tank state carries the Tank menu's live toggles and the
+            // machine's viewBox aspect. Falls through: clients still
+            // need the push.
             if body["op"] as? String == "state",
                message.webView === webView {
+                // CRT (off and unavailable without GL), lamp, sound and
+                // pause, for the checkmarks and the pause title.
                 if let crt = body["crt"] as? [String: Any] {
                     crtOn = crt["on"] as? Bool == true
                     crtAvailable = crt["available"] as? Bool == true
@@ -424,15 +426,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 if let sound = body["sound"] as? [String: Any] {
                     soundMuted = sound["muted"] as? Bool == true
                 }
-            }
-            // Tank state carries the machine's viewBox aspect —
-            // retune the frame to the case outline. Falls through:
-            // clients still need the push.
-            if body["op"] as? String == "state",
-               message.webView === webView {
                 if let p = body["paused"] as? Bool {
                     syncPauseMenu(paused: p)
                 }
+                // Retune the frame to the case outline.
                 if let mc = body["machine"] as? [String: Any],
                    let mid = mc["id"] as? String,
                    let mw = (mc["w"] as? NSNumber)?.doubleValue,

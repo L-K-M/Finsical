@@ -133,7 +133,10 @@ let lighting: Lighting = (() => {
 const minutesOfDay = (d: Date): number =>
   d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
 function syncLight(now: Date): void {
+  const before = sim.light;
   sim.setLight(lightAt(minutesOfDay(now), lighting));
+  // A paused tank runs no ticks, but the timer's light still moves.
+  if (sim.light !== before) requestPaint();
 }
 syncLight(new Date());
 /** Merge a partial schedule (prefs pop-up) onto the current one. */
@@ -1062,6 +1065,7 @@ const PAUSE_KEY = "finsical:paused";
 function setPaused(on: boolean): boolean {
   if (paused !== on) {
     paused = on;
+    requestPaint(); // the banner comes and goes without a tick
     try { localStorage.setItem(PAUSE_KEY, on ? "1" : "0"); }
     catch { /* storage unavailable — pause is session-only */ }
     postState();
@@ -1296,8 +1300,10 @@ function takePicture(): void {
 }
 // A partial water change, also callable from the stats window's bus op.
 function changeWater(): void {
+  audio.unlock(); // Tank ▸ Change Water can be the first gesture
   sim.changeWater();
   audio.splash();
+  requestPaint(); // the murk clears at once, even while paused
   saveTank(); // persists + pushes fresh state to open panels
 }
 (window as unknown as { finsical?: unknown }).finsical =
@@ -1373,8 +1379,9 @@ mountTankMenuBar({
   toggleCrt: () => setCrt(!crtOn),
   toggleLamp: toggleLights,
   toggleMute,
+  togglePause: () => { setPaused(!paused); },
   state: () => ({ crtUsable: crt?.usable ?? false, crtOn,
-                  lampOn: lighting.lamp, muted: soundCfg.muted }),
+                  lampOn: lighting.lamp, muted: soundCfg.muted, paused }),
 });
 
 const packFetch = async (p: string): Promise<Uint8Array> => {
