@@ -29,7 +29,7 @@ import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
 import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
          swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
-import { containPoint, isFeedZoneY } from "./feedzone.js";
+import { containPoint, isFeedZone } from "./feedzone.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
@@ -257,7 +257,7 @@ function tankPoint(clientX: number, clientY: number):
  * a fin reaching up there only shows dimmed through the air, and a click
  * there feeds. */
 function fishAtPoint(p: { x: number; y: number }): Fish | null {
-  return isFeedZoneY(p.y) ? null : sim.fishAt(p.x, p.y);
+  return isFeedZone(p.x, p.y, waterline) ? null : sim.fishAt(p.x, p.y);
 }
 
 // Feed-zone affordance: over the air above the waterline, where a
@@ -278,7 +278,10 @@ function syncFeedHover(): void {
   if (!lastClient) { setFeedHover(false); return; }
   const p = containPoint(lastClient.x, lastClient.y,
                          canvas.getBoundingClientRect(), TANK);
-  setFeedHover(p !== null && isFeedZoneY(p.y));
+  // Paused drops the affordance too — the click below is gated the
+  // same way, so the cursor mustn't promise a feed that won't land.
+  setFeedHover(p !== null && !paused &&
+               isFeedZone(p.x, p.y, waterline));
 }
 
 canvas.addEventListener("pointerdown", (e) => {
@@ -294,7 +297,12 @@ canvas.addEventListener("pointerdown", (e) => {
     if (f) openInfo(f); else closeInfo();
     return;
   }
-  if (isFeedZoneY(p.y)) {
+  // A paused tank ignores knocks and feeding — the ripples, splashes
+  // and pellets would freeze mid-animation and fire all at once on
+  // resume. ⌥-click Get Info above still works: the card reads the
+  // frozen sim fine.
+  if (paused) return;
+  if (isFeedZone(p.x, p.y, waterline)) {
     const pellet = sim.dropFood(p.x);
     audio.feed();
     splashAt(pellet.x, pellet.y, PUSH.pellet);
@@ -490,7 +498,11 @@ function spawnFish(sheetIdx: number, species: string, pack?: string,
   const x = 60 + Math.random() * (TANK.width - 120);
   const f = sim.addFish({
     x,
-    y: 30 + Math.random() * (TANK.height - 90),
+    // New fish enter through the surface, where the splash below lands
+    // — not mid-tank, which read as a pop-in. A little vy sells the
+    // drop until steering takes over.
+    y: FOOD_ENTRY_Y + 6 + Math.random() * 14,
+    vy: 0.4,
     facing: facing as 1 | -1,
     heading: facing > 0 ? 0 : Math.PI,
     cruise: 1.1 + Math.random() * 0.7,
@@ -1249,6 +1261,9 @@ const PAUSE_KEY = "finsical:paused";
 function setPaused(on: boolean): boolean {
   if (paused !== on) {
     paused = on;
+    // Pause is also a feed-hover input — without a pointer event the
+    // affordance would lag the state until the mouse next moved.
+    syncFeedHover();
     requestPaint(); // the banner comes and goes without a tick
     try { localStorage.setItem(PAUSE_KEY, on ? "1" : "0"); }
     catch { /* storage unavailable — pause is session-only */ }
@@ -1455,6 +1470,7 @@ postState();
  * neither stack into one sinking column nor always pile up in the
  * middle. Each pellet splashes where it goes in. */
 function feedFish(): void {
+  if (paused) return; // pellets only sink in tick(); fed now they'd hang
   // Bare F is a real user gesture, but Tank ▸ Feed Fish arrives via
   // evaluateJavaScript with no user activation — without unlock() the
   // context stays suspended until the first tank click.
@@ -1463,6 +1479,7 @@ function feedFish(): void {
   const hungry = sim.fish.filter((f) => f.hunger > HUNGER_SEEK).length;
   for (const p of feedPinch(Math.random, hungry)) {
     setTimeout(() => {
+      if (paused) return; // paused since the pinch was scattered
       const pellet = sim.dropFood(x + p.dx);
       splashAt(pellet.x, pellet.y, PUSH.pellet);
       requestPaint();
@@ -1976,8 +1993,10 @@ reducedMotion.addEventListener("change", (e) => {
 const ripples: Ripple[] = [];
 const splashes: Splash[] = [];
 // The surface's springs, and the waterline drawn from them each frame.
+// Pre-filled with the rest-state swell so isFeedZone reads a real line
+// even before the first render.
 const surface = newSurface();
-const waterline = new Int16Array(SURFACE_W);
+const waterline = surfaceLine(surface, 0, new Int16Array(SURFACE_W));
 
 /** How hard things push the surface, px/tick. */
 const PUSH = { pellet: 1.6, newFish: 3.2, pop: 0.35, tap: 0.6 } as const;
