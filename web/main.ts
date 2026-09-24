@@ -33,7 +33,7 @@ import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
 import { stateLabel } from "./overviewmodel.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
-import { drawBubbles, drawFood, drawLight, drawMurk, feedPinch }
+import { drawAir, drawBubbles, drawFood, drawLight, drawMurk, feedPinch }
   from "./water.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
   from "./machines.js";
@@ -1937,6 +1937,7 @@ function render(): void {
   drawFood(ctx, sim.food);
   for (const f of sim.fish) drawFish(f);
 
+  drawAir(ctx);
   drawBubbles(ctx, sim.bubbles);
 
   // On the glass, so over the fish: ripples and splashes paint last.

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SURFACE } from "../core/sim.js";
 import { makeRng } from "../core/rng.js";
 import {
-  bubbleOffset, bubblePops, bubbleSize, CAUSTIC_TILE_H, CAUSTIC_TILE_W,
+  bubbleOffset, bubblePops, bubbleSize, CAUSTIC_TILE_H, CAUSTIC_TILE_W, drawAir,
   causticTile, causticValue, feedPinch, murkParams, MURK_BOTTOM, MURK_TOP,
   pelletDrift, PINCH_MAX, PINCH_SPREAD, sunFactor,
 } from "./water.js";
@@ -150,5 +150,18 @@ describe("murkParams", () => {
     expect(murkParams(0.49).particles).toBeGreaterThanOrEqual(20);
     expect(murkParams(0.3).particles).toBeGreaterThan(20);
     expect(murkParams(0.3).particles).toBeLessThan(40);
+  });
+});
+
+describe("drawAir", () => {
+  it("covers the whole tank above the surface line, and only that", () => {
+    const rects: number[][] = [];
+    const ctx = {
+      fillStyle: "",
+      createLinearGradient: () => ({ addColorStop: () => {} }),
+      fillRect: (...r: number[]) => { rects.push(r); },
+    } as unknown as CanvasRenderingContext2D;
+    drawAir(ctx);
+    expect(rects).toEqual([[0, 0, 320, SURFACE]]);
   });
 });
