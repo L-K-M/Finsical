@@ -245,17 +245,18 @@ document.addEventListener("visibilitychange", () => {
 });
 // Every mutation path already calls saveTank() directly, so the
 // interval's 10 s cadence only needs to keep client windows fed —
-// postState — while a ≥60 s wall-clock guard persists clock/position
+// postState — while a ≥60 s elapsed guard persists clock/position
 // drift. localStorage writes drop from 6/min to 1/min of idle
 // main-thread serialization instead of hitching a frame on slow
-// storage. Wall clock, not a tick count: hidden tabs throttle the
-// interval itself (~1/min under Chrome's intensive throttling), and
-// counting fires would stretch the save to ~6 min.
-let lastSaveAt = Date.now();
+// storage. Monotonic elapsed time, not a tick count or wall clock:
+// hidden tabs throttle the interval itself (~1/min under Chrome's
+// intensive throttling) so counting fires would stretch the save to
+// ~6 min, and a backward NTP step would freeze it just as long.
+let lastSaveAt = performance.now();
 setInterval(() => {
   postState();
-  if (Date.now() - lastSaveAt >= 60_000) {
-    lastSaveAt = Date.now();
+  if (performance.now() - lastSaveAt >= 60_000) {
+    lastSaveAt = performance.now();
     saveTank();
   }
 }, 10_000);
