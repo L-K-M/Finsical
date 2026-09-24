@@ -642,8 +642,10 @@ export async function listAddons(
       try {
         const r: unknown = onItems?.(items);
         // A thenable return isn't awaited, but a rejection must still
-        // not escape as an unhandled promise failure.
-        if (r instanceof Promise) r.catch(warn);
+        // not escape as an unhandled promise failure. Duck-typed:
+        // instanceof Promise misses cross-realm and custom thenables.
+        if (r && typeof (r as PromiseLike<unknown>).then === "function")
+          Promise.resolve(r).catch(warn);
       } catch (cbErr) {
         warn(cbErr);
       }

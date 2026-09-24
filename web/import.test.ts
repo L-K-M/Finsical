@@ -193,6 +193,22 @@ describe("archive.org nested collections", () => {
     expect(items.length).toBeGreaterThan(0);
     expect(items.some((i) => i.section === "sounds")).toBe(true);
   });
+
+  it("keeps the listing when the callback returns a rejecting thenable",
+     async () => {
+    // A void-typed callback can still hand back a rejected promise at
+    // runtime; a custom thenable covers the non-native-Promise case.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const items = await listAddons(undefined, () => ({
+      then: (_ok: unknown, err: (e: unknown) => void) =>
+        err(new Error("async ui bug")),
+    }) as unknown as void);
+    // Flush so a genuine unhandled rejection would have fired.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(items.length).toBeGreaterThan(0);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
 });
 
 describe("qualifySoundItemName", () => {
