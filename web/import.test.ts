@@ -451,6 +451,8 @@ describe("usablePacks", () => {
     expect(usablePacks([res({})], "backgrounds")).toEqual([]);
     expect(usableProblem("backgrounds")).toBe("no scenery art inside");
     expect(usableProblem("tanks")).toBe("no scenery art inside");
+    expect(usableProblem("plants")).toBe("no decor art inside");
+    expect(usableProblem("accessories")).toBe("no decor art inside");
   });
 });
 

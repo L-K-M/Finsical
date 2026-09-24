@@ -541,6 +541,8 @@ export function usableProblem(section: PackSection): string {
        : section === "gravel" ? "no gravel art inside"
        : section === "backgrounds" || section === "tanks"
          ? "no scenery art inside"
+       : section === "plants" || section === "accessories"
+         ? "no decor art inside"
        : "no pack inside";
 }
 
