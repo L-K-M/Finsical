@@ -967,3 +967,102 @@ describe("Sim", () => {
     expect(b.state).not.toBe("seek");
   });
 });
+
+describe("lifecycle", () => {
+  it("a starving fish sickens, then dies", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 160, y: 100, hunger: 0.96 });
+    for (let i = 0; i < 900; i++) sim.tick();
+    expect(f.sick).toBe(true);
+    expect(sim.events.some((e) => e.type === "sick")).toBe(true);
+    for (let i = 0; i < 9000; i++) sim.tick();
+    expect(f.dead).toBe(true);
+    expect(sim.events.some((e) => e.type === "dead")).toBe(true);
+  });
+
+  it("foul water alone can sicken a fed fish", () => {
+    const sim = new Sim({ width: 200, height: 100 }, 3);
+    const f = sim.addFish({ x: 50, y: 50, hunger: 0 });
+    sim.waterQuality = 0;
+    for (let i = 0; i < 950; i++) sim.tick();
+    expect(f.sick).toBe(true);
+  });
+
+  it("feeding a sick fish cures it", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 160, y: 100, hunger: 0.96 });
+    for (let i = 0; i < 900; i++) sim.tick();
+    expect(f.sick).toBe(true);
+    // A meal (or clean water) decays the pressure; hunger falls below
+    // the ill threshold and the fish recovers.
+    f.hunger = 0.1;
+    for (let i = 0; i < 600 && f.sick; i++) sim.tick();
+    expect(f.sick).toBe(false);
+    expect(f.dead).toBe(false);
+  });
+
+  it("a corpse rides to the surface and dissolves", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 160, y: 150, hunger: 0.96 });
+    for (let i = 0; i < 9900; i++) sim.tick();
+    expect(f.dead).toBe(true);
+    for (let i = 0; i < 200; i++) sim.tick();
+    expect(f.y).toBeLessThan(30); // floated up
+    const n = sim.fish.length;
+    for (let i = 0; i < 4000 && sim.fish.length === n; i++) sim.tick();
+    expect(sim.fish.length).toBe(0); // dissolved
+  });
+
+  it("the dead do not startle", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const f = sim.addFish({ x: 160, y: 100, dead: true });
+    sim.tap(160, 100);
+    expect(f.state).not.toBe("startle");
+  });
+
+  it("a thriving pair occasionally has a fry", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 42);
+    sim.addFish({ x: 100, y: 100, species: "guppy", hunger: 0.1,
+                  scale: 1, pack: "p" });
+    sim.addFish({ x: 120, y: 110, species: "guppy", hunger: 0.1,
+                  scale: 1, pack: "p" });
+    // The window is 10x the mean roll period: a shifted rand() stream
+    // (any feature change consuming draws) can't flake this test.
+    let fry = 0;
+    for (let i = 0; i < 180000 && !fry; i++) {
+      // Keep the parents thriving: birth rolls are per-tick.
+      for (const f of sim.fish) f.hunger = 0.1;
+      sim.tick();
+      fry = sim.events.filter((e) => e.type === "birth").length;
+      sim.events.length = 0;
+    }
+    expect(fry).toBe(1);
+    expect(sim.fish.length).toBe(3);
+    const baby = sim.fish[2]!;
+    expect(baby.species).toBe("guppy");
+    expect(baby.scale).toBeLessThan(1); // visibly a juvenile
+    expect(baby.pack).toBe("p");
+  });
+
+  it("no births in a full tank", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 42);
+    for (let i = 0; i < 24; i++)
+      sim.addFish({ x: 50 + i, y: 100, species: "guppy", hunger: 0.1,
+                    scale: 1 });
+    for (let i = 0; i < 2000; i++) {
+      for (const f of sim.fish) f.hunger = 0.1;
+      sim.tick();
+    }
+    expect(sim.fish.length).toBe(24);
+    expect(sim.events.every((e) => e.type !== "birth")).toBe(true);
+  });
+
+  it("sanitizes lifecycle flags from a bad save", () => {
+    const sim = new Sim({ width: 200, height: 100 }, 1);
+    const f = sim.addFish({ x: 50, y: 50, sick: "yes" as unknown as boolean,
+                            sickTicks: NaN, deadTicks: -5 });
+    expect(f.sick).toBe(false);
+    expect(f.sickTicks).toBe(0);
+    expect(f.deadTicks).toBe(0);
+  });
+});

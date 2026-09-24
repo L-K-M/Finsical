@@ -389,6 +389,18 @@ export class TankAudio {
     this.play(this.named("letoutwater"), 0.7);
   }
 
+  /** Lifecycle events — the original's own event sounds, when a sound
+   * set carrying them is installed. */
+  sick(): void {
+    this.play(this.named("eventsick"), 0.7);
+  }
+  dead(): void {
+    this.play(this.named("eventdead"), 0.8);
+  }
+  birth(): void {
+    this.play(this.named("eventbirth"), 0.8);
+  }
+
   /** Tap sounds are positional in the original app. */
   tap(x: number, y: number, w: number, h: number): void {
     const dx = Math.min(x, w - x), dy = Math.min(y, h - y);
