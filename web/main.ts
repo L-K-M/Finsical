@@ -252,6 +252,8 @@ document.addEventListener("visibilitychange", () => {
 // hidden tabs throttle the interval itself (~1/min under Chrome's
 // intensive throttling) so counting fires would stretch the save to
 // ~6 min, and a backward NTP step would freeze it just as long.
+// (Caveat: some platforms pause this clock during system suspend —
+// fine here, since a suspended tab can't mutate state anyway.)
 let lastSaveAt = performance.now();
 setInterval(() => {
   postState();
