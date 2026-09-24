@@ -236,6 +236,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         pauseMenuItem?.title = paused ? "Resume Simulation" : "Pause Simulation"
     }
     private var machineMaskImage: CGImage?
+    /// Smallest tank window, as a fraction of the machine's viewBox
+    /// (1 pt per viewBox unit). A quarter lets the tank shrink to a
+    /// desk-corner ornament (Plus: 205x265 pt; Bare: 80x50 pt).
+    private static let tankMinScale: CGFloat = 0.25
     private func applyMachine(id: String, w: CGFloat, h: CGFloat,
                               shape: [(CGRect, CGFloat)],
                               maskPath: String?, hole: CGRect?) {
@@ -251,7 +255,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         webView.layer?.mask = nil  // drop a stale mask's layer type
         syncMask()
         window.contentAspectRatio = NSSize(width: w, height: h)
-        window.contentMinSize = NSSize(width: w * 0.45, height: h * 0.45)
+        window.contentMinSize = NSSize(width: w * Self.tankMinScale,
+                                       height: h * Self.tankMinScale)
         if old <= 0 {
             // First apply: the launch frame is 320×200-aspect but the
             // machine's isn't — snap the frame to the case outline so
