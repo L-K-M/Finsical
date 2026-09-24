@@ -1456,10 +1456,16 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       const pump = (): void => {
         while (wi < warm.length && active < RESTORE_FETCH_CAP) {
           const it = warm[wi++]!;
-          if (!wanted(it)) continue; // removed since the filter ran
+          // Re-check both gates: installed can change while the pump
+          // idles between settles (a manual import landing mid-restore).
+          if (installed.has(it.url) || !wanted(it)) continue;
           active++;
+          // The trailing catch covers a throwing re-pump (a wanted
+          // predicate throwing inside .finally) — the warm-up path can
+          // never produce an unhandled rejection.
           void fetchPack(it.url).catch(() => {})
-            .finally(() => { active--; pump(); });
+            .finally(() => { active--; pump(); })
+            .catch(() => {});
         }
       };
       pump();
