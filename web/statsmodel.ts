@@ -71,6 +71,7 @@ export function deriveStats(s: StatsInput): TankStats {
   const water = Math.min(1, Math.max(0, fin(s.waterQuality, 1)));
   const light = fin(s.light, 1);
   const phase = light > DUSK_LIGHT ? "day" : "night";
+  const uptimeMin = Math.floor(fin(s.tickCount, 0) / 30 / 60);
   const stats: TankStats = {
     fishCount: fish.length,
     avgHunger,
@@ -83,11 +84,10 @@ export function deriveStats(s: StatsInput): TankStats {
     bubbles: fin(s.bubbles, 0),
     phase,
     lightLabel: lightLabel(phase, s.lighting),
-    uptimeMin: Math.floor(fin(s.tickCount, 0) / 30 / 60),
-    milestone: null,
+    uptimeMin,
+    milestone: milestone(uptimeMin),
     advice: [],
   };
-  stats.milestone = milestone(stats.uptimeMin);
   stats.advice = advice(stats, water);
   return stats;
 }
@@ -142,7 +142,7 @@ export function uptime(minutes: number): string {
  * quiet anniversaries, not alarms. */
 export function milestone(minutes: number): string | null {
   if (minutes >= 30 * 24 * 60)
-    return "One month of tank time: veteran waters.";
+    return "One month or more of tank time: veteran waters.";
   if (minutes >= 7 * 24 * 60)
     return "One week of tank time: an established tank.";
   if (minutes >= 24 * 60)
