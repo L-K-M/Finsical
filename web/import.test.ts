@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { browserGeometry, fragDecode, fragEncode, importAddon,
-         installProblem, listAddons, loadProblem, transientFailure,
-         isListed, orphanedSounds, qualifySoundItemName, recordAddon }
-  from "./import.js";
+import { browserGeometry, DECOR_COPIES_MAX, fragDecode, fragEncode,
+         importAddon, installProblem, listAddons, loadProblem,
+         transientFailure, isListed, orphanedSounds,
+         qualifySoundItemName, recordAddon } from "./import.js";
 import type { Importable } from "./import.js";
 
 const enc = new TextEncoder();
@@ -239,6 +239,18 @@ describe("recordAddon", () => {
     recordAddon(list, { url: "a.plt", inner: "a.plt",
                         section: "plants", copies: 99 }, [], "install");
     expect(list[0]!.copies).toBeUndefined();
+  });
+  it("caps the copy count and clamps corrupt values", () => {
+    const plant = (url: string): Importable =>
+      ({ url, inner: url, section: "plants" });
+    const list: Importable[] = [];
+    for (let i = 0; i < DECOR_COPIES_MAX + 2; i++)
+      recordAddon(list, plant("a.plt"), [], "install");
+    expect(list[0]!.copies).toBe(DECOR_COPIES_MAX);
+    // A corrupt persisted count can't grow the record past the cap.
+    list[0]!.copies = -7;
+    recordAddon(list, plant("a.plt"), [], "install");
+    expect(list[0]!.copies).toBe(2);
   });
 });
 
