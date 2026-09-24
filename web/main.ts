@@ -370,6 +370,7 @@ function closeInfo(): void {
 }
 
 function openInfo(f: Fish): void {
+  if (zen) setZen(false); // the card is chrome — show it, leave zen
   closeInfo();
   fishTip.style.display = "none"; // the card says more
   const root = document.createElement("div");
@@ -1507,7 +1508,7 @@ function changeWater(): void {
 // trigger all hide. The sim, the lamp and the bubbler keep running;
 // it's the relaxation toy with every piece of chrome gone.
 let zen = false;
-function setZen(on: boolean): void {
+function setZen(on: boolean): boolean {
   zen = on;
   document.body.classList.toggle("zen", on);
   if (on) {
@@ -1515,9 +1516,20 @@ function setZen(on: boolean): void {
     fishTip.style.display = "none";
   }
   requestPaint();
+  return zen; // like togglePause: the native menu retitles at once
+}
+// Touch devices have no Escape or menu bar: a double-tap on the water
+// leaves zen. Single taps still feed and tap the glass — zen is a
+// view mode, not a lock.
+canvas.addEventListener("dblclick", () => { if (zen) setZen(false); });
+// Chrome that opens on top of zen leaves it — the menu bar comes back
+// with the panel rather than the panel floating chrome-less.
+function openImport(): void {
+  if (zen) setZen(false);
+  importPanel.open();
 }
 (window as unknown as { finsical?: unknown }).finsical =
-  { openImport: () => importPanel.open(), feedFish, changeWater, toggleLights,
+  { openImport, feedFish, changeWater, toggleLights,
     // Menu clicks land here via evaluateJavaScript — not always a
     // user activation, but unlock() is harmless if resume is blocked.
     toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute,
@@ -1537,14 +1549,14 @@ const syncTrigger = (show: boolean): void => {
   const hit = document.createElement("div");
   hit.id = "opentrigger";
   hit.addEventListener("click", (e) => {
-    if (e.target === hit) importPanel.open();
+    if (e.target === hit) openImport();
   });
   const trigger = document.createElement("button");
   trigger.className = "osm-button";
   trigger.textContent = "Add-ons\u2026";
   hit.appendChild(trigger);
   document.body.appendChild(hit);
-  pushButton(trigger, () => importPanel.open());
+  pushButton(trigger, () => openImport());
 };
 syncTrigger(hoverNone.matches);
 hoverNone.addEventListener("change", (e) => syncTrigger(e.matches));
@@ -1573,7 +1585,7 @@ window.addEventListener("keydown", (e) => {
       !alertOpen()) {
     // The app's Tank menu owns Cmd-I and opens the Import Add-ons
     // window; the overlay would squeeze into the tank.
-    importPanel.open(); e.preventDefault();
+    openImport(); e.preventDefault();
   } else if (bare && k === "f") {
     feedFish(); // bare F: Cmd-F is Find in browsers; the native menu owns ⌘F
   } else if (bare && k === "c") {
@@ -1601,7 +1613,7 @@ window.addEventListener("keydown", (e) => {
 mountTankMenuBar({
   feed: feedFish,
   changeWater,
-  importAddons: () => importPanel.open(),
+  importAddons: openImport,
   takePicture,
   toggleCrt: () => setCrt(!crtOn),
   toggleLamp: toggleLights,

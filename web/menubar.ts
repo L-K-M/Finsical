@@ -298,7 +298,7 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
           { title: s.crtOn ? "Turn CRT Effect Off" : "Turn CRT Effect On",
             ...(s.crtUsable ? { action: a.toggleCrt } : {}) },
           MENU_SEPARATOR,
-          { title: s.zen ? "Leave Zen Mode" : "Zen Mode",
+          { title: s.zen ? "Leave Zen Mode" : "Enter Zen Mode",
             action: a.toggleZen },
           MENU_SEPARATOR,
           { title: "Take a Picture", action: a.takePicture },
