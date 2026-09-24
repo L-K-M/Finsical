@@ -58,6 +58,8 @@ import type { Fish } from "../core/sim.js";
 import type { AzpackManifest, IndexedImage } from "../core/data/azpack.js";
 
 const TANK = { width: 320, height: 200 };
+const TICKS_PER_SECOND = 30;
+const STEP_MS = 1000 / TICKS_PER_SECOND;
 
 const canvas = document.getElementById("tank") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -1470,7 +1472,7 @@ const toggleMute = (): void => {
 // Declared up here like the other flags: the setCrt call below runs
 // postState() during module eval, and a later `let` would TDZ-throw.
 const AUTOFEED_KEY = "finsical:autofeed";
-const AUTOFEED_TICKS = 45 * 60 * 30; // every 45 tank minutes
+const AUTOFEED_TICKS = 45 * 60 * TICKS_PER_SECOND; // every 45 tank minutes
 const AUTOFEED_MAX_FOOD = 4;
 let autoFeed = (() => { try {
     return localStorage.getItem(AUTOFEED_KEY) === "1";
@@ -1618,6 +1620,7 @@ function toggleAutoFeed(): void {
 function feederDrop(): void {
   const x = 30 + Math.random() * (TANK.width - 60);
   for (const p of feedPinch(Math.random, 0)) {
+    if (sim.food.length >= AUTOFEED_MAX_FOOD) break; // cap, not just a gate
     const pellet = sim.dropFood(x + p.dx);
     splashAt(pellet.x, pellet.y, PUSH.pellet);
   }
@@ -2473,8 +2476,6 @@ function tickSim(): void {
 // picture: at 60 Hz every other frame, at 120 Hz three in four, each
 // also re-uploading the CRT texture. Those frames are skipped (the CRT
 // grain and flicker then move at the tick rate too).
-const TICKS_PER_SECOND = 30;
-const STEP_MS = 1000 / TICKS_PER_SECOND;
 let acc = 0;
 let last = performance.now();
 function frame(now: number): void {
