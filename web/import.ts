@@ -214,9 +214,12 @@ async function listPage(item: string, outer: string): Promise<string> {
         Number.isFinite(hit.t) && Date.now() - hit.t < PAGE_TTL_MS)
       return hit;
     try {
-      const fresh = await fetchTimed(page, async (r) => {
+      // Read through readBody, not r.text(): each chunk resets the
+      // stall clock, so a big listing on a slow link isn't cut off.
+      const fresh = await fetchTimed(page, async (r, kick) => {
         if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
-        return { t: Date.now(), html: await r.text() };
+        return { t: Date.now(),
+                 html: new TextDecoder().decode(await readBody(r, kick)) };
       });
       if (immutableHost(page))
         void metaPut(page, fresh).catch(() => {});
