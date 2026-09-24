@@ -143,14 +143,13 @@ def _entry_name(zi: zipfile.ZipInfo) -> str:
     if zi.flag_bits & 0x800:
         return zi.filename
     raw = zi.orig_filename.encode("cp437")
-    try:
-        return raw.decode("utf-8")
-    except UnicodeDecodeError:
-        pass
-    try:
-        return raw.decode("shift_jis")
-    except UnicodeDecodeError:
-        return zi.filename
+    # zipfile truncates member names at a NUL; match it.
+    for codec in ("utf-8", "shift_jis"):
+        try:
+            return raw.decode(codec).partition("\0")[0]
+        except UnicodeDecodeError:
+            pass
+    return zi.filename
 
 
 def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,

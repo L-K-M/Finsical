@@ -99,6 +99,8 @@ class TestHarvest(unittest.TestCase):
             z.writestr(SjisInfo("グッピー1.fsh"), fake_pack(bmp_8bit()))
             # ソ's trail byte is 0x5C — decodes to a name, not a path.
             z.writestr(SjisInfo("ソ.fsh"), fake_pack(bmp_8bit()))
+        for zi in zipfile.ZipFile(buf).infolist():
+            self.assertFalse(zi.flag_bits & 0x800)  # unflagged SJIS names
         made = _harvest("jpn.zip", buf.getvalue(), self.out)
         self.assertEqual(
             sorted(os.path.basename(p) for p in made),
