@@ -2176,8 +2176,8 @@ function frame(now: number): void {
   syncFeedHover();
   // Pause freezes the sim clock (hunger, rot, filtration, the demo
   // day) but not the page: hover, the light timer and repaints still
-  // run. Its ticks are dropped, not saved up: planFrame never carries
-  // more than one step, so resuming doesn't fast-forward.
+  // run. Its ticks are dropped, not saved up: planFrame always carries
+  // less than one step, so resuming doesn't fast-forward.
   const ticks = paused ? 0 : plan.ticks;
   for (let i = 0; i < ticks; i++) tickSim();
   // A knock or a feed on a paused tank still plays out its rings,

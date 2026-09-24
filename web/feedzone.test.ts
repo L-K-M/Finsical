@@ -70,10 +70,12 @@ describe("clickAction", () => {
   });
 
   it("taps the glass in the water", () => {
-    expect(clickAction(100, false)).toBe("tap");
+    // The first row below the feed zone already taps.
+    expect(clickAction(SURFACE + 1, false)).toBe("tap");
+    expect(clickAction(SURFACE + 10, false)).toBe("tap");
   });
 
   it("only knocks on a paused tank, whose fish can't react", () => {
-    expect(clickAction(100, true)).toBe("knock");
+    expect(clickAction(SURFACE + 10, true)).toBe("knock");
   });
 });
