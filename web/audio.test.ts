@@ -18,8 +18,17 @@ class FakeNode {
   connect<T extends FakeNode>(n: T): T { this.out.push(n); return n; }
 }
 class FakeGain extends FakeNode { gain = new FakeParam(); }
+class FakeBuffer {
+  readonly numberOfChannels = 1;
+  constructor(readonly duration: number,
+              readonly sampleRate: number,
+              private readonly bytes: Uint8Array) {}
+  getChannelData(_ch: number): Float32Array {
+    return Float32Array.from(this.bytes);
+  }
+}
 class FakeSource extends FakeNode {
-  buffer: { duration: number } | null = null;
+  buffer: FakeBuffer | null = null;
   loop = false;
   onended: (() => void) | null = null;
   starts = 0;
@@ -46,8 +55,9 @@ class FakeContext {
     return s;
   }
   // The "WAV" byte count doubles as the clip's length in seconds.
-  decodeAudioData(buf: ArrayBuffer): Promise<{ duration: number }> {
-    return Promise.resolve({ duration: buf.byteLength });
+  decodeAudioData(buf: ArrayBuffer): Promise<FakeBuffer> {
+    return Promise.resolve(
+      new FakeBuffer(buf.byteLength, 8000, new Uint8Array(buf)));
   }
   // State changes settle on a microtask, like the real ones.
   resume(): Promise<void> {
@@ -158,6 +168,110 @@ describe("TankAudio.load", () => {
     audio.bubble(); // the bad entry is skipped, the good one plays
     expect(ac.sources).toHaveLength(1);
     expect(sinkOf(ac.sources[0]!)).toBe(master);
+  });
+
+  const manifestOf = (...names: string[]): AzpackManifest => ({
+    format: "azpack/1", tag: "T", version: 1, chunks: [], names: [],
+    sounds: names.map((name) => ({ name, file: `s/${name}.wav` })),
+  });
+  const wavs = new Map<string, Uint8Array>();
+  beforeEach(() => wavs.clear());
+  const readWav = async (path: string): Promise<Uint8Array> => {
+    const w = wavs.get(path);
+    if (!w) throw new Error(`no fixture for ${path}`); // loud, not a decode-skip
+    return w;
+  };
+
+  it("a second pack's load keeps the first pack's other sounds", async () => {
+    // Manifests merge: pack B replaces its same-named entries, not the
+    // whole table — dropping two .azpacks must not mute pack A.
+    const audio = new TankAudio();
+    wavs.set("s/drop.wav", wav(1)); wavs.set("s/bubble.wav", wav(1));
+    await audio.load(readWav, manifestOf("drop"));
+    await audio.load(readWav, manifestOf("bubble"));
+    const ac = FakeContext.last!;
+    audio.bubble();
+    audio.feed(); // plays pack A's "drop" — wiped before the fix
+    expect(ac.sources).toHaveLength(2);
+  });
+
+  it("restarts the ambient loop when a pack replaces its bubbling",
+     async () => {
+    const audio = new TankAudio();
+    wavs.set(`s/${LOOP}.wav`, wav(30));
+    await audio.load(readWav, manifestOf(LOOP));
+    audio.startAmbient();
+    const ac = FakeContext.last!;
+    expect(ac.loops()).toBe(1);
+    wavs.set(`s/${LOOP}.wav`, wav(60)); // same name, new take
+    await audio.load(readWav, manifestOf(LOOP));
+    const loops = ac.sources.filter((s) => s.loop);
+    expect(loops[0]!.stops).toHaveLength(1); // old loop stopped
+    expect(loops[1]!.starts).toBe(1);        // replacement running
+    expect(ac.loops()).toBe(1);
+  });
+
+  it("leaves the loop alone when a load doesn't touch its bubbling",
+     async () => {
+    const audio = new TankAudio();
+    wavs.set(`s/${LOOP}.wav`, wav(30)); wavs.set("s/bubble.wav", wav(1));
+    await audio.load(readWav, manifestOf(LOOP));
+    audio.startAmbient();
+    const ac = FakeContext.last!;
+    await audio.load(readWav, manifestOf("bubble"));
+    const loop = ac.sources.filter((s) => s.loop)[0]!;
+    expect(loop.stops).toHaveLength(0);
+  });
+
+  it("re-loading the same pack leaves the loop running", async () => {
+    // A re-drop decodes to a fresh AudioBuffer for identical bytes —
+    // object identity would restart the loop on a semantic no-op.
+    const audio = new TankAudio();
+    wavs.set(`s/${LOOP}.wav`, wav(30));
+    await audio.load(readWav, manifestOf(LOOP));
+    audio.startAmbient();
+    const ac = FakeContext.last!;
+    await audio.load(readWav, manifestOf(LOOP)); // same take again
+    const loop = ac.sources.filter((s) => s.loop)[0]!;
+    expect(loop.stops).toHaveLength(0);
+  });
+
+  it("restarts the loop on a same-length re-encode", async () => {
+    // Same name and duration, and identical endpoints — a remaster
+    // that only differs mid-clip. Duration or an endpoint probe can't
+    // tell it from the original; the sparse probe can.
+    const audio = new TankAudio();
+    wavs.set(`s/${LOOP}.wav`, wav(30));
+    await audio.load(readWav, manifestOf(LOOP));
+    audio.startAmbient();
+    const ac = FakeContext.last!;
+    // Derive the remaster from the original bytes and flip a middle
+    // run — identical endpoints by construction, so an endpoint-only
+    // probe would wrongly call this the same clip.
+    const remaster = wavs.get(`s/${LOOP}.wav`)!.slice();
+    for (let i = 8; i < 16; i++) remaster[i] = 255 - remaster[i]!;
+    wavs.set(`s/${LOOP}.wav`, remaster);
+    await audio.load(readWav, manifestOf(LOOP));
+    const loops = ac.sources.filter((s) => s.loop);
+    expect(loops[0]!.stops).toHaveLength(1); // old loop stopped
+    expect(loops[1]!.starts).toBe(1);        // replacement running
+    // And it's the new clip looping, not a stale restart of the old.
+    expect(loops[1]!.buffer).not.toBe(loops[0]!.buffer);
+    expect(loops[1]!.buffer!.getChannelData(0)[12]).toBe(remaster[12]);
+    expect(ac.loops()).toBe(1);
+  });
+
+  it("starts ambient once bubbling arrives after an empty start", async () => {
+    // startAmbient on an empty bank records ambientKey "" — the state
+    // that must trigger a late start when bubbling lands.
+    const audio = new TankAudio();
+    wavs.set("s/bubble.wav", wav(1)); // a pack without the bubbling loop
+    await audio.load(readWav, manifestOf("bubble"));
+    audio.startAmbient();
+    expect(FakeContext.last!.loops()).toBe(0); // empty start stays silent
+    wavs.set(`s/${LOOP}.wav`, wav(30));
+    await audio.load(readWav, manifestOf(LOOP));
+    expect(FakeContext.last!.loops()).toBe(1); // begins, not silent
   });
 });
 
