@@ -75,9 +75,9 @@
 - The water comes alive. It ends at a surface that moves: food, new
   fish, bubbles popping, knocks on the glass and fish cruising along
   the top send waves along it that spread, bounce off the glass and
-  settle. Above it, under the tank's hood, a lamp tube shines as
-  brightly as the light in the tank, with beads of condensation on the
-  glass, instead of more background. Just under the surface the view
+  settle. A silvery band under the waterline catches the light, and
+  above it the back of the tank carries on behind dry air, dimmed and
+  drained of color, under the tank's top frame. Just under the surface the view
   wavers, bubbles wobble, grow as they rise and pop where the surface
   is, and by day sunlight slants through the water and shimmering
   caustics ripple over the lower tank and the gravel (the swell and
