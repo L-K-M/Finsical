@@ -116,7 +116,7 @@ export function curesFor(disease: number): string[] {
 
 export function deriveStats(s: StatsInput): TankStats {
   const all = (s.fish ?? []).filter((f): f is StatsFish => !!f);
-  const isDead = (f: StatsFish): boolean => typeof f.dead === "number";
+  const isDead = (f: StatsFish): boolean => Number.isInteger(f.dead);
   // Care is about the living: a body neither hungers nor swims.
   const fish = all.filter((f) => !isDead(f));
   const hungries = fish
@@ -146,7 +146,7 @@ export function deriveStats(s: StatsInput): TankStats {
     lightLabel: lightLabel(phase, s.lighting),
     uptimeMin: Math.floor(fin(s.tickCount, 0) / 30 / 60),
     advice: [],
-    sick: fish.filter((f) => typeof f.sick === "number")
+    sick: fish.filter((f) => Number.isInteger(f.sick))
       .map((f) => ({ name: f.species || "Fish", disease: f.sick! })),
     dead: all.filter(isDead).length,
     water: deriveWater(s.aquarium),
@@ -175,17 +175,19 @@ function advice(st: TankStats, water: number): string[] {
     if (!st.dead) out.push("No fish yet — add some from the Add-ons importer.");
     return out;
   }
+  // Chlorine is what a fresh water change poisons fish with: it goes
+  // ahead of the sick, or two hints could hide it while fish die.
+  const w = st.water;
+  if (w && w.chlorine > 0.1)
+    out.push("There is chlorine in the water — add Chlorine Remover, " +
+             "or let it gas off over a few days.");
   for (const f of st.sick.slice(0, 1)) {
     const cures = curesFor(f.disease);
     out.push(`${f.name} has ${diseaseName(f.disease)} — ` +
       (cures.length ? `treat the tank with ${cures.join(" or ")}.`
                     : "no medicine is known to cure it."));
   }
-  const w = st.water;
   if (w) {
-    if (w.chlorine > 0.1)
-      out.push("There is chlorine in the water — add Chlorine Remover, " +
-               "or let it gas off over a few days.");
     if (w.ammonia > 1)
       out.push("Ammonia is building up — change some water. A filter " +
                "breaks it down once it has some dirt in it.");

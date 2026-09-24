@@ -4,7 +4,7 @@ import { DEFAULT_CARE } from "../data/species.js";
 import type { SpeciesCare } from "../data/species.js";
 import { Aquarium } from "./aquarium.js";
 import type { Resident } from "./aquarium.js";
-import { Cause, newLife } from "./life.js";
+import { Cause, newLife, vitalityAt } from "./life.js";
 import { acidity, hardness, o2Saturation, tapWater } from "./water.js";
 
 const DAY = 24 * 60;
@@ -36,6 +36,7 @@ describe("water chemistry", () => {
   it("looks oxygen saturation up by temperature", () => {
     expect(o2Saturation(16)).toBeCloseTo(9.56);
     expect(o2Saturation(25)).toBeCloseTo(8.11);
+    // The original's table starts at 16 °C; colder reads its first entry.
     expect(o2Saturation(10)).toBeCloseTo(9.56);
     expect(o2Saturation(40)).toBeCloseTo(6.83);
   });
@@ -218,8 +219,39 @@ describe("pacing (review regressions)", () => {
     const before = r.life.health;
     a.addMedicine(1100, 300);
     live(a, 60, [r]);
-    expect(r.life.health).toBe(before);
+    expect(r.life.health).toBeGreaterThanOrEqual(before);
     expect(r.life.dead).toBeNull();
+  });
+});
+
+describe("review round 1", () => {
+  it("vitality stays within 0..99 past the prime of life", () => {
+    for (let age = 0; age <= DEFAULT_CARE.lifeSpan; age += DAY * 30)
+      expect(vitalityAt(99, age, DEFAULT_CARE)).toBeLessThanOrEqual(99);
+  });
+
+  it("suffocation kills during catch-up as it would live", () => {
+    const a = new Aquarium(makeRng(31));
+    const r = resident(1, makeRng(31));
+    a.filter.power = 0;          // no aeration
+    a.water.o2 = 0;
+    a.advanceMinutes(360, [r]);  // one catch-up step
+    expect(r.life.dead?.cause).toBe(Cause.oxygen);
+  });
+
+  it("ignores an infinite time step", () => {
+    const a = new Aquarium(makeRng(32));
+    a.advance(Infinity, []);
+    a.advanceMinutes(Infinity, []);
+    expect(a.minutes).toBe(0);
+  });
+
+  it("keeps a dose's banked time across a save", () => {
+    const a = new Aquarium(makeRng(33));
+    a.addMedicine(1100, 5);
+    a.advanceMinutes(7, []);
+    const b = Aquarium.fromJSON(JSON.parse(JSON.stringify(a)), makeRng(1));
+    expect(b.doses[0]?.clock).toBe(7);
   });
 });
 

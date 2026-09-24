@@ -104,14 +104,15 @@ export class Aquarium {
 
   /** Advance by real seconds at the current speed. */
   advance(realSeconds: number, fish: readonly Resident[]): void {
-    if (!(realSeconds > 0) || this.speed <= 0) return;
+    if (!Number.isFinite(realSeconds) || realSeconds <= 0 || this.speed <= 0)
+      return;
     this.carry += realSeconds * this.speed / 60;
     this.runPending(fish);
   }
 
   /** Advance by simulated minutes (tests, and the host's catch-up). */
   advanceMinutes(minutes: number, fish: readonly Resident[]): void {
-    if (!(minutes > 0)) return;
+    if (!Number.isFinite(minutes) || minutes <= 0) return;
     this.carry += minutes;
     this.runPending(fish);
   }
@@ -250,7 +251,9 @@ export class Aquarium {
     if (w.o2 > 0)
       addElement(w, "o2",
         -m * ((w.temp * 0.0076 + 0.00496) / 60) * W * 0.096 / w.litres);
-    else lowerHealth(r.life, 60, Cause.oxygen, ctx);
+    // 60 a minute: the original hit once per (minute-long) visit, which
+    // a six-hour catch-up step must not turn into one hit.
+    else lowerHealth(r.life, 60 * m, Cause.oxygen, ctx);
     addElement(w, "co2", m * ((w.temp * 0.0076 + 0.0496) / 60) * W * 0.096 / 20);
   }
 
@@ -302,6 +305,9 @@ export class Aquarium {
   private dose(r: Resident, cures: number, strength: number): void {
     const l = r.life, ctx = this.ctx(r);
     if (l.dead) return;
+    // As the original's Effect_Drug_To_Fish: past 5 the concentration
+    // is rescaled to the poison dose and that value also drives the cure
+    // and the harm to fish it doesn't cure.
     let c = strength;
     if (c > 5) {
       c = (c - 5) * 20;
@@ -381,7 +387,7 @@ export class Aquarium {
     this.doses = this.doses.filter((x) => x.ml >= 1);
   }
 
-  /** Clean_Filter: each cleaning takes out 5% of the dirt. Scrub it
+  /** Clean_Filter: each cleaning takes out 5 points of dirt. Scrub it
    * spotless and the ammonia-eating bacteria go with it. */
   cleanFilter(): void {
     this.filter.dirt = Math.max(0, this.filter.dirt - 5);
@@ -441,8 +447,11 @@ export class Aquarium {
     if (Array.isArray(o.doses))
       for (const d of o.doses as unknown[]) {
         const x = (d ?? {}) as Partial<Dose>;
-        if (typeof x.medicine === "number" && medicineById(x.medicine))
-          a.addMedicine(x.medicine, num(x.ml, 0, 1e5, 0));
+        if (typeof x.medicine === "number" && medicineById(x.medicine) &&
+            a.addMedicine(x.medicine, num(x.ml, 0, 1e5, 0))) {
+          const dose = a.doses.find((y) => y.medicine === x.medicine)!;
+          dose.clock = num(x.clock, 0, MAX_DOSE_CLOCK, 0);
+        }
       }
     return a;
   }

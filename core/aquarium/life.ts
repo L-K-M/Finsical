@@ -96,8 +96,10 @@ export function vitalityAt(base: number, age: number, care: SpeciesCare): number
   const prime = Math.max(1, trunc(care.lifeSpan * 0.8));
   if (age <= prime)
     return Math.min(99, base + trunc(age / prime * 30));
-  return Math.max(1, base + 30 -
-    trunc((age - prime) / Math.max(1, care.lifeSpan - prime) * 40));
+  // Clamped like every write of the original's characteristics: past
+  // 99 the damage factor (1.2 − v/99) would turn damage into healing.
+  return Math.max(1, Math.min(99, base + 30 -
+    trunc((age - prime) / Math.max(1, care.lifeSpan - prime) * 40)));
 }
 
 /** Lower_Fish_Health: `amount` is the original's damage scale (20 per

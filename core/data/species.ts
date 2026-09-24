@@ -100,13 +100,16 @@ export function parseFsti(p: Uint8Array): SpeciesCare | null {
     if (t.idealMin > t.idealMax || t.liveMin > t.liveMax) return null;
     tolerance[WATER_TOLERANCES[i]!] = t;
   }
-  const adultAge = v.getUint32(0xbe, true), lifeSpan = v.getUint32(0xc4, true);
+  const adultAge = v.getUint32(0xbe, true), raw = v.getUint32(0xc4, true);
+  // A zero span, or an adult age past it, would make every fish ancient
+  // at birth: fall back to the stand-in's, never beyond the span.
+  const lifeSpan = raw >= 2 ? raw : DEFAULT_CARE.lifeSpan;
   return {
     tolerance, breedAge: v.getInt16(0, true),
     unhealthy: Math.min(100, Math.max(0, v.getInt16(0x9e, true))),
-    // A zero or inverted span would make every fish ancient at birth.
-    adultAge: adultAge > 0 && adultAge < lifeSpan ? adultAge : DEFAULT_CARE.adultAge,
-    lifeSpan: lifeSpan > 0 ? lifeSpan : DEFAULT_CARE.lifeSpan,
+    adultAge: adultAge > 0 && adultAge < lifeSpan ? adultAge
+      : Math.min(DEFAULT_CARE.adultAge, lifeSpan - 1),
+    lifeSpan,
     susceptible: [...DEFAULT_SUSCEPTIBLE],
   };
 }
@@ -156,7 +159,7 @@ export function sanitizeCare(raw: unknown): SpeciesCare | null {
   }
   const { breedAge, unhealthy, adultAge, lifeSpan, susceptible } = o;
   if (!fin(breedAge) || !fin(unhealthy) || !fin(adultAge) || !fin(lifeSpan) ||
-      !(lifeSpan > 0) || !(adultAge > 0) || !Array.isArray(susceptible))
+      !(adultAge > 0) || !(adultAge < lifeSpan) || !Array.isArray(susceptible))
     return null;
   const ids = susceptible.filter((x): x is number => Number.isInteger(x));
   return {

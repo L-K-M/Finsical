@@ -41,6 +41,15 @@ describe("parseFsti", () => {
     expect(parseFsti(b)).toBeNull();
   });
 
+  it("keeps a fallback adult age below a short life span", () => {
+    const b = fsti();
+    const v = new DataView(b.buffer);
+    v.setUint32(0xbe, 0, true);
+    v.setUint32(0xc4, 60 * 1440, true);
+    const c = parseFsti(b)!;
+    expect(c.adultAge).toBeLessThan(c.lifeSpan);
+  });
+
   it("falls back when the ages make no sense", () => {
     const b = fsti();
     new DataView(b.buffer).setUint32(0xbe, 0, true);
@@ -61,6 +70,7 @@ describe("sanitizeCare", () => {
     const c = parseFsti(fsti())!;
     expect(sanitizeCare(JSON.parse(JSON.stringify(c)))).toEqual(c);
     expect(sanitizeCare({ ...c, lifeSpan: -1 })).toBeNull();
+    expect(sanitizeCare({ ...c, lifeSpan: c.adultAge })).toBeNull();
     expect(sanitizeCare({ ...c, tolerance: { ...c.tolerance, pH: {} } }))
       .toBeNull();
     expect(sanitizeCare("angelfish")).toBeNull();
