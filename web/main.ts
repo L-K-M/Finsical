@@ -1,5 +1,5 @@
 import { BOTTOM_PAD, CORPSE_TICKS, DAY_TICKS, FOOD_ENTRY_Y, Sim,
-         SURFACE } from "../core/sim.js";
+         SURFACE, WAKE_LIGHT } from "../core/sim.js";
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
@@ -719,8 +719,9 @@ function applySceneryChoice(): void {
 // the tank floor whenever one is added. Animated packs loop their frames
 // on the sim clock, each item from its own phase.
 const decors: { frames: HTMLCanvasElement[]; phase: number;
-                sway: number; pack: string }[] = [];
-function addDecor(images: Iterable<IndexedImage>, src: string): void {
+                sway: number; pack: string; plant: boolean }[] = [];
+function addDecor(images: Iterable<IndexedImage>, src: string,
+                  plant: boolean): void {
   const frames = decorCanvases(images, TANK.height);
   if (!frames) return;
   const copy = decors.filter((d) => d.pack === src).length;
@@ -728,7 +729,7 @@ function addDecor(images: Iterable<IndexedImage>, src: string): void {
   // cycle of phase looks identical on every plant. sway keeps the
   // fraction so each copy drifts on its own rhythm.
   decors.push({ frames, phase: decorPhase(src, copy, frames.length),
-                sway: decorPhaseFrac(src, copy), pack: src });
+                sway: decorPhaseFrac(src, copy), pack: src, plant });
 }
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
@@ -896,7 +897,8 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
     const imgs = [...images];
     const n = clampDecorCopies(count);
     const room = live ? decorCopyRoom(decors, src) : n;
-    for (let i = 0; i < Math.min(n, room); i++) addDecor(imgs, src);
+    for (let i = 0; i < Math.min(n, room); i++)
+      addDecor(imgs, src, section === "plants");
   }
   else if (section === "backgrounds" || section === "tanks")
     pickBackdrop(images, src);
@@ -2561,6 +2563,7 @@ function drawNight(now: Date): void {
   ctx.restore();
 }
 
+<<<<<<< HEAD
 // ---- the cat ------------------------------------------------------------
 // AquaZone's signature visitor: a paw drops from the top edge every few
 // minutes, bats at the glass a couple of times, and leaves. Tick-driven,
@@ -2616,11 +2619,15 @@ function drawPaw(cx: number, top: number): void {
 // one episode, so the latch only clears after a sustained lull.
 let bellHungry = false;
 let bellCalmTicks = 0;
+/** Per tick per plant, the chance its foliage releases an oxygen
+ * bubble — a thin stream in daylight, not a fountain. */
+const PLANT_BUBBLE = 0.006;
 
 function tickSim(): void {
   const bubbles = sim.bubbles.length;
   stirSurface();
   sim.tick();
+<<<<<<< HEAD
   // Lifecycle: each transition rings its original event sound. A birth
   // also binds the fry's sprite extents and splashes it in.
   let rosterChanged = false;
@@ -2651,6 +2658,19 @@ function tickSim(): void {
     snail = null;
     snailNextAt = sim.tickCount + (10 + Math.random() * 15) * SNAIL_MIN_TICKS;
   }
+  // Photosynthesis: while the tank is lit, each plant leaks the odd
+  // bubble from its crown — they rise through the same sim path as
+  // gravel bubbles and pop at the waterline.
+  if (sim.light >= WAKE_LIGHT)
+    for (let i = 0; i < decors.length; i++) {
+      const d = decors[i]!;
+      if (!d.plant || Math.random() >= PLANT_BUBBLE) continue;
+      const ax = TANK.width * (i + 0.5) / decors.length; // render's anchor
+      sim.bubbles.push({
+        x: ax + (Math.random() - 0.5) * 6,
+        y: TANK.height - 6 - d.frames[0]!.height * 0.7,
+      });
+    }
   tickSurface(surface);
   pawTick();
   // Latch on the chime actually sounding: while the AudioContext is
