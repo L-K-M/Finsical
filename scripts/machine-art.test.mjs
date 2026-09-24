@@ -36,6 +36,8 @@ function decodeRgbaPng(buf) {
     off += 12 + len;
   }
   const raw = inflateSync(Buffer.concat(idat));
+  if (!width || !height || raw.length !== height * (width * 4 + 1))
+    throw new Error(`corrupt PNG: ${width}x${height}, ${raw.length} bytes`);
   const stride = width * 4;
   const px = new Uint8Array(height * stride);
   for (let y = 0; y < height; y++) {
@@ -113,7 +115,10 @@ function fringeShare({ width, height, px }) {
     const next = [];
     for (const i of frontier)
       for (const j of neighbours(i))
-        if (depth[j] === -1) { depth[j] = d; next.push(j); }
+        if (depth[j] === -1 && px[j * 4 + 3] >= SOLID_ALPHA) {
+          depth[j] = d;
+          next.push(j);
+        }
     frontier = next;
   }
 
@@ -135,6 +140,7 @@ function fringeShare({ width, height, px }) {
     rim++;
     if (overBlack(i) > inner + FRINGE_MARGIN) fringe++;
   }
+  if (rim === 0) throw new Error("no opaque rim: the art has no see-through edge");
   return fringe / rim;
 }
 
@@ -143,7 +149,9 @@ describe("machine art", () => {
     if (!m.image) continue;
     it(`${m.id}: no light fringe around the silhouette`, () => {
       const img = decodeRgbaPng(readFileSync(new URL(`../web/${m.image}`, import.meta.url)));
-      expect(fringeShare(img)).toBeLessThan(MAX_FRINGE_SHARE);
+      const share = fringeShare(img);
+      expect(share, `fringe share ${(share * 100).toFixed(1)}%`)
+        .toBeLessThan(MAX_FRINGE_SHARE);
     });
   }
 });
