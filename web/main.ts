@@ -680,6 +680,9 @@ function addDecor(images: Iterable<IndexedImage>, src: string): void {
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
 let nextSlot = 0;
+/** One storage alert per drop event — a multi-file drop shouldn't
+ * stack them, but a later failing drop deserves its own warning. */
+let storageWarnedAt = -1;
 function sheetOf(f: Fish): SpriteSheet | null {
   if (!fishSheets.length) return null;
   // Fish spawned by a specific pack keep its sheet; the rest round-robin.
@@ -1952,9 +1955,22 @@ window.addEventListener("drop", (e) => {
         console.warn(`drop: ${name} packPut rejected`, err);
         return null;
       });
-      if (!stored)
+      if (!stored) {
         console.warn(`drop: ${name} could not be stored — it won't ` +
           "survive a relaunch");
+        // The fish swims on, so a silent skip would read as a save —
+        // say once per drop that this pack is session-only. packPut
+        // can also fail for non-quota reasons (private mode, a dead
+        // IndexedDB), so the wording stays cause-agnostic.
+        if (storageWarnedAt !== e.timeStamp) {
+          storageWarnedAt = e.timeStamp;
+          showAlert({ icon: "caution",
+            text: "Couldn't save dropped add-ons — they'll be gone " +
+              "after you reload. If storage is full, remove some " +
+              "add-ons to make room.",
+            buttons: [{ title: "OK", default: true, cancel: true }] });
+        }
+      }
       // The archive install path: handleSheets binds the sheet to the
       // url and spawns the fish; scenery keys by url so Overview's
       // Remove clears it.
