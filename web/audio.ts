@@ -401,9 +401,13 @@ export class TankAudio {
     this.play(this.named("eventbirth"), 0.8);
   }
 
-  /** Fish are begging — the original's timer chime as a dinner bell. */
-  dinnerBell(): void {
-    this.play(this.named("timeronoff"), 0.45);
+  /** Fish are begging — the original's timer chime as a dinner bell.
+   * Returns whether the chime sounded; a suspended context answers
+   * false without spending a resume() the caller would re-try next
+   * tick anyway once audio is running. */
+  dinnerBell(): boolean {
+    if (!this.ctx || this.ctx.state !== "running") return false;
+    return this.play(this.named("timeronoff"), 0.45) !== null;
   }
 
   /** Tap sounds are positional in the original app. */

@@ -1,5 +1,5 @@
-import { BEG_HUNGER, BOTTOM_PAD, CORPSE_TICKS, DAY_TICKS, FOOD_ENTRY_Y,
-         Sim, SURFACE } from "../core/sim.js";
+import { BOTTOM_PAD, CORPSE_TICKS, DAY_TICKS, FOOD_ENTRY_Y, Sim,
+         SURFACE } from "../core/sim.js";
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
@@ -2341,9 +2341,12 @@ function tickSim(): void {
   if (rosterChanged) saveTank();
   tickSurface(surface);
   pawTick();
-  const anyBegging = sim.fish.some((f) => f.hunger >= BEG_HUNGER);
-  if (anyBegging && !bellHungry) audio.dinnerBell();
-  bellHungry = anyBegging;
+  // Latch on the chime actually sounding: while the AudioContext is
+  // suspended dinnerBell() returns false and we keep waiting, so a
+  // hungry tank still rings once audio is unlocked.
+  const anyBegging = sim.anyBegging;
+  if (anyBegging && !bellHungry) bellHungry = audio.dinnerBell();
+  else if (!anyBegging) bellHungry = false;
   tickRipples(ripples);
   tickSplashes(splashes);
   // Sparse bloops: only some spawns make a sound. Checked per tick so
