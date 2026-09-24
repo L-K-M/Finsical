@@ -18,6 +18,7 @@ import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
 import { bankSounds } from "../core/data/sndbank.js";
 import { isLocalPack, metaGet, metaPut, packDelete, packGet, packPut }
   from "./store.js";
+import { lruGet, lruSet } from "./lru.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
@@ -154,13 +155,41 @@ function decorCopies(it: Importable): number {
  * URLs, and a cached zip survives restarts so restores and re-browses
  * never touch archive.org twice. Items are treated as immutable; an
  * uploader replacing a file serves stale bytes until LRU trims it —
- * accepted, since the worst case is dated sprite art. */
+ * accepted, since the worst case is dated sprite art. Bounded: outer
+ * archives can run to tens of MB, and browsing several nested
+ * collections would otherwise pin each one's bytes for the session.
+ * An evicted URL refetches through IndexedDB, not the network. */
+const ZIP_CACHE_CAP = 8;
+/** Resolved-byte budget: entry count alone doesn't bound memory —
+ * eight multi-ten-MB outers is the same leak in miniature. */
+const ZIP_CACHE_BYTES = 96 << 20;
 const zipCache = new Map<string, Promise<Uint8Array>>();
-/** Zips bigger than this aren't memoized — a collection zip (the JPN
- * set is >100MB) pinned in RAM dwarfs every other cache, and IDB
- * already persists the bytes for archive.org hosts, so re-reads are
- * still local. */
-const ZIP_MEMO_MAX = 32 * 1024 * 1024;
+/** Promises still in flight — their slot is the download dedup key,
+ * so eviction must skip them (a second caller would start a duplicate
+ * multi-MB fetch otherwise). */
+const zipPending = new WeakSet<Promise<Uint8Array>>();
+/** Resolved byteLength per url, and its running total. */
+const zipSize = new Map<string, number>();
+let zipBytes = 0;
+function zipEvict(url: string): void {
+  zipBytes -= zipSize.get(url) ?? 0;
+  zipSize.delete(url);
+  zipCache.delete(url);
+}
+/** Note a resolved entry's size and trim the oldest resolved zips
+ * while the byte budget is overshot. Pending entries stay. */
+function zipWeigh(url: string, bytes: number): void {
+  // Idempotent: a re-weighed url (refetch after eviction) replaces its
+  // old count instead of double-adding.
+  zipBytes -= zipSize.get(url) ?? 0;
+  zipSize.set(url, bytes);
+  zipBytes += bytes;
+  for (const [k, v] of zipCache) {
+    if (zipBytes <= ZIP_CACHE_BYTES) break;
+    if (zipPending.has(v)) continue;
+    zipEvict(k);
+  }
+}
 /** Per-URL bytes on archive.org never change — safe to persist
  * forever. Other hosts (a dev server, a mutable mirror) keep only
  * their in-session memo so stale bytes can't wedge a dev loop. */
@@ -213,11 +242,18 @@ async function readBody(r: Response, kick: () => void):
   return out;
 }
 function fetchZip(url: string): Promise<Uint8Array> {
-  let p = zipCache.get(url);
+  let p = lruGet(zipCache, url);
   if (!p) {
-    p = (async () => {
+    const fresh = (async () => {
       const hit = immutableHost(url) ? await packGet(url) : null;
-      if (hit) return hit;
+      // Weigh only while this promise still holds the slot — a count-
+      // or byte-cap eviction (or a same-tick replacement) means these
+      // bytes answer to nobody, and counting them would inflate
+      // zipBytes with no eviction path to recover them. Invariant:
+      // the lruSet below caches `fresh` itself — a stored wrapper
+      // would silently disable weighing (and the byte cap with it).
+      const ours = () => zipCache.get(url) === fresh;
+      if (hit) { if (ours()) zipWeigh(url, hit.byteLength); return hit; }
       const d = await fetchTimed(url, async (r, kick) => {
         if (!r.ok) throw new Error(`${url}: ${r.status}`);
         return readBody(r, kick);
@@ -226,19 +262,21 @@ function fetchZip(url: string): Promise<Uint8Array> {
       // empty 200. Persisted, that would stand in for the file forever.
       if (!d.length) throw new Error(`${url}: empty`);
       if (immutableHost(url)) void packPut(url, d).catch(() => {});
+      if (ours()) zipWeigh(url, d.byteLength);
       return d;
     })();
-    zipCache.set(url, p);
-    // A big collection zip memoizes for this session's callers, then
-    // leaves once it lands — it resolves, everyone holding `p` still
-    // gets the bytes, but the entry stops pinning them after that.
-    p.then((d) => {
-      if (d.byteLength > ZIP_MEMO_MAX && zipCache.get(url) === p)
-        zipCache.delete(url);
-    }, () => {}); // rejections are the catch below's job
+    // onEvict routes count-cap trims through zipEvict too — every path
+    // that drops an entry must keep zipSize/zipBytes honest.
+    lruSet(zipCache, url, fresh, ZIP_CACHE_CAP,
+           (v) => !zipPending.has(v), (k) => zipEvict(k));
+    zipPending.add(fresh);
     // Delete only if still ours — a same-tick caller may have swapped in
     // a replacement promise before this one rejected.
-    p.catch(() => { if (zipCache.get(url) === p) zipCache.delete(url); });
+    fresh.then(
+      () => zipPending.delete(fresh),
+      () => { zipPending.delete(fresh);
+              if (zipCache.get(url) === fresh) zipEvict(url); });
+    p = fresh;
   }
   return p;
 }
@@ -658,48 +696,34 @@ function audioType(d: Uint8Array): string {
 
 // Packs are immutable per URL — memoize so re-visits skip the download.
 // Module-level so the tank page's remote-install path shares the cache.
-// Bounded: a PackResult holds decoded sheets and images — browsing the
-// whole catalog without a cap would pin hundreds of MB of Uint8Arrays.
+// Bounded: a PackResult pins the decoded sheets and images — the
+// expensive part of a pack, and the reason the render-side WeakMaps
+// (swimCanvas, sheetScales) could never collect. Scrolling the whole
+// catalog would otherwise keep every decoded pack in memory; an
+// evicted URL re-derives from the zip cache/IndexedDB on revisit.
+const PACK_CACHE_CAP = 12;
 const packCache = new Map<string, Promise<PackResult[]>>();
-// URLs whose import promise has resolved — eviction victims are chosen
-// only among these, so a burst can't evict an in-flight import and
-// immediately duplicate its download.
-const packSettled = new Set<string>();
-const PACK_CACHE_MAX = 16;
+/** Same in-flight pinning as zipPending: the map slot is the dedup
+ * key, so an evicted pending fetch would double-download. */
+const packPending = new WeakSet<Promise<PackResult[]>>();
 /** The sound preview's live Blob URL — one at a time, revoked when the
  * detail pane rebuilds. */
 let sndObjUrl: string | null = null;
 export function fetchAddon(url: string): Promise<PackResult[]> {
-  let p = packCache.get(url);
-  if (p) {
-    // Refresh recency: Map keeps insertion order, so a hit moves the
-    // entry youngest-first-evicted-last.
-    packCache.delete(url);
-    packCache.set(url, p);
-    return p;
+  let p = lruGet(packCache, url);
+  if (!p) {
+    const fresh = importAddon(url);
+    lruSet(packCache, url, fresh, PACK_CACHE_CAP,
+           (v) => !packPending.has(v));
+    packPending.add(fresh);
+    // Failed fetches stay retryable; only evict if the entry is still
+    // this promise (a rider may have replaced it already).
+    fresh.then(
+      () => packPending.delete(fresh),
+      () => { packPending.delete(fresh);
+              if (packCache.get(url) === fresh) packCache.delete(url); });
+    p = fresh;
   }
-  p = importAddon(url);
-  packCache.set(url, p);
-  // Least-recently-used eviction — insertion order is LRU order —
-  // skipping in-flight entries: a burst may exceed the cap by its
-  // pending count rather than evict work that's still downloading.
-  // Keep evicting settled entries until back at the cap, so a burst
-  // drains instead of ratcheting the steady-state size upward.
-  if (packCache.size > PACK_CACHE_MAX)
-    for (const k of packCache.keys()) {
-      if (packCache.size <= PACK_CACHE_MAX) break;
-      if (packSettled.has(k)) {
-        packCache.delete(k);
-        packSettled.delete(k);
-      }
-    }
-  // Failed fetches stay retryable; only evict if the entry is still
-  // this promise (a rider may have replaced it already).
-  p.then(() => { if (packCache.get(url) === p) packSettled.add(url); },
-         () => { if (packCache.get(url) === p) {
-           packCache.delete(url);
-           packSettled.delete(url);
-         } });
   return p;
 }
 
