@@ -1,5 +1,5 @@
 import { BOTTOM_PAD, CORPSE_TICKS, DAY_TICKS, FOOD_ENTRY_Y, Sim,
-         SURFACE } from "../core/sim.js";
+         SURFACE, WAKE_LIGHT } from "../core/sim.js";
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
@@ -719,8 +719,9 @@ function applySceneryChoice(): void {
 // the tank floor whenever one is added. Animated packs loop their frames
 // on the sim clock, each item from its own phase.
 const decors: { frames: HTMLCanvasElement[]; phase: number;
-                sway: number; pack: string }[] = [];
-function addDecor(images: Iterable<IndexedImage>, src: string): void {
+                sway: number; pack: string; plant: boolean }[] = [];
+function addDecor(images: Iterable<IndexedImage>, src: string,
+                  plant: boolean): void {
   const frames = decorCanvases(images, TANK.height);
   if (!frames) return;
   const copy = decors.filter((d) => d.pack === src).length;
@@ -728,8 +729,16 @@ function addDecor(images: Iterable<IndexedImage>, src: string): void {
   // cycle of phase looks identical on every plant. sway keeps the
   // fraction so each copy drifts on its own rhythm.
   decors.push({ frames, phase: decorPhase(src, copy, frames.length),
-                sway: decorPhaseFrac(src, copy), pack: src });
+                sway: decorPhaseFrac(src, copy), pack: src, plant });
 }
+/** The floor anchor a decor piece centers on — shared by the renderer
+ * and the plant-bubble emitter so the two can't drift apart. */
+function decorAnchor(i: number, dn: number): number {
+  return TANK.width * (i + 0.5) / dn;
+}
+/** Pixels above the tank floor where decor sits — the y-axis half of
+ * the shared anchor, for the same reason. */
+const DECOR_FLOOR = 6;
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
 let nextSlot = 0;
@@ -896,7 +905,8 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
     const imgs = [...images];
     const n = clampDecorCopies(count);
     const room = live ? decorCopyRoom(decors, src) : n;
-    for (let i = 0; i < Math.min(n, room); i++) addDecor(imgs, src);
+    for (let i = 0; i < Math.min(n, room); i++)
+      addDecor(imgs, src, section === "plants");
   }
   else if (section === "backgrounds" || section === "tanks")
     pickBackdrop(images, src);
@@ -2385,9 +2395,9 @@ function render(): void {
     const { frames, phase, sway: swayPh } = decors[i]!;
     const d = frames[decorFrame(sim.tickCount, frames.length, phase)]!;
     const x = Math.min(Math.max(
-        Math.round(TANK.width * (i + 0.5) / dn - d.width / 2), 0),
+        Math.round(decorAnchor(i, dn) - d.width / 2), 0),
       Math.max(0, TANK.width - d.width));
-    const y = TANK.height - 6 - d.height;
+    const y = TANK.height - DECOR_FLOOR - d.height;
     if (!sway) { ctx.drawImage(d, x, y); continue; }
     // Sway per horizontal band — offsets grow toward the tip, so the
     // planted root stays glued while the top drifts. Runs on the sim
@@ -2616,6 +2626,9 @@ function drawPaw(cx: number, top: number): void {
 // one episode, so the latch only clears after a sustained lull.
 let bellHungry = false;
 let bellCalmTicks = 0;
+/** Per tick per plant, the chance its foliage releases an oxygen
+ * bubble — a thin stream in daylight, not a fountain. */
+const PLANT_BUBBLE = 0.006;
 
 function tickSim(): void {
   const bubbles = sim.bubbles.length;
@@ -2651,6 +2664,17 @@ function tickSim(): void {
     snail = null;
     snailNextAt = sim.tickCount + (10 + Math.random() * 15) * SNAIL_MIN_TICKS;
   }
+  // Photosynthesis: while the tank is lit, each plant leaks the odd
+  // bubble from its crown — they rise through the same sim path as
+  // gravel bubbles and pop at the waterline.
+  if (sim.light >= WAKE_LIGHT)
+    for (let i = 0; i < decors.length; i++) {
+      const d = decors[i]!;
+      if (!d.plant || Math.random() >= PLANT_BUBBLE) continue;
+      sim.spawnBubble(
+        decorAnchor(i, decors.length) + (Math.random() - 0.5) * 6,
+        TANK.height - DECOR_FLOOR - d.frames[0]!.height * 0.7);
+    }
   tickSurface(surface);
   pawTick();
   // Latch on the chime actually sounding: while the AudioContext is
