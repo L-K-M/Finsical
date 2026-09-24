@@ -128,9 +128,16 @@ function render(st: TankStats): void {
 }
 
 let greeted = false;
+let tankBoot: string | undefined;
 const bus = openBus((m: BusMsg) => {
   if (m.op !== "state") return;
   greeted = true;
+  if (typeof m.boot === "string" && m.boot !== tankBoot) {
+    // A restarted tank is a different tank: its water and hunger must
+    // not merge into the trends and sparklines the old one drew.
+    tankBoot = m.boot;
+    history.length = 0;
+  }
   const st = deriveStats(m as StatsInput);
   history.push({ t: Date.now(), avgHunger: st.avgHunger,
                  water: st.waterPct / 100 });
@@ -144,6 +151,11 @@ const bus = openBus((m: BusMsg) => {
   render(st);
 });
 
+// A file dropped here would navigate this borderless window to the
+// raw file, with no way back — swallow drops like the tank page does.
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
+
 // ---- window chrome -------------------------------------------------------
 // Zoom toggles to the standard size; the grow box keeps every field
 // and two care hints visible (the window clips rather than scrolls).
@@ -153,13 +165,21 @@ hostWindow(win, {
   grow: { min: { w: 300, h: 60 } },
 });
 
+// Until the first state push lands the window says what it is waiting
+// for — a blank fields grid reads as broken, not as loading.
+let waiting = text("Waiting for the tank…");
+field("Tank", waiting);
+
 // The tank page may still be loading when the window opens — retry the
 // hello until a state push arrives, then keep a live heartbeat so the
 // numbers stay current (same cadence the panel uses).
 let tries = 0;
 const greet = setInterval(() => {
-  if (greeted || ++tries > 60) clearInterval(greet); // give up after 30s
-  else bus.post({ op: "hello" });
+  if (greeted || ++tries > 60) {
+    clearInterval(greet); // give up after 30s — say so rather than wait on
+    if (!greeted)
+      waiting.textContent = "The tank isn't answering — is Finsical running?";
+  } else bus.post({ op: "hello" });
 }, 500);
 bus.post({ op: "hello" });
 
