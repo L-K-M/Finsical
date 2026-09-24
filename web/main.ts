@@ -111,15 +111,25 @@ interface SavedTank {
   /** The chosen scenery (see sceneryChoice) — add-on urls. */
   scenery?: SceneryChoice;
 }
+/** The structural check shared by loadTank and tank-file import:
+ * unknown keys ride along — save fields this build doesn't know yet
+ * belong to a newer version, not to us. */
+function parseTank(raw: unknown): SavedTank | null {
+  const s = raw as SavedTank;
+  if ((s?.v !== 1 && s?.v !== 2) ||
+      !Array.isArray(s.fish) || !Array.isArray(s.addons) ||
+      // Fish entries only need to be objects: the restore path's
+      // filter + sanitizeSavedFish drop or clamp anything malformed.
+      // Addons get no such treatment — they're fetched as URLs, so
+      // reject non-strings here.
+      !s.addons.every((u) => typeof u === "string"))
+    return null;
+  return s;
+}
 function loadTank(): SavedTank | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
-    const s = JSON.parse(raw) as SavedTank;
-    if ((s?.v !== 1 && s?.v !== 2) ||
-        !Array.isArray(s.fish) || !Array.isArray(s.addons))
-      return null;
-    return s;
+    return raw ? parseTank(JSON.parse(raw)) : null;
   } catch { return null; }
 }
 const saved = loadTank();
@@ -284,27 +294,112 @@ const placeholderIds = new Set<number>();
 if (roster.length || keepEmpty) for (const f of roster) sim.addFish(f);
 else for (const f of DEFAULT_FISH) placeholderIds.add(sim.addFish(f).id);
 
+function tankSnapshot(): SavedTank {
+  return {
+    v: rosterComplete ? 2 : 1,
+    tickCount: sim.tickCount, waterQuality: sim.waterQuality,
+    // Corpses don't get saved — a dead fish stays dead.
+    fish: sim.fish.filter((f) => !f.dead).map((f) => ({
+      id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
+      heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
+      bandY: f.bandY, hunger: f.hunger, scale: f.scale,
+      ...(f.sick ? { sick: true, sickTicks: f.sickTicks } : {}),
+      ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
+      ...(f.pack !== undefined ? { pack: f.pack } : {}),
+    })),
+    addons: installedAddons,
+    scenery: sceneryChoice,
+  };
+}
+// Set by a tank import before it reloads: the pagehide /
+// visibilitychange handlers would otherwise save the OLD tank over
+// the freshly imported SAVE_KEY during unload.
+let suppressSave = false;
+// A bfcache restore brings back the pre-import page: clearing the
+// flag would let its stale tank overwrite the imported SAVE_KEY on
+// the next visibilitychange, so reload into the imported tank —
+// the same strategy the import flow itself uses.
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted && suppressSave) location.reload();
+});
 function saveTank(): void {
+  if (suppressSave) return;
   try {
-    const s: SavedTank = {
-      v: rosterComplete ? 2 : 1,
-      tickCount: sim.tickCount, waterQuality: sim.waterQuality,
-      // Corpses don't get saved — a dead fish stays dead.
-      fish: sim.fish.filter((f) => !f.dead).map((f) => ({
-        id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
-        heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
-        bandY: f.bandY, hunger: f.hunger, scale: f.scale,
-        ...(f.sick ? { sick: true, sickTicks: f.sickTicks } : {}),
-        ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
-        ...(f.pack !== undefined ? { pack: f.pack } : {}),
-      })),
-      addons: installedAddons,
-      scenery: sceneryChoice,
-    };
-    localStorage.setItem(SAVE_KEY, JSON.stringify(s));
+    localStorage.setItem(SAVE_KEY, JSON.stringify(tankSnapshot()));
   } catch { /* storage unavailable — the tank still runs */ }
   postState(); // panel keeps fresh state even if persistence is off
 }
+// ---- tank files -----------------------------------------------------------
+// A .fins file is the saved-tank JSON — how an aquarium moves between
+// Macs or survives a cleared profile. Add-ons are stored by URL, so an
+// imported tank re-downloads its packs on the next launch.
+function exportTank(): void {
+  const blob = new Blob([JSON.stringify(tankSnapshot(), null, 2)],
+                        { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "finsical-tank.fins";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+}
+
+const tankFile = document.createElement("input");
+tankFile.type = "file";
+tankFile.accept = ".fins,application/json";
+tankFile.style.display = "none";
+document.body.appendChild(tankFile);
+tankFile.addEventListener("change", () => {
+  const f = tankFile.files?.[0];
+  tankFile.value = ""; // picking the same file twice must re-fire
+  if (!f) return;
+  // A saved tank is a few KB of JSON; anything bigger isn't one, and
+  // a huge file would freeze the tab in JSON.parse before parseTank
+  // ever saw it.
+  if (f.size > 5_000_000) {
+    showAlert({ icon: "caution",
+                text: "That file is too big to be a Finsical tank.",
+                buttons: [{ title: "OK", default: true, cancel: true }] });
+    return;
+  }
+  void f.text().then((text) => {
+    const parsed = parseTank(JSON.parse(text));
+    if (!parsed) {
+      showAlert({ icon: "caution",
+                  text: "That file isn't a Finsical tank.",
+                  buttons: [{ title: "OK", default: true, cancel: true }] });
+      return;
+    }
+    // The launch path does the rest: roster, add-ons, scenery. Write
+    // and reload rather than swap a live tank out from under the sim.
+    try {
+      // Keep the outgoing tank recoverable — import has no confirm.
+      // Skip the write when there's nothing to back up: an empty
+      // string isn't valid JSON and would need special-casing later.
+      try {
+        const prior = localStorage.getItem(SAVE_KEY);
+        if (prior !== null)
+          localStorage.setItem(SAVE_KEY + ".bak", prior);
+      } catch { /* backup is best-effort */ }
+      localStorage.setItem(SAVE_KEY, JSON.stringify(parsed));
+    } catch {
+      showAlert({ icon: "caution",
+                  text: "The tank couldn't be saved — storage is " +
+                        "unavailable.",
+                  buttons: [{ title: "OK", default: true, cancel: true }] });
+      return;
+    }
+    // Reload fires pagehide/visibilitychange, whose saveTank calls
+    // would overwrite the import with a snapshot of the old tank.
+    suppressSave = true;
+    location.reload();
+  }).catch(() => {
+    showAlert({ icon: "caution",
+                text: "That file couldn't be read as a tank.",
+                buttons: [{ title: "OK", default: true, cancel: true }] });
+  });
+});
+function importTank(): void { tankFile.click(); }
+
 window.addEventListener("pagehide", saveTank);
 // WKWebView doesn't reliably deliver pagehide on quit; it does
 // deliver visibilitychange.
@@ -1920,6 +2015,8 @@ mountTankMenuBar({
   toggleAutoFeed,
   importAddons: openImport,
   takePicture,
+  exportTank,
+  importTank,
   toggleCrt: () => setCrt(!crtOn),
   degauss: degaussTube,
   toggleLamp: toggleLights,

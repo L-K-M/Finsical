@@ -52,6 +52,8 @@ export interface TankMenuActions {
   toggleAutoFeed(): void;
   importAddons(): void;
   takePicture(): void;
+  exportTank(): void;
+  importTank(): void;
   toggleCrt(): void;
   degauss(): void;
   toggleLamp(): void;
@@ -318,6 +320,8 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
             action: a.toggleZen },
           MENU_SEPARATOR,
           { title: "Take a Picture", action: a.takePicture },
+          { title: "Export Tank…", action: a.exportTank },
+          { title: "Import Tank…", action: a.importTank },
           { title: "Import Add-ons…", action: a.importAddons },
         ];
       },
