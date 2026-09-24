@@ -117,7 +117,10 @@ let rosterComplete = saved?.v !== 1;
 // same one — tests keep determinism by passing a seed to Sim().
 // ?seed=<uint32> pins the tape so a reported oddity can be replayed.
 const seedParam = new URLSearchParams(location.search).get("seed");
-const simSeed = seedParam !== null && /^\d+$/.test(seedParam)
+const seedPinned = seedParam !== null && /^\d+$/.test(seedParam);
+if (seedParam !== null && !seedPinned)
+  console.warn("tank sim: ignoring non-numeric ?seed=", seedParam);
+const simSeed = seedPinned
   ? Number(seedParam) >>> 0
   : (Math.random() * 0x100000000) >>> 0;
 // console.log, not debug — Chrome's default filter hides Verbose.
