@@ -23,13 +23,16 @@ export function lruGet<K, V>(m: Map<K, V>, k: K): V | undefined {
 /** Store `k → v`, evicting the oldest entries past `cap`. `canEvict`
  * vetoes trimming at the entry it rejects — pinned entries (e.g. a
  * download still in flight, whose map slot is the dedup key) simply
- * overshoot the cap until they settle. `onEvict` runs per trimmed
- * entry so callers keeping side accounting (like zipCache's byte
- * total) don't leak it. */
+ * overshoot the cap until they settle. `onEvict` runs per dropped
+ * entry — cap trims and same-key replacement alike — so callers
+ * keeping side accounting (like zipCache's byte total) don't leak
+ * it. It fires before the new value lands, so an `onEvict` that
+ * deletes the key can't clobber the replacement. */
 export function lruSet<K, V>(m: Map<K, V>, k: K, v: V, cap: number,
                              canEvict?: (v: V) => boolean,
                              onEvict?: (k: K, v: V) => void): void {
-  m.delete(k);
+  const old = m.get(k);
+  if (m.has(k)) { m.delete(k); onEvict?.(k, old as V); }
   m.set(k, v);
   while (m.size > cap) {
     const [k0, v0] = m.entries().next().value!;

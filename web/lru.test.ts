@@ -85,5 +85,19 @@ describe("lru", () => {
     pinned.delete(1);
     set("d", 4);
     expect(evicted).toEqual(["a", "b"]); // two over cap: a then b trim
+    expect([...m.entries()]).toEqual([["c", 3], ["d", 4]]);
+  });
+
+  it("onEvict fires for a same-key replacement, before the new value lands", () => {
+    const m = new Map<string, number>();
+    const seen: [string, number | undefined, boolean][] = [];
+    lruSet(m, "a", 1, 3, undefined,
+           (k, v) => seen.push([k, v, m.has(k)]));
+    lruSet(m, "a", 2, 3, undefined,
+           (k, v) => seen.push([k, v, m.has(k)]));
+    // The old value is reported and the key is already gone — a
+    // callback that deletes the key can't clobber the replacement.
+    expect(seen).toEqual([["a", 1, false]]);
+    expect(m.get("a")).toBe(2);
   });
 });

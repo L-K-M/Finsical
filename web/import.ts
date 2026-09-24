@@ -246,7 +246,12 @@ function fetchZip(url: string): Promise<Uint8Array> {
   if (!p) {
     const fresh = (async () => {
       const hit = immutableHost(url) ? await packGet(url) : null;
-      if (hit) { zipWeigh(url, hit.byteLength); return hit; }
+      // Weigh only while this promise still holds the slot — a count-
+      // or byte-cap eviction (or a same-tick replacement) means these
+      // bytes answer to nobody, and counting them would inflate
+      // zipBytes with no eviction path to recover them.
+      const ours = () => zipCache.get(url) === fresh;
+      if (hit) { if (ours()) zipWeigh(url, hit.byteLength); return hit; }
       const d = await fetchTimed(url, async (r, kick) => {
         if (!r.ok) throw new Error(`${url}: ${r.status}`);
         return readBody(r, kick);
@@ -255,7 +260,7 @@ function fetchZip(url: string): Promise<Uint8Array> {
       // empty 200. Persisted, that would stand in for the file forever.
       if (!d.length) throw new Error(`${url}: empty`);
       if (immutableHost(url)) void packPut(url, d).catch(() => {});
-      zipWeigh(url, d.byteLength);
+      if (ours()) zipWeigh(url, d.byteLength);
       return d;
     })();
     // onEvict routes count-cap trims through zipEvict too — every path
