@@ -53,11 +53,18 @@ window.addEventListener("drop", (e) => {
     }
     if (!recs.length) return;
     qualifySoundNames(recs);
-    try { await sndsMerge(recs); }
+    let stored: unknown;
+    try { stored = await sndsMerge(recs); }
     catch (err) {
       // The tank re-reads the store on soundsLoaded — nothing landed,
       // so posting it would report a success that isn't one.
       console.warn("snd persist failed:", err);
+      return;
+    }
+    // sndsMerge resolves null on a failed put rather than rejecting —
+    // a dropped sound that never landed must not read as loaded.
+    if (stored == null) {
+      console.warn("snd persist failed for", recs.length, "records");
       return;
     }
     bus.post({ op: "soundsLoaded", name: recs[0]!.name });

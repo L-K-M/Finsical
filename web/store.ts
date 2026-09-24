@@ -28,13 +28,7 @@ function openDb(): Promise<IDBDatabase | null> {
         req.result.createObjectStore("packs");
         req.result.createObjectStore("meta");
       };
-      req.onsuccess = () => {
-        res(req.result);
-        // Best-effort: an unpersisted origin can be evicted wholesale
-        // under storage pressure, silently wiping the offline cache.
-        try { void navigator.storage?.persist()?.catch(() => {}); }
-        catch { /* unsupported */ }
-      };
+      req.onsuccess = () => res(req.result);
       req.onerror = () => res(null);
       // A blocking tab's older version can clear any moment — don't
       // memoize this null or the cache stays off for the session.
@@ -51,9 +45,22 @@ function openDb(): Promise<IDBDatabase | null> {
   return dbPromise;
 }
 
+// Best-effort: an unpersisted origin can be evicted wholesale under
+// storage pressure, silently wiping the offline cache. Asked on the
+// first write, not at first open — a browser that prompts for the
+// grant shouldn't pop a storage permission before anything is stored.
+let persistAsked = false;
+function askPersist(): void {
+  if (persistAsked) return;
+  persistAsked = true;
+  try { void navigator.storage?.persist()?.catch(() => {}); }
+  catch { /* unsupported */ }
+}
+
 function rw<T>(store: string, mode: IDBTransactionMode,
                run: (s: IDBObjectStore) => IDBRequest<T>
 ): Promise<T | null> {
+  if (mode === "readwrite") askPersist();
   return openDb().then((d) => {
     if (!d) return null;
     return new Promise<T | null>((res) => {
@@ -147,6 +154,7 @@ async function trimPacks(): Promise<void> {
 }
 
 export function packPut(url: string, data: Uint8Array): Promise<unknown> {
+  askPersist();
   // Pack bytes and their trim stat commit in one transaction — a stat
   // orphaned by mid-write teardown would leave the pack invisible to
   // the budget and unevictable. Still fire-and-forget for callers:
@@ -173,6 +181,7 @@ export function packPut(url: string, data: Uint8Array): Promise<unknown> {
   return put;
 }
 export function packDelete(url: string): Promise<unknown> {
+  askPersist();
   // Drop the bytes and their trim stat together — a lone stat would
   // make trimPacks() count bytes that no longer exist.
   return openDb().catch(() => null).then((d) => {
