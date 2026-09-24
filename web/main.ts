@@ -736,6 +736,9 @@ function addDecor(images: Iterable<IndexedImage>, src: string,
 function decorAnchor(i: number, dn: number): number {
   return TANK.width * (i + 0.5) / dn;
 }
+/** Pixels above the tank floor where decor sits — the y-axis half of
+ * the shared anchor, for the same reason. */
+const DECOR_FLOOR = 6;
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
 let nextSlot = 0;
@@ -2394,7 +2397,7 @@ function render(): void {
     const x = Math.min(Math.max(
         Math.round(decorAnchor(i, dn) - d.width / 2), 0),
       Math.max(0, TANK.width - d.width));
-    const y = TANK.height - 6 - d.height;
+    const y = TANK.height - DECOR_FLOOR - d.height;
     if (!sway) { ctx.drawImage(d, x, y); continue; }
     // Sway per horizontal band — offsets grow toward the tip, so the
     // planted root stays glued while the top drifts. Runs on the sim
@@ -2670,7 +2673,7 @@ function tickSim(): void {
       if (!d.plant || Math.random() >= PLANT_BUBBLE) continue;
       sim.spawnBubble(
         decorAnchor(i, decors.length) + (Math.random() - 0.5) * 6,
-        TANK.height - 6 - d.frames[0]!.height * 0.7);
+        TANK.height - DECOR_FLOOR - d.frames[0]!.height * 0.7);
     }
   tickSurface(surface);
   pawTick();
