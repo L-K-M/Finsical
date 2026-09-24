@@ -56,11 +56,16 @@ export function decodeDroppedPacks(
     // files often carry no extension. AquaZone took 256-color BMPs
     // only, as decodeBmp does.
     if (isBmp(data)) {
-      const img = decodeBmp(data);
-      if (!img || img.w < BACKDROP_MIN.w || img.h < BACKDROP_MIN.h)
-        continue;
-      out.push({ name: stem, section: "backgrounds", sheets: new Map(),
-                 images: new Map([[name, img]]) });
+      // decodeBmp allocates from the header's dimensions: a throw there
+      // costs this picture, as a throwing pack does below.
+      try {
+        const img = decodeBmp(data);
+        if (img && img.w >= BACKDROP_MIN.w && img.h >= BACKDROP_MIN.h)
+          out.push({ name: stem, section: "backgrounds", sheets: new Map(),
+                     images: new Map([[name, img]]) });
+      } catch (e) {
+        console.warn(`drop: skipping undecodable picture ${name}:`, e);
+      }
       continue;
     }
     if (!isPack(data)) continue;

@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { decodeBmp } from "../core/data/bmp.js";
 import { decodeDroppedPacks, dropSection } from "./drop.js";
+
+// The real decoder, wrapped so one test can make a call throw.
+vi.mock("../core/data/bmp.js", async (importOriginal) => {
+  const m = await importOriginal<typeof import("../core/data/bmp.js")>();
+  return { ...m, decodeBmp: vi.fn(m.decodeBmp) };
+});
 
 const PAL: [number, number, number][] =
   [[0, 0, 0], [255, 0, 0], [0, 0, 255], [0, 255, 0]];
@@ -149,6 +156,19 @@ describe("decodeDroppedPacks", () => {
 });
 
 describe("decodeDroppedPacks with pictures", () => {
+  it("skips a picture whose decode throws and keeps the rest", () => {
+    // decodeBmp allocates from header-controlled dimensions; a throw
+    // there must cost only that file, as a throwing pack does.
+    vi.mocked(decodeBmp).mockImplementationOnce(() => {
+      throw new RangeError("Array buffer allocation failed");
+    });
+    const got = decodeDroppedPacks([
+      ["Broken.bmp", buildBmpImage(640, 480)],
+      ["Fine.bmp", buildBmpImage(320, 200)],
+    ]);
+    expect(got.map((p) => p.name)).toEqual(["Fine"]);
+  });
+
   it("takes a 256-color BMP as a backdrop, by its content", () => {
     const [pic, bare] = decodeDroppedPacks([
       ["MyBackdrop.bmp", buildBmpImage(640, 480)],
