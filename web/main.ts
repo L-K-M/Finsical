@@ -20,9 +20,9 @@ import { alertOpen, showAlert } from "./alert.js";
 import { recentTaps, shouldScold } from "./scold.js";
 import { backfillStarterSounds, showWelcome, wantsWelcome }
   from "./welcome.js";
-import { fetchAddon, installProblem, mountImportPanel, orphanedSounds,
-         recordAddon, qualifySoundItemName, isListed, COLLECTIONS }
-  from "./import.js";
+import { clampDecorCopies, decorCopyRoom, fetchAddon, installProblem,
+         mountImportPanel, orphanedSounds, recordAddon,
+         qualifySoundItemName, isListed, COLLECTIONS } from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
          sndsMerge, sndsRemove } from "./store.js";
@@ -831,11 +831,20 @@ function retryRestores(failed: Importable[], attempt = 0): void {
   }, RESTORE_RETRY_DELAYS[attempt]);
 }
 function handleImages(images: Iterable<IndexedImage>, src: string,
-                      section: string, live: boolean): void {
+                      section: string, live: boolean,
+                      count = 1): void {
   // fish packs carry portraits too — only scenery sections touch the tank
   if (section === "gravel") pickGravel(images, src);
-  else if (section === "plants" || section === "accessories")
-    addDecor(images, src);
+  else if (section === "plants" || section === "accessories") {
+    // A restore replays the persisted copy count; `images` may be a
+    // single-use Map iterator, so materialize before looping. Live
+    // clicks arrive as count=1 — cap them by the pack's current copy
+    // count too, or a tank could grow past what the save can restore.
+    const imgs = [...images];
+    const n = clampDecorCopies(count);
+    const room = live ? decorCopyRoom(decors, src) : n;
+    for (let i = 0; i < Math.min(n, room); i++) addDecor(imgs, src);
+  }
   else if (section === "backgrounds" || section === "tanks")
     pickBackdrop(images, src);
   else return;

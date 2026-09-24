@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { browserGeometry, fragDecode, fragEncode, importAddon,
-         installProblem, listAddons, loadProblem, transientFailure,
-         isListed, orphanedSounds, qualifySoundItemName, recordAddon }
-  from "./import.js";
+import { browserGeometry, DECOR_COPIES_MAX, decorCopyRoom, fragDecode,
+         fragEncode, importAddon, installProblem, listAddons,
+         loadProblem, transientFailure, isListed, orphanedSounds,
+         qualifySoundItemName, recordAddon } from "./import.js";
 import type { Importable } from "./import.js";
 
 const enc = new TextEncoder();
@@ -217,6 +217,54 @@ describe("recordAddon", () => {
     // Removed while its restore was downloading: it stays removed.
     expect(recordAddon(list, it0("gone.zip"), ["z"], "refresh")).toBe(false);
     expect(list).toHaveLength(1);
+  });
+  it("counts Add Again copies on decor sections only", () => {
+    const plant = (url: string): Importable =>
+      ({ url, inner: url, section: "plants" });
+    const list: Importable[] = [];
+    recordAddon(list, plant("a.plt"), [], "install");
+    recordAddon(list, plant("a.plt"), [], "install");
+    recordAddon(list, plant("a.plt"), [], "install");
+    expect(list[0]!.copies).toBe(3);
+    // A restore refreshes the record — it isn't another copy.
+    recordAddon(list, plant("a.plt"), [], "refresh");
+    expect(list[0]!.copies).toBe(3);
+    // Fish and sound packs never carry a count.
+    recordAddon(list, it0("s.rez"), [], "install");
+    recordAddon(list, it0("s.rez"), [], "install");
+    expect(list[1]!.copies).toBeUndefined();
+  });
+  it("strips a caller-supplied copies field on first install", () => {
+    const list: Importable[] = [];
+    recordAddon(list, { url: "a.plt", inner: "a.plt",
+                        section: "plants", copies: 99 }, [], "install");
+    expect(list[0]!.copies).toBeUndefined();
+  });
+  it("caps the copy count and clamps corrupt values", () => {
+    const plant = (url: string): Importable =>
+      ({ url, inner: url, section: "plants" });
+    const list: Importable[] = [];
+    for (let i = 0; i < DECOR_COPIES_MAX + 2; i++)
+      recordAddon(list, plant("a.plt"), [], "install");
+    expect(list[0]!.copies).toBe(DECOR_COPIES_MAX);
+    // A corrupt persisted count can't grow the record past the cap.
+    list[0]!.copies = -7;
+    recordAddon(list, plant("a.plt"), [], "install");
+    expect(list[0]!.copies).toBe(2);
+  });
+});
+
+describe("decorCopyRoom", () => {
+  it("counts placed copies by pack and floors at zero", () => {
+    const decors = Array.from({ length: DECOR_COPIES_MAX },
+                              () => ({ pack: "p.plt" }));
+    expect(decorCopyRoom(decors, "p.plt")).toBe(0);
+    expect(decorCopyRoom(decors, "other.plt")).toBe(DECOR_COPIES_MAX);
+    expect(decorCopyRoom([{ pack: "p.plt" }], "p.plt"))
+      .toBe(DECOR_COPIES_MAX - 1);
+    // More placed than the cap can't go negative.
+    expect(decorCopyRoom([...decors, { pack: "p.plt" }], "p.plt"))
+      .toBe(0);
   });
 });
 
