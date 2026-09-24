@@ -1,7 +1,7 @@
 import { openBus } from "./bus.js";
 import { hostWindow, pushButton } from "osmium-ui";
 import { deriveStats, hungerLabel, SPARK_H, SPARK_W, sparkColumns, sparkRow,
-         trend, uptime } from "./statsmodel.js";
+         summaryText, trend, uptime } from "./statsmodel.js";
 import type { BusMsg } from "./bus.js";
 import type { StatsInput, TankStats } from "./statsmodel.js";
 
@@ -128,10 +128,12 @@ function render(st: TankStats): void {
 }
 
 let greeted = false;
+let lastStats: TankStats | null = null;
 const bus = openBus((m: BusMsg) => {
   if (m.op !== "state") return;
   greeted = true;
   const st = deriveStats(m as StatsInput);
+  lastStats = st;
   history.push({ t: Date.now(), avgHunger: st.avgHunger,
                  water: st.waterPct / 100 });
   // Trim by age, keeping the newest pre-cutoff sample that trendBase()
@@ -167,6 +169,33 @@ bus.post({ op: "hello" });
 // settled pellets). The next state push re-renders the numbers.
 pushButton(document.getElementById("schange") as HTMLButtonElement,
            () => bus.post({ op: "changeWater" }));
+
+// Copy Summary — the window's rows as plain text on the clipboard, so
+// a tank's state can leave the app (the tank diary's quick share).
+const copyBtn = document.getElementById("scopy") as HTMLButtonElement;
+pushButton(copyBtn, () => {
+  const st = lastStats;
+  if (!st) return;
+  const done = (ok: boolean): void => {
+    copyBtn.textContent = ok ? "Copied!" : "Copy failed";
+    setTimeout(() => { copyBtn.textContent = "Copy Summary"; }, 1500);
+  };
+  navigator.clipboard.writeText(summaryText(st))
+    .then(() => done(true))
+    .catch(() => {
+      // Older WebKit without the async clipboard API: the textarea +
+      // execCommand fallback still works there.
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = summaryText(st);
+        ta.style.cssText = "position:fixed;opacity:0";
+        document.body.appendChild(ta);
+        ta.select();
+        done(document.execCommand("copy"));
+        ta.remove();
+      } catch { done(false); }
+    });
+});
 
 // Ungated on `greeted`: if the tank tab opens after the greet retries
 // gave up, this heartbeat is the revival path — one cheap message, and
