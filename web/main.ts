@@ -42,9 +42,9 @@ import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
 import { stateLabel } from "./overviewmodel.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
-import { bubbleOffset, bubblePops, drawAir, drawBubbles, drawFood,
-         drawLight, drawMurk, drawRefraction, drawSurface, feedPinch,
-         sunFactor } from "./water.js";
+import { bubbleOffset, bubblePops, bubbleSize, drawAir, drawBubblePop,
+         drawBubbles, drawFood, drawLight, drawMurk, drawRefraction,
+         drawSurface, feedPinch, sunFactor } from "./water.js";
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
   from "./surface.js";
 import {
@@ -384,11 +384,23 @@ canvas.addEventListener("pointerdown", (e) => {
   } else {
     sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
     // A rising bubble under the tap pops early — the knock already
-    // ripples; this is the toy on top.
-    const bi = sim.bubbles.findIndex((b) =>
-      (b.x + bubbleOffset(b.x, b.y) - p.x) ** 2 +
-      (b.y - p.y) ** 2 < 36);
-    if (bi >= 0) sim.bubbles.splice(bi, 1);
+    // ripples; this is the toy on top. The nearest bubble inside its
+    // drawn radius (plus a finger's worth of slop) wins, so clustered
+    // bubbles pop the one the tap actually touched.
+    let bi = -1, bd = Infinity;
+    for (let i = 0; i < sim.bubbles.length; i++) {
+      const b = sim.bubbles[i]!;
+      const r = bubbleSize(b.y) / 2 + 4;
+      const d = (b.x + bubbleOffset(b.x, b.y) - p.x) ** 2 +
+                (b.y - p.y) ** 2;
+      if (d < r * r && d < bd) { bd = d; bi = i; }
+    }
+    if (bi >= 0) {
+      const [b] = sim.bubbles.splice(bi, 1);
+      // The same pop ring the waterline path draws — a tap-pop reads
+      // as a pop, not a vanish.
+      pops.push({ x: b!.x + bubbleOffset(b!.x, b!.y), y: b!.y, age: 0 });
+    }
     ripples.push({ x: p.x, y: p.y, age: 0 });
     // The glass knock slops the water a little, on the tapped side.
     disturbSurface(surface, p.x, PUSH.tap, 8);
@@ -2347,6 +2359,8 @@ function drawSnail(x: number, paused: boolean, dir: 1 | -1): void {
   // Foot row sits a pixel into the gravel strip so it reads planted.
   ctx.drawImage(cv, Math.round(x), TANK.height - BOTTOM_PAD - SNAIL_H + 2);
 }
+// Tap-popped bubbles: the ring lingers a few ticks where it burst.
+const pops: { x: number; y: number; age: number }[] = [];
 // The surface's springs, and the waterline drawn from them each frame.
 // Pre-filled with the rest-state swell so isFeedZone reads a real line
 // even before the first render.
@@ -2492,6 +2506,7 @@ function render(): void {
   // with the water instead of glowing at night.
   drawSurface(ctx, waterline, sun, t, overFeedZone);
   drawBubbles(ctx, sim.bubbles, waterline);
+  for (const p of pops) drawBubblePop(ctx, p.x, p.y);
 
   // On the glass, so over the fish: ripples and splashes paint last.
   drawRipples(ctx, ripples);
@@ -2696,6 +2711,8 @@ function tickSim(): void {
   }
   tickRipples(ripples);
   tickSplashes(splashes);
+  for (let i = pops.length - 1; i >= 0; i--)
+    if (++pops[i]!.age > 8) pops.splice(i, 1);
   // Sparse bloops: only some spawns make a sound. Checked per tick so
   // the odds don't depend on how often the tank is drawn.
   if (sim.bubbles.length > bubbles && Math.random() < 0.25)

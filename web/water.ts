@@ -126,6 +126,18 @@ function spriteOf(art: readonly string[]): HTMLCanvasElement {
 
 let bubbleSprites: HTMLCanvasElement[] | null = null;
 let popSprites: HTMLCanvasElement[] | null = null;
+function popPair(): HTMLCanvasElement[] {
+  return [spriteOf(POP_ART_INNER), spriteOf(POP_ART)];
+}
+
+/** One pop ring drawn at a point — for a tap-pop mid-water, where the
+ * surface's drawn-line path can't show it. */
+export function drawBubblePop(ctx: CanvasRenderingContext2D,
+                              x: number, y: number): void {
+  popSprites ??= popPair();
+  const p = popSprites[Math.round(x) & 1]!; // same alternation as surface pops
+  ctx.drawImage(p, Math.round(x) - 2, Math.round(y) - 2);
+}
 
 /** `line` is the drawn waterline (see surfaceLine): a bubble pops
  * where the moving surface is, not at its resting row. */
@@ -133,7 +145,7 @@ export function drawBubbles(ctx: CanvasRenderingContext2D,
                             bubbles: readonly Bubble[],
                             line?: Int16Array): void {
   bubbleSprites ??= BUBBLE_ART.map(spriteOf);
-  popSprites ??= [spriteOf(POP_ART_INNER), spriteOf(POP_ART)];
+  popSprites ??= popPair();
   for (const b of bubbles) {
     const x = Math.round(b.x + bubbleOffset(b.x, b.y));
     if (bubblePops(b.y)) {
