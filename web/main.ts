@@ -1754,19 +1754,25 @@ function layoutMachine(): void {
   // height/width pots can grow the raster into the aperture's black
   // margins. Offsets are relative to #screen, its parent.
   // Pixel-art scaling: upscales snap to integer multiples of the
-  // 320x200 raster — a fractional contain shimmers. The margin reads
-  // as the glass's inner bezel; containPoint() maps clicks off the
-  // canvas's own rect, so the wider letterbox needs no pointer change.
+  // 320x200 raster on the *device* grid — a fractional contain
+  // shimmers, and so does a CSS-integer multiple under a fractional
+  // devicePixelRatio. The margin reads as the glass's inner bezel;
+  // containPoint() maps clicks off the canvas's own rect, so the
+  // wider letterbox needs no pointer change.
   const aw = machine.sw * s, ah = machine.sh * s;
   const k = Math.min(aw / TANK.width, ah / TANK.height);
-  const ik = k >= 1 ? Math.floor(k) : k;
+  const dpr = window.devicePixelRatio || 1;
+  const dev = Math.floor(k * dpr);
+  const ik = k >= 1 && dev >= 1 ? dev / dpr : k;
   // Sub-1x can't be pixel-crisp anyway — a smooth downscale beats a
   // ragged pixelated one in a tiny window.
   canvas.style.imageRendering = ik >= 1 ? "pixelated" : "auto";
   canvas.style.width = `${TANK.width * ik}px`;
   canvas.style.height = `${TANK.height * ik}px`;
-  canvas.style.left = `${(aw - TANK.width * ik) / 2}px`;
-  canvas.style.top = `${(ah - TANK.height * ik) / 2}px`;
+  // Center on the device grid too — a half-px offset unevenly clips
+  // the raster's edge columns.
+  canvas.style.left = `${Math.round((aw - TANK.width * ik) / 2 * dpr) / dpr}px`;
+  canvas.style.top = `${Math.round((ah - TANK.height * ik) / 2 * dpr) / dpr}px`;
   const glass = glassRect(machine);
   crtEl.style.left = `${(glass.x - machine.sx) * s}px`;
   crtEl.style.top = `${(glass.y - machine.sy) * s}px`;
