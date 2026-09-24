@@ -19,10 +19,12 @@ import { bankSounds } from "../core/data/sndbank.js";
 import { isLocalPack, metaGet, metaPut, packDelete, packGet, packPut }
   from "./store.js";
 import { lruGet, lruSet } from "./lru.js";
+import { pickDrawableSheet } from "../core/data/swimsheet.js";
+import { TANK_SIZE } from "../core/tuning.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
-import { soundIcon } from "./render.js";
+import { isGravelImage, soundIcon } from "./render.js";
 import { bindDialogKeys, mountList, mountPopup, mountWindow, pushButton,
          setButtonTitle } from "osmium-ui";
 
@@ -499,6 +501,34 @@ export interface PackResult {
   /** Sound records — `wav` is the encoded payload (literal WAV for
    * 'snd ' decodes, the compressed stream for audio files). */
   sounds: { name: string; wav: Uint8Array }[];
+}
+
+/** Which decoded packs would actually put something in the tank.
+ * A fish add-on only counts when one of its sheets can draw — a pack
+ * whose frames are all empty or truncated renders the stand-in while
+ * claiming success. Gravel only counts with a strip-shaped image;
+ * other scenery needs any image, and any section can carry sounds.
+ * Fish-pack portraits aren't scenery — they count for nothing here. */
+export function usablePacks(rs: PackResult[], section: string):
+    PackResult[] {
+  return rs.filter((r) => {
+    const sheets = section === "fish"
+      ? pickDrawableSheet(r.sheets.values()) !== null
+      : r.sheets.size > 0;
+    const images = section === "gravel"
+      ? [...r.images.values()]
+          .some((i) => isGravelImage(i, TANK_SIZE.width))
+      : section !== "fish" && r.images.size > 0;
+    return sheets || images || r.sounds.length > 0;
+  });
+}
+
+/** Why an add-on came back with nothing usable — names the actual
+ * missing piece instead of a generic "no pack inside". */
+export function usableProblem(section: string): string {
+  return section === "fish" ? "no drawable fish inside"
+       : section === "gravel" ? "no gravel art inside"
+       : "no pack inside";
 }
 
 /** Record names the leaving add-ons exclusively own — a name still
@@ -1476,9 +1506,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   // side effect differs. `live` marks user installs vs restores.
   function applyPack(it: Importable, rs: PackResult[],
                      live: boolean): string[] {
-    const usable = rs.filter(
-      (r) => r.sheets.size || r.images.size || r.sounds.length);
-    if (!usable.length) throw new Error("no pack inside");
+    const usable = usablePacks(rs, it.section);
+    if (!usable.length) throw new Error(usableProblem(it.section));
     const soundNames: string[] = [];
     for (const r of usable) {
       if (r.sheets.size)

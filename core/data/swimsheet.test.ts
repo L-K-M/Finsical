@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { bodySize, pickSwimSheet } from "./swimsheet.js";
+import { bodySize, hasDrawableFrame, pickDrawableSheet, pickSwimSheet }
+  from "./swimsheet.js";
 import { SpriteSheet } from "./azpack.js";
 
 function sheet(groups: number, cellW: number, cellH: number): SpriteSheet {
@@ -88,5 +89,37 @@ describe("bodySize", () => {
   it("falls back to the cell when nothing is painted", () => {
     expect(bodySize(paintable(20, 30).sh, 0))
       .toEqual({ length: 30, height: 20 });
+  });
+});
+
+describe("hasDrawableFrame", () => {
+  it("finds one opaque pixel anywhere on the sheet", () => {
+    const { sh, paint } = paintable(20, 30);
+    paint(1, 1, 19, 29); // the very last cell's last corner
+    expect(hasDrawableFrame(sh)).toBe(true);
+  });
+
+  it("rejects a sheet whose cells are all blank", () => {
+    expect(hasDrawableFrame(paintable(20, 30).sh)).toBe(false);
+  });
+
+  it("rejects a sheet whose frames can't decode", () => {
+    // dims shorter than the grid: every frame() throws a RangeError.
+    const { sh } = paintable(20, 30, 0);
+    expect(hasDrawableFrame(sh)).toBe(false);
+  });
+});
+
+describe("pickDrawableSheet", () => {
+  it("returns null when the picked sheet can't draw", () => {
+    const pack = [paintable(50, 100).sh];
+    expect(pickSwimSheet(pack)).toBe(pack[0]);
+    expect(pickDrawableSheet(pack)).toBeNull();
+  });
+
+  it("returns the picked sheet when it can draw", () => {
+    const { sh, paint } = paintable(50, 100);
+    paint(0, 0, 5, 5);
+    expect(pickDrawableSheet([sh])).toBe(sh);
   });
 });

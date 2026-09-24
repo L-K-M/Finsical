@@ -24,6 +24,29 @@ export function pickSwimSheet(
   return best;
 }
 
+/** Whether any frame of the sheet has an opaque pixel. Cells whose
+ * dims are missing or truncated (frame() throws) count for nothing —
+ * a sheet that can only throw or paint transparency installs no fish. */
+export function hasDrawableFrame(sheet: SpriteSheet): boolean {
+  for (let g = 0; g < sheet.meta.groups; g++)
+    for (let f = 0; f < sheet.meta.framesPerGroup; f++) {
+      let img: IndexedImage;
+      try { img = sheet.frame(g, f); }
+      catch { continue; }
+      if (img.idx.some((px) => px !== 0)) return true;
+    }
+  return false;
+}
+
+/** pickSwimSheet, but only when the winner can draw anything — a pack
+ * whose frames are all empty or truncated must not register a sheet
+ * its fish can only render as the stand-in. */
+export function pickDrawableSheet(
+    sheets: Iterable<SpriteSheet>): SpriteSheet | null {
+  const s = pickSwimSheet(sheets);
+  return s && hasDrawableFrame(s) ? s : null;
+}
+
 /** How long and tall a fish looks in profile, in art pixels. */
 export interface BodySize { length: number; height: number }
 
