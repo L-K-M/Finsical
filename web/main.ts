@@ -2358,7 +2358,7 @@ function render(): void {
     // Sway per horizontal band — offsets grow toward the tip, so the
     // planted root stays glued while the top drifts. Runs on the sim
     // clock like decor frames: a paused tank holds still. Each band
-    // re-clamps into the glass so an edge piece's tip can't overhang.
+    // clamps around the planted x, so in-glass pieces never overhang.
     // Anchor the window at x: an oversized or out-of-bounds piece keeps
     // its planted position instead of snapping to a glass edge.
     const xmin = Math.min(x, 0);
