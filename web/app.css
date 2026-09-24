@@ -61,10 +61,14 @@ body.crt canvas#tank { opacity: 0; }
 }
 /* ---- document windows (About, Shortcuts) ------------------------------- */
 .dbwin { width: 344px; }
+/* Osmium positions window content absolutely inside a sized window; a
+   document window sizes to its content instead, so the content flows. */
+.dbwin .osm-content { position: static; margin: 21px 5px 5px; }
 .dbdoc { padding: 4px 14px 12px; font: var(--osm-font-small); }
 .dbabout { text-align: center; }
-.dbabout canvas {
-  display: block; margin: 10px auto 6px;
+.dbabout .dbicon {
+  width: 96px; height: 96px; margin: 10px auto 6px;
+  background: var(--osm-sprite-icon-machine) 0 0 / 96px 96px no-repeat;
   image-rendering: pixelated;
 }
 .dbtitle { font: var(--osm-font-system); font-weight: bold; }

@@ -107,8 +107,10 @@
   bar, pull-down menus and a clock in the corner — with an About
   Finsical window and a shortcuts list. It also opens Preferences and
   Tank Overview, which were reachable only from the native app's menu
-  before. The native shell keeps its real menu; the bar stays hidden
-  there.
+  before. Its Tank menu feeds, changes the water, switches the lamp,
+  mutes, turns the CRT effect on or off, and takes a picture of the
+  tank as a PNG. The native shell keeps its real menu; the bar stays
+  hidden there.
 
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.

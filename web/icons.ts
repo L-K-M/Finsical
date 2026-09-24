@@ -183,6 +183,28 @@ export const SOUND_ICON: readonly string[] = [
   "................................",
 ];
 
+/** The browser menu bar's 16 x 16 app glyph: the compact Mac with a
+ * fish in its tank, redrawn at menu size rather than cropped from the
+ * pane icon. */
+export const MENU_GLYPH: readonly string[] = [
+  "...00000000000..",
+  "...0ffffffffa0..",
+  "...0fddddddda0..",
+  "...0fd00000da0..",
+  "...0fd0uou0da0..",
+  "...0fd0uuu0da0..",
+  "...0fd0ttt0da0..",
+  "...0fd00000da0..",
+  "...0fddddddda0..",
+  "...0fdpd000da0..",
+  "...0fddddddda0..",
+  "...0aaaaaaaaa0..",
+  "...00000000000..",
+  "...0bcccccccb0..",
+  "...00000000000..",
+  "................",
+];
+
 // The Sound pane's button: the same speaker, centered in 32 x 32.
 const BLANK_ROWS = Array<string>(4).fill(".".repeat(32));
 const ICON_SOUND = [...BLANK_ROWS, ...SOUND_ICON, ...BLANK_ROWS];

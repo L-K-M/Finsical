@@ -7,8 +7,7 @@
  */
 import { MENU_SEPARATOR, mountMenuBar, mountWindow, pushButton,
          registerSprites } from "osmium-ui";
-import { ICON_PALETTE, ICON_SPRITES } from "./icons.js";
-import { gridCanvas } from "./render.js";
+import { ICON_PALETTE, ICON_SPRITES, MENU_GLYPH } from "./icons.js";
 import { inNativeShell } from "./bus.js";
 import type { Menu } from "osmium-ui";
 
@@ -17,7 +16,7 @@ const AZ_ITEM_URL =
   "https://archive.org/details/aquazonewithguppiesandaddons";
 /** The Apple-menu slot shows the app's own glyph — a compact Mac with
  * a tank on screen (icons.ts), not anyone else's logo. */
-const APPLE_SPRITE = "icon-machine";
+const APPLE_SPRITE = "menu-glyph";
 
 /** Open (or focus) a client page in a named tab: an already-open
  * window keeps its live state instead of reloading, and a tab grabbed
@@ -49,8 +48,17 @@ export function openClientWindow(page: string): void {
 
 export interface TankMenuActions {
   feed(): void;
+  changeWater(): void;
   importAddons(): void;
+  takePicture(): void;
   toggleCrt(): void;
+  toggleLamp(): void;
+  toggleMute(): void;
+  /** Live state, read each time a menu opens. Osmium's items have no
+   * checkmark, so toggles name the action they would take instead,
+   * like System 8's Show Balloons / Hide Balloons. */
+  state(): { crtUsable: boolean; crtOn: boolean; lampOn: boolean;
+             muted: boolean };
 }
 
 /** True while a pull-down menu is open — the tank page's bare-key
@@ -148,14 +156,10 @@ function placeDoc(win: HTMLElement): void {
 
 function aboutContent(c: HTMLElement): void {
   c.classList.add("dbabout");
-  // The compact-Mac-with-tank sprite at 3x, nearest-neighbor crunch.
-  const cv = gridCanvas(ICON_SPRITES[APPLE_SPRITE]!, ICON_PALETTE);
-  const big = document.createElement("canvas");
-  big.width = cv.width * 3;
-  big.height = cv.height * 3;
-  const g = big.getContext("2d")!;
-  g.imageSmoothingEnabled = false;
-  g.drawImage(cv, 0, 0, big.width, big.height);
+  // The compact-Mac-with-tank pane icon at 3x (app.css), from the
+  // sprite registered with the bar: it uses Osmium's own colors too.
+  const big = document.createElement("div");
+  big.className = "dbicon";
   big.setAttribute("aria-hidden", "true");
 
   const title = document.createElement("div");
@@ -194,6 +198,8 @@ function shortcutsContent(c: HTMLElement): void {
   c.classList.add("dbkeys");
   const rows: readonly (readonly [string, string])[] = [
     ["F", "Feed the fish"],
+    ["L", "Switch the lamp off or on"],
+    ["M", "Mute or unmute the sound"],
     ["C", "Toggle the CRT effect"],
     ["S", "Open Tank Stats"],
     ["⌘I / Ctrl-I", "Import add-ons"],
@@ -256,7 +262,8 @@ function mountClock(bar: HTMLElement): () => void {
  * teardown so tests can unmount. */
 export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
   if (inNativeShell()) return null;
-  registerSprites(ICON_SPRITES, ICON_PALETTE);
+  registerSprites({ ...ICON_SPRITES, [APPLE_SPRITE]: MENU_GLYPH },
+                  ICON_PALETTE);
   const bar = document.createElement("div");
   bar.id = "menubar";
   const menus: readonly Menu[] = [
@@ -272,12 +279,24 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
     },
     {
       title: "Tank",
-      items: () => [
-        { title: "Feed Fish", action: a.feed },
-        { title: "Toggle CRT Effect", action: a.toggleCrt },
-        MENU_SEPARATOR,
-        { title: "Import Add-ons…", action: a.importAddons },
-      ],
+      items: () => {
+        const s = a.state();
+        return [
+          { title: "Feed Fish", action: a.feed },
+          { title: "Change Water", action: a.changeWater },
+          MENU_SEPARATOR,
+          { title: s.lampOn ? "Turn Lamp Off" : "Turn Lamp On",
+            action: a.toggleLamp },
+          { title: s.muted ? "Unmute Sound" : "Mute Sound",
+            action: a.toggleMute },
+          // Dimmed (no action) where the page has no usable WebGL.
+          { title: s.crtOn ? "Turn CRT Effect Off" : "Turn CRT Effect On",
+            ...(s.crtUsable ? { action: a.toggleCrt } : {}) },
+          MENU_SEPARATOR,
+          { title: "Take a Picture", action: a.takePicture },
+          { title: "Import Add-ons…", action: a.importAddons },
+        ];
+      },
     },
     {
       title: "Window",

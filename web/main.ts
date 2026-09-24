@@ -1258,6 +1258,24 @@ function toggleLights(): void {
   audio.unlock(); // Tank > Lamp On can be the first gesture
   applyLighting({ lamp: !lighting.lamp });
 }
+// A souvenir PNG of the live tank at 2x, nearest-neighbor so the
+// pixels stay crisp. The 2D canvas always holds the scene, CRT or not.
+function takePicture(): void {
+  const out = document.createElement("canvas");
+  out.width = TANK.width * 2;
+  out.height = TANK.height * 2;
+  const c = out.getContext("2d")!;
+  c.imageSmoothingEnabled = false;
+  c.drawImage(canvas, 0, 0, out.width, out.height);
+  const d = new Date();
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  const a = document.createElement("a");
+  a.href = out.toDataURL("image/png");
+  a.download = `finsical-${d.getFullYear()}${pad(d.getMonth() + 1)}` +
+    `${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}` +
+    `${pad(d.getSeconds())}.png`;
+  a.click();
+}
 // A partial water change, also callable from the stats window's bus op.
 function changeWater(): void {
   sim.changeWater();
@@ -1327,8 +1345,14 @@ window.addEventListener("keydown", (e) => {
 // are little in-page documents.
 mountTankMenuBar({
   feed: feedFish,
+  changeWater,
   importAddons: () => importPanel.open(),
+  takePicture,
   toggleCrt: () => setCrt(!crtOn),
+  toggleLamp: toggleLights,
+  toggleMute,
+  state: () => ({ crtUsable: crt?.usable ?? false, crtOn,
+                  lampOn: lighting.lamp, muted: soundCfg.muted }),
 });
 
 const packFetch = async (p: string): Promise<Uint8Array> => {
