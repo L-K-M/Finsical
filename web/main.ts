@@ -1472,18 +1472,25 @@ function feedFish(): void {
   const x = 30 + Math.random() * (TANK.width - 60);
   const hungry = sim.fish.filter((f) => f.hunger > HUNGER_SEEK).length;
   const room = FOOD_CAP - sim.food.filter((p) => !p.eaten).length;
-  if (room <= 0) {
-    // The tank's already full of uneaten food — a bare blip where the
-    // pinch would have landed, no pellets and no shake sound.
-    splashAt(x, FOOD_ENTRY_Y, PUSH.pellet);
+  // The cap refuses a pellet with a bare blip where it would have
+  // landed — whether it's refused now or at drop time.
+  const blip = (bx: number): void => {
+    splashAt(bx, FOOD_ENTRY_Y, PUSH.pellet);
     requestPaint();
+  };
+  if (room <= 0) {
+    // The tank's already full of uneaten food — no pellets, no shake.
+    blip(x);
     return;
   }
   for (const p of feedPinch(Math.random, Math.min(hungry, room))) {
     setTimeout(() => {
       // Re-check at drop time: a second click fills the tank while a
       // first pinch is still falling.
-      if (sim.food.filter((q) => !q.eaten).length >= FOOD_CAP) return;
+      if (sim.food.filter((q) => !q.eaten).length >= FOOD_CAP) {
+        blip(x + p.dx);
+        return;
+      }
       const pellet = sim.dropFood(x + p.dx);
       splashAt(pellet.x, pellet.y, PUSH.pellet);
       requestPaint();
