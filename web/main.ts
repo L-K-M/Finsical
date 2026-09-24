@@ -113,7 +113,11 @@ for (const kind of ["backdrop", "gravel"] as const) {
 // before its fish packs could restore.
 let rosterComplete = saved?.v !== 1;
 
-const sim = new Sim(TANK, 0x9003);
+// Seed per launch: a fixed seed replays the same rand tape every
+// session — identical ambient bubbles, identical decision jitter — so
+// two launches feel synchronized. Tests pin their own seeds.
+const sim = new Sim(TANK,
+  (Date.now() ^ (Math.random() * 0x100000000)) >>> 0);
 const audio = new TankAudio();
 // Hidden (Cmd-H, minimized, background tab): rAF stops and the sim
 // freezes, so the ambient loop and the audio device pause with it.
