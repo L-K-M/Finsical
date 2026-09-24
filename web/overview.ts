@@ -28,12 +28,31 @@ let greeted = false;
 const thumbStore = new Map<string, string>(); // key → dataURL
 const thumbRequested = new Set<string>();     // asked once per page
 
+// Remove is a one-way door (a released fish is gone; an uninstalled
+// add-on must be re-downloaded), so it arms like Empty Tank: first
+// activation labels the button, a second inside 4s — but not within a
+// double-click's beat — actually removes. Hoisted declarations: the
+// list's onSelect closure below references disarmRemove.
+let removeArmTimer = 0;
+let removeArmedAt = 0;
+/** The row key the armed Remove points at; disarm when it moves. */
+let removeArmedKey: string | undefined;
+function disarmRemove(): void {
+  window.clearTimeout(removeArmTimer);
+  delete removeBtn.dataset.armed;
+  removeArmedKey = undefined;
+  removeBtn.textContent = "Remove";
+}
+
 const summaryEl = document.getElementById("osummary")!;
 const headsEl = document.getElementById("oheads")!;
 const listEl = document.getElementById("olist")!;
 const useBtn = document.getElementById("ouse") as HTMLButtonElement;
 const emptyBtn = document.getElementById("oempty") as HTMLButtonElement;
 const removeBtn = document.getElementById("oremove") as HTMLButtonElement;
+// The armed state only changes the label — announce it so a screen
+// reader hears "Really remove?" instead of silence on the first press.
+removeBtn.setAttribute("aria-live", "polite");
 
 let tankBoot: string | undefined;
 const bus = openBus((m) => {
@@ -115,22 +134,12 @@ function syncRemove(): void {
   removeBtn.disabled = !it;
   useBtn.disabled = !it?.use;
 }
-// Remove is a one-way door (a released fish is gone; an uninstalled
-// add-on must be re-downloaded), so it arms like Empty Tank: first
-// click labels the button, a second click inside 4s — but not within
-// a double-click's beat — actually removes. Selection changes disarm.
-let removeArmTimer = 0;
-let removeArmedAt = 0;
-const disarmRemove = (): void => {
-  window.clearTimeout(removeArmTimer);
-  delete removeBtn.dataset.armed;
-  removeBtn.textContent = "Remove";
-};
 const armOrRemove = (): void => {
   const it = items[list.selected];
   if (!it) { disarmRemove(); return; }
   if (removeBtn.dataset.armed !== "1") {
     removeBtn.dataset.armed = "1";
+    removeArmedKey = it.key;
     removeBtn.textContent = "Really remove?";
     removeArmedAt = performance.now();
     removeArmTimer = window.setTimeout(disarmRemove, 4000);
@@ -178,10 +187,11 @@ pushButton(emptyBtn, () => {
 });
 // Delete (or Command-Delete, the Finder's Move to Trash) removes the
 // selected line — armed first, like the button: a stray keypress
-// shouldn't release a fish.
+// shouldn't release a fish. Auto-repeat is ignored: a held key would
+// arm on the first event and confirm on the repeat, one gesture.
 listEl.addEventListener("keydown", (e) => {
   if ((e.key === "Backspace" || e.key === "Delete") && !e.altKey &&
-      !e.ctrlKey && items[list.selected]) {
+      !e.ctrlKey && !e.repeat && items[list.selected]) {
     e.preventDefault();
     armOrRemove();
   }
@@ -259,9 +269,10 @@ function render(scroll: ListScroll = "keep"): void {
   const need = new Set<string>();
   list.setRows(items.map((it) => row(it, need)),
                { keep: items.findIndex((i) => i.key === keep), scroll });
-  // Membership changed — the armed button may no longer point at the
-  // row it armed on (another window could have removed it).
-  disarmRemove();
+  // Membership changed — disarm only when the armed row itself moved
+  // out from under the button (removed elsewhere, or the selection
+  // shifted). A re-tag push that keeps the selection keeps the arm.
+  if (items[list.selected]?.key !== removeArmedKey) disarmRemove();
   syncRemove();
   paintThumbs();
   // Rows were just rebuilt — drop thumb state for keys that died with
