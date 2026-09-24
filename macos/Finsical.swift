@@ -130,6 +130,15 @@ final class TankWindow: NSWindow {
     }
 }
 
+/// `--smoke-test`: print the verdict as one JSON line for CI (error
+/// text can hold quotes, so it is serialized, not interpolated) and exit.
+private func smokeExit(_ report: [String: String], _ code: Int32) -> Never {
+    let json = try? JSONSerialization.data(withJSONObject: report,
+                                           options: [.sortedKeys])
+    print(String(decoding: json ?? Data(), as: UTF8.self))
+    exit(code)
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                          WKNavigationDelegate, WKScriptMessageHandler,
                          NSWindowDelegate, NSMenuItemValidation {
@@ -755,9 +764,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                                 _ error: any Error) {
         NSLog("Finsical: page load failed: \(error.localizedDescription)")
         guard let navigation, navigation === tankLoad else { return }
+        // Quitting (or anything that stops the load) cancels it too;
+        // that is not a failure to report.
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled {
+            return
+        }
         if smokeTest {
-            print("{\"smoke\":\"load failed\",\"error\":\"\(error.localizedDescription)\"}")
-            exit(2)
+            smokeExit(["smoke": "load failed",
+                       "error": error.localizedDescription], 2)
         }
         let alert = NSAlert()
         alert.alertStyle = .critical
@@ -781,9 +796,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                  "!!document.querySelector('#shell > *')"
         webView.evaluateJavaScript(js) { result, error in
             let ok = (result as? Bool) == true
-            print("{\"smoke\":\"\(ok ? "ok" : "page broken")\",\"path\":\"\(Bundle.main.bundlePath)\"}")
-            if let error { print("{\"error\":\"\(error.localizedDescription)\"}") }
-            exit(ok ? 0 : 1)
+            var report = ["smoke": ok ? "ok" : "page broken",
+                          "path": Bundle.main.bundlePath]
+            if let error { report["error"] = error.localizedDescription }
+            smokeExit(report, ok ? 0 : 1)
         }
     }
 
@@ -869,8 +885,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         tankLoad = webView.load(URLRequest(url: page("index.html")))
         if smokeTest {
             DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
-                print("{\"smoke\":\"timed out\"}")
-                exit(3)
+                smokeExit(["smoke": "timed out"], 3)
             }
         }
     }

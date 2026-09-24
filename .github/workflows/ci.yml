@@ -46,7 +46,7 @@ jobs:
       - run: /Applications/Finsical.app/Contents/MacOS/Finsical --smoke-test
         timeout-minutes: 2
       - run: |
-          ditto macos/Finsical.app /private/tmp/Finsical.app
+          ditto /Applications/Finsical.app /private/tmp/Finsical.app
           /private/tmp/Finsical.app/Contents/MacOS/Finsical --smoke-test
         timeout-minutes: 2
       # Swift 6 language mode: its data-race checks cover Osmium UI's
