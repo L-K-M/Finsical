@@ -67,10 +67,12 @@ function substringHit(name: string, needle: string): boolean {
 }
 
 /** Identity of the record a loop plays: its name plus its decoded
- * length, so a re-decode of identical bytes compares equal while a
- * same-named but different recording does not. */
+ * format and length, so a re-decode of identical bytes compares equal
+ * while a same-named but different recording does not. Same-name,
+ * same-length, same-format recordings still conflate — closing that
+ * needs hashing decoded samples, not worth it for a restart hint. */
 function soundKey(name: string, buf: AudioBuffer): string {
-  return `${name}@${buf.duration}`;
+  return `${name}@${buf.sampleRate}/${buf.numberOfChannels}/${buf.duration}`;
 }
 
 export class TankAudio {
@@ -330,17 +332,20 @@ export class TankAudio {
   private find(subs: readonly string[], skip = ""): AudioBuffer | null {
     // Exact names beat substring hits globally — a bundled "drop" keeps
     // the feed slot over an unrelated import that merely contains the
-    // substring. Within each pass, imported (user-dropped) sounds
-    // still outrank bundled manifest ones — the drop is the more
-    // deliberate, more recent act.
+    // substring. Needle order is the caller's stated preference:
+    // feed's ["drop", "intowater"] and splash's ["intowater", "drop"]
+    // must not collapse onto whichever name decoded first. Within each
+    // needle, imported (user-dropped) sounds still outrank bundled
+    // manifest ones — the drop is the more deliberate, more recent act.
     for (const exact of [true, false])
-      for (const map of [this.imported, this.buffers])
-        for (const [name, buf] of map) {
-          const n = name.toLowerCase();
-          if (n === skip) continue;
-          if (subs.some((s) => exact ? n === s : substringHit(n, s)))
-            return buf;
-        }
+      for (const sub of subs)
+        for (const map of [this.imported, this.buffers])
+          for (const [name, buf] of map) {
+            const n = name.toLowerCase();
+            if (n === skip) continue;
+            if (exact ? n === sub : substringHit(n, sub))
+              return buf;
+          }
     return null;
   }
 

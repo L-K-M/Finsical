@@ -46,8 +46,11 @@ class FakeContext {
     return s;
   }
   // The "WAV" byte count doubles as the clip's length in seconds.
-  decodeAudioData(buf: ArrayBuffer): Promise<{ duration: number }> {
-    return Promise.resolve({ duration: buf.byteLength });
+  decodeAudioData(buf: ArrayBuffer): Promise<
+      { duration: number; sampleRate: number; numberOfChannels: number }> {
+    return Promise.resolve(
+      { duration: buf.byteLength, sampleRate: 8000,
+        numberOfChannels: 1 });
   }
   // State changes settle on a microtask, like the real ones.
   resume(): Promise<void> {
@@ -302,6 +305,20 @@ describe("TankAudio ambient restarts", () => {
     expect(ac.sources[1]!.buffer?.duration).toBe(45);
   });
 
+  it("does not blip when the changed record re-imports identically",
+     async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.startAmbient();
+    await audio.addWavs([{ name: LOOP, wav: wav(45) }]); // record changes
+    const loop = ac.sources[1]!;
+    // A reload of the new record and removing an unrelated name must
+    // leave the live loop alone — the restart refreshed ambientKey.
+    await audio.addWavs([{ name: LOOP, wav: wav(45) }]);
+    audio.removeWavs(["unrelated"]);
+    expect(loop.stops).toHaveLength(0);
+    expect(ac.loops()).toBe(1);
+  });
+
   it("stops the loop when every bubbling record is removed", async () => {
     const { audio, ac } = await tank({ [LOOP]: 30 });
     audio.startAmbient();
@@ -434,6 +451,32 @@ describe("TankAudio event sounds", () => {
     const { audio, ac } = await tank({ IntoWater: 5 });
     audio.changeWater();
     expect(played(ac)).toEqual([5]);
+  });
+
+  // Every name the original game's sound bank ships (sndbank.ts)
+  // resolves to its own event — none sits past SUBSTRING_SLACK of its
+  // needle. A future bank name that did would go silently unheard.
+  it("reaches every 'snd ' bank name through its event", async () => {
+    const { audio, ac } = await tank({
+      "CENTER*": 1, SIDE: 2, "TOP*": 3, "BOTTOM*": 4, Drop: 5,
+      IntoWater: 6, ChangeWater: 7, Switch: 8, IntoWaterBig: 9,
+      letoutWater: 10, "AZ bubble 9003": 30, aqua: 12, TimerOnOff: 13,
+      WashFilter: 14, pipopa: 15, EventPreg: 16, EventSick: 17, add: 18,
+      set: 19, EventTiyu: 20, EventCouple: 21, EventEgg: 22,
+      TimerSet: 23, EventDead: 24,
+    });
+    audio.tap(160, 100, 320, 200); // center
+    audio.tap(10, 100, 320, 200);  // side
+    audio.tap(160, 10, 320, 200);  // top
+    audio.tap(160, 190, 320, 200); // bottom
+    audio.feed();        // Drop
+    audio.splash();      // IntoWater
+    audio.changeWater(); // ChangeWater
+    audio.lampSwitch();  // Switch
+    audio.sceneryIn();   // IntoWaterBig
+    audio.fishOut();     // letoutWater
+    expect(ac.sources.map((s) => s.buffer?.duration))
+      .toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 });
 
