@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { BAND_HALF, BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, MARGIN, Sim,
-         SLEEP_LIGHT, SURFACE, TURN_TICKS, WAKE_LIGHT } from "./sim.js";
+import { BAND_HALF, BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, MARGIN,
+         NOTICE_RADIUS, Sim, SLEEP_LIGHT, SURFACE, TURN_TICKS,
+         WAKE_LIGHT } from "./sim.js";
 import { QUALITY_SEEK } from "./tuning.js";
 import { CLOCK_NIGHT_LIGHT } from "./light.js";
 import { pitch } from "./pose.js";
@@ -351,7 +352,7 @@ describe("Sim", () => {
     sim.notice = { x: 160, y: 100 };
     for (let i = 0; i < 400; i++) sim.tick();
     const ds = [a, b, c].map((f) => Math.hypot(f.x - 160, f.y - 100));
-    for (const d of ds) expect(d).toBeLessThan(80);
+    for (const d of ds) expect(d).toBeLessThan(NOTICE_RADIUS);
     expect(Math.abs(ds[1]! - ds[0]!)).toBeGreaterThan(2);
     expect(Math.abs(ds[2]! - ds[1]!)).toBeGreaterThan(2);
     expect(Math.abs(ds[2]! - ds[0]!)).toBeGreaterThan(2);

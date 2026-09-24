@@ -206,7 +206,7 @@ const SCHOOL_RADIUS = 42;
 /** Above this hunger a fish begs near the surface between meals. */
 const BEG_HUNGER = 0.75;
 /** The hovered pointer is noticed inside this radius. */
-const NOTICE_RADIUS = 80;
+export const NOTICE_RADIUS = 80;
 /** How many calm fish may gather at the pointer at once — the
  * original let a small crowd press the glass; a hard cap keeps a
  * full tank from emptying onto the cursor. */
@@ -649,9 +649,10 @@ export class Sim {
       // flap between watching and wandering.
       // The cap is per-rank: a lower rank's ceiling sits one stagger
       // inside the next rank's, so capped watchers still fan out
-      // instead of collapsing onto the same ring.
-      const cap = NOTICE_RADIUS - 4 -
-        (NOTICE_CAP - 1 - Math.max(0, rank)) * NOTICE_STAGGER;
+      // instead of collapsing onto the same ring. The floor keeps the
+      // cap a real distance if the constants are ever retuned.
+      const cap = Math.max(NOTICE_STANDOFF, NOTICE_RADIUS - 4 -
+        (NOTICE_CAP - 1 - Math.max(0, rank)) * NOTICE_STAGGER);
       const standoff = Math.min(cap,
         NOTICE_STANDOFF + this.halfW(f) +
         Math.max(0, rank) * NOTICE_STAGGER);
