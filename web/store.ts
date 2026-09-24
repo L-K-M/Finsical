@@ -258,7 +258,7 @@ export function capSnds(cur: StoredSnd[] | null, records: StoredSnd[],
 function sndsGetStrict(): Promise<StoredSnd[] | null> {
   return rwStrict<StoredSnd[]>("meta", "readonly", (s) => s.get(SNDS_KEY));
 }
-function sndsPut(out: StoredSnd[]): Promise<unknown> {
+function sndsPut(out: StoredSnd[]): Promise<boolean> {
   return rwStrict("meta", "readwrite", (s) => s.put(out, SNDS_KEY))
     .then(() => true); // rq.result is the key — resolve an explicit boolean
 }
