@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { BAND_HALF, BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, MARGIN, Sim,
-         SLEEP_LIGHT, SURFACE, TURN_TICKS, WAKE_LIGHT } from "./sim.js";
+import { BAND_HALF, BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, MARGIN,
+         NOTICE_RADIUS, Sim, SLEEP_LIGHT, SURFACE, TURN_TICKS,
+         WAKE_LIGHT } from "./sim.js";
 import { QUALITY_SEEK } from "./tuning.js";
 import { CLOCK_NIGHT_LIGHT } from "./light.js";
 import { pitch } from "./pose.js";
@@ -319,6 +320,42 @@ describe("Sim", () => {
     expect(reached).toBeLessThan(120);
     expect(strayed).toBe(0);
     expect(backwards).toBeLessThan(60);
+  });
+
+  it("a small crowd gathers at the pointer, fanned out", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const a = sim.addFish({ x: 130, y: 100, hunger: 0 });
+    const b = sim.addFish({ x: 200, y: 110, hunger: 0 });
+    const c = sim.addFish({ x: 150, y: 150, hunger: 0 });
+    sim.notice = { x: 160, y: 100 };
+    for (let i = 0; i < 400; i++) sim.tick();
+    // All three calm fish converged on the pointer.
+    for (const f of [a, b, c])
+      expect(Math.hypot(f.x - 160, f.y - 100)).toBeLessThan(70);
+    // Rank-staggered standoff fans the crowd — each watcher holds its
+    // own ring, so no two sit on the same standoff distance.
+    const da = Math.hypot(a.x - 160, a.y - 100);
+    const db = Math.hypot(b.x - 160, b.y - 100);
+    const dc = Math.hypot(c.x - 160, c.y - 100);
+    expect(Math.abs(db - da)).toBeGreaterThan(2);
+    expect(Math.abs(dc - db)).toBeGreaterThan(2);
+    expect(Math.abs(dc - da)).toBeGreaterThan(2);
+  });
+
+  it("oversized watchers clamp inside the radius without stacking", () => {
+    // Fish this big blow past the standoff clamp; the per-rank cap
+    // must still give each watcher its own ring.
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const a = sim.addFish({ x: 130, y: 100, hunger: 0, halfW: 80 });
+    const b = sim.addFish({ x: 200, y: 110, hunger: 0, halfW: 80 });
+    const c = sim.addFish({ x: 150, y: 150, hunger: 0, halfW: 80 });
+    sim.notice = { x: 160, y: 100 };
+    for (let i = 0; i < 400; i++) sim.tick();
+    const ds = [a, b, c].map((f) => Math.hypot(f.x - 160, f.y - 100));
+    for (const d of ds) expect(d).toBeLessThan(NOTICE_RADIUS);
+    expect(Math.abs(ds[1]! - ds[0]!)).toBeGreaterThan(2);
+    expect(Math.abs(ds[2]! - ds[1]!)).toBeGreaterThan(2);
+    expect(Math.abs(ds[2]! - ds[0]!)).toBeGreaterThan(2);
   });
 
   it("hunger outranks curiosity", () => {
