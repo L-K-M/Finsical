@@ -115,7 +115,9 @@ let rosterComplete = saved?.v !== 1;
 
 // A random seed, so each launch plays a fresh tape rather than the
 // same one — tests keep determinism by passing a seed to Sim().
-const sim = new Sim(TANK, (Math.random() * 0x100000000) >>> 0);
+const simSeed = (Math.random() * 0x100000000) >>> 0;
+console.debug("tank sim seed:", simSeed); // log so bug reports are replayable
+const sim = new Sim(TANK, simSeed);
 const audio = new TankAudio();
 // Hidden (Cmd-H, minimized, background tab): rAF stops and the sim
 // freezes, so the ambient loop and the audio device pause with it.
