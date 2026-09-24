@@ -1896,6 +1896,10 @@ mountTankMenuBar({
   toggleZen: () => setZen(!zen),
   toggleScold: () => {
     scoldOn = !scoldOn;
+    // Drop the in-flight tally too, so a spree can't span the toggle:
+    // taps counted before "off" would otherwise complete the moment
+    // the sign comes back on inside the 8 s window.
+    if (!scoldOn) glassTaps = [];
     try { localStorage.setItem(SCOLD_KEY, scoldOn ? "on" : "off"); }
     catch { /* storage unavailable */ }
   },
