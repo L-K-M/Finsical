@@ -36,7 +36,8 @@ import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
 import { stateLabel } from "./overviewmodel.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { bubblePops, drawAir, drawBubbles, drawFood, drawLight, drawMurk,
-         drawRefraction, drawSurface, feedPinch, sunFactor } from "./water.js";
+         drawRefraction, drawSurface, drawTorch, feedPinch, keepTorch,
+         sunFactor, torchShows } from "./water.js";
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
   from "./surface.js";
 import {
@@ -328,6 +329,9 @@ const fishTipLabel = (f: Fish): string =>
 // Tank coords of the last hover — the frame loop re-checks it so the
 // tip doesn't linger when the fish swims away from a parked cursor.
 let lastHover: { x: number; y: number } | null = null;
+/** Whether it is dark enough for a hovering pointer to light the
+ * torch (see render()). */
+const torchOn = (): boolean => torchShows(sim.light, nightFloor(lighting));
 
 canvas.addEventListener("pointermove", (e) => {
   lastClient = { x: e.clientX, y: e.clientY };
@@ -336,6 +340,8 @@ canvas.addEventListener("pointermove", (e) => {
   sim.notice = p;
   if (e.pointerType === "touch") return; // no hover on touch
   lastHover = p;
+  // The torch follows the pointer even while no tick runs (paused).
+  if (torchOn()) requestPaint();
   const best = p && fishToName(p);
   if (!best) { fishTip.style.display = "none"; return; }
   fishTip.textContent = fishTipLabel(best);
@@ -350,6 +356,7 @@ canvas.addEventListener("pointermove", (e) => {
 canvas.addEventListener("pointerleave", (e) => {
   lastClient = null;
   lastHover = null;
+  if (torchOn()) requestPaint(); // put the torch out, even while paused
   fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
   if (!e.isPrimary) return; // don't clear the primary's curiosity
@@ -2058,7 +2065,12 @@ function render(): void {
   // Fouled water murks the whole scene.
   drawMurk(ctx, sim.waterQuality, t);
 
+  // A mouse or pen hovering the dark tank lights it like a torch, in
+  // the colors the scene has before the night veil goes on.
+  const torch = lastHover && torchOn() ? lastHover : null;
+  if (torch) keepTorch(ctx, torch.x, torch.y, 1 - sun);
   drawNight(new Date());
+  if (torch) drawTorch(ctx);
 
   if (paused) {
     ctx.save();
