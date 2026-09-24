@@ -113,7 +113,9 @@ for (const kind of ["backdrop", "gravel"] as const) {
 // before its fish packs could restore.
 let rosterComplete = saved?.v !== 1;
 
-const sim = new Sim(TANK, 0x9003);
+// A fresh seed per launch — the saved roster differs anyway, and two
+// tabs of the same tank shouldn't run the same random decisions.
+const sim = new Sim(TANK, crypto.getRandomValues(new Uint32Array(1))[0]);
 const audio = new TankAudio();
 // Hidden (Cmd-H, minimized, background tab): rAF stops and the sim
 // freezes, so the ambient loop and the audio device pause with it.

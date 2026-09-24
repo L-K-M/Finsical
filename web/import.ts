@@ -12,7 +12,8 @@
  */
 import { ownBytes } from "../core/data/bytes.js";
 import { zipEntries, zipRead } from "../core/data/zip.js";
-import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
+import { fshToSheets, isLegacyPack, isPack, packImages }
+  from "../core/data/fsh.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
 import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
 import { bankSounds } from "../core/data/sndbank.js";
@@ -389,7 +390,10 @@ async function fetchInnerBlobs(url: string): Promise<RawBlob[]> {
   for (const e of zipEntries(z)) {
     if (!PACK_EXT.test(e.name)) continue;
     const d = await zipRead(z, e);
-    if (isPack(d)) packs.push({ name: e.name, data: d });
+    // Legacy-format files travel too — importAddon says what they are
+    // instead of letting the zip look empty.
+    if (isPack(d) || isLegacyPack(d))
+      packs.push({ name: e.name, data: d });
   }
   return packs;
 }
@@ -479,8 +483,11 @@ export async function importAddon(url: string): Promise<PackResult[]> {
   }
   const blobs = await fetchInnerBlobs(url);
   const out: PackResult[] = [];
+  let legacy = false;
   for (const b of blobs) {
-    if (isPack(b.data)) {
+    if (isLegacyPack(b.data)) {
+      legacy = true; // count it below, once the readable blobs are in
+    } else if (isPack(b.data)) {
       const sheets = fshToSheets(b.data), images = packImages(b.data);
       // A sound bank (AZ_WAVES.REZ) has WAVs and no art. A pack with
       // art brings no sounds: one kind of content per add-on.
@@ -496,6 +503,11 @@ export async function importAddon(url: string): Promise<PackResult[]> {
         out.push({ sheets: new Map(), images: new Map(), sounds });
     }
   }
+  // Only legacy entries: the download is fine, the format isn't
+  // decodable — say so instead of "no pack inside" plus a Try Again
+  // that can only fail the same way. A mixed zip installs its
+  // readable packs and quietly skips the rest.
+  if (!out.length && legacy) throw new Error("unreadable legacy pack");
   return out;
 }
 
@@ -676,6 +688,8 @@ export function loadProblem(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   const http = /: (\d{3})$/.exec(msg);
   if (http) return `archive.org answered with error ${http[1]}.`;
+  if (msg === "unreadable legacy pack")
+    return "Finsical can't read this add-on yet.";
   if (msg === "no pack inside")
     return "The download has no add-on in it.";
   if (msg.endsWith(": empty"))
@@ -695,6 +709,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       notify(m: BusMsg): void } {
   const remote = opts?.remote;
   const installed = new Set<string>(); // add-on urls, not display names
+  // Add-ons whose bytes downloaded fine but whose format can't be
+  // decoded — dimmed for the session, and their detail gets an honest
+  // "can't read" instead of a Try Again that only fails again.
+  const unreadable = new Set<string>();
   const thumbs = new Map<string, HTMLCanvasElement>();
   const fetchPack = fetchAddon;
   // The add-on on show — remote install acks update its status line.
@@ -858,6 +876,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     r.append(box, el("span", "irowname", it.inner),
              el("span", "icheck", "✓"));
     r.classList.toggle("done", installed.has(it.url));
+    r.classList.toggle("unusable", unreadable.has(it.url));
     const th = it.section === "sounds" ? soundIcon() : thumbs.get(it.url);
     if (th) paintThumb(r, th);
     return r;
@@ -1068,6 +1087,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     }).catch((e) => {
       if (detailRef !== ref) return;
       console.warn(`add-on ${it.inner} failed to load:`, e);
+      if (e instanceof Error && e.message === "unreadable legacy pack") {
+        unreadable.add(it.url);
+        rowOf(it.url)?.classList.add("unusable");
+        status.textContent = "Finsical can't read this add-on yet.";
+        setAdd("Add to Tank", null);
+        return;
+      }
       status.textContent = `Couldn't load it. ${loadProblem(e)}`;
       setAdd("Try Again", () => showDetail(it));
     });

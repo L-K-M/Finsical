@@ -323,6 +323,9 @@ body.crt canvas#tank { opacity: 0; }
 .irowname { flex: 1; min-width: 0; padding-top: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icheck { flex: none; width: 18px; padding-top: 7px; font: var(--osm-font-system); visibility: hidden; }
 .irow.done .icheck { visibility: visible; }
+/* Legacy-format add-ons Finsical can't decode — dimmed like disabled
+   Mac OS 8 text once identified. */
+.irow.unusable .irowname { color: #888; }
 .idetail {
   position: absolute; top: 40px; right: 12px; bottom: 50px;
   overflow: hidden;
