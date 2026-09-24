@@ -53,6 +53,12 @@ const OPENING = "aqua";
  * the gain single bubbles play at, under them. */
 const AMBIENT_GAIN = 0.4;
 
+/** Lowercase alphanumeric words in a sound name: "CENTER*" and
+ * "bubble pop" both carry their event word; "Centerfold" is one word. */
+function words(name: string): string[] {
+  return name.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w !== "");
+}
+
 export class TankAudio {
   private ctx: AudioContext | null = null;
   // Every sound's per-play gain feeds this one node, created with the
@@ -296,12 +302,14 @@ export class TankAudio {
     this.feedbackSrc = src;
   }
 
-  /** The first sound named one of `subs`, else the first whose name
-   * contains one, passing over the sound named `skip`. */
+  /** The first sound named one of `subs`, else the first with one as
+   * a whole word in its name, passing over the sound named `skip`.
+   * Whole-word: "Centerfold" must not answer a "center" tap, while
+   * "CENTER*" (tokens: center) and "bubble pop" still match. */
   private find(subs: readonly string[], skip = ""): AudioBuffer | null {
-    // Exact names beat substring hits globally — a bundled "drop" keeps
+    // Exact names beat word hits globally — a bundled "drop" keeps
     // the feed slot over an unrelated import that merely contains the
-    // substring. Within each pass, imported (user-dropped) sounds
+    // word. Within each pass, imported (user-dropped) sounds
     // still outrank bundled manifest ones — the drop is the more
     // deliberate, more recent act.
     for (const exact of [true, false])
@@ -309,7 +317,7 @@ export class TankAudio {
         for (const [name, buf] of map) {
           const n = name.toLowerCase();
           if (n === skip) continue;
-          if (subs.some((s) => exact ? n === s : n.includes(s)))
+          if (subs.some((s) => exact ? n === s : words(n).includes(s)))
             return buf;
         }
     return null;
