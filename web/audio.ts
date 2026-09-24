@@ -462,6 +462,12 @@ export class TankAudio {
     this.play(this.find([sub]) ?? this.find(["center", "side"]), 0.8);
   }
 
+  /** The auto-feeder's timer tripped — the original's TimerOnOff
+   * chime, decoded but unused until now. */
+  feederChime(): void {
+    this.play(this.named("timeronoff"), 0.45);
+  }
+
   /** A bubble rising. The original has no sound for one, so this plays
    * a short bubble sound the user added, never the filter's loop. */
   bubble(): void {

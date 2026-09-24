@@ -49,6 +49,7 @@ export function openClientWindow(page: string): void {
 export interface TankMenuActions {
   feed(): void;
   changeWater(): void;
+  toggleAutoFeed(): void;
   importAddons(): void;
   takePicture(): void;
   toggleCrt(): void;
@@ -60,8 +61,9 @@ export interface TankMenuActions {
   /** Live state, read each time a menu opens. Osmium's items have no
    * checkmark, so toggles name the action they would take instead,
    * like System 8's Show Balloons / Hide Balloons. */
-  state(): { crtUsable: boolean; crtOn: boolean; lampOn: boolean;
-             muted: boolean; paused: boolean; zen: boolean };
+  state(): { autoFeed: boolean; crtUsable: boolean; crtOn: boolean;
+             lampOn: boolean; muted: boolean; paused: boolean;
+             zen: boolean };
 }
 
 /** True while a pull-down menu is open — the tank page's bare-key
@@ -288,6 +290,9 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
         return [
           { title: "Feed Fish", action: a.feed },
           { title: "Change Water", action: a.changeWater },
+          { title: s.autoFeed ? "Turn Auto-Feeder Off"
+                             : "Turn Auto-Feeder On",
+            action: a.toggleAutoFeed },
           MENU_SEPARATOR,
           { title: s.paused ? "Resume Simulation" : "Pause Simulation",
             action: a.togglePause },

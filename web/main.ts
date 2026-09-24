@@ -58,6 +58,8 @@ import type { Fish } from "../core/sim.js";
 import type { AzpackManifest, IndexedImage } from "../core/data/azpack.js";
 
 const TANK = { width: 320, height: 200 };
+const TICKS_PER_SECOND = 30;
+const STEP_MS = 1000 / TICKS_PER_SECOND;
 
 const canvas = document.getElementById("tank") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -973,6 +975,7 @@ function sendState(): void {
     bubbles: sim.bubbles.length,
     light: sim.light,
     lighting,
+    autoFeed,
     // Preferences window reads this — `on`/`available` reflect the
     // live GL state (a lost context reports off/unavailable even if
     // the stored preference says on).
@@ -1462,6 +1465,19 @@ const toggleMute = (): void => {
   applySoundConfig({ muted: !soundCfg.muted });
 };
 
+// ---- auto-feeder ---------------------------------------------------------
+// The original's scheduled feeding: while armed, a pinch of pellets
+// drops every AUTOFEED_TICKS of tank uptime — a paused tank doesn't
+// feed, and an empty tank or a pile-up skips the drop entirely.
+// Declared up here like the other flags: the setCrt call below runs
+// postState() during module eval, and a later `let` would TDZ-throw.
+const AUTOFEED_KEY = "finsical:autofeed";
+const AUTOFEED_TICKS = 45 * 60 * TICKS_PER_SECOND; // every 45 tank minutes
+const AUTOFEED_MAX_FOOD = 4;
+let autoFeed = (() => { try {
+    return localStorage.getItem(AUTOFEED_KEY) === "1";
+  } catch { return false; /* storage unavailable — default off */ } })();
+
 try { setCrt(localStorage.getItem(CRT_KEY) === "1"); }
 catch { /* storage unavailable — default off */ }
 
@@ -1594,6 +1610,22 @@ function feedFish(): void {
   audio.feed();
   requestPaint();
 }
+function toggleAutoFeed(): void {
+  audio.unlock(); // Tank ▸ Auto-Feed can be the first gesture
+  autoFeed = !autoFeed;
+  try { localStorage.setItem(AUTOFEED_KEY, autoFeed ? "1" : "0"); }
+  catch { /* storage unavailable */ }
+  postState();
+}
+function feederDrop(): void {
+  const x = 30 + Math.random() * (TANK.width - 60);
+  for (const p of feedPinch(Math.random, 0)) {
+    if (sim.food.length >= AUTOFEED_MAX_FOOD) break; // cap, not just a gate
+    const pellet = sim.dropFood(x + p.dx);
+    splashAt(pellet.x, pellet.y, PUSH.pellet);
+  }
+  audio.feederChime();
+}
 /** Lamp switch: off holds the tank at night, on hands it back to the
  * Lighting mode. Persisted with the lighting settings. */
 function toggleLights(): void {
@@ -1652,6 +1684,7 @@ function openImport(): void {
 }
 (window as unknown as { finsical?: unknown }).finsical =
   { openImport, feedFish, changeWater, toggleLights,
+    toggleAutoFeed,
     // Menu clicks land here via evaluateJavaScript — not always a
     // user activation, but unlock() is harmless if resume is blocked.
     toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute,
@@ -1738,6 +1771,7 @@ window.addEventListener("keydown", (e) => {
 mountTankMenuBar({
   feed: feedFish,
   changeWater,
+  toggleAutoFeed,
   importAddons: openImport,
   takePicture,
   toggleCrt: () => setCrt(!crtOn),
@@ -1746,7 +1780,7 @@ mountTankMenuBar({
   toggleMute,
   togglePause: () => { setPaused(!paused); },
   toggleZen: () => setZen(!zen),
-  state: () => ({ crtUsable: crt?.usable ?? false, crtOn,
+  state: () => ({ autoFeed, crtUsable: crt?.usable ?? false, crtOn,
                   lampOn: lighting.lamp, muted: soundCfg.muted, paused,
                   zen }),
 });
@@ -2412,6 +2446,11 @@ function tickSim(): void {
     }
   }
   if (rosterChanged) saveTank();
+  // The feeder runs on tank time (tickCount), so a restored tank
+  // resumes mid-cycle rather than restarting the countdown.
+  if (autoFeed && sim.fish.length && sim.food.length < AUTOFEED_MAX_FOOD &&
+      sim.tickCount % AUTOFEED_TICKS === 0)
+    feederDrop();
   tickSurface(surface);
   pawTick();
   // Latch on the chime actually sounding: while the AudioContext is
@@ -2437,8 +2476,6 @@ function tickSim(): void {
 // picture: at 60 Hz every other frame, at 120 Hz three in four, each
 // also re-uploading the CRT texture. Those frames are skipped (the CRT
 // grain and flicker then move at the tick rate too).
-const TICKS_PER_SECOND = 30;
-const STEP_MS = 1000 / TICKS_PER_SECOND;
 let acc = 0;
 let last = performance.now();
 function frame(now: number): void {
