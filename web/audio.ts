@@ -53,6 +53,16 @@ const OPENING = "aqua";
  * the gain single bubbles play at, under them. */
 const AMBIENT_GAIN = 0.4;
 
+/** Stereo position of a tank event at x in a w-wide tank: the edges
+ * pan to ±0.8 — a clear sense of side without a hard pan. */
+export function panFor(x: number, w: number): number {
+  if (!(w > 0)) return 0;
+  return Math.min(0.8, Math.max(-0.8, 0.8 * (2 * x / w - 1)));
+}
+
+/** Per-play color: stereo pan (-1..1) and a playback-rate jitter. */
+interface PlayFx { pan?: number; rate?: number; }
+
 export class TankAudio {
   private ctx: AudioContext | null = null;
   // Every sound's per-play gain feeds this one node, created with the
@@ -327,7 +337,7 @@ export class TankAudio {
   }
 
   private play(buf: AudioBuffer | null, gain = 0.8, loop = false,
-               retry = true): AudioBufferSourceNode | null {
+               retry = true, fx?: PlayFx): AudioBufferSourceNode | null {
     if (!buf || !this.ctx) return null;
     // Hidden: drop the sound rather than resume() the device below. A
     // wanted ambient loop starts from setHidden(false) instead.
@@ -351,20 +361,38 @@ export class TankAudio {
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     src.loop = loop;
+    if (fx?.rate && fx.rate !== 1) src.playbackRate.value = fx.rate;
     const g = this.ctx.createGain();
     g.gain.value = gain;
-    src.connect(g).connect(this.master!); // created with ctx
+    const pan = fx?.pan ?? 0;
+    // StereoPannerNode needs WebKit 14.1+, fine for macOS 12 — and a
+    // pan of 0 keeps the direct path, so the node is opt-in only.
+    if (pan !== 0 && typeof this.ctx.createStereoPanner === "function") {
+      const p = this.ctx.createStereoPanner();
+      p.pan.value = pan;
+      src.connect(p).connect(g).connect(this.master!);
+    } else {
+      src.connect(g).connect(this.master!); // created with ctx
+    }
     src.start();
     return src;
   }
 
-  feed(): void {
-    this.play(this.find(["drop", "intowater"]), 0.7);
+  feed(pan = 0): void {
+    this.play(this.find(["drop", "intowater"]), 0.7, false, true,
+              { pan });
   }
 
   /** Fish entering the tank — the original's water-entry sound. */
-  splash(): void {
-    this.play(this.find(["intowater", "drop"]), 0.7);
+  splash(pan = 0): void {
+    this.play(this.find(["intowater", "drop"]), 0.7, false, true,
+              { pan });
+  }
+
+  /** A pellet eaten — silent unless a pack or drop ships a bite. */
+  eat(pan = 0): void {
+    this.play(this.find(["eat", "gulp", "munch"]), 0.5, false, true,
+              { pan });
   }
 
   /** A water change. Sets without the original's own sound for it
@@ -389,7 +417,8 @@ export class TankAudio {
     this.play(this.named("letoutwater"), 0.7);
   }
 
-  /** Tap sounds are positional in the original app. */
+  /** Tap sounds are positional in the original app — by zone in its
+   * name set, and stereo-panned to the glass that was knocked. */
   tap(x: number, y: number, w: number, h: number): void {
     const dx = Math.min(x, w - x), dy = Math.min(y, h - y);
     let sub = "center";
@@ -397,14 +426,17 @@ export class TankAudio {
       // Compare normalized distances — the tank is wider than tall,
       // so raw pixels call near-side taps "top"/"bottom".
       sub = dx / w < dy / h ? "side" : (y < h - y ? "top" : "bottom");
-    this.play(this.find([sub]) ?? this.find(["center", "side"]), 0.8);
+    this.play(this.find([sub]) ?? this.find(["center", "side"]), 0.8,
+              false, true, { pan: panFor(x, w) });
   }
 
   /** A bubble rising. The original has no sound for one, so this plays
-   * a short bubble sound the user added, never the filter's loop. */
-  bubble(): void {
+   * a short bubble sound the user added, never the filter's loop —
+   * panned to the bubble, pitched a touch at random. */
+  bubble(pan = 0): void {
     if (!this.bubblesOn) return;
-    this.play(this.find(["bubble"], FILTER_BUBBLING), 0.4);
+    this.play(this.find(["bubble"], FILTER_BUBBLING), 0.4, false, true,
+              { pan, rate: 0.94 + Math.random() * 0.12 });
   }
 
   /** The tank has opened with its saved sounds loaded: start the
