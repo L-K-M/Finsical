@@ -179,6 +179,9 @@ function zipEvict(url: string): void {
 /** Note a resolved entry's size and trim the oldest resolved zips
  * while the byte budget is overshot. Pending entries stay. */
 function zipWeigh(url: string, bytes: number): void {
+  // Idempotent: a re-weighed url (refetch after eviction) replaces its
+  // old count instead of double-adding.
+  zipBytes -= zipSize.get(url) ?? 0;
   zipSize.set(url, bytes);
   zipBytes += bytes;
   for (const [k, v] of zipCache) {
@@ -255,7 +258,10 @@ function fetchZip(url: string): Promise<Uint8Array> {
       zipWeigh(url, d.byteLength);
       return d;
     })();
-    lruSet(zipCache, url, fresh, ZIP_CACHE_CAP, (v) => !zipPending.has(v));
+    // onEvict routes count-cap trims through zipEvict too — every path
+    // that drops an entry must keep zipSize/zipBytes honest.
+    lruSet(zipCache, url, fresh, ZIP_CACHE_CAP,
+           (v) => !zipPending.has(v), (k) => zipEvict(k));
     zipPending.add(fresh);
     // Delete only if still ours — a same-tick caller may have swapped in
     // a replacement promise before this one rejected.

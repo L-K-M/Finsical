@@ -70,4 +70,20 @@ describe("lru", () => {
     set("d", 4); // now a trims normally
     expect(m.has("a")).toBe(false);
   });
+
+  it("onEvict fires once per trimmed key, not for vetoed ones", () => {
+    const m = new Map<string, number>();
+    const pinned = new Set<number>([1]);
+    const evicted: string[] = [];
+    const set = (k: string, v: number) =>
+      lruSet(m, k, v, 2, (x) => !pinned.has(x),
+             (k0) => evicted.push(k0));
+    set("a", 1);
+    set("b", 2);
+    set("c", 3); // a vetoed — no eviction, no callback
+    expect(evicted).toEqual([]);
+    pinned.delete(1);
+    set("d", 4);
+    expect(evicted).toEqual(["a", "b"]); // two over cap: a then b trim
+  });
 });
