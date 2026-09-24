@@ -139,7 +139,9 @@ export function pickDecorFrames(images: Iterable<IndexedImage>):
 /** Whether any of `images` would render as decor — the same acceptance
  * rule decorCanvases applies (a pickable frame with nonzero area), so
  * install validation can tell a decor pack from one that draws
- * nothing. */
+ * nothing. A pick's frames are equal-size by construction (they're
+ * grouped on `${w}x${h}`), so the first frame speaks for all of
+ * them. */
 export function hasDecorFrames(images: Iterable<IndexedImage>): boolean {
   const pick = pickDecorFrames(images);
   const first = pick?.frames[0];

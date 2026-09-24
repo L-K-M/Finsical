@@ -334,7 +334,7 @@ describe("isListed", () => {
 });
 
 describe("orphanedSounds", () => {
-  const addon = (url: string, sounds?: string[]) =>
+  const addon = (url: string, sounds?: string[]): Importable =>
     ({ section: "sounds", inner: url, url, ...(sounds ? { sounds } : {}) });
   it("returns names only the leaving add-ons owned", () => {
     expect(orphanedSounds(
@@ -422,6 +422,13 @@ describe("usablePacks", () => {
   it("keeps a scene-sized backdrop", () => {
     const rs = [res({ images: new Map([["i", fakeImage(320, 200)]]) })];
     expect(usablePacks(rs, "backgrounds")).toEqual(rs);
+  });
+  it("counts a gravel strip a backgrounds pack would still install", () => {
+    // pickBackdrop picks gravel art out of the same image set — a pack
+    // with only a strip puts gravel in the tank, not a dead install.
+    const rs = [res({ images: new Map([["i", fakeImage(320, 60)]]) })];
+    expect(usablePacks(rs, "backgrounds")).toEqual(rs);
+    expect(usablePacks(rs, "tanks")).toEqual(rs);
   });
   it("counts decor art for plants and accessories", () => {
     const rs = [res({ images: new Map([["i", fakeImage(40, 30)]]) })];

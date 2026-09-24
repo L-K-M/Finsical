@@ -6,12 +6,13 @@
  */
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import type { IndexedImage, SpriteSheet } from "../core/data/azpack.js";
+import type { PackSection } from "./import.js";
 
 export interface DroppedPack {
   /** Display/species name — the file name minus its extension. */
   name: string;
   /** Tank section the file imports as (see dropSection). */
-  section: string;
+  section: PackSection;
   /** Sprite sheets that spawn a fish: fish packs and the base-library
    * .REZ only. Scenery packs' sprite streams stay out of the fish pool,
    * matching handleSheets' fish-only registration. */
@@ -23,7 +24,7 @@ export interface DroppedPack {
 
 /** The section a dropped pack imports as, by extension: the same
  * dispatch a remote install gets from its collection's section. */
-export function dropSection(name: string): string {
+export function dropSection(name: string): PackSection {
   const ext = (/\.([^./]+)$/.exec(name)?.[1] ?? "").toLowerCase();
   return ext === "grv" ? "gravel"
     : ext === "plt" ? "plants"
