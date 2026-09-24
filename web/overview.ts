@@ -353,7 +353,13 @@ setInterval(() => {
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) bus.post({ op: "hello" });
 });
-// Closing the window must not leave a fish spotlighted forever.
-window.addEventListener("pagehide", () => {
-  bus.post({ op: "focusFish", id: null });
+// Closing the window must not leave a fish spotlighted forever —
+// but a bfcache pagehide keeps the DOM's selection, so only a real
+// unload lifts it, and a restore re-asserts it.
+window.addEventListener("pagehide", (e) => {
+  if (!e.persisted) bus.post({ op: "focusFish", id: null });
+});
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted)
+    bus.post({ op: "focusFish", id: items[list.selected]?.fishId ?? null });
 });

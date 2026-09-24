@@ -2400,9 +2400,13 @@ function render(): void {
   // clock so a paused tank doesn't freeze them mid-stroke.
   if (focusId !== null) {
     const f = sim.fish.find((x) => x.id === focusId);
+    // The fish left the tank — lift the spotlight so a recycled id
+    // can't quietly reattach it to a new fish.
+    if (!f) focusId = null;
     if (f) {
-      // halfW/halfH are unscaled extents — a juvenile's box shrinks
-      // with its growth scale, matching sim.halfW().
+      // halfW/halfH are the fish's unscaled sprite extents; a
+      // juvenile's box shrinks with its growth scale. The fallbacks
+      // box a fish whose sheet hasn't bound yet.
       const hw = (f.halfW ?? 10) * f.scale + 3;
       const hh = (f.halfH ?? 7) * f.scale + 3;
       const x0 = Math.max(1, Math.round(f.x - hw));
@@ -2412,7 +2416,9 @@ function render(): void {
       ctx.save();
       ctx.setLineDash([2, 2]);
       ctx.lineWidth = 1;
-      ctx.lineDashOffset = -(sim.tickCount % 8) / 2;
+      // The ants hold still under reduced motion, like the water.
+      ctx.lineDashOffset = waterMotion === "animated"
+        ? -(sim.tickCount % 8) / 2 : 0;
       ctx.strokeStyle = "rgba(0,0,0,.8)";
       ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
       ctx.lineDashOffset += 1;
