@@ -626,6 +626,8 @@ function addDecor(images: Iterable<IndexedImage>, src: string): void {
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
 let nextSlot = 0;
+/** One quota alert per session — a multi-file drop shouldn't stack them. */
+let storageWarned = false;
 function sheetOf(f: Fish): SpriteSheet | null {
   if (!fishSheets.length) return null;
   // Fish spawned by a specific pack keep its sheet; the rest round-robin.
@@ -1822,9 +1824,19 @@ window.addEventListener("drop", (e) => {
         console.warn(`drop: ${name} packPut rejected`, err);
         return null;
       });
-      if (!stored)
+      if (!stored) {
         console.warn(`drop: ${name} could not be stored — it won't ` +
           "survive a relaunch");
+        // The fish swims on, so a silent skip would read as a save —
+        // say once (per session) that this pack is session-only.
+        if (!storageWarned) {
+          storageWarned = true;
+          showAlert({ icon: "caution",
+            text: "Storage is full — dropped add-ons will be gone " +
+              "after you reload. Remove some add-ons to make room.",
+            buttons: [{ title: "OK", default: true, cancel: true }] });
+        }
+      }
       // The archive install path: handleSheets binds the sheet to the
       // url and spawns the fish; scenery keys by url so Overview's
       // Remove clears it.
