@@ -195,7 +195,9 @@ pushButton(copyBtn, () => {
       ta.setSelectionRange(0, ta.value.length); // older iOS
       done(document.execCommand("copy") ? "Copied!" : "Copy failed");
     } catch { done("Copy failed"); }
-    finally { ta.remove(); }
+    // focus() moved it to the textarea — give it back so keyboard
+    // users don't land on <body> when this path runs.
+    finally { ta.remove(); copyBtn.focus(); }
   };
   if (typeof navigator.clipboard?.writeText === "function")
     navigator.clipboard.writeText(text)
