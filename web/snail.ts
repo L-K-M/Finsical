@@ -43,7 +43,7 @@ export function snailSpawn(t0: number, rng: () => number): SnailVisit {
 
 /** Where the sprite's left edge sits at tick t on a `w`-wide tank, or
  * null once the visit is over. `paused` while the snail is pulled in —
- * the sprite hunkers (the foot row spreads, eyestalks dip). */
+ * the sprite hunkers (the eyestalks tuck in). */
 export function snailPose(v: SnailVisit, t: number, w: number):
     { x: number; paused: boolean } | null {
   const el = t - v.t0;
@@ -62,11 +62,11 @@ export function snailPose(v: SnailVisit, t: number, w: number):
 
 /** Rasterize the sprite once per direction — paused drops the
  * eyestalks, so two frames per direction. */
-export function snailCanvas(dir: 1 | -1, paused: boolean,
-                            scale = 1): HTMLCanvasElement {
+export function snailCanvas(dir: 1 | -1,
+                            paused: boolean): HTMLCanvasElement {
   const cv = document.createElement("canvas");
-  cv.width = SNAIL_W * scale;
-  cv.height = SNAIL_H * scale;
+  cv.width = SNAIL_W;
+  cv.height = SNAIL_H;
   const c = cv.getContext("2d")!;
   for (let y = 0; y < SNAIL_H; y++)
     for (let x = 0; x < SNAIL_W; x++) {
@@ -77,7 +77,7 @@ export function snailCanvas(dir: 1 | -1, paused: boolean,
       // Paused: the eyestalks tuck in.
       if (paused && ch === "e") continue;
       c.fillStyle = ink;
-      c.fillRect(x * scale, y * scale, scale, scale);
+      c.fillRect(x, y, 1, 1);
     }
   return cv;
 }
