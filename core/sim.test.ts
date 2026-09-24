@@ -154,6 +154,40 @@ describe("Sim", () => {
     expect(sim.food[0]!.y).toBeLessThan(100 - 12 + 0.4);
   });
 
+  it("drops a golden pellet about one time in fifty", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 9);
+    let gold = 0;
+    for (let i = 0; i < 500; i++) {
+      sim.food.length = 0; // keep the tank clear; only the flag matters
+      if (sim.dropFood(160).golden) gold++;
+    }
+    expect(gold).toBeGreaterThan(2);
+    expect(gold).toBeLessThan(30);
+  });
+
+  it("a golden meal earns a victory roll", () => {
+    const sim = new Sim({ width: 200, height: 100 }, 5);
+    const f = sim.addFish({ x: 40, y: 50, hunger: 0.9 });
+    const pellet = sim.dropFood(120);
+    pellet.golden = true;
+    for (let i = 0; i < 2000 && sim.food.length; i++) sim.tick();
+    expect(sim.food.length).toBe(0);
+    // Eaten, then rolling — the roll runs its TURN_TICKS course and
+    // the fish comes out the other side facing the other way.
+    expect(f.state).toBe("turn");
+    const from = f.facing;
+    let exited = -1;
+    for (let i = 0; i < TURN_TICKS + 2; i++) {
+      sim.tick();
+      if (f.state !== "turn") { exited = i; break; }
+    }
+    expect(exited).toBeGreaterThanOrEqual(0); // the roll ran its course
+    expect(f.facing).toBe((-from) as 1 | -1); // and flipped the profile
+    // The fresh destination sits ahead of the new facing, not a
+    // target the roll left behind it.
+    expect((f.x - f.tx) * f.facing).toBeLessThanOrEqual(12);
+  });
+
   it("hunger builds over ~20 minutes, not seconds", () => {
     const sim = new Sim({ width: 200, height: 100 }, 5);
     const f = sim.addFish({ x: 40, y: 50, hunger: 0 });
