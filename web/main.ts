@@ -30,6 +30,10 @@ import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
          swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
 import { containPoint, isFeedZone } from "./feedzone.js";
+import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
+         PAW_GAP_RANGE, PAW_H, PAW_W, pawPose, pawSpawnX, pawSwatAt }
+  from "./catpaw.js";
+import type { PawVisit } from "./catpaw.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
@@ -2094,6 +2098,13 @@ function render(): void {
   // On the glass, so over the fish: ripples and splashes paint last.
   drawRipples(ctx, ripples);
   drawSplashes(ctx, splashes);
+  // The cat presses its paw to the outside of the glass — over the
+  // water but under the murk/night tint it can't dim (it's out there
+  // with the viewer).
+  if (pawVisit) {
+    const pose = pawPose(pawVisit, sim.tickCount);
+    if (pose) drawPaw(pose.x, pose.y);
+  }
 
   // Fouled water murks the whole scene.
   drawMurk(ctx, sim.waterQuality, t);
@@ -2168,11 +2179,60 @@ function drawNight(now: Date): void {
   ctx.restore();
 }
 
+// ---- the cat ------------------------------------------------------------
+// AquaZone's signature visitor: a paw drops from the top edge every few
+// minutes, bats at the glass a couple of times, and leaves. Tick-driven,
+// so it pauses with the sim and never fires while the tank is hidden.
+let pawVisit: PawVisit | null = null;
+/** tickCount of the next allowed visit; -1 until first scheduled. */
+let pawNextAt = -1;
+const pawSwatted = new Set<number>();
+
+function pawTick(): void {
+  const t = sim.tickCount;
+  if (pawNextAt < 0)
+    pawNextAt = t + PAW_FIRST + Math.floor(Math.random() * PAW_FIRST_RANGE);
+  if (!pawVisit && t >= pawNextAt) {
+    pawVisit = { t0: t, x: pawSpawnX(Math.random),
+                 swats: 2 + (Math.random() < 0.4 ? 1 : 0) };
+  }
+  if (!pawVisit) return;
+  if (!pawPose(pawVisit, t)) {
+    pawVisit = null;
+    pawSwatted.clear();
+    pawNextAt = t + PAW_GAP + Math.floor(Math.random() * PAW_GAP_RANGE);
+    return;
+  }
+  const sw = pawSwatAt(pawVisit, t);
+  if (sw && !pawSwatted.has(sw.i)) {
+    pawSwatted.add(sw.i);
+    // The bat lands like a hard knock on that spot: startle the fish,
+    // ring the glass, slap the surface.
+    sim.tap(sw.x, sw.y);
+    audio.tap(sw.x, sw.y, TANK.width, TANK.height);
+    ripples.push({ x: sw.x, y: sw.y, age: 0 });
+    disturbSurface(surface, sw.x, PUSH.tap, 8);
+  }
+}
+
+/** The paw: a leg column to the top edge plus the pixel-art pad. */
+function drawPaw(cx: number, top: number): void {
+  ctx.fillStyle = PAW_FUR;
+  ctx.fillRect(Math.round(cx) - 2, 0, 4, Math.max(0, Math.round(top)));
+  const x0 = Math.round(cx - PAW_W / 2), y0 = Math.round(top);
+  for (let y = 0; y < PAW_ART.length; y++) {
+    const row = PAW_ART[y]!;
+    for (let x = 0; x < row.length; x++)
+      if (row[x] === "K") ctx.fillRect(x0 + x, y0 + y, 1, 1);
+  }
+}
+
 function tickSim(): void {
   const bubbles = sim.bubbles.length;
   stirSurface();
   sim.tick();
   tickSurface(surface);
+  pawTick();
   tickRipples(ripples);
   tickSplashes(splashes);
   // Sparse bloops: only some spawns make a sound. Checked per tick so
