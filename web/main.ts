@@ -1900,7 +1900,32 @@ async function walkEntry(ent: FileSystemEntry, prefix: string,
     }
   }
 }
-window.addEventListener("dragover", (e) => e.preventDefault());
+// Drop cue: while files hover the window, the glass shows a dashed
+// frame and a hint. dragenter/dragleave nest per element, so a depth
+// counter — not the events alone — owns the class.
+let dragDepth = 0;
+const setDragging = (on: boolean): void => {
+  document.body.classList.toggle("dragging", on);
+};
+window.addEventListener("dragenter", (e) => {
+  if (!e.dataTransfer?.types.includes("Files")) return;
+  if (++dragDepth === 1) setDragging(true);
+});
+window.addEventListener("dragleave", (e) => {
+  if (!e.dataTransfer?.types.includes("Files")) return;
+  if (dragDepth > 0 && --dragDepth === 0) setDragging(false);
+});
+// Capture phase here too: a descendant that swallows dragover would
+// keep dropEffect at "none" and the drop event would never fire.
+window.addEventListener("dragover", (e) => e.preventDefault(), true);
+// Capture phase: a drop ends the drag without a leave event, and a
+// descendant handler that stops propagation must not strand the cue —
+// nor let the browser navigate away to the dropped file.
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dragDepth = 0;
+  setDragging(false);
+}, true);
 window.addEventListener("drop", (e) => {
   e.preventDefault();
   // Entries must be read before the handler returns — items invalidate.
