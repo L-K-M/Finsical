@@ -1999,8 +1999,7 @@ function render(): void {
   drawSplashes(ctx, splashes);
 
   // Fouled water murks the whole scene.
-  drawMurk(ctx, sim.waterQuality,
-           waterMotion === "animated" ? sim.tickCount : 0);
+  drawMurk(ctx, sim.waterQuality, t);
 
   drawNight(new Date());
 

@@ -7,7 +7,7 @@ import {
   MURK_BOTTOM, MURK_TOP, pelletDrift, PINCH_MAX, PINCH_SPREAD, REFRACT_ROWS,
   refractShift, sunFactor,
 } from "./water.js";
-import { SURFACE_MAX } from "./surface.js";
+import { SURFACE_MAX, SURFACE_W } from "./surface.js";
 
 describe("bubbles", () => {
   it("grow from 1 px at depth to 4 px near the surface", () => {
@@ -169,18 +169,18 @@ describe("drawAir", () => {
   it("covers the whole tank above the surface line, and only that", () => {
     const { ctx, rects } = recorder();
     drawAir(ctx, 1);
-    expect(rects[0]).toEqual([0, 0, 320, SURFACE]);
+    expect(rects[0]).toEqual([0, 0, SURFACE_W, SURFACE]);
     // The hood and its lamp stay in the air, clear of the water.
     for (const [, y, , h] of rects) expect(y! + h!).toBeLessThanOrEqual(SURFACE);
   });
 
   it("follows a moving waterline column by column", () => {
-    const line = new Int16Array(320).fill(SURFACE);
+    const line = new Int16Array(SURFACE_W).fill(SURFACE);
     line.fill(SURFACE + 2, 100, 110);
     line.fill(SURFACE - 3, 200, 204);
     const { ctx, rects } = recorder();
     drawAir(ctx, 0, line);
-    const cover = new Array<number>(320).fill(-1);
+    const cover = new Array<number>(SURFACE_W).fill(-1);
     for (const [x, y, w, h] of rects) {
       if (y !== 0 || h! < SURFACE - 3) continue; // hood details
       for (let i = x!; i < x! + w!; i++) cover[i] = h!;
@@ -190,7 +190,7 @@ describe("drawAir", () => {
 
   it("keeps every hood detail above the highest wave", () => {
     const { ctx, rects } = recorder();
-    drawAir(ctx, 0.5, new Int16Array(320).fill(SURFACE));
+    drawAir(ctx, 0.5, new Int16Array(SURFACE_W).fill(SURFACE));
     const details = rects.filter(([, y, , h]) => !(y === 0 && h! >= SURFACE));
     expect(details.length).toBeGreaterThan(0);
     for (const [, y, , h] of details)

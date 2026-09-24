@@ -310,7 +310,8 @@ export function causticShimmer(band: number, t: number): number {
 /**
  * Sunlight in the water: gentle slanted shafts and caustics over the
  * lower tank. Drawn behind the fish, and scaled by daylight so nights
- * stay dark.
+ * stay dark. The waterline is drawSurface's, drawn every frame, nights
+ * included.
  */
 export function drawLight(ctx: CanvasRenderingContext2D, light: number,
                           tick: number, motion: WaterMotion,
