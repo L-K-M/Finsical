@@ -31,6 +31,7 @@ import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
 import { placeholderFrames } from "./placeholder.js";
 import { containPoint, isFeedZoneY } from "./feedzone.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
+import { claimTank } from "./tankclaim.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
 import { stateLabel } from "./overviewmodel.js";
@@ -218,7 +219,28 @@ const placeholderIds = new Set<number>();
 if (roster.length || keepEmpty) for (const f of roster) sim.addFish(f);
 else for (const f of DEFAULT_FISH) placeholderIds.add(sim.addFish(f).id);
 
+// Two same-origin tank tabs would both simulate, both answer every
+// mutating bus op, and both write SAVE_KEY — last writer wins and the
+// saves interleave. The first tab holds a lease; a second runs the
+// tank view-only — sim and render still go, but nothing saves and no
+// bus message is answered — until the owner's lease lapses or its
+// pagehide releases it, then reloads to take over.
+const claim = claimTank(() => location.reload()); // lease stolen
+                                                  // mid-session
+const tankOwner = claim.owned;
+if (!tankOwner) {
+  setInterval(() => { if (claim.ownerGone()) location.reload(); },
+              1_500);
+  showAlert({
+    icon: "note",
+    text: "Finsical is already open in another window. This copy is " +
+          "view only — it won't save.",
+    buttons: [{ title: "OK", default: true, cancel: true }],
+  });
+}
+
 function saveTank(): void {
+  if (!tankOwner) return; // a spectator never writes the shared save
   try {
     const s: SavedTank = {
       v: rosterComplete ? 2 : 1,
@@ -851,6 +873,8 @@ const bus = openBus(onBusMessage);
 const boot = Math.random().toString(36).slice(2);
 
 function postState(): void {
+  // A spectator stays silent — the owning tab answers the panels.
+  if (!tankOwner) return;
   bus.post({
     op: "state",
     boot,
@@ -1003,6 +1027,7 @@ function fishOutAfter(remove: () => void): void {
 }
 
 function onBusMessage(m: BusMsg): void {
+  if (!tankOwner) return; // view-only: the owner answers everything
   if (m.op === "hello") postState();
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
