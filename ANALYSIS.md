@@ -1,6 +1,7 @@
 # Finsical Analysis: Shovel-Ready Improvements
 
-Consolidates nine review passes and their review-response logs into one
+Consolidates eleven review passes and their review-response logs into
+one
 backlog. Completed work stays listed with its PR so later passes can
 see what landed; every open idea is written so an LLM can pick it up
 cold. Nothing from earlier passes was dropped: ideas were merged into
@@ -37,6 +38,11 @@ one entry per idea, and each merge is recorded in that entry's
   #180 and #182 are open for the maintainer (all at steady state, none
   merged). Tenth-pass entries name that revision; verify against
   `origin/main` before re-scoping, since those PRs may have landed.
+- Eleventh pass (2026-09-24, `origin/main` `f777fa8`): review PRs
+  #181, #183 and #184 are open for the maintainer (all at steady
+  state, none merged). Eleventh-pass entries name that revision;
+  verify against `origin/main` before re-scoping, since those PRs may
+  have landed.
 
 ## Baselines
 
@@ -68,6 +74,18 @@ one entry per idea, and each merge is recorded in that entry's
   are recorded under "Refuted or dropped in the tenth-pass review".
   The Python suite was not re-run this pass (no tool changes). Swift
   behavior code-verified only, as before.
+- Eleventh pass (full-repo review at `f777fa8`, 2026-09-24): three
+  dimension agents (core engine and decoders, web UI and rendering,
+  macOS shell and tooling) plus targeted verification (vitest 38
+  files / 471 tests green; `npm run typecheck` clean; `npm ci` from
+  scratch). Findings became `tmp.md`, then three PRs (#181 tap-sound
+  word matching, #183 frame-pacing and hour-label guards, #184
+  tank-page CSS nits), each reviewed by GLM 5.3 to steady state and
+  left open. New open entries take the next free IDs (B-56+, P-24+,
+  V-26+); everything else maps to existing entries (see each entry's
+  eleventh-pass notes and the review-response log). The Python suite
+  was not re-run this pass (no tool changes). Swift behavior
+  code-verified only, as before.
 
 ## ID scheme and map
 
@@ -874,6 +892,49 @@ Prefs off-caption (PR #180), Diary anniversaries (PR #182, D-22 part);
 still open and highest value per risk: B-04 pack identity, S-07 schema
 boundary, F-01 resource map.
 
+### Completed (eleventh pass, PRs open for review, all at steady state)
+
+Eleventh-pass baseline `f777fa8`. Each PR is one branch cut from
+`origin/main`, left open for the maintainer. Round counts and declines
+are in the eleventh-pass review-response log.
+
+- **PR #181** (`fix/tap-song-hijack`): a song called Centerfold
+  answered every center glass tap: `find()` matched substrings and
+  imported sounds outrank bundled ones in that pass. Substring matching
+  is now whole-word (`words()` in `web/audio.ts`: "CENTER*" and
+  "bubble pop" still hit, "Centerfold" stays silent), with regression
+  tests for tap-with-song-plus-game-set and tap-with-song-only. Round
+  1 applied: the single-word-sub contract documented on `find()`.
+  Round 2 clean. Lands the word-splitting half of B-19's Change (which
+  named it as the alternative); the `kind: effect | music` split
+  stays open.
+- **PR #183** (`fix/loop-hour-guards`): `planFrame` looped forever on a
+  non-positive or NaN step and let NaN poison the accumulator (the new
+  test hung the suite until the fix); `hourLabel` printed "8.5:00" and
+  "NaN:00". Guards plus a per-frame tick cap (one frame's steps, at
+  most `ABSOLUTE_MAX_TICKS` iterations, excess dropped like a stall),
+  with regression tests. Rounds applied: non-finite-dt and dropped-dt
+  docs, the finite-but-huge acc / near-zero step cap, and the exact
+  tiny-step pin (`{ ticks: ABSOLUTE_MAX_TICKS, acc: 0 }`). Round 3
+  clean. No existing entry; the hang was unreachable from today's
+  callers (constant step, bounded acc) but the guard is cheap.
+- **PR #184** (`fix/small-css-nits`): neutral cursor on the tank canvas
+  (a click feeds or taps, never drags; the feed zone keeps its inline
+  crosshair), a wrapping fish-tip balloon (`max-width: 220px`,
+  cooperating with the JS clamp, which already reads both axes after
+  setting text), and document windows that shrink (`max-width:
+  calc(100vw - 24px)`, covering a classic scrollbar) instead of
+  clipping. Round 1 applied: 16px margin widened to 24px; the tooltip
+  vertical-clamp info verified against `web/main.ts` with no change.
+  Round 2 clean. Narrows U-03's cursor complaint and U-27's clipping;
+  the finfo-under-glass stacking stays open (V-26).
+
+Eleventh-pass top picks, with status: tap word matching (PR #181),
+frame-pacing guards (PR #183), tank CSS nits (PR #184); still open
+and highest value per risk: B-04 pack identity, S-07 schema boundary,
+F-01 resource map, plus new shovel-ready entries B-56 through B-61,
+P-24, V-26 and V-27 below.
+
 ## Bugs and reliability (open)
 
 Done this pass and removed from this list: B-01, B-02, B-03, B-05,
@@ -1073,6 +1134,13 @@ Size S · Severity medium · Value 3/5 · Risk 2/5
 **Change.** Add `kind: 'effect' | 'music'` to sound records: the AUDIO_FILE_EXT branch of fileSoundRecords sets 'music', the 'snd ' fork branch 'effect'; carry optional `kind` through StoredSnd, capSnds and sndsMerge. Legacy records without kind count as effect only if they are RIFF/WAVE, mono and <= 22254 Hz (what wavBytes emits). addWavs puts music in a separate `music` map that find() never searches; playImported(name) looks in both (and F-05's jukebox plays music). Keep substring matching for effects (the original fork's names are unknown); if stricter matching is wanted, split camelCase and non-letters into words first rather than a word regex on the lowercased name.
 
 **Acceptance.** Tests (audio.test.ts, fake AudioContext): a music record 'Desktop Aquarium' never plays from tap(), feed() or startAmbient() but plays via playImported; an effect 'aqua' loops; 'TapTop' still answers a top tap.
+
+Eleventh-pass update: the word-splitting half of this Change is done
+in PR #181 (`words()` in `web/audio.ts`; "CENTER*" and "bubble pop"
+still match, "Centerfold" stays silent; exact-named events already
+used `named()`). Still open: the `kind: 'effect' | 'music'` split, so
+a song with a whole event word in its name ("Top Hit" answers a top
+tap today) still takes the slot, and B-18 removal.
 
 **Merged and related.**
 
@@ -1578,6 +1646,142 @@ heartbeats and threshold boundaries (quality exactly 0.3).
 - U-12 (disconnected state), F-30 (persisted history), open PR #140
   (sparklines from the same history).
 
+### B-56 Sim spawn contract gaps: no cap, unused hunger constant
+
+Size S · Severity low · Value 2/5 · Risk 1/5 (eleventh pass)
+
+**Problem.** `FISH_CAP = 24` (`core/tuning.ts`) is enforced only in UI
+install paths, never in `Sim.addFish`, so any future caller (or a
+restored roster) can exceed it; `food` and `bubbles` are likewise
+uncapped (see P-20). `addFish` also defaults `hunger: 0.2` while
+`SPAWN_HUNGER (0.45)` sits unused despite the comment that new fish
+start past seek.
+
+**Evidence.** `core/sim.ts:256-290` (addFish), `core/tuning.ts`
+(FISH_CAP, SPAWN_HUNGER), `web/main.ts` install paths.
+
+**Change.** Wire `SPAWN_HUNGER` into `addFish`; decide where the cap
+belongs (sim return value vs caller check) and cap `food`/`bubbles`
+with oldest-first eviction. Keep the cap consistent with PR #111's UI
+cap at merge.
+
+**Acceptance.** (derived) Vitest: `addFish` spawns at `SPAWN_HUNGER`;
+over-cap adds are refused or evicted; food/bubble arrays stay bounded
+under `dropFood` spam.
+
+**Merged and related.**
+
+- Related: P-20 (per-tick bounds), PR #111 (UI fish cap, open).
+
+### B-57 Drift-steering edge cases: turn double-move, standoff drift, wall-stuck seekers
+
+Size S · Severity low · Value 3/5 · Risk 2/5 (eleventh pass)
+
+**Problem.** Three small `tickFish` defects in the drift path: (1)
+after `maybeTurn()` sets `state = turn`, the same tick still runs
+drift steering, the stroke pulse and `x += vx` (`turning` only freezes
+`want`), so the turn-entry tick moves twice; (2) a fish hovering
+inside the pointer standoff skips `decide` but still steers to a stale
+`tx/ty`, drifting off the pointer instead of holding station; (3)
+wall-hit early `decide` runs only for `drift`, so a `seek` pressed
+into a wall (common for big fish: `room()` vs a pellet at `MARGIN`)
+sticks until the pellet is gone.
+
+**Evidence.** `core/sim.ts:501-557` (drift branch),
+`core/sim.ts:656-659` (wall-hit early decide).
+
+**Change.** Early-out the movement integration on the tick a turn
+begins; when holding inside the standoff, steer to a station-keeping
+target (or skip steering); run the wall-hit re-decide for `seek` too
+without resetting the brake clock (seek uses `phase` as the brake
+clock; see the existing comment).
+
+**Acceptance.** (derived) Vitest: turn-entry tick moves at most one
+step; a standoff hover holds position within a few px over 60 ticks;
+a seeker pinned to a wall re-aims within `MOVE_TICKS`.
+
+### B-58 Hunger and vigor model inconsistencies
+
+Size S · Severity low · Value 2/5 · Risk 2/5 (eleventh pass)
+
+**Problem.** (1) The seek floor `FOOD_SINK * 1.5 / vigor` is later
+multiplied by `vigor` when integrating, so foul-water seekers swim at
+full cruise, contradicting the sluggish-water model. (2) Sleep's
+`peckish` needs `hunger > HUNGER_SEEK (0.4)`, but awake `foodFor`
+snacks at `> 0.1` inside `NOTICE_DIST`, so sleepers ignore a nearby
+pellet they would eat awake.
+
+**Evidence.** `core/sim.ts:430-431` (vigor), `core/sim.ts:439-440`
+(peckish), `core/sim.ts:584-595` (seek floor), `core/sim.ts:785-791`
+(foodFor).
+
+**Change.** Apply the vigor division once (floor in post-vigor units);
+align the sleep-wake appetite with the snack threshold (wake for a
+pellet within `NOTICE_DIST` at snack hunger, else keep sleeping).
+
+**Acceptance.** (derived) Vitest: seeker speed scales with `vigor`;
+a sleeper with a pellet in `NOTICE_DIST` at hunger 0.2 wakes and
+seeks.
+
+### B-59 Install-feedback audio gaps: locked-silent installs, overlapping feedback
+
+Size S · Severity low · Value 2/5 · Risk 1/5 (eleventh pass)
+
+**Problem.** (1) The Add-to-Tank path never calls `audio.unlock()`
+(only canvas/keys/menus do), and `playImported()` drops while the
+context is locked, so the first install feedback is silently lost.
+(2) `load()` stops the ambient loop but not `feedbackSrc`, so an old
+feedback overlaps a newly loaded pack.
+
+**Evidence.** `web/audio.ts:84-92` (load), `web/audio.ts:268-279`
+(playImported), `web/main.ts` install paths (no `unlock()` call).
+
+**Change.** Unlock from the install click path (it is a user gesture);
+track and stop `feedbackSrc` in `load()` like `ambientSrc`.
+
+**Acceptance.** (derived) Fake-AudioContext test: install click with a
+suspended context plays feedback after resume; `load()` during
+feedback leaves exactly one source.
+
+### B-60 Take Picture clicks a detached link and blocks on encode
+
+Size S · Severity low · Value 2/5 · Risk 1/5 (eleventh pass)
+
+**Problem.** `takePicture()` calls `a.click()` on a detached anchor,
+which some browsers ignore, and `toDataURL` encodes synchronously on
+the main thread.
+
+**Evidence.** `web/main.ts` `takePicture()`.
+
+**Change.** Append the anchor before clicking (remove after), and
+prefer `canvas.toBlob` (async) with a `toDataURL` fallback.
+
+**Acceptance.** (derived) Manual check in Firefox and Safari: the PNG
+downloads; no dropped frames on the tank during capture.
+
+### B-61 Import-panel caches: unbounded artist thumbs, stale previews
+
+Size S · Severity low · Value 2/5 · Risk 1/5 (eleventh pass)
+
+**Problem.** `thumbMemo` is unbounded for `a:` (artist) keys while
+`sweepThumbs()` only sweeps `f:` keys: a slow leak while browsing.
+Separately, `paintThumb` returns early when `box.firstChild` exists,
+so a list row never refreshes its preview after a reinstall.
+
+**Evidence.** `web/main.ts` (`thumbMemo`, `sweepThumbs`),
+`web/import.ts` (`paintThumb`).
+
+**Change.** Bound or sweep `a:` entries with the same policy as `f:`;
+repaint the row when its pack reinstalls (or drop the early return
+when the cached canvas is stale).
+
+**Acceptance.** (derived) Heap stays flat across repeated section
+browsing; reinstalling a pack visibly refreshes its row.
+
+**Merged and related.**
+
+- Related: P-01 (cache eviction).
+
 ## Performance and smoothness (open)
 
 Done this pass and removed from this list: P-03, P-13, and P-10's
@@ -1939,6 +2143,38 @@ sim is frozen while hidden).
 render count over 5 s halves again in Playwright; Activity Monitor
 energy before and after on a Mac.
 
+### P-24 Tank-page per-frame allocations: gradients, Dates, layout reads
+
+Size S · Severity low · Value 3/5 · Risk 1/5 (eleventh pass)
+
+**Problem.** `drawAir()` allocates a `createLinearGradient` plus
+full-tank fills every frame; `drawSurface()` issues ~320 1x1
+`fillRect`s with per-column alpha and `drawLight()` ~56 `drawImage`s
+for caustics per tick; `drawNight(new Date())` allocates a `Date` (and
+gradients when tint/beam active) every frame; `pointermove` reads
+`offsetWidth/offsetHeight` (forced layout) and `tankPoint` runs
+`getBoundingClientRect` per move while `frame()` runs it again per
+frame.
+
+**Evidence.** `web/water.ts` (`drawAir`, `drawSurface`, `drawLight`,
+`drawNight`), `web/main.ts:332-349` (pointermove tip math),
+`web/main.ts` `frame()` hover re-evaluation.
+
+**Change.** Hoist gradients (rebuild on resize/light-bucket change
+only); batch the surface into runs or a single path; pass a cached
+timestamp into `drawNight`; cache the last rect for hover math (the
+frame loop already re-evaluates from the last client point). Measure
+with the frame profiler before and after; keep the render-on-tick
+gating (PRs #146/#153) intact.
+
+**Acceptance.** (derived) No per-frame allocations in a profiled
+minute of calm tank; pointermove performs no layout reads.
+
+**Merged and related.**
+
+- Related: P-19 (render allocations), P-03/P-13 (render-on-tick),
+  P-10 (CRT shader cost).
+
 ## Visual and layout (open)
 
 Done this pass and removed from this list: V-01 (PR #87/#125), V-02,
@@ -2287,6 +2523,46 @@ dimming behind fish only when contrast is low.
 **Acceptance.** (derived) A contrast check on a pale backdrop fixture;
 screenshot comparison.
 
+### V-26 The Get Info card renders under the machine's glass reflections
+
+Size S · Severity low · Value 2/5 · Risk 2/5 (eleventh pass)
+
+**Problem.** `#screen` (`z-index: 1`) creates a stacking context, so
+`.finfo` (`z-index: 2` inside it) paints below `#machine`
+(`z-index: 2`): the Get Info card slides under glass reflections
+instead of floating above them like a real Mac window.
+
+**Evidence.** `web/app.css:28-29` (`#screen`, `#machine`),
+`web/app.css:88-93` (`.finfo`), `web/main.ts` `openInfo` (appends to
+`screenEl`).
+
+**Change.** Move the card out of `#screen`'s stacking context (append
+to `body` and position from viewport coords, like the fish tip) or
+lift it above `#machine` without breaking tap-through. Re-check the
+under-fish flip (`main.ts` card placement) after the move.
+
+**Acceptance.** (derived) Screenshot: the card paints above the case
+art at every machine; clicks still feed/tap around it.
+
+### V-27 The browser menu bar covers the top of the machine art
+
+Size S · Severity low · Value 2/5 · Risk 1/5 (eleventh pass)
+
+**Problem.** `#menubar` is fixed at the top of the viewport
+(`z-index: 6`) but `layoutMachine()` sizes the machine from the full
+viewport, so the Platinum bar hides the top of the case art in
+browser builds.
+
+**Evidence.** `web/app.css:56` (`#menubar`), `web/main.ts`
+`layoutMachine()` (uses full client size).
+
+**Change.** Subtract the menubar height from the layout viewport when
+the bar is mounted (browser only; native keeps AppKit menus), via the
+same DOM-presence check PR #120 used for the Add-ons trigger.
+
+**Acceptance.** (derived) With the bar mounted, no machine pixels hide
+under it at 800x600 and 1440x900; native layout unchanged.
+
 ## UX and convenience (open)
 
 Done this pass and removed from this list: U-05, U-16, U-17, U-19,
@@ -2364,6 +2640,10 @@ Size M · Severity medium · Value 4/5 · Risk 2/5
 
 - Overlaps open PRs #106, #107 and #129 (three competing tap-ripple and splash implementations), #143 (feed-zone crosshair and a bright 1 px boundary under the pointer, `containPoint` letterbox math) and #106 (drag-to-feed). With those merged, point (2) is done and the cursor work narrows to shaker/knuckle art.
 - Merged from passes 1-7: `cursor: grab` on `body.tankpage` suggests window-drag in plain browsers where it does nothing; the feed affordance still lacks a crumb trail and a "plip" on drop; a touch long-press could be the scare/knock gesture; on touch the feed-vs-tap split is hard to discover even with a menu bar (a first-use hint helps).
+- Eleventh-pass: PR #184 sets `cursor: default` on `canvas#tank` (the
+  water never drags; the feed-zone inline crosshair still overrides)
+  and wraps the fish tip; the custom-cursor art, pellet echo and
+  fallback synth sounds stay open.
 - Related: B-35 (CRT pointer mapping), U-18.
 
 ### U-04 Removing a fish or add-on is instant and permanent: no confirmation, no Undo
@@ -2688,6 +2968,12 @@ document it if fixed. Longer advice could open a help overlay later.
 
 **Acceptance.** Test 320, 375 and 565 widths, short heights, 200% zoom,
 long names and two care hints; no content becomes unreachable.
+
+Eleventh-pass update: PR #184 clamps document windows to
+`max-width: calc(100vw - 24px)` so About/Shortcuts shrink instead of
+clipping in narrow viewports. Still open: the Preferences absolute
+layout and floor, Stats short-height reachability, shared min
+geometry.
 
 ### U-28 Make failures and pending states visible (umbrella)
 
@@ -4909,6 +5195,55 @@ steady state and was left open for human review and merge):
   before committing and confirm it holds exactly the intended change.
 - Review gaps: none; every PR completed two GLM rounds.
 
+### Eleventh pass (this pass, PRs #181, #183, #184)
+
+Final scorecard (automated GLM 5.3 reviewer rounds; every PR reached
+steady state and was left open for human review and merge):
+
+| PR | Branch | Items | Rounds | State |
+| --- | --- | --- | --- | --- |
+| #181 | `fix/tap-song-hijack` | B-19 word-matching half | 2 (R1 info fixed `10fa18e`; R2 0 actionable) | steady |
+| #183 | `fix/loop-hour-guards` | frame-pacing + hour-label guards | 3 (R1 minor + info + outside-diff minor fixed `fa79c0c`; R2 minor fixed `4cdcaa6`; R3 0 actionable) | steady |
+| #184 | `fix/small-css-nits` | tank cursor, fish tip, doc windows | 2 (R1 minor fixed `a4bdb3c`, info verified; R2 0 actionable) | steady |
+
+- Applied:
+  - #181: R1 one-sentence contract on `find()` (subs must be single
+    lowercase words; `[^a-z0-9]` splits the rest) (`10fa18e`).
+  - #183: R1 non-finite-dt and dropped-dt doc wording, plus the
+    finite-but-huge acc / near-zero step tick cap (`ABSOLUTE_MAX_TICKS
+    = 10_000`, excess dropped like a stall) (`fa79c0c`); R2 exact
+    tiny-step pin `{ ticks: ABSOLUTE_MAX_TICKS, acc: 0 }`
+    (`4cdcaa6`, prediction confirmed green).
+  - #184: R1 viewport margin 16px to 24px for classic scrollbars
+    (`a4bdb3c`); the tooltip vertical-clamp info verified against
+    `web/main.ts` (text set before both-axis clamp) with no change.
+- Declined with reasons: none; every suggestion was applied or already
+  satisfied.
+- Refuted with evidence: none new this pass (all round-1 findings
+  held up); the tenth-pass "Refuted or dropped" entries stand.
+- Verified: `npm ci` from scratch, `npm run typecheck` clean,
+  `npm test` 38 files green on every branch (471 baseline, 473 with
+  #181's tap tests, 475 with #183's loop/light tests); the new loop
+  hang reproduced by suite timeout (exit 124) before the fix and
+  passes in ~250 ms after. The Python suite was not re-run (no tool
+  changes). Native behavior code-verified only (no macOS runner); CI
+  (core-linux + native-macos) green on all three PRs.
+- Finding-to-entry map: fixed-in-PR (no new open entry) — `loop` hang
+  and `hourLabel` (#183), tap word matching beyond B-19 (#181),
+  cursor/tip/dbwin (#184); new open entries — B-56 through B-61, P-24,
+  V-26, V-27; updated entries — B-19 (word half done), U-03 (cursor
+  narrowed), U-27 (dbwin clamp done); mapped without new entries —
+  decoder hardening to S-02..S-06, `sndbank` comparator to S-05,
+  `zip` stored-cap/CRC to S-04, fetch.py gaps to
+  T-05/T-16/T-19/T-21/T-22/T-23, macOS shell nits to B-28/B-50/T-25
+  and FOLLOW-UPS, P-02/P-04/P-05/P-06/P-07/P-08/P-11/P-12/P-16/P-18/
+  P-20/P-21/P-22/P-23 frame and packaging costs, AquaZone gaps to
+  F-01/F-03/F-04/F-05/F-06/F-07/F-09/F-12/F-15/F-17/F-24/F-25/F-26/
+  F-27/F-28/F-29/F-30/F-31/F-32/F-33 and B-23/B-33/B-54/V-06/V-07,
+  delight ideas to their D entries (D-02/D-09/D-10/D-11/D-12/D-13/
+  D-15/D-21/D-22/D-23/D-24/D-26/D-27/D-28/D-29/D-31, F-13/F-17).
+- Review gaps: none; every PR completed at least two GLM rounds.
+
 ## Implementation Order (suggested)
 
 Highest value per risk first. Phase 0 is a merge backlog, not new
@@ -4937,7 +5272,9 @@ Then T-33 (publish the release).
    works with PR #155's clock nights; reconcile with #128.
 5. B-17 no burst of queued sounds on the first click.
 6. U-01 food cap and gentler waste (after #158's pinch lands).
-7. B-19 music never answers taps; B-40 no ambient restarts.
+7. B-19 music never answers taps (word matching done in #181; `kind`
+   split and B-40 ambient restarts remain); B-56 through B-61, P-24,
+   V-26 and V-27 are the same size and ready next.
 8. U-09, U-11, U-13, U-22, U-23 wording and state nits.
 9. B-25, B-28, B-49, B-50, V-15 native safety fixes (T-32 checks).
 10. T-21, T-22, T-23, T-20, T-19 Python tool fixes; T-13 linters.
@@ -5011,12 +5348,15 @@ Then T-33 (publish the release).
 
 ---
 
-*Merged from ten review passes: passes one to eight were already
+*Merged from eleven review passes: passes one to eight were already
 folded into the previous ANALYSIS.md; the ninth pass's full-repo
 `tmp.md` review and its scorecard are folded here, with implemented
 items moved to the ninth-pass Completed section; the tenth pass's
 `tmp.md` review, its three PRs (#179, #180, #182) and its refutations
-are folded into the tenth-pass sections in the same way. No open idea
+are folded into the tenth-pass sections in the same way; the eleventh
+pass's `tmp.md` review, its three PRs (#181, #183, #184) and its nine
+new entries (B-56 through B-61, P-24, V-26, V-27) are folded into the
+eleventh-pass sections in the same way. No open idea
 was removed: duplicates were consolidated into one entry each (see the
 ID map and each entry's "Merged and related" notes), and unsupported
 claims are kept under "Declined, refuted and corrected".*
