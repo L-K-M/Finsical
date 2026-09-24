@@ -18,6 +18,7 @@ import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
 import { bankSounds } from "../core/data/sndbank.js";
 import { isLocalPack, metaGet, metaPut, packDelete, packGet, packPut }
   from "./store.js";
+import { lruGet, lruSet } from "./lru.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
@@ -154,13 +155,41 @@ function decorCopies(it: Importable): number {
  * URLs, and a cached zip survives restarts so restores and re-browses
  * never touch archive.org twice. Items are treated as immutable; an
  * uploader replacing a file serves stale bytes until LRU trims it —
- * accepted, since the worst case is dated sprite art. */
+ * accepted, since the worst case is dated sprite art. Bounded: outer
+ * archives can run to tens of MB, and browsing several nested
+ * collections would otherwise pin each one's bytes for the session.
+ * An evicted URL refetches through IndexedDB, not the network. */
+const ZIP_CACHE_CAP = 8;
+/** Resolved-byte budget: entry count alone doesn't bound memory —
+ * eight multi-ten-MB outers is the same leak in miniature. */
+const ZIP_CACHE_BYTES = 96 << 20;
 const zipCache = new Map<string, Promise<Uint8Array>>();
-/** Zips bigger than this aren't memoized — a collection zip (the JPN
- * set is >100MB) pinned in RAM dwarfs every other cache, and IDB
- * already persists the bytes for archive.org hosts, so re-reads are
- * still local. */
-const ZIP_MEMO_MAX = 32 * 1024 * 1024;
+/** Promises still in flight — their slot is the download dedup key,
+ * so eviction must skip them (a second caller would start a duplicate
+ * multi-MB fetch otherwise). */
+const zipPending = new WeakSet<Promise<Uint8Array>>();
+/** Resolved byteLength per url, and its running total. */
+const zipSize = new Map<string, number>();
+let zipBytes = 0;
+function zipEvict(url: string): void {
+  zipBytes -= zipSize.get(url) ?? 0;
+  zipSize.delete(url);
+  zipCache.delete(url);
+}
+/** Note a resolved entry's size and trim the oldest resolved zips
+ * while the byte budget is overshot. Pending entries stay. */
+function zipWeigh(url: string, bytes: number): void {
+  // Idempotent: a re-weighed url (refetch after eviction) replaces its
+  // old count instead of double-adding.
+  zipBytes -= zipSize.get(url) ?? 0;
+  zipSize.set(url, bytes);
+  zipBytes += bytes;
+  for (const [k, v] of zipCache) {
+    if (zipBytes <= ZIP_CACHE_BYTES) break;
+    if (zipPending.has(v)) continue;
+    zipEvict(k);
+  }
+}
 /** Per-URL bytes on archive.org never change — safe to persist
  * forever. Other hosts (a dev server, a mutable mirror) keep only
  * their in-session memo so stale bytes can't wedge a dev loop. */
@@ -213,11 +242,18 @@ async function readBody(r: Response, kick: () => void):
   return out;
 }
 function fetchZip(url: string): Promise<Uint8Array> {
-  let p = zipCache.get(url);
+  let p = lruGet(zipCache, url);
   if (!p) {
-    p = (async () => {
+    const fresh = (async () => {
       const hit = immutableHost(url) ? await packGet(url) : null;
-      if (hit) return hit;
+      // Weigh only while this promise still holds the slot — a count-
+      // or byte-cap eviction (or a same-tick replacement) means these
+      // bytes answer to nobody, and counting them would inflate
+      // zipBytes with no eviction path to recover them. Invariant:
+      // the lruSet below caches `fresh` itself — a stored wrapper
+      // would silently disable weighing (and the byte cap with it).
+      const ours = () => zipCache.get(url) === fresh;
+      if (hit) { if (ours()) zipWeigh(url, hit.byteLength); return hit; }
       const d = await fetchTimed(url, async (r, kick) => {
         if (!r.ok) throw new Error(`${url}: ${r.status}`);
         return readBody(r, kick);
@@ -226,19 +262,21 @@ function fetchZip(url: string): Promise<Uint8Array> {
       // empty 200. Persisted, that would stand in for the file forever.
       if (!d.length) throw new Error(`${url}: empty`);
       if (immutableHost(url)) void packPut(url, d).catch(() => {});
+      if (ours()) zipWeigh(url, d.byteLength);
       return d;
     })();
-    zipCache.set(url, p);
-    // A big collection zip memoizes for this session's callers, then
-    // leaves once it lands — it resolves, everyone holding `p` still
-    // gets the bytes, but the entry stops pinning them after that.
-    p.then((d) => {
-      if (d.byteLength > ZIP_MEMO_MAX && zipCache.get(url) === p)
-        zipCache.delete(url);
-    }, () => {}); // rejections are the catch below's job
+    // onEvict routes count-cap trims through zipEvict too — every path
+    // that drops an entry must keep zipSize/zipBytes honest.
+    lruSet(zipCache, url, fresh, ZIP_CACHE_CAP,
+           (v) => !zipPending.has(v), (k) => zipEvict(k));
+    zipPending.add(fresh);
     // Delete only if still ours — a same-tick caller may have swapped in
     // a replacement promise before this one rejected.
-    p.catch(() => { if (zipCache.get(url) === p) zipCache.delete(url); });
+    fresh.then(
+      () => zipPending.delete(fresh),
+      () => { zipPending.delete(fresh);
+              if (zipCache.get(url) === fresh) zipEvict(url); });
+    p = fresh;
   }
   return p;
 }
@@ -569,30 +607,53 @@ export async function importAddon(url: string): Promise<PackResult[]> {
   return out;
 }
 
+/** Display order of sections — first collection index per section. */
+const SECTION_RANK = new Map<string, number>();
+COLLECTIONS.forEach((c, i) => {
+  if (!SECTION_RANK.has(c.section)) SECTION_RANK.set(c.section, i);
+});
+
 /** Fetch the listing pages of all collections (or those `only`
  * accepts), grouped by section in COLLECTIONS order. Never rejects: a
- * failed section just comes back empty. */
+ * failed section just comes back empty. `onItems` fires per resolved
+ * collection so a caller can show rows without waiting on the slowest
+ * one. */
 export async function listAddons(
     only: (c: Collection) => boolean = () => true,
+    onItems?: (items: Importable[]) => void,
 ): Promise<Importable[]> {
-  // First collection index per section — items group under it.
-  const rank = new Map<string, number>();
-  COLLECTIONS.forEach((c, i) => {
-    if (!rank.has(c.section)) rank.set(c.section, i);
-  });
   const cols = COLLECTIONS.filter(only);
   const lists = await Promise.all(cols.map(async (col) => {
+    let items: Importable[] = [];
     try {
-      const items = await listCollection(col);
+      items = await listCollection(col);
       for (const it of items) it.section = col.section;
-      return items;
     } catch (e) {
       console.warn(`archive.org listing failed for ${col.outer}:`, e);
-      return [];
+      items = [];
     }
+    // Outside the fetch try: a throwing UI callback must not
+    // masquerade as a fetch failure or drop the collection's items.
+    // But it still needs its own guard — an escape here would reject
+    // Promise.all and void every other collection's results.
+    if (items.length) {
+      const warn = (cbErr: unknown) =>
+        console.warn(`onItems callback failed for ${col.outer}:`, cbErr);
+      try {
+        const r: unknown = onItems?.(items);
+        // A thenable return isn't awaited, but a rejection must still
+        // not escape as an unhandled promise failure. Duck-typed:
+        // instanceof Promise misses cross-realm and custom thenables.
+        if (r && typeof (r as PromiseLike<unknown>).then === "function")
+          Promise.resolve(r).catch(warn);
+      } catch (cbErr) {
+        warn(cbErr);
+      }
+    }
+    return items;
   }));
   return lists.flat().sort((a, b) =>
-    (rank.get(a.section) ?? 0) - (rank.get(b.section) ?? 0));
+    (SECTION_RANK.get(a.section) ?? 0) - (SECTION_RANK.get(b.section) ?? 0));
 }
 
 // ---- import panel --------------------------------------------------------
@@ -658,48 +719,34 @@ function audioType(d: Uint8Array): string {
 
 // Packs are immutable per URL — memoize so re-visits skip the download.
 // Module-level so the tank page's remote-install path shares the cache.
-// Bounded: a PackResult holds decoded sheets and images — browsing the
-// whole catalog without a cap would pin hundreds of MB of Uint8Arrays.
+// Bounded: a PackResult pins the decoded sheets and images — the
+// expensive part of a pack, and the reason the render-side WeakMaps
+// (swimCanvas, sheetScales) could never collect. Scrolling the whole
+// catalog would otherwise keep every decoded pack in memory; an
+// evicted URL re-derives from the zip cache/IndexedDB on revisit.
+const PACK_CACHE_CAP = 12;
 const packCache = new Map<string, Promise<PackResult[]>>();
-// URLs whose import promise has resolved — eviction victims are chosen
-// only among these, so a burst can't evict an in-flight import and
-// immediately duplicate its download.
-const packSettled = new Set<string>();
-const PACK_CACHE_MAX = 16;
+/** Same in-flight pinning as zipPending: the map slot is the dedup
+ * key, so an evicted pending fetch would double-download. */
+const packPending = new WeakSet<Promise<PackResult[]>>();
 /** The sound preview's live Blob URL — one at a time, revoked when the
  * detail pane rebuilds. */
 let sndObjUrl: string | null = null;
 export function fetchAddon(url: string): Promise<PackResult[]> {
-  let p = packCache.get(url);
-  if (p) {
-    // Refresh recency: Map keeps insertion order, so a hit moves the
-    // entry youngest-first-evicted-last.
-    packCache.delete(url);
-    packCache.set(url, p);
-    return p;
+  let p = lruGet(packCache, url);
+  if (!p) {
+    const fresh = importAddon(url);
+    lruSet(packCache, url, fresh, PACK_CACHE_CAP,
+           (v) => !packPending.has(v));
+    packPending.add(fresh);
+    // Failed fetches stay retryable; only evict if the entry is still
+    // this promise (a rider may have replaced it already).
+    fresh.then(
+      () => packPending.delete(fresh),
+      () => { packPending.delete(fresh);
+              if (packCache.get(url) === fresh) packCache.delete(url); });
+    p = fresh;
   }
-  p = importAddon(url);
-  packCache.set(url, p);
-  // Least-recently-used eviction — insertion order is LRU order —
-  // skipping in-flight entries: a burst may exceed the cap by its
-  // pending count rather than evict work that's still downloading.
-  // Keep evicting settled entries until back at the cap, so a burst
-  // drains instead of ratcheting the steady-state size upward.
-  if (packCache.size > PACK_CACHE_MAX)
-    for (const k of packCache.keys()) {
-      if (packCache.size <= PACK_CACHE_MAX) break;
-      if (packSettled.has(k)) {
-        packCache.delete(k);
-        packSettled.delete(k);
-      }
-    }
-  // Failed fetches stay retryable; only evict if the entry is still
-  // this promise (a rider may have replaced it already).
-  p.then(() => { if (packCache.get(url) === p) packSettled.add(url); },
-         () => { if (packCache.get(url) === p) {
-           packCache.delete(url);
-           packSettled.delete(url);
-         } });
   return p;
 }
 
@@ -953,10 +1000,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   let sections: string[] = [];
   let section = "";
   let rows: Importable[] = [];
+  // A user's own section pick survives later listing merges — only an
+  // untouched view follows the saved section as collections land.
+  let picked = false;
   const byUrl = new Map<string, Importable>();
   const popup = mountPopup(popBtn, {
     items: ["Fish"], selected: 0, label: "Show",
-    onChange: (i) => showSection(sections[i]!),
+    onChange: (i) => { picked = true; showSection(sections[i]!); },
   });
   function setShowEnabled(on: boolean): void {
     popBtn.disabled = !on;
@@ -1484,33 +1534,80 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     h.onInstall?.(it, soundNames);
   }
 
+  function savedSection(): string | null {
+    try { return localStorage.getItem(SECTION_KEY); }
+    catch { return null; } // storage unavailable
+  }
+
+  // Invalidates a previous loadListing attempt still in flight — its
+  // late collections must not merge into the retried listing.
+  let listingGen = 0;
+
+  /** Merge one collection's items into the listing as it resolves —
+   * rows appear per section instead of all at once when the slowest
+   * collection lands. */
+  function mergeListing(gen: number, items: Importable[]): void {
+    if (gen !== listingGen) return;
+    all.push(...items);
+    for (const it of items) byUrl.set(it.url, it);
+    all.sort((a, b) => (SECTION_RANK.get(a.section) ?? 0) -
+                       (SECTION_RANK.get(b.section) ?? 0));
+    const secs = [...new Set(all.map((x) => x.section))];
+    if (secs.join("\0") !== sections.join("\0")) {
+      sections = secs;
+      popup.setItems(sections.map((s) => SECTION_TITLES[s] ?? s),
+                     Math.max(0, sections.indexOf(section)));
+    }
+    setShowEnabled(true);
+    if (!picked) {
+      const sv = savedSection();
+      // Land on the saved section once it arrives; until then the
+      // first available section has something to show.
+      showSection(sv && sections.includes(sv) ? sv : sections[0]!);
+    } else if (sections.includes(section)) {
+      applyFilter(); // new rows may join the viewed section
+    }
+    // A section whose collection is still in flight reads as fetching;
+    // an empty *filtered* view of an arrived section is not fetching.
+    list.setEmpty(all.some((x) => x.section === section)
+      ? "" : "Fetching the archive.org listing…");
+  }
+
   function loadListing(): void {
     all = [];
+    sections = [];
+    section = "";
+    rows = [];
+    byUrl.clear();
+    picked = false;
     list.setRows([]);
     list.setEmpty("Fetching the archive.org listing…");
     count.textContent = "";
     status.textContent = "";
     setAdd("Add to Tank", null);
-    void listAddons().then((items) => {
+    setShowEnabled(false);
+    const gen = ++listingGen;
+    void listAddons(undefined, (items) => mergeListing(gen, items))
+      .then((items) => {
+      if (gen !== listingGen) return;
       if (!items.length) throw new Error("empty listing");
+      // Re-anchor `all` to the final COLLECTIONS-ordered list before
+      // re-rendering — mergeListing appended in network-arrival
+      // order, which made within-section row order timing-dependent.
       all = items;
-      byUrl.clear();
-      for (const it of items) byUrl.set(it.url, it);
-      sections = [...new Set(items.map((x) => x.section))];
-      // Archive order scatters near-identical names across the list —
-      // show each section alphabetically like a Finder window would.
-      all.sort((a, b) =>
-        a.inner.localeCompare(b.inner, undefined, { sensitivity: "base" }));
-      let start = sections[0]!;
-      try {
-        const saved = localStorage.getItem(SECTION_KEY);
-        if (saved && sections.includes(saved)) start = saved;
-      } catch { /* storage unavailable */ }
-      popup.setItems(sections.map((s) => SECTION_TITLES[s] ?? s),
-                     sections.indexOf(start));
-      setShowEnabled(true);
-      list.setEmpty("");
-      showSection(start);
+      // A user's own pick outranks the saved section.
+      if (!picked) {
+        const sv = savedSection();
+        const start = sv && sections.includes(sv) ? sv : sections[0]!;
+        popup.setItems(sections.map((s) => SECTION_TITLES[s] ?? s),
+                       sections.indexOf(start));
+        showSection(start);
+      } else applyFilter();
+      // A viewable section always has items (sections are built from
+      // `all`); empty at this point means its collection failed —
+      // unless a filter hid the rows, which is not a fetch failure.
+      list.setEmpty(all.some((x) => x.section === section)
+        ? "" : "Couldn't load this section.");
     }).catch((e) => {
       console.warn("add-on listing failed:", e);
       list.setEmpty("Couldn't reach archive.org.");

@@ -8,7 +8,8 @@ import { planFrame } from "../core/loop.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { isPack } from "../core/data/fsh.js";
 import { decodeDroppedPacks } from "./drop.js";
-import { decorFrame, decorPhase } from "../core/data/decor.js";
+import { decorFrame, decorPhase, decorPhaseFrac }
+  from "../core/data/decor.js";
 import { bodySize, pickSwimSheet } from "../core/data/swimsheet.js";
 import { fishScale } from "./artscale.js";
 import { sanitizeSoundConfig, TankAudio } from "./audio.js";
@@ -23,6 +24,7 @@ import { backfillStarterSounds, showWelcome, wantsWelcome }
 import { clampDecorCopies, decorCopyRoom, fetchAddon, installProblem,
          mountImportPanel, orphanedSounds, recordAddon,
          qualifySoundItemName, isListed, COLLECTIONS } from "./import.js";
+import { SWAY_BANDS, swayOffset } from "./sway.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
          sndsMerge, sndsRemove } from "./store.js";
@@ -703,13 +705,16 @@ function applySceneryChoice(): void {
 // the tank floor whenever one is added. Animated packs loop their frames
 // on the sim clock, each item from its own phase.
 const decors: { frames: HTMLCanvasElement[]; phase: number;
-                pack: string }[] = [];
+                sway: number; pack: string }[] = [];
 function addDecor(images: Iterable<IndexedImage>, src: string): void {
   const frames = decorCanvases(images, TANK.height);
   if (!frames) return;
   const copy = decors.filter((d) => d.pack === src).length;
+  // phase is an integer frame index — useless for sway, where a whole
+  // cycle of phase looks identical on every plant. sway keeps the
+  // fraction so each copy drifts on its own rhythm.
   decors.push({ frames, phase: decorPhase(src, copy, frames.length),
-                pack: src });
+                sway: decorPhaseFrac(src, copy), pack: src });
 }
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
@@ -2341,12 +2346,33 @@ function render(): void {
   // Art keeps its authored width now (no 160 px cap), so a wide piece
   // is pulled inside the glass rather than hanging past it.
   const dn = decors.length;
+  const sway = waterMotion === "animated";
   for (let i = 0; i < dn; i++) {
-    const { frames, phase } = decors[i]!;
+    const { frames, phase, sway: swayPh } = decors[i]!;
     const d = frames[decorFrame(sim.tickCount, frames.length, phase)]!;
-    const x = Math.round(TANK.width * (i + 0.5) / dn - d.width / 2);
-    ctx.drawImage(d, Math.min(Math.max(x, 0), Math.max(0, TANK.width - d.width)),
-                  TANK.height - 6 - d.height);
+    const x = Math.min(Math.max(
+        Math.round(TANK.width * (i + 0.5) / dn - d.width / 2), 0),
+      Math.max(0, TANK.width - d.width));
+    const y = TANK.height - 6 - d.height;
+    if (!sway) { ctx.drawImage(d, x, y); continue; }
+    // Sway per horizontal band — offsets grow toward the tip, so the
+    // planted root stays glued while the top drifts. Runs on the sim
+    // clock like decor frames: a paused tank holds still. Each band
+    // clamps around the planted x, so in-glass pieces never overhang.
+    // Anchor the window at x: an oversized or out-of-bounds piece keeps
+    // its planted position instead of snapping to a glass edge.
+    const xmin = Math.min(x, 0);
+    const xmax = Math.max(x, TANK.width - d.width);
+    for (let b = 0; b < SWAY_BANDS; b++) {
+      const y0 = Math.floor(b * d.height / SWAY_BANDS);
+      const y1 = Math.floor((b + 1) * d.height / SWAY_BANDS);
+      if (y1 <= y0) continue;
+      const dx = swayOffset(sim.tickCount, swayPh,
+                            (y0 + y1) / 2 / d.height);
+      const bx = Math.min(Math.max(x + dx, xmin), xmax);
+      ctx.drawImage(d, 0, y0, d.width, y1 - y0,
+                    bx, y + y0, d.width, y1 - y0);
+    }
   }
 
   const floor = nightFloor(lighting);
