@@ -64,7 +64,9 @@ Add-ons.
 | Move the window | In the app, drag the computer case around the tank, or the top edge of the window |
 
 A fish nearby comes over to look at the pointer while you hover over
-the tank, unless it is hungry or startled.
+the tank, unless it is hungry or startled. It stops just short of the
+pointer, facing it, and loses interest if the pointer rests still for
+about 20 seconds.
 
 Menu commands in the app:
 

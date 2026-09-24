@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { BAND_HALF, BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, MARGIN, Sim,
-         SLEEP_LIGHT, SURFACE, TURN_TICKS, WAKE_LIGHT } from "./sim.js";
+         SLEEP_LIGHT, SURFACE, TURN_TICKS, WAKE_LIGHT, wrapAngle }
+  from "./sim.js";
+import type { Fish } from "./sim.js";
 import { QUALITY_SEEK } from "./tuning.js";
 import { CLOCK_NIGHT_LIGHT } from "./light.js";
 import { pitch } from "./pose.js";
@@ -296,6 +298,54 @@ describe("Sim", () => {
     // It goes for the pellet rather than hovering by the pointer.
     expect(f.state).toBe("seek");
     expect(f.tx).toBe(300);
+  });
+
+  it("the watcher hovers facing the pointer, off its body, without a wobble",
+     () => {
+    // It used to glide through the cursor and back, its tilt swinging
+    // between the pitch limits (a zigzag on about a fifth of ticks),
+    // with the pointer on its body on 40% of them.
+    for (const halfW of [0, 8, 16, 30])
+      for (const [px, py] of [[160, 100], [250, 150], [70, 50]] as const) {
+        const sim = new Sim({ width: 320, height: 200 }, 23);
+        sim.setLight(1);
+        for (let i = 0; i < 4; i++)
+          sim.addFish({ x: 50 + i * 70, y: 50 + i * 30, hunger: 0,
+                        cruise: 1 + 0.2 * i, species: `s${i}`,
+                        halfW, halfH: halfW * 0.6 });
+        const calm = (): void => { for (const f of sim.fish) f.hunger = 0; };
+        for (let t = 0; t < 300; t++) { calm(); sim.tick(); }
+        sim.notice = { x: px, y: py };
+        let watched = 0, onBody = 0, facing = 0, zigzag = 0, rolls = 0;
+        let prevH: number | null = null, prevDh = 0, prevState = "";
+        let prevW: Fish | null = null;
+        for (let t = 0; t < 3600; t++) {
+          calm(); sim.tick();
+          const w = sim.noticeFish;
+          if (!w || w !== prevW) { prevW = w; prevH = null; continue; }
+          if (t < 600) { prevH = w.heading; prevState = w.state; continue; }
+          watched++;
+          if (Math.abs(px - w.x) < Math.max(halfW * w.scale, 4) &&
+              Math.abs(py - w.y) < Math.max(halfW * 0.6 * w.scale, 3))
+            onBody++;
+          if ((px - w.x) * w.facing > 0) facing++;
+          if (w.state === "turn" && prevState !== "turn") rolls++;
+          prevState = w.state;
+          if (prevH !== null && w.state !== "turn") {
+            const dh = wrapAngle(w.heading - prevH);
+            if (Math.abs(dh) > 0.1 && Math.abs(prevDh) > 0.1 &&
+                Math.sign(dh) !== Math.sign(prevDh)) zigzag++;
+            prevDh = dh;
+          } else prevDh = 0;
+          prevH = w.heading;
+        }
+        const at = `halfW ${halfW} at ${px},${py}`;
+        expect(watched, at).toBeGreaterThan(2400);
+        expect(zigzag, at).toBe(0);
+        expect(rolls, at).toBeLessThanOrEqual(1);
+        expect(onBody / watched, at).toBeLessThan(0.1);
+        expect(facing / watched, at).toBeGreaterThan(0.9);
+      }
   });
 
   it("a watcher that finds food doesn't roll back toward the pointer", () => {

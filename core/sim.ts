@@ -191,6 +191,15 @@ const NOTICE_RADIUS = 80;
 const HIT_MIN = 8;
 /** This close to the pointer a noticed fish just hovers nearby. */
 const NOTICE_STANDOFF = 16;
+/** A hovering watcher only swims over again once the pointer is this
+ * far past the standoff: without the slack it flips between hovering
+ * and approaching on the ring's edge. */
+const HOVER_SLACK = 8;
+/** Gap, px, a hovering watcher leaves between its nose and the pointer. */
+const NOSE_GAP = 6;
+/** Fastest a hovering watcher rises or sinks, level, to the pointer's
+ * height, px/tick: finning, the way sleepers settle. */
+const HOVER_RISE = 0.3;
 /**
  * Roll duration. The original's turn steps half the 32-pose ring
  * (~16 poses at 60 tps ≈ 0.27 s); ~10 ticks here at 30 tps.
@@ -241,6 +250,9 @@ export class Sim {
    * Read-only view: tick() owns the pick. */
   get noticeFish(): Fish | null { return this._noticeFish; }
   private _noticeFish: Fish | null = null;
+  /** Watchers inside their standoff, finning in place by the pointer
+   * (runtime only, like the extents). */
+  private hovering = new WeakSet<Fish>();
   private rand: () => number;
   private nextId = 0;
   /** Fish only bed down after the tank has seen daylight once — a
@@ -520,9 +532,29 @@ export class Sim {
       const nd = n ? Math.hypot(n.x - f.x, n.y - f.y) : Infinity;
       // A big fish stops with its nose, not its middle, by the pointer.
       const standoff = NOTICE_STANDOFF + this.halfW(f);
+      // Inside the standoff the watcher hovers, until the pointer moves
+      // a little past it again.
+      const hover = !!n && !food && (nd <= standoff ||
+        (this.hovering.has(f) && nd <= standoff + HOVER_SLACK));
+      if (hover) this.hovering.add(f); else this.hovering.delete(f);
+      // A pointer resting on the fish's body: it glides on, clear of it,
+      // then turns round to look.
+      const covered = hover &&
+        Math.abs(n!.x - f.x) < this.halfW(f) + NOSE_GAP &&
+        Math.abs(n!.y - f.y) < this.halfH(f) + NOSE_GAP;
+      if (hover && !turning) {
+        if (covered) { f.tx = f.x + f.facing * standoff; f.ty = f.y; }
+        else {
+          // Face the pointer: one roll if it is behind, never a wobble
+          // at the pitch limit.
+          f.tx = n!.x; f.ty = n!.y;
+          turning = this.maybeTurn(f);
+        }
+        dist = Math.hypot(f.tx - f.x, f.ty - f.y);
+      }
       // A fish watching the pointer from inside the standoff holds
       // there instead of re-deciding.
-      if (!food && !turning && nd > standoff &&
+      if (!food && !turning && !hover &&
           (f.phase >= MOVE_TICKS || dist < 4)) {
         if (dist >= BRAKE_DIST && f.strokes < MAX_STROKES) {
           f.strokes++;
@@ -545,13 +577,14 @@ export class Sim {
       // The watcher is picked before this tick's food check, so a fish
       // that just found a pellet is still it: without `!food` a pointer
       // behind it rolls it away from the pellet, every time it re-aims.
-      if (n && !food && nd > standoff) {
-        // Aim just short of the pointer, on the fish's side of it, and
-        // roll to face it: steering alone can't reverse, so a pointer
-        // behind the fish would pin it at the pitch limit.
-        const k = standoff * 0.5 / nd;
-        f.tx = n.x + (f.x - n.x) * k;
-        f.ty = n.y + (f.y - n.y) * k;
+      if (n && !food && !hover) {
+        // Aim for its nose to end up just short of the pointer, level
+        // with it, on the fish's side of it, and roll to face it:
+        // steering alone can't reverse, so a pointer behind the fish
+        // would pin it at the pitch limit.
+        const side = f.x < n.x ? 1 : -1;
+        f.tx = n.x - side * (this.halfW(f) + NOSE_GAP);
+        f.ty = n.y;
         dist = Math.hypot(f.tx - f.x, f.ty - f.y);
         if (!turning) turning = this.maybeTurn(f);
       }
@@ -564,7 +597,9 @@ export class Sim {
       // facing changes only by rolling, never as a one-frame mirror.
       const axis = f.facing > 0 ? 0 : Math.PI;
       const cur = clampPitch(wrapAngle(f.heading - axis));
-      const want = turning ? cur : clampPitch(
+      // A hovering watcher holds level: aiming at a pointer just behind
+      // or beside its middle flipped the pitch between its limits.
+      const want = turning || hover ? (turning ? cur : 0) : clampPitch(
         wrapAngle(Math.atan2(f.ty - f.y, f.tx - f.x) - axis));
       f.heading = wrapAngle(axis + cur +
         Math.min(TURN_RATE, Math.max(-TURN_RATE, want - cur)));
@@ -574,7 +609,24 @@ export class Sim {
       // region is reached (dart-and-glide, not linear cruise). A new
       // stroke glides on the speed it still carries until the ramp
       // catches up, so fish never stop dead between strokes.
-      if (f.latch < 0) {
+      if (hover) {
+        // Fin in place: ease to a stop as the nose nears the pointer,
+        // or glide on at a third of cruise from under a covering one.
+        if (covered) f.speed = Math.max(f.speed * GLIDE, f.cruise / 3);
+        else {
+          // Measured along its facing: a fish holding level can't close
+          // a pointer above or below it, and would drift on under it.
+          const ahead = (n!.x - f.x) * f.facing - this.halfW(f) - NOSE_GAP;
+          const k = Math.min(1, Math.max(0,
+            ahead / (NOTICE_STANDOFF - NOSE_GAP)));
+          f.speed = Math.max(f.cruise * 0.04 * k, f.speed * 0.85);
+          // It came in from above or below: settle to the pointer's
+          // height without tilting.
+          f.y += Math.max(-HOVER_RISE,
+                          Math.min(HOVER_RISE, (n!.y - f.y) * 0.1));
+        }
+        f.latch = f.phase; f.peak = f.speed;
+      } else if (f.latch < 0) {
         if (dist < BRAKE_DIST) { f.latch = f.phase; f.peak = f.speed; }
         else f.speed = Math.max(f.speed * GLIDE, Math.min(f.cruise,
                                 f.cruise * (f.phase + 1) ** 2 / RAMP_DIV));

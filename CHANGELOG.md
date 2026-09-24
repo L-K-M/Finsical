@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The fish that comes over to look at the pointer now stops just short
+  of it, level with it and facing it. It used to glide through the
+  cursor and back, wobbling as it went, with the pointer over its body
+  much of the time. A pointer left resting over the tank loses the
+  fish's interest after about 20 seconds, so it swims off again
+  instead of waiting there for hours; moving the pointer brings it
+  back.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the

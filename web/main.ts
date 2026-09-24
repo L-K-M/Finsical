@@ -30,6 +30,8 @@ import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
          swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
 import { containPoint, isFeedZoneY } from "./feedzone.js";
+import { nextNotice, noticePoint } from "./curiosity.js";
+import type { Notice } from "./curiosity.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
@@ -308,7 +310,10 @@ canvas.addEventListener("pointerdown", (e) => {
   requestPaint();
 });
 // The nearest calm fish notices the hovering pointer and drifts over
-// to look — hunger and panic still outrank curiosity in the sim.
+// to look — hunger and panic still outrank curiosity in the sim. The
+// pointer's last real move is kept here: a resting pointer loses the
+// fish's interest after a while (web/curiosity.ts).
+let notice: Notice | null = null;
 
 // Hover a fish and its species (and mood) pops up in a little
 // balloon — a nod to System 7's Balloon Help.
@@ -333,7 +338,8 @@ canvas.addEventListener("pointermove", (e) => {
   lastClient = { x: e.clientX, y: e.clientY };
   if (!e.isPrimary) return; // one pointer drives curiosity
   const p = tankPoint(e.clientX, e.clientY);
-  sim.notice = p;
+  notice = nextNotice(notice, p, sim.tickCount);
+  sim.notice = noticePoint(notice, sim.tickCount);
   if (e.pointerType === "touch") return; // no hover on touch
   lastHover = p;
   const best = p && fishToName(p);
@@ -353,6 +359,7 @@ canvas.addEventListener("pointerleave", (e) => {
   fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
   if (!e.isPrimary) return; // don't clear the primary's curiosity
+  notice = null;
   sim.notice = null;
 });
 
@@ -2130,6 +2137,7 @@ function drawNight(now: Date): void {
 
 function tickSim(): void {
   const bubbles = sim.bubbles.length;
+  sim.notice = noticePoint(notice, sim.tickCount); // curiosity fades
   stirSurface();
   sim.tick();
   tickSurface(surface);
