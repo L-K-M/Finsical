@@ -19,6 +19,7 @@ class FakeNode {
 }
 class FakeGain extends FakeNode { gain = new FakeParam(); }
 class FakeBuffer {
+  readonly numberOfChannels = 1;
   constructor(readonly duration: number,
               readonly sampleRate: number,
               private readonly bytes: Uint8Array) {}
@@ -244,8 +245,11 @@ describe("TankAudio.load", () => {
     await audio.load(readWav, manifestOf(LOOP));
     audio.startAmbient();
     const ac = FakeContext.last!;
-    const remaster = new Uint8Array(30);
-    remaster[12] = 9; // silent ends, different middle (a probed index)
+    // Derive the remaster from the original bytes and flip a middle
+    // run — identical endpoints by construction, so an endpoint-only
+    // probe would wrongly call this the same clip.
+    const remaster = wavs.get(`s/${LOOP}.wav`)!.slice();
+    for (let i = 8; i < 16; i++) remaster[i] = 255 - remaster[i]!;
     wavs.set(`s/${LOOP}.wav`, remaster);
     await audio.load(readWav, manifestOf(LOOP));
     const loops = ac.sources.filter((s) => s.loop);
@@ -253,7 +257,7 @@ describe("TankAudio.load", () => {
     expect(loops[1]!.starts).toBe(1);        // replacement running
     // And it's the new clip looping, not a stale restart of the old.
     expect(loops[1]!.buffer).not.toBe(loops[0]!.buffer);
-    expect(loops[1]!.buffer!.getChannelData(0)[12]).toBe(9);
+    expect(loops[1]!.buffer!.getChannelData(0)[12]).toBe(remaster[12]);
     expect(ac.loops()).toBe(1);
   });
 });

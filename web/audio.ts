@@ -49,15 +49,18 @@ const LEVEL_GLIDE_S = 0.01;
 const FILTER_BUBBLING = "az bubble 9003";
 
 /** Identity key for a decoded clip. name+duration alone can't tell a
- * same-length re-encode from the original, so the key probes channel
- * 0 — sparsely across the clip, not just the ends, since a faded
- * remaster can share silent endpoints with the original. */
+ * same-length re-encode from the original, so the key FNV-1a-hashes
+ * every sample of every channel — exact content identity, so nothing
+ * can slip between probe points. Runs once per load/ambient start. */
 function bufferKey(name: string, buf: AudioBuffer): string {
-  const d = buf.getChannelData(0);
-  let taps = "";
-  for (let i = 0; i < 8; i++)
-    taps += `:${d[Math.floor(i * (d.length - 1) / 7)] ?? 0}`;
-  return `${name}:${buf.sampleRate}:${buf.duration}${taps}`;
+  let h = 0x811c9dc5;
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < d.length; i++)
+      h = Math.imul(h ^ (Math.round((d[i] ?? 0) * 32768) | 0),
+                    0x01000193);
+  }
+  return `${name}:${buf.sampleRate}:${buf.duration}:${h >>> 0}`;
 }
 /** Played once as an aquarium opens. */
 const OPENING = "aqua";
@@ -355,8 +358,7 @@ export class TankAudio {
 
   /** Content key of whichever buffer would loop as ambience now, or
    * "" when the bank has no bubbling at all. */
-  private ambientPick(): string {
-    const e = this.namedEntry(FILTER_BUBBLING);
+  private ambientPick(e = this.namedEntry(FILTER_BUBBLING)): string {
     return e ? bufferKey(e.name, e.buf) : "";
   }
 
@@ -465,7 +467,7 @@ export class TankAudio {
     // One lookup feeds both the key and the source — two independent
     // picks could disagree if tie-breaking ever diverged.
     const e = this.namedEntry(FILTER_BUBBLING);
-    this.ambientKey = e ? bufferKey(e.name, e.buf) : "";
+    this.ambientKey = this.ambientPick(e);
     this.ambientGen++; // stale pending starts abort in play()
     this.ambientSrc = this.play(e?.buf ?? null, AMBIENT_GAIN, true);
   }
