@@ -32,8 +32,12 @@ export function lruSet<K, V>(m: Map<K, V>, k: K, v: V, cap: number,
                              canEvict?: (v: V) => boolean,
                              onEvict?: (k: K, v: V) => void): void {
   const old = m.get(k);
-  if (m.has(k)) { m.delete(k); onEvict?.(k, old as V); }
-  m.set(k, v);
+  try {
+    if (m.has(k)) { m.delete(k); onEvict?.(k, old as V); }
+  } finally {
+    // A throwing callback must not turn a replace into a delete.
+    m.set(k, v);
+  }
   while (m.size > cap) {
     const [k0, v0] = m.entries().next().value!;
     if (canEvict && !canEvict(v0)) break;

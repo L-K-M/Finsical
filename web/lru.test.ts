@@ -100,4 +100,13 @@ describe("lru", () => {
     expect(seen).toEqual([["a", 1, false]]);
     expect(m.get("a")).toBe(2);
   });
+
+  it("a throwing onEvict still lands the replacement", () => {
+    const m = new Map<string, number>();
+    lruSet(m, "a", 1, 3);
+    expect(() => lruSet(m, "a", 2, 3, undefined, () => {
+      throw new Error("boom");
+    })).toThrow("boom");
+    expect(m.get("a")).toBe(2); // replace, not silent delete
+  });
 });

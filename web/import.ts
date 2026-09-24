@@ -249,7 +249,9 @@ function fetchZip(url: string): Promise<Uint8Array> {
       // Weigh only while this promise still holds the slot — a count-
       // or byte-cap eviction (or a same-tick replacement) means these
       // bytes answer to nobody, and counting them would inflate
-      // zipBytes with no eviction path to recover them.
+      // zipBytes with no eviction path to recover them. Invariant:
+      // the lruSet below caches `fresh` itself — a stored wrapper
+      // would silently disable weighing (and the byte cap with it).
       const ours = () => zipCache.get(url) === fresh;
       if (hit) { if (ours()) zipWeigh(url, hit.byteLength); return hit; }
       const d = await fetchTimed(url, async (r, kick) => {
