@@ -296,8 +296,12 @@ canvas.addEventListener("pointerdown", (e) => {
   }
   if (isFeedZoneY(p.y)) {
     const pellet = sim.dropFood(p.x);
-    audio.feed();
-    splashAt(pellet.x, pellet.y, PUSH.pellet);
+    if (pellet) {
+      audio.feed();
+      splashAt(pellet.x, pellet.y, PUSH.pellet);
+    } else {
+      noteFoodRefused();
+    }
   } else {
     sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
     ripples.push({ x: p.x, y: p.y, age: 0 });
@@ -440,6 +444,19 @@ function noteGlassTap(): void {
   glassTaps = [];
   showAlert({ icon: "caution",
               text: "Please don't tap on the glass. It frightens the fish.",
+              buttons: [{ title: "OK", default: true, cancel: true }] });
+}
+
+// A refused feed (the tank already holds MAX_UNEATEN pellets) says so
+// once — a silent no-op would read as a broken click.
+let foodRefusedAt = 0;
+function noteFoodRefused(): void {
+  const now = performance.now();
+  if (now - foodRefusedAt < 60_000) return;
+  foodRefusedAt = now;
+  showAlert({ icon: "note",
+              text: "The tank is full of food the fish haven't eaten. " +
+                    "More would only foul the water.",
               buttons: [{ title: "OK", default: true, cancel: true }] });
 }
 
@@ -1463,7 +1480,9 @@ function feedFish(): void {
   const hungry = sim.fish.filter((f) => f.hunger > HUNGER_SEEK).length;
   for (const p of feedPinch(Math.random, hungry)) {
     setTimeout(() => {
+      if (paused) return; // a frozen tank gets no rain of food
       const pellet = sim.dropFood(x + p.dx);
+      if (!pellet) { noteFoodRefused(); return; }
       splashAt(pellet.x, pellet.y, PUSH.pellet);
       requestPaint();
     }, p.delay);
