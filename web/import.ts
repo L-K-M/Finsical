@@ -1090,7 +1090,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       if (e instanceof Error && e.message === "unreadable legacy pack") {
         unreadable.add(it.url);
         rowOf(it.url)?.classList.add("unusable");
-        status.textContent = "Finsical can't read this add-on yet.";
+        status.textContent = loadProblem(e);
         setAdd("Add to Tank", null);
         return;
       }
