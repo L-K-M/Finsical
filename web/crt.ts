@@ -56,7 +56,8 @@ uniform float uPersp; // horizontal keystone (0.5 = head-on)
 uniform float uRed;   // per-channel gain trims
 uniform float uGreen;
 uniform float uBlue;
-uniform float uPower; // 1 = settled; <1 = power-on warm-up in progress
+uniform float uPower; // 1 = settled; <1 = power-on/off in progress
+uniform float uDegauss; // degauss wobble amplitude (0 = settled)
 
 // Device px per game px, set at the top of main().
 vec2 pxScale;
@@ -138,6 +139,12 @@ void main() {
   // Barrel curve: sample positions bow outward like curved tube glass.
   vec2 cc = uv * 2.0 - 1.0;
   uv = (cc * (1.0 + (0.10 * uCurve) * dot(cc, cc))) * 0.5 + 0.5;
+  // Degauss: the coil's field rings the raster side to side — rows
+  // shear along a scrolling sine that dies out with uDegauss. Before
+  // the bounds check, so a strong swing pushes texels off the matte.
+  // uPhase.x already carries t*61 wrapped mod 2π — sin is periodic,
+  // so the wrap is seamless for the scroll.
+  uv.x += sin(uv.y * 40.0 + uPhase.x) * 0.008 * uDegauss;
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
     gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
     return;
@@ -168,7 +175,7 @@ void main() {
   // Misconvergence: the outer electron guns never land perfectly —
   // red drifts left and blue right, growing from zero at the center
   // toward the edges. Green stays as the reference beam.
-  float conv = (1.2 * uConv) * length(gc);
+  float conv = (1.2 * uConv) * length(gc) * (1.0 + 6.0 * uDegauss);
   if (conv > 0.001) {
     // Blend, don't overwrite — a hard swap would strip the beam smear
     // from r/b and leave them crisper than green.
@@ -220,6 +227,8 @@ void main() {
   // the boost tracks openness, so total emitted light stays roughly
   // constant through warm-up instead of flashing mid-animation.
   c *= 1.0 + 2.0 * (1.0 - open);
+  // The degauss field brightens the whole raster a touch while it rings.
+  c *= 1.0 + 0.25 * uDegauss;
 
   gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
 }
@@ -389,14 +398,32 @@ export function crtRasterRect(bufW: number, bufH: number,
   return [bx + (bw - w) / 2, by + (bh - h) / 2, w, h];
 }
 
+/** The degauss wobble's total length — after this degaussAmp() is 0. */
+export const DEGAUSS_MS = 900;
+/** Power-off collapse: raster to a hot line to black. */
+export const POWEROFF_MS = 280;
+
+/** Degauss envelope: exponential decay, snapped to 0 once inaudible —
+ * a hard cutoff keeps animating from lingering on a sub-pixel wobble. */
+export function degaussAmp(elapsedMs: number): number {
+  if (!(elapsedMs >= 0)) return 0;
+  const a = Math.exp(-elapsedMs / 180);
+  return a < 0.01 ? 0 : a;
+}
+
 export interface CrtFilter {
   readonly enabled: boolean;
   /** False once the GL context is lost — the effect can't re-enable. */
   readonly usable: boolean;
-  /** True while the power-on warm-up plays: the page must draw every
-   * frame then, not only on sim ticks. */
+  /** True while a tube animation plays (power warm-up, collapse or
+   * degauss): the page must draw every frame then, not only on ticks.
+   * Stays true through a collapse even after the caller's "on" flag
+   * cleared — the shader still needs frames to finish the effect. */
   readonly animating: boolean;
   setEnabled(on: boolean): void;
+  /** Ring the degauss coil: the raster wobbles and its color fringing
+   * blooms, then settles. No-op while off or under reduced motion. */
+  degauss(): void;
   /** Live-update shader params; `config` reflects the merged result. */
   configure(cfg: Partial<CrtConfig>): void;
   readonly config: CrtConfig;
@@ -422,6 +449,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     e.preventDefault();
     lost = true;
     enabled = false;
+    offT0 = -Infinity; // a collapse in flight dies with the context
     document.body.classList.remove("crt");
   });
 
@@ -475,8 +503,10 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   const uRect = gl.getUniformLocation(prog, "uRect");
   const uPhase = gl.getUniformLocation(prog, "uPhase");
   const uPower = gl.getUniformLocation(prog, "uPower");
+  const uDegauss = gl.getUniformLocation(prog, "uDegauss");
   gl.uniform2f(uTank, src.width, src.height);
   gl.uniform1f(uPower, 1);
+  gl.uniform1f(uDegauss, 0);
 
   // Trait uniforms — config keys pair with shader names.
   const TRAIT_UNIFORMS: Record<keyof CrtConfig, string> = {
@@ -539,22 +569,52 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   // 0 would mean page-load time and could play a stray warm-up if a
   // frame draws before setEnabled(true) is ever called.
   let powerT0 = -Infinity;
+  // Power-off collapse: offT0 stays -Infinity unless a disable is
+  // playing out — enabled stays true so render() keeps drawing until
+  // the raster dies, then the body class and the flag drop together.
+  let offT0 = -Infinity;
+  let degaussT0 = -Infinity;
 
   return {
     get enabled() { return enabled; },
     get usable() { return !lost; },
     get animating() {
-      return enabled && !reducedMotion.matches &&
-        performance.now() - powerT0 < POWERON_MS;
+      // A collapse in flight must finish even if reduced-motion flips
+      // on mid-flight — render() is the only place its state cleans up.
+      if (Number.isFinite(offT0) && enabled) return true;
+      if (reducedMotion.matches) return false;
+      const now = performance.now();
+      return enabled &&
+        (now - powerT0 < POWERON_MS || now - degaussT0 < DEGAUSS_MS);
     },
     // A copy — the live cfg could otherwise be mutated without the
     // shader ever seeing it, and goes stale once configure() swaps it.
     get config(): CrtConfig { return { ...cfg }; },
     setEnabled(on: boolean): void {
       if (on && lost) return; // dead context — stay on the plain path
+      // A collapse in flight ignores re-disable — the instant-off
+      // branch would strand offT0 finite with enabled false, and the
+      // next enable would render one dead frame and self-disable.
+      if (!on && enabled && Number.isFinite(offT0)) return;
+      if (!on && enabled && !reducedMotion.matches) {
+        // Real tubes don't cut to black — the raster collapses to a
+        // hot line first. enabled stays true so render() keeps drawing
+        // the fall; render() clears the flag when the line dies.
+        // Backdate offT0 by the warm-up's progress so a mid-bloom
+        // toggle falls from where it is rather than snapping open.
+        const open = Math.min(1,
+          (performance.now() - powerT0) / POWERON_MS);
+        offT0 = performance.now() - (1 - open) * POWEROFF_MS;
+        return;
+      }
       enabled = on;
+      offT0 = -Infinity; // a re-enable mid-collapse just warms back up
       document.body.classList.toggle("crt", on);
       if (on) { powerT0 = performance.now(); resize(); }
+    },
+    degauss(): void {
+      if (!enabled || reducedMotion.matches) return;
+      degaussT0 = performance.now();
     },
     configure(p: Partial<CrtConfig>): void {
       // Merge onto the current config, then sanitize: unknown keys
@@ -574,15 +634,33 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       // Each shader phase arrives pre-wrapped mod its period, so the
       // sin() args are identical modulo 2π at every point in time —
       // no wrap jump, no precision loss on a long-running clock.
-      const t = performance.now() / 1000, TAU = Math.PI * 2;
+      const now = performance.now();
+      const t = now / 1000, TAU = Math.PI * 2;
       // Apparent flicker / rolling-band rates. x/y scale t (seconds)
       // into sin() arguments, so they're radians/sec (Hz = value / TAU);
       // z is a [0,1) hash seed (grain) and wraps by 1, not 2π.
       const FLICKER_RATE = 61, BAND_RATE = 4; // ≈9.7 Hz, ≈0.64 Hz
       gl.uniform3f(uPhase, (t * FLICKER_RATE) % TAU,
                    (t * BAND_RATE) % TAU, t % 1);
-      gl.uniform1f(uPower, reducedMotion.matches ? 1 :
-        Math.min(1, (performance.now() - powerT0) / POWERON_MS));
+      let power = 1;
+      // The collapse runs outside the reduced-motion gate: a flip
+      // mid-fall must still finish and run its cleanup, not freeze.
+      if (Number.isFinite(offT0)) {
+        power = Math.max(0, 1 - (now - offT0) / POWEROFF_MS);
+        if (power === 0) {
+          // The line died: the tube is off. The last drawn frame
+          // stays in the buffer but the class drop hides the canvas.
+          enabled = false;
+          offT0 = -Infinity;
+          document.body.classList.remove("crt");
+          return;
+        }
+      } else if (!reducedMotion.matches) {
+        power = Math.min(1, (now - powerT0) / POWERON_MS);
+      }
+      gl.uniform1f(uPower, power);
+      gl.uniform1f(uDegauss,
+        reducedMotion.matches ? 0 : degaussAmp(now - degaussT0));
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA,
         gl.UNSIGNED_BYTE, src);
       gl.drawArrays(gl.TRIANGLES, 0, 3);

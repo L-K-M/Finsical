@@ -1391,6 +1391,17 @@ function setCrt(on: boolean): void {
   // "can't enable" answer either way.
   postState();
 }
+/** Ring the degauss coil — the raster wobble plus the BWONG. Silent
+ * no-op while the tube is off or dead. */
+function degaussTube(): void {
+  // Dead tube — nothing to degauss; don't play the BWONG either.
+  if (!crtOn || !crt?.usable) return;
+  crt.degauss();
+  // Menu/keyboard paths may carry activation — degauss() itself stays
+  // silent when the context can't run, but unlock() costs nothing.
+  audio.unlock();
+  audio.degauss();
+}
 /** Merge a partial config (prefs slider) onto the current one, clamp,
  * persist — and apply to the shader when it exists. Works with GL
  * unavailable so the settings still save for next launch. */
@@ -1529,6 +1540,10 @@ function layoutMachine(): void {
 }
 
 function applyMachine(m: Machine): void {
+  // A new case is a new tube: ring the degauss coil like a monitor
+  // waking up. The init call passes the stored machine (same id), so
+  // this only fires on an actual swap.
+  if (m.id !== machine.id && crtOn) degaussTube();
   machine = m;
   shellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
   shellEl.innerHTML = shellMarkup(m);
@@ -1640,6 +1655,7 @@ function openImport(): void {
     // Menu clicks land here via evaluateJavaScript — not always a
     // user activation, but unlock() is harmless if resume is blocked.
     toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute,
+    degauss: degaussTube,
     // Returns the new flag, so the native menu retitles at once.
     togglePause: () => setPaused(!paused),
     toggleZen: () => setZen(!zen) };
@@ -1701,6 +1717,8 @@ window.addEventListener("keydown", (e) => {
     toggleLights(); // bare L: the lamp; ⌘L belongs to the native menu
   } else if (bare && k === "m") {
     toggleMute(); // bare M: ⌘M is Minimize
+  } else if (bare && k === "d") {
+    degaussTube(); // bare D: ⌘D is Bookmark in browsers
   } else if (bare && k === "p") {
     setPaused(!paused); // bare P: ⌘P is Print; the app's menu owns it
   } else if (bare && k === "z") {
@@ -1723,6 +1741,7 @@ mountTankMenuBar({
   importAddons: openImport,
   takePicture,
   toggleCrt: () => setCrt(!crtOn),
+  degauss: degaussTube,
   toggleLamp: toggleLights,
   toggleMute,
   togglePause: () => { setPaused(!paused); },
@@ -2444,9 +2463,11 @@ function frame(now: number): void {
   // An open Get-Info card follows its fish, and moves with the window
   // on a resize, whether or not a tick runs.
   if (infoCard) layoutInfo();
-  // The CRT's power-on warm-up animates on its own clock.
-  const warming = crtOn && (crt?.animating ?? false);
-  if (ticks === 0 && !frameDirty && !warming) return;
+  // The CRT's tube animations (warm-up, collapse, degauss) run on
+  // their own clock — collapse in particular must keep drawing after
+  // crtOn has already cleared.
+  const crtBusy = crt?.animating ?? false;
+  if (ticks === 0 && !frameDirty && !crtBusy) return;
   frameDirty = false;
   render();
   // A parked cursor doesn't re-hit-test: hide the tip once the fish
@@ -2460,7 +2481,7 @@ function frame(now: number): void {
       if (fishTip.textContent !== label) fishTip.textContent = label;
     }
   }
-  if (crtOn) crt?.render();
+  if (crtOn || crtBusy) crt?.render();
 }
 // A resize changes the CRT buffer size, and resizing a WebGL canvas
 // clears it: draw on the next frame instead of waiting for a tick.

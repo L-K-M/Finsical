@@ -52,6 +52,7 @@ export interface TankMenuActions {
   importAddons(): void;
   takePicture(): void;
   toggleCrt(): void;
+  degauss(): void;
   toggleLamp(): void;
   toggleMute(): void;
   togglePause(): void;
@@ -297,6 +298,9 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
           // Dimmed (no action) where the page has no usable WebGL.
           { title: s.crtOn ? "Turn CRT Effect Off" : "Turn CRT Effect On",
             ...(s.crtUsable ? { action: a.toggleCrt } : {}) },
+          // Dimmed while the tube is off or dead — nothing to degauss.
+          { title: "Degauss",
+            ...(s.crtOn && s.crtUsable ? { action: a.degauss } : {}) },
           MENU_SEPARATOR,
           { title: s.zen ? "Leave Zen Mode" : "Enter Zen Mode",
             action: a.toggleZen },
