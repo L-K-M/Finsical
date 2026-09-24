@@ -86,6 +86,18 @@ one entry per idea, and each merge is recorded in that entry's
   eleventh-pass notes and the review-response log). The Python suite
   was not re-run this pass (no tool changes). Swift behavior
   code-verified only, as before.
+- Twelfth pass (full-repo review at `62b8572`, 2026-09-24): the
+  backlog was re-verified slice by slice against main (several
+  entries had silently landed or rotted — see "Backlog status
+  verified" notes in each entry) plus fresh findings N-1 through
+  N-12; vitest 471 tests and 80 Python tests green at baseline.
+  Findings became `tmp.md`, then seven PRs (#185 audio unlock and
+  event caps, #186 client-window drop guard, #187 fetch.py fixes,
+  #189 food cap, #192 stereo sound, #197 favicon/legacy/seed, #201
+  strict snds merge), each reviewed by GLM 5.3 and left open. New
+  open entries take the next free IDs (B-62+, P-25+, U-30+); dropped
+  claims are under "Refuted or dropped in the twelfth-pass review".
+  Swift behavior code-verified only, as before.
 
 ## ID scheme and map
 
@@ -99,8 +111,10 @@ and D; Testing & tooling and Docs/packaging to T.
 
 Ninth-pass IDs keep their numbers. Earlier-pass ideas with no
 ninth-pass match took the next free number (B-52+, P-19+, V-19+,
-U-25+, F-31+, D-22+, T-30+). Items with a "remainder" in their title
-keep their ID and list only what is still open.
+U-25+, F-31+, D-22+, T-30+); later passes continue each prefix
+(eleventh: B-56+, P-24, V-26+; twelfth: B-62+, P-25+, U-30+). Items
+with a "remainder" in their title keep their ID and list only what
+is still open.
 
 Eighth-pass shorthand used in older notes: B04 (decoder resource
 budgets) is now S-02 to S-06 plus T-20; B08 (pack-identity binding) is
@@ -120,13 +134,13 @@ Earlier-pass open items and where they went:
 | PLAN.md overclaims "mood" | T-11 |
 | Drop-path vs remote stem regex | B-13 |
 | `pickBackdrop` keys art by source `""` | B-13 |
-| Empty-tank save repopulated (reproduced) | B-16 |
+| Empty-tank save repopulated (reproduced) | verified fixed on main (twelfth pass) |
 | Emitter scenery PNGs can't be loaded | B-54 |
-| Persisted data needs a validated schema boundary | S-07 (with B-16) |
+| Persisted data needs a validated schema boundary | S-07 (with the now-closed B-16) |
 | Pack-owned fish inherit unrelated art (B08) | B-14 |
 | Removal undone by in-flight restore work | B-38 (with B-37) |
 | Local drops trail archive imports | B-13 |
-| Sound persistence can lose data | B-39 |
+| Sound persistence can lose data | B-39 (miss-vs-failure closed by PR #201) |
 | `tools/fetch.py` deletes output before conversion succeeds | T-19 |
 | Remaining decoder resource budgets (B04) | S-02, S-03, S-04, S-05, S-06, T-20 |
 | Bus messages and multiple browser tanks (B14) | B-34, T-18 |
@@ -135,7 +149,7 @@ Earlier-pass open items and where they went:
 | State push cadence; four windows hello-poll | P-06 |
 | `swimCanvas` cache unbounded; idle pre-rasterization | P-16 |
 | IndexedDB thumbs vs installed packs | B-30 |
-| Sim O(F·P), pellet cap, overfeeding | P-20, U-01 |
+| Sim O(F·P), pellet cap, overfeeding | P-20, U-01 (cap and waste landed in PR #189) |
 | `saveTank` writes when clean | P-21 |
 | Drop path reads every file twice | B-47 |
 | Bounded thumbnail memory; cache eviction metrics | P-01 |
@@ -154,7 +168,7 @@ Earlier-pass open items and where they went:
 | Overview actions; click a fish to select; sort persistence | U-25 |
 | Save slots / tank profiles | F-26 |
 | About box | A-04 |
-| Favicon | V-19 |
+| Favicon | closed by PRs #179 (metadata) and #197 (favicon) |
 | Decor count / quantity | B-21 |
 | Sound browser for game SFX | F-22 |
 | Machine case thumbnails in the prefs list | U-26 |
@@ -173,7 +187,7 @@ Earlier-pass open items and where they went:
 | Bubble size range | closed by PR #158 |
 | `cursor: grab` in plain browsers | U-03 |
 | `prefers-reduced-motion` across the CRT | U-20 |
-| Eat gulp sound | D-08 |
+| Eat gulp sound | closed by PR #192 (stereo pan + eat lookup) |
 | Pellet eaten animation | V-21 |
 | Adaptive murk tint, murk shimmer | V-22 |
 | Night glow, reflection layer, bezel tint, desk lamp, stars | V-23 |
@@ -208,7 +222,7 @@ Earlier-pass open items and where they went:
 | Save Picture with bezel; time-lapse contact sheet | D-09 |
 | Vintage filter mode | A-02 |
 | Bubble trails | D-28 |
-| Feed-key plop before unlock | B-17 |
+| Feed-key plop before unlock | B-17 (queue burst closed by PR #185) |
 | Photobomb / perfect-water sparkle | D-29 |
 | Machine switch flash or degauss | D-06 |
 | Play Sound menu for imported records | F-05 (remainder) |
@@ -935,10 +949,87 @@ and highest value per risk: B-04 pack identity, S-07 schema boundary,
 F-01 resource map, plus new shovel-ready entries B-56 through B-61,
 P-24, V-26 and V-27 below.
 
+### Completed (twelfth pass, PRs open for review)
+
+Twelfth-pass baseline `62b8572` (work branched before the tenth- and
+eleventh-pass folds landed; the doc is folded on top of `8afbaaa`).
+Each PR is one branch cut from `origin/main`, left open for the
+maintainer. Round counts and declines are in the twelfth-pass
+review-response log.
+
+- **PR #185** (`devin/audio-fixes`, B-17, B-19 part): while the
+  AudioContext is suspended `play()` drops one-shots unless a user
+  gesture is active (`navigator.userActivation`), so bubbles spawned
+  from `tickSim` no longer queue a burst on the first click; a single
+  `requestResume()` serializes resume attempts and restarts the
+  ambient on `statechange`. Event lookups (tap/feed/splash/…) reject
+  buffers longer than `EVENT_MAX_S` = 20 s, so a dropped song can't
+  answer glass knocks on either find() pass. Round 1 declined:
+  explicit `vi.unstubAllGlobals()` in one test — the file's
+  `afterEach` already unstubs every global.
+- **PR #186** (`devin/client-drop-guard`, B-25 web half):
+  `dragover`/`drop` `preventDefault` on prefs, overview and stats so
+  a dropped file can't navigate those windows; `dropEffect: 'none'`
+  for file drags (round 1). The preventDefault stays unconditional —
+  WebKit also navigates on dropped text and URLs.
+- **PR #187** (`devin/fetch-py-fixes`, T-21, T-22, T-23): raw module
+  docstring (SyntaxWarning gone), `.fd` food extension plus `.dna`,
+  and `_entry_name()` reconstructs raw name bytes (CP437) for
+  unflagged entries and tries UTF-8 then Shift-JIS before falling
+  back to `zi.filename`; backslashes normalize only after decoding
+  (a SJIS trail byte can be 0x5C). Rounds applied: NUL truncation —
+  on the raw bytes, so bytes past a NUL can't fail the surviving
+  prefix — plus an explicit unflagged-name assertion and a `with`
+  block on the flag-check ZipFile.
+- **PR #189** (`devin/food-cap`, U-01): `MAX_UNEATEN` = 6 uneaten
+  pellets, `dropFood(x)` returns `Food | null`, a refusal alert
+  throttled to once a minute, `WASTE_PER_TICK` = 1/10000, and
+  delayed pinch pellets are skipped while paused (N-1). Rounds
+  applied: the cap comment corrected (six pellets still out-foul the
+  filter); the throttle seeded `-Infinity` — `performance.now()`
+  counts from page load, so `0` suppressed the first alert for 60 s.
+- **PR #192** (`devin/stereo-sound`, D-08): StereoPanner pans taps,
+  splashes, bubbles and feed by tank x (`panFor` clamps to +/-0.8),
+  bubble playbackRate varies 0.94-1.06, and an `eat()` lookup plays a
+  gulp for packs that ship one. Round applied: feed pans to the
+  clamped `pellet.x`, not the requested x.
+- **PR #197** (`devin/small-ui`, V-19 favicon half, B-44 UI half,
+  B-51): a 32x32 favicon rendered from `ICON_MACHINE` linked on all
+  five pages and packed by the native Makefile; `isLegacyPack()`
+  recognizes the `0x00250022` accessory signature, so legacy-only
+  downloads fail as "unreadable legacy pack" → "Finsical can't read
+  this add-on yet." with dimmed `.irow.unusable` rows and no Try
+  Again, while mixed zips still install their readable packs; the
+  sim seed is `crypto.getRandomValues` per launch instead of the
+  fixed `0x9003`. Round applied: the status line reuses
+  `loadProblem` instead of a duplicated literal.
+- **PR #201** (`devin/snds-merge-strict`, B-39 main case):
+  `rwStrict()` resolves null on a real miss but rejects on a backend
+  failure; `sndsMerge`/`sndsRemove` run through it via the pure
+  `sndsMergeInto(get, put, records)`, so a failed read can no longer
+  overwrite the whole sound store with only the incoming records and
+  a failed write no longer posts `soundsLoaded`. Cache paths keep
+  the lenient `rw()`. Round applied: `sndsPut` resolves an explicit
+  `true` rather than the put key.
+
+Verified against `62b8572` without new code: **B-16** is already
+fixed on main (`keepEmpty` at `web/main.ts:214` — an empty v2 roster
+loads no fish); **B-13** is substantially fixed by `web/drop.ts`
+(every dropped pack imports, fish packs no longer hijack the
+backdrop) — its remainders are noted in the entry.
+
+Twelfth-pass top picks, with status: audio unlock + event caps
+(PR #185), food cap and waste (PR #189), fetch.py encoding fixes
+(PR #187); still open and highest value per risk: B-04 pack identity,
+S-07 schema boundary, F-01 resource map, B-14/B-15 binding
+(unchanged from the eleventh pass), plus new entries B-62 through
+B-64, P-25, P-26, U-30 and U-31 below.
+
 ## Bugs and reliability (open)
 
-Done this pass and removed from this list: B-01, B-02, B-03, B-05,
-B-07, B-08, B-09, B-10, B-22, B-24, B-26, B-31, B-32, B-45.
+Done and removed from this list: B-01, B-02, B-03, B-05,
+B-07, B-08, B-09, B-10, B-22, B-24, B-26, B-31, B-32, B-45 (ninth
+pass); B-16 (already fixed on main), B-51 (twelfth pass).
 
 ### B-04 Multi-pack fish add-ons all turn into their last species after relaunch
 
@@ -1033,6 +1124,12 @@ Size M · Severity medium · Value 3/5 · Risk 2/5
 - Merged from passes 1-7 (stem logic): the drop path uses `name.replace(/\.[^.]*$/, "")` and the remote path `replace(/\.[^.]+$/, "")`; use one shared stem helper so they cannot diverge.
 - Overlaps open PRs #93 (section-aware drop classification; a `.fsh` drop no longer hijacks the backdrop), #94 (`decodeDroppedPacks` in `web/drop.ts` imports every decodable pack, skips corrupt ones), #121 (Firefox `dataTransfer.files` fallback) and #124 (dropped packs persist under `local:` IDB keys, excluded from LRU). With those merged, (a) and (c) may already be fixed; diff against main first.
 
+Twelfth-pass update: verified against `62b8572` — `web/drop.ts`
+(`decodeDroppedPacks`, `dropSection`) now imports every dropped pack
+and fish packs no longer hijack the backdrop; (a) and (c) are fixed
+on main. Still open: the `src ""` vs `local:` split called out above
+and the import summary/message work (U-10).
+
 ### B-14 Fish show the wrong species during launch restore, and permanently when their pack failed or was dropped
 
 Size S · Severity medium · Value 4/5 · Risk 2/5
@@ -1070,23 +1167,6 @@ Size S · Severity medium · Value 4/5 · Risk 2/5
 - Related: B-23(a) (keep tank-preset sheets out of the pool), B-14.
 - PR #160 (open) removes the stand-ins once Stock the Tank installs a real fish, which narrows this; a user who declines the offer still sees starters adopt every species.
 
-### B-16 An emptied tank comes back with 4 starter fish on the next launch
-
-Size S · Severity medium · Value 3/5 · Risk 1/5
-
-**Problem.** `roster?.length ? roster : DEFAULT_FISH` treats a saved, deliberately empty v2 roster as a missing save, contradicting the documented rule that v2 rosters are authoritative. Overview supports an empty tank ('The tank is empty…'), but removing everything does not stick.
-
-**Evidence.** `web/main.ts:72-76`, `web/main.ts:297-301`.
-
-**Change.** Extract `initialRoster(saved)` into `web/tankmodel.ts`: `saved?.v === 2 ? roster : (roster.length ? roster : DEFAULT_FISH)`.
-
-**Acceptance.** Vitest: v2 with [] gives []; no save gives 4 defaults; v1 with [] gives 4 defaults.
-
-**Merged and related.**
-
-- Merged from pass 8 (reproduced there too): distinguish "no valid save" from "valid empty roster"; test first launch, explicit empty v1 and v2 saves and malformed entries; keep v1 add-on reconciliation separate from the first-launch decision.
-- Related: S-07 (schema boundary), open PR #127 (Empty Tank) whose result this bug undoes on relaunch, and PR #160 (welcome keyed on `saved === null`): an emptied tank must not re-trigger the welcome.
-
 ### B-17 While audio is locked every sound is queued; the first click plays them all at once
 
 Size S · Severity medium · Value 4/5 · Risk 2/5
@@ -1105,6 +1185,13 @@ Size S · Severity medium · Value 4/5 · Risk 2/5
 - Overlaps open PRs #115 (keyboard and menu paths call `unlock()`) and #133 (defers AudioContext creation until a buffer plays; `usable:false` on failure). Re-measure on top of them.
 - Merged from passes 1-7: the F key could play a "plop" even before unlock by resuming on the keydown gesture itself (keys count as activation).
 - Refuted variant: dropping every one-shot while suspended (see "Declined, refuted and corrected").
+
+Twelfth-pass update: PR #185 lands the core — one-shots dropped
+while suspended unless a gesture is active, a single
+`requestResume()`, ambient self-heal on `statechange`, with vitest
+coverage. Still open: WebKit's `interrupted` state (only `suspended`
+is handled), a `visibilitychange` resume hook, and the native
+`mediaTypesRequiringUserActionForPlayback` flag (needs a Mac).
 
 ### B-18 Sound add-ons cannot be removed; their sounds persist and replay every launch
 
@@ -1145,6 +1232,14 @@ tap today) still takes the slot, and B-18 removal.
 **Merged and related.**
 
 - Related: F-05 (remainder) plays `kind === 'music'` records; P-04 streams them; F-22 records are `kind: 'effect'`.
+
+Twelfth-pass update: both narrowing halves landed — PR #181 makes
+substring matching whole-word ("Centerfold" no longer answers
+"center"), and PR #185 rejects buffers longer than 20 s on every
+find() pass, so even a single-word song name can't hijack an event.
+Still open: the `kind: 'effect' | 'music'` split — a short song
+called "drop" can still answer a splash; music should live in a
+separate map that event lookup never searches.
 
 ### B-20 A background, gravel or tank preset re-chosen with 'Add Again' reverts after relaunch
 
@@ -1208,6 +1303,12 @@ Size S · Severity medium · Value 3/5 · Risk 1/5
 **Change.** In decidePolicyFor, after the http(s) branch: `if action.targetFrame?.isMainFrame == true, let s = action.request.url?.scheme, s != WebHandler.scheme { NSLog(...); decisionHandler(.cancel); return }` (no page navigates its main frame to blob: or data:). Optionally also cancel main-frame finsical:// loads of paths other than the five bundled pages. Defence in depth: dragover/drop preventDefault in prefs.ts, overview.ts and stats.ts, or upstream in osmium-ui's hostWindow().
 
 **Acceptance.** Manual test: drop a PNG on each window; chrome stays; drops on the tank and Import still import.
+
+Twelfth-pass update: the defence-in-depth half landed in PR #186 —
+all three pages preventDefault `dragover`/`drop` unconditionally and
+show `dropEffect: 'none'` for file drags. Still open: the native
+`decidePolicyFor` cancel for main-frame non-http(s) loads (the real
+fix; needs a Mac to verify).
 
 ### B-27 Zoom and window tiling break the aspect ratio, so the silhouette mask no longer matches the art
 
@@ -1315,6 +1416,12 @@ Size S · Severity low · Value 2/5 · Risk 2/5
 
 **Acceptance.** Tests (crt.test.ts): identity at curvature 0 with neutral size and zoom; the center is a fixed point; the corner at curvature 1 is null; zoom=1 maps u=0.95 to ~0.902.
 
+Twelfth-pass note: `canvas#crt` has `pointer-events: none`, so while
+the CRT is on, clicks over the visible picture still hit `#tank` —
+correct in intent, but the hit target and the picture disagree under
+overscan/curvature. Same fix as this entry (N-12 in the twelfth-pass
+review).
+
 ### B-36 After a GPU context loss the CRT stays off for the session and Preferences still shows it on
 
 Size M · Severity low · Value 2/5 · Risk 3/5
@@ -1376,6 +1483,15 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 **Merged and related.**
 
 - Merged from pass 8 ("Sound persistence can lose data"): `rw` serializes read/modify/write only within one module instance, and the tank and Add-ons pages use separate instances, so overlapping merges can clobber each other: make read/merge/write one IndexedDB readwrite transaction. The legacy-thumbnail migration deletes its source after a null `packPut`: remove a migration source only after commit, and distinguish cache failures from user-data failures.
+
+Twelfth-pass update: PR #201 lands the miss-vs-failure fix —
+`rwStrict()` (null on a real miss, reject on failure) drives
+`sndsMerge`/`sndsRemove` through pure `sndsMergeInto(get, put,
+records)`; a failed read no longer overwrites the store and a failed
+write no longer reports success. Still open from the merged note:
+cross-instance serialization (tank and Add-ons pages can still
+clobber each other's merges) and the legacy-thumbnail migration
+ordering.
 
 ### B-40 Each sound dropped on Import Add-ons re-decodes all stored sounds and restarts the ambient loop
 
@@ -1448,6 +1564,15 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 **Change.** In showDetail's catch, when `e.message === 'no pack inside'` and the bytes start with `22 00 25 00`, show "Finsical can't read this add-on yet." with `setAdd('Add to Tank', null)` and no Try Again. Track verdicts in an in-session `unreadable` Set and dim rows via `.irow.unusable { color: #888 }` (re-applied in showSection). If persisted, key it `bad:v1:{url}` with a decoder-version constant so a future decoder is not blocked. Decoder follow-up (core/data): the file looks like u16-LE length-prefixed records (length includes the prefix): 0x00 (len 0x22), 0x22 (len 0x22), 0x44 (len 0x2E), with `00 01 00 00` words inside; sample FOSSIL1.ACC (83,140 B).
 
 **Acceptance.** Test: the Accessories section shows 17 dimmed rows and no Try Again.
+
+Twelfth-pass update: the UI half landed in PR #197 —
+`isLegacyPack()` (`0x00250022` signature in `core/data/fsh.ts`),
+legacy-only downloads throw "unreadable legacy pack" → "Finsical
+can't read this add-on yet.", `.irow.unusable` dims the rows, no Try
+Again; mixed zips install their readable packs and skip the legacy
+entries. Still open: the decoder follow-up (u16-LE length-prefixed
+records; sample FOSSIL1.ACC) — the verdicts are in-session only, so
+a future decoder needs no cache-bust key.
 
 ### B-46 Offline or cache-miss restores quietly turn fish into orange blocks and never retry
 
@@ -1525,23 +1650,6 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 **Merged and related.**
 
 - Part of the "native shell politeness" checklist (restore to a removed monitor, T-32).
-
-### B-51 The simulation replays the same random sequence on every launch
-
-Size S · Severity nit · Value 1/5 · Risk 1/5
-
-**Problem.** The RNG seed is constant, so from the same saved state fish repeat the same first decisions and bubble pattern, and two browser tabs move in lockstep. Effect is small because saved state differs each launch.
-
-**Evidence.** `web/main.ts:63` (`new Sim(TANK, 0x9003)`), `core/rng.ts`.
-
-**Change.** Seed from `crypto.getRandomValues(new Uint32Array(1))[0]` in main.ts; tests keep explicit seeds.
-
-**Acceptance.** (derived) Two launches from the same save make different first decisions; sim tests with explicit seeds still pass.
-
-**Merged and related.**
-
-- Related: S-07 (the save omits RNG state, so a reload is not a deterministic continuation anyway).
-
 
 ### B-52 Loose-mode add-on listings don't dedupe colliding basenames
 
@@ -1781,6 +1889,61 @@ browsing; reinstalling a pack visibly refreshes its row.
 **Merged and related.**
 
 - Related: P-01 (cache eviction).
+
+### B-62 `handleSheets` registers the same pack twice on overlapping restores
+
+Size S · Severity low · Value 2/5 · Risk 1/5 (twelfth pass, N-2)
+
+**Problem.** `importPanel.restore()` runs in the launch chain and
+again inside `retryRestores` rounds. If the same URL is restored
+twice in one session — a retry racing a late first restore, or a
+`restore` after an uninstall→install cycle — `usePack` pushes a
+fresh sheet each time and `sheetByPack` rebinds to the newest slot.
+`fishSheets` grows by one per duplicate and the old slot stays
+forever (by design — sheets are kept to preserve `sheetIdx`
+bindings), so this is a slow leak rather than corruption.
+
+**Evidence.** `web/main.ts` (`usePack`/`handleSheets`,
+`retryRestores`).
+
+**Change.** Skip `usePack` when `sheetByPack` (or B-04's per-part
+map) already binds the URL; a reinstall after an uninstall keeps the
+existing slot. Test: two overlapping restores of the same URL leave
+one slot.
+
+### B-63 `installAddon`'s in-flight ride reports success once for a queued double-click
+
+Size S · Severity nit · Value 1/5 · Risk 1/5 (twelfth pass, N-3)
+
+**Problem.** `installAddon` checks `installsInFlight` before the
+installed-dup check, so a second "Add Again" click while the first
+install still downloads rides the same promise — it resolves to the
+first install's completion and the second fish never spawns. In
+practice the panel disables the button while pending, so impact is a
+queued double-click doing nothing visibly different.
+
+**Evidence.** `web/main.ts` (`installAddon`, `installsInFlight`).
+
+**Change.** Key `installsInFlight` by URL and queue a real second
+install behind it when the click was explicit (or drop the ride and
+start a fresh fetch — bytes are cached anyway). Low priority: the
+current behavior is silent but harmless.
+
+### B-64 `openClientWindow` may silently fail under strict popup blockers
+
+Size S · Severity nit · Value 1/5 · Risk 1/5 (twelfth pass, N-7)
+
+**Problem.** The probe `window.open("", target)` runs before the real
+open; where it returns null the code retries `window.open(url,
+target)` and then gives up silently. Menu commands are real gestures
+so this is an edge case, but a failure leaves no trace — a confused
+user filing a bug has nothing to quote.
+
+**Evidence.** `web/menubar.ts` (probe + retry path).
+
+**Change.** `console.warn` when both opens fail; optionally a
+status-line note on the tank page. No UX machinery — the failure is
+environmental.
 
 ## Performance and smoothness (open)
 
@@ -2104,6 +2267,12 @@ writes; B-41's hidden and quit saves may still write.
 **Acceptance.** (derived) Two consecutive saves of an unchanged tank
 call `setItem` once (spy).
 
+Twelfth-pass note (N-4): the premise is weak — fish x/y/hunger
+mutate every tick, so the payload differs on every 10 s save while
+the sim runs. The check only saves work for a paused or empty tank.
+Still worth doing (one string compare) but expect no measurable win
+while the tank is live.
+
 ### P-22 Native `frames.save` runs on every resize tick
 
 Size S · Severity nit · Value 1/5 · Risk 1/5 (from passes 1-7)
@@ -2175,11 +2344,41 @@ minute of calm tank; pointermove performs no layout reads.
 - Related: P-19 (render allocations), P-03/P-13 (render-on-tick),
   P-10 (CRT shader cost).
 
+### P-25 `serveThumbs` is O(keys × fish) per wantThumbs push
+
+Size S · Severity nit · Value 1/5 · Risk 1/5 (twelfth pass, N-5)
+
+**Problem.** Each `f:` key does `sim.fish.find(fishThumbKey(f) === k)`
+— ~700 string builds per request at 24 fish and ~30 keys. Negligible,
+but a `Map` of key→fish built once per call is the same length of
+code.
+
+**Evidence.** `web/main.ts` (`serveThumbs`/`wantThumbs`).
+
+**Change.** Build `Map(fishThumbKey(f) → f)` once per serveThumbs
+call; look up keys against it. No behavior change.
+
+### P-26 `walkEntry` reads dropped directory trees serially
+
+Size S · Severity nit · Value 1/5 · Risk 1/5 (twelfth pass, N-11)
+
+**Problem.** A folder drop awaits each `readEntries` batch and each
+file walk in sequence. Fine for `.azpack` folders (a few dozen
+files); a big tree walks slowly and silently — U-10 wants progress
+feedback anyway.
+
+**Evidence.** `web/main.ts` (`walkEntry`).
+
+**Change.** Walk siblings with bounded concurrency (4-8) and surface
+a count in the drop feedback when U-10 lands. Low priority: correct
+today, just slow on pathological drops.
+
 ## Visual and layout (open)
 
 Done this pass and removed from this list: V-01 (PR #87/#125), V-02,
 V-11, V-12, V-17's viewport meta (PR #90/#93; favicon is V-19) and
-V-10's fish part.
+V-10's fish part (ninth pass); V-19 — client-page metadata in PR
+#179, favicon in PR #197 (twelfth pass).
 
 ### V-03 The tank is drawn at a non-integer scale; on first launch it is below its native 320x200
 
@@ -2386,35 +2585,6 @@ Size S · Severity nit · Value 1/5 · Risk 1/5
 **Acceptance.** (derived) A screenshot of the detail line shows no anti-aliased fallback glyph.
 
 
-### V-19 Favicon
-
-Size S · Severity nit · Value 1/5 · Risk 1/5 (V-17's remainder plus passes 1-8)
-
-**Problem.** No page has a favicon, so browser tabs show a blank icon
-and log a `/favicon.ico` 404.
-
-**Evidence.** `web/index.html` and the four client pages;
-`media-sources/icon-finsical.png`.
-
- **Change.** Add `<link rel="icon" href="assets/icon-32.png">` (generated
- from `media-sources/icon-finsical.png`) to all pages. Note on V-17's
- viewport meta (done in PRs #90/#93): V-17 proposed it for
- `web/index.html` only, since the four client pages are fixed-size
- Osmium windows that would overflow at 390 px, while PR #93 adds it to
- all five pages; check each client page on a phone before merging #93.
-
- Tenth-pass update: the client-page viewports never reached `main`:
- `62b8572` names a viewport on `index.html` only. PR #179 re-lands
- viewports (plus description, theme-color, color-scheme and noscript)
- on all five pages; re-check narrow-window clipping (U-27) on merge.
- The favicon half of this entry stays open.
-
-**Acceptance.** (derived) No favicon 404 in the console; the tab shows
-the icon. When merging #90/#93, V-17's viewport check applies:
-Playwright's iPhone 13 descriptor gives innerWidth 390, the overlay
-card gets class 'inarrow' and `#opentrigger` clears the home indicator
-(`env(safe-area-inset-*)` is non-zero).
-
 ### V-20 Scene-life leftovers: sway for single-frame decor, fish shadows
 
 Size S each · Severity idea · Value 3/5 · Risk 1/5 (from passes 1-7)
@@ -2584,6 +2754,14 @@ Size S · Severity medium · Value 4/5 · Risk 2/5
 
 - Merged from passes 1-8 (pellet cap): avoid an evict-oldest cap that lets repeated feeding erase waste for free (`MAX_UNEATEN` refusing new pellets is fine); add gentle overfeeding feedback, since fouling within about a second of overfeeding reads as broken. Test sustained input, settled waste and feeding fairness. The fish cap (24) is in open PR #111.
 - PR #158 (open) already makes Feed Fish scatter 3-5 pellets (a fixed random pinch, not the hunger-based count proposed in point 3); reconcile point 3 with it. PR #154's opportunistic eating (B-10) reduces rot from ignored pellets.
+
+Twelfth-pass update: PR #189 lands points 1 and 2 — `MAX_UNEATEN` =
+6 (`dropFood` → `Food | null`), `WASTE_PER_TICK` = 1/10000, a
+throttled refusal alert instead of the ripple, and delayed pinch
+pellets skipped while paused (fixes N-1). Still open: point 3's
+hunger-based pinch count and a pending queue drained on the frame
+clock (today's pinch still runs on `setTimeout`s — paused pellets
+are skipped, but the scatter is PR #158's fixed random one).
 
 ### U-02 (remainder) Placeholder fish, first-run guidance and placeholder thumbs
 
@@ -3017,6 +3195,39 @@ let "Defaults" restore a user-saved baseline.
 
 **Acceptance.** (derived) The preset is frozen like the others
 (`isFrozen` test) and applies in one bus post.
+
+### U-30 The Get-Info card can't be dragged or pinned, and chases fast fish
+
+Size S · Severity nit · Value 1/5 · Risk 1/5 (twelfth pass, N-9)
+
+**Problem.** `layoutInfo` repositions the ⌥-click fish card every
+frame to follow its fish, so there's no way to move or pin it — and
+a fast fish drags a text-heavy card around constantly. In the
+original, Get Info is a real window.
+
+**Evidence.** `web/main.ts` (`layoutInfo`), `web/app.css` (finfo
+rules). See also V-26 (the card renders under the case glass).
+
+**Change.** Let the card lag or fade while the fish moves fast, or
+detach it once the fish travels far from where it opened. A dragged
+position could stick until the fish leaves a radius.
+
+### U-31 Feed Fish picks one x for the whole pinch
+
+Size S · Severity nit · Value 1/5 · Risk 1/5 (twelfth pass, N-10)
+
+**Problem.** All pellets of a Feed Fish pinch scatter ±24 px around a
+single random x. With a full tank the hungry school at the far end
+races the near school to one spot every time; two or three pinch
+centers would read fairer and look better.
+
+**Evidence.** `web/main.ts` (`feedPinch`, PINCH_SPREAD 24),
+`web/water.ts` (splash ring per pellet).
+
+**Change.** Pick 1-3 centers (more when the roster is large or the
+hungry fish are spread out) and split the pinch between them. Ties
+into U-01's open point 3 (hunger-based pellet count) — do them
+together.
 
 ## Aesthetics and Mac OS 8 fidelity (open)
 
@@ -3618,7 +3829,8 @@ band stays in it; defaults reproduce today's behavior bit for bit.
 
 ## Delight and quirky ideas (open)
 
-Done this pass and removed from this list: D-07.
+Done this pass and removed from this list: D-07 (ninth pass); D-08
+(PR #192, twelfth pass).
 
 ### D-01 Fish rest at night: slower, lower, tails barely moving, woken by a tap
 
@@ -3716,22 +3928,6 @@ Size M · Severity idea · Value 3/5 · Risk 3/5
 
 - Power-on overlaps open PR #141 (a `uPower` uniform plays a ~450 ms warm-up on every enable, brightness keyed to raster openness, skipped under reduced motion). What remains: power-off collapse, degauss and Energy Saver; reuse #141's uniform rather than adding a second one.
 - Merged from passes 1-7: a machine switch could play a brief white flash or the degauss wobble to sell the hardware swap.
-
-### D-08 Stereo-positioned tank sounds with varied bubbles
-
-Size S · Severity idea · Value 3/5 · Risk 1/5
-
-**Problem.** Every splash, bubble and knock plays dead centre at a fixed gain.
-
-**Evidence.** `web/audio.ts:99-126`, `web/audio.ts:128-148`, `web/main.ts:106-110`, `web/main.ts:794-797`.
-
-**Change.** Route everything through F-05's master gain. play() takes an optional pan and inserts a StereoPannerNode (WebKit 14.1+, fine for macOS 12). feed(x), bubble(x) and tap(x, …) pass `pan = clamp(x/320*1.6 - 0.8, -0.8, 0.8)`; render() passes the newest bubble's x via `sim.bubbles[sim.bubbles.length - 1]` (not `.at(-1)`, which needs Safari 15.4); feedFish passes TANK.width/2. Bubbles get playbackRate 0.94-1.06 at random.
-
-**Acceptance.** Test: the pure pan mapping and a volume clamp.
-
-**Merged and related.**
-
-- Merged from passes 1-7 ("Eat gulp sound"): `find('eat', 'gulp')` on `food.eaten` if a pack ships one, silent otherwise. PR #159's master gain (open) is the routing point.
 
 ### D-09 Copy Picture and Save 'Picture 1' (optionally as a real PICT)
 
@@ -4237,7 +4433,8 @@ Size S · Severity low · Value 2/5 · Risk 2/5
 ## Tooling, tests, CI and docs (open)
 
 Done this pass and removed from this list: T-01, T-02, T-03 (MACE
-notices and README credits) and T-04, with remainders below.
+notices and README credits) and T-04, with remainders below (ninth
+pass); T-21, T-22, T-23 (PR #187, twelfth pass).
 
 ### T-02 (remainder) Optional notarized release
 
@@ -4429,6 +4626,10 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 
 - Related: T-30 (the dead `openImport` surface) is the kind of dead code these checks find.
 
+Twelfth-pass note: the cited W605 (T-21) is fixed in PR #187 — the
+docstring is now raw. The rest of the ruff/shellcheck/tsc-unused
+findings stand.
+
 ### T-14 CI toolchains are unpinned, the web build is not checked on Linux, and PRs produce no artifacts
 
 Size S · Severity low · Value 2/5 · Risk 1/5
@@ -4539,42 +4740,6 @@ Size S · Severity low · Value 1/5 · Risk 1/5
 **Merged and related.**
 
 - Merged from pass 8 (B04 slice): Python ISO parsing trusts lengths too far; validate extents and lengths against the file size with the same `IsoError`.
-
-### T-21 fetch.py's docstring has an invalid escape sequence (SyntaxWarning on every run on 3.12+)
-
-Size S · Severity low · Value 2/5 · Risk 1/5
-
-**Problem.** `uvx --python 3.13 python tools/fetch.py --help` prints 'SyntaxWarning: invalid escape sequence' every run (compiled fresh as __main__); a future Python makes it an error.
-
-**Evidence.** `tools/fetch.py:2-13` (`--include '\.zip$'` in a non-raw docstring, also argparse's description at :262).
-
-**Change.** Make the docstring raw (`r"""…`) and run the Python tests in CI with `-W error::SyntaxWarning`.
-
-**Acceptance.** (derived) `python3 -W error::SyntaxWarning tools/fetch.py --help` succeeds on 3.12+.
-
-### T-22 tools/fetch.py skips food packs: it lists '.fod' instead of '.fd'
-
-Size S · Severity low · Value 1/5 · Risk 1/5
-
-**Problem.** No AquaZone file uses '.fod'; food packs are .fd/.FD (allfoodsandmeds.zip, JPN 餌セット), so every one is silently skipped. No impact today (nothing consumes food bundles).
-
-**Evidence.** `tools/fetch.py:36-37` (IMPORTABLE), `tools/fetch.py:140`.
-
-**Change.** Replace '.fod' with '.fd' and add '.dna' (F-23's Power Updater packs).
-
-**Acceptance.** Test in test_fetch.py: a zip containing a minimal pack named 'flake.fd' yields one bundle. Once F-01 lands, emitted manifests carry chunk types (food bundles identifiable).
-
-### T-23 tools/fetch.py reads Shift-JIS zip entry names as CP437, unlike the TypeScript reader
-
-Size S · Severity low · Value 2/5 · Risk 1/5
-
-**Problem.** JPN archives store Shift-JIS names without the UTF-8 flag. zip.ts tries UTF-8 then shift_jis; Python's zipfile falls back to CP437, so `fetch.py aquazone-jpn-set` emits 'âOâbâsü[1.azpack' instead of 'グッピー1.azpack'. Shift-JIS trail bytes can be 0x5C (ソ = 83 5C), so backslash normalization must run after re-decoding.
-
-**Evidence.** `tools/fetch.py:85-91`, `tools/fetch.py:146-171` (`norm = zi.filename.replace('\\', '/')` at :150), `core/data/zip.ts:38-68`.
-
-**Change.** `_entry_name(zi)`: return zi.filename if `zi.flag_bits & 0x800`; else `raw = zi.orig_filename.encode('cp437')`, try `raw.decode('utf-8')`, then `raw.decode('shift_jis')`, fall back to zi.filename (works on 3.9, unlike metadata_encoding). Compute `norm = _entry_name(zi).replace('\\', '/')` only after decoding.
-
-**Acceptance.** Test `test_sjis_entry_names`: raw SJIS names 'グッピー1.fsh' and 'ソ.fsh' with flag 0x800 clear give bases 'グッピー1' and 'ソ'; add to T-07's corpus notes.
 
 ### T-24 No Web Inspector in native builds; missing bundled files fail as network errors instead of 404s
 
@@ -4828,6 +4993,27 @@ new evidence.
   (`web/addons.ts:63`, `web/store.ts:213-227`): merge failures already
   return before posting, and `capSnds` eviction needs over 64 MB of
   stored WAVs against a ~2 MB full set. Vanishingly rare; no change.
+
+### Refuted or dropped in the twelfth-pass review (tmp.md)
+
+Checked against `origin/main` `62b8572` with node/vitest/typecheck;
+code citations are from that revision. Do not re-raise them without
+new evidence.
+
+- **Clear `sim.notice` while the pointer is in the feed zone**
+  (`web/main.ts` pointermove): dropped by the reviewer — a fish
+  crowding the feed point is the point of the attraction; it eats
+  the pellet about to drop, and AquaZone fish do rush the feeding
+  spot. The "photobombing" framing was wrong.
+- **`unlock()`/`play()` resume races need one `requestResume()`**
+  (`web/audio.ts`): fixed rather than refuted — PR #185 folds both
+  through a shared `requestResume()`; recorded here because tmp.md
+  listed it as a finding.
+- **The drop guard should only `preventDefault` file drags** (PR
+  #186 round-1 suggestion): applied differently on evidence —
+  `preventDefault` stays unconditional because WebKit navigates on
+  dropped text and URLs too; `dropEffect: 'none'` is set only when
+  the drag carries `Files`.
 
 ## Design notes (preserved)
 
@@ -5244,6 +5430,59 @@ steady state and was left open for human review and merge):
   D-15/D-21/D-22/D-23/D-24/D-26/D-27/D-28/D-29/D-31, F-13/F-17).
 - Review gaps: none; every PR completed at least two GLM rounds.
 
+### Twelfth pass (this pass, PRs #185-#201)
+
+Automated GLM 5.3 reviewer rounds; PRs are left open for human review
+and merge. Round counts at fold time (two PRs still had a review
+round running on the latest commit — marked "running"):
+
+| PR | Branch | Items | Rounds | State |
+| --- | --- | --- | --- | --- |
+| #185 | `devin/audio-fixes` | B-17, B-19 length cap | 1 (R1: 1 declined nit) | quiet |
+| #186 | `devin/client-drop-guard` | B-25 web half | 2 (R1 applied `1b942e6`; R2 clean) | steady |
+| #187 | `devin/fetch-py-fixes` | T-21, T-22, T-23 | 3 (R1 applied `ad68d38`; R2 applied `11813e5`; R3 running) | open |
+| #189 | `devin/food-cap` | U-01 | 3 (R1 applied `0eb894b`; R2 applied `88e573d`; R3 clean) | steady |
+| #192 | `devin/stereo-sound` | D-08 | 2 (R1 applied `8ef6619`; R2 clean) | steady |
+| #197 | `devin/small-ui` | V-19 favicon, B-44 UI, B-51 | 2 (R1 applied `e7ec845`; R2 clean) | steady |
+| #201 | `devin/snds-merge-strict` | B-39 main case | 3 (R1 applied `86874ea`; R2 applied `0783cc1`; R3 running) | open |
+
+- Applied:
+  - #186: `dropEffect: 'none'` on file drags for an honest no-drop
+    cursor; `preventDefault` kept unconditional (dropped text/URLs
+    also navigate) (`1b942e6`).
+  - #187: NUL truncation of entry names, moved to the raw bytes so a
+    post-NUL byte can't fail the surviving prefix's decode; explicit
+    assertion that fixture names are written unflagged; `with` block
+    on the flag-check ZipFile (`ad68d38`, `11813e5`).
+  - #189: cap comment corrected — six pellets still foul faster than
+    filtration (`0eb894b`); refusal throttle seeded `-Infinity` —
+    `performance.now()` counts from page load, so `0` suppressed the
+    first alert for 60 s (`88e573d`).
+  - #192: feed pans to the clamped `pellet.x`, not the requested x
+    (`8ef6619`).
+  - #197: legacy-pack status line reuses `loadProblem` (`e7ec845`).
+  - #201: `sndsPut` resolves an explicit `true` and is typed
+    `Promise<boolean>` (`86874ea`, `0783cc1`).
+- Declined with reasons: #185 R1 — an explicit
+  `vi.unstubAllGlobals()` inside one test; the file's `afterEach`
+  already unstubs every global for every test.
+- Refuted with evidence: none; every factual claim checked out.
+- Verified: `npm run typecheck` clean on every branch; vitest 34
+  audio tests (#185, #192), 23 import tests (#197), 9 store tests
+  (#201), full suite green; 80 Python tests (#187); the
+  `performance.now()` throttle bug confirmed by reading the API
+  contract before applying.
+- Finding-to-entry map: closed and removed — B-16 (verified fixed
+  on main, no PR needed), B-51, V-19, D-08, T-21, T-22, T-23;
+  narrowed — B-13, B-17, B-19, B-25, B-39, B-44, U-01; new open
+  entries — B-62, B-63, B-64, P-25, P-26, U-30, U-31; annotated
+  without new entries — P-21 (weak premise), B-35 (same fix as
+  N-12); dropped by the reviewer — N-6 (notice in the feed zone is
+  desirable).
+- Review gaps: #187 and #201 had a review round still running at
+  fold time; all other PRs reached two quiet rounds or steady state.
+  A heartbeat keeps polling the open PRs.
+
 ## Implementation Order (suggested)
 
 Highest value per risk first. Phase 0 is a merge backlog, not new
@@ -5265,90 +5504,99 @@ Then T-33 (publish the release).
 
 **Phase 1: small, high-value fixes (S, risk 1-2).**
 
-1. B-16 empty tank stays empty (with S-07's parse step if cheap).
-2. B-06 universal binary, then T-33's v0.3.1.
-3. B-11 and B-12 honest install results; B-44 no useless Try Again.
-4. D-01 fish rest at night, gated on `light < 0.5` (not 0.45) so it
+1. B-06 universal binary, then T-33's v0.3.1.
+2. B-11 and B-12 honest install results; B-44's legacy decoder
+   follow-up if someone wants the 17 accessories readable.
+3. D-01 fish rest at night, gated on `light < 0.5` (not 0.45) so it
    works with PR #155's clock nights; reconcile with #128.
-5. B-17 no burst of queued sounds on the first click.
-6. U-01 food cap and gentler waste (after #158's pinch lands).
-7. B-19 music never answers taps (word matching done in #181; `kind`
-   split and B-40 ambient restarts remain); B-56 through B-61, P-24,
-   V-26 and V-27 are the same size and ready next.
-8. U-09, U-11, U-13, U-22, U-23 wording and state nits.
-9. B-25, B-28, B-49, B-50, V-15 native safety fixes (T-32 checks).
-10. T-21, T-22, T-23, T-20, T-19 Python tool fixes; T-13 linters.
+4. B-19's `kind` split (word matching done in #181, length cap in
+   #185; a short song can still answer a splash) and B-40 ambient
+   restarts; B-56 through B-61, P-24, V-26 and V-27 are the same
+   size and ready next.
+5. U-09, U-11, U-13, U-22, U-23 wording and state nits.
+6. B-62 restore-dup guard, B-63 install ride, B-64 popup warning,
+   P-25 thumb map — one "small polish" PR covers all four.
+7. B-25's native decidePolicyFor half (web guard done in #186),
+   B-28, B-49, B-50, V-15 native safety fixes (T-32 checks); B-17's
+   native `mediaTypesRequiringUserActionForPlayback` flag rides
+   along (core fix landed in #185).
+8. T-20, T-19 Python tool fixes; T-13 linters (T-21/22/23 done in
+   #187).
 
 **Phase 2: pack identity and persistence (M, risk 2-3).**
 
-11. B-04, B-14, B-15 in one `web/tankmodel.ts` series, then B-23(a).
-12. B-20 and B-21 scenery choice and copies (after Phase 0 decisions).
-13. S-07 schema boundary (motion fields decision), B-51, P-21.
-14. B-37, B-38 removal authority; B-46 remainder; B-30 cache pinning.
-15. B-39, B-18 sound store transaction and removal; B-54 scenery PNG
+9. B-04, B-14, B-15 in one `web/tankmodel.ts` series, then B-23(a).
+10. B-20 and B-21 scenery choice and copies (after Phase 0 decisions).
+11. S-07 schema boundary (motion fields decision), P-21 (weakened:
+    only helps a paused or empty tank — see its note).
+12. B-37, B-38 removal authority; B-46 remainder; B-30 cache pinning.
+13. B-39 remainder (cross-instance merge transaction, thumbnail
+    migration ordering — the miss-vs-failure half is done in #201),
+    B-18 sound store transaction and removal; B-54 scenery PNG
     contract.
-16. B-41 Swift quit save, B-53 hidden-tab policy (product decision),
+14. B-41 Swift quit save, B-53 hidden-tab policy (product decision),
     B-55 Stats history.
 
 **Phase 3: performance and robustness.**
 
-17. P-02 header-only sheet decode (after #149), then S-02.
-18. P-01 bounded caches; P-05 progressive catalogue; P-07 parallel
+15. P-02 header-only sheet decode (after #149), then S-02.
+16. P-01 bounded caches; P-05 progressive catalogue; P-07 parallel
     restore; P-06 push coalescing.
-19. S-03, S-04, S-05, S-01 remainder, S-06 (if #145 is not merged),
+17. S-03, S-04, S-05, S-01 remainder, S-06 (if #145 is not merged),
     S-08 relay guard, S-09 dependency bumps.
-20. P-04, P-12, P-14, P-18, P-19, P-20, P-22, P-23; P-08, P-09, P-10, P-11,
+18. P-04, P-12, P-14, P-18, P-19, P-20, P-22, P-23; P-08, P-09, P-10, P-11,
     P-15, P-16, P-17 only after measurement.
 
 **Phase 4: tests, CI and docs.**
 
-21. T-06 browser smoke suite (hosts V-08's GL probe), T-14 pinned CI
+19. T-06 browser smoke suite (hosts V-08's GL probe), T-14 pinned CI
     with the Python matrix, T-15 complete web build.
-22. T-07 parity corpus, T-08 and T-09 extractions and fixtures, T-17,
+20. T-07 parity corpus, T-08 and T-09 extractions and fixtures, T-17,
     T-18 typed bus, T-16.
-23. T-10 CHANGELOG sections, T-11 ARCHITECTURE.md, T-12 quick
+21. T-10 CHANGELOG sections, T-11 ARCHITECTURE.md, T-12 quick
     reference, T-03 remainder, T-24, T-25, T-26, T-27, T-28, T-30,
     T-31, T-32 checklist; T-29 Pages once U-14 is merged; T-02
     remainder if the owner wants notarization.
 
 **Phase 5: UX and visuals.**
 
-24. U-02 remainder, U-03 (after the ripple PRs), U-04 undo, U-06
+22. U-02 remainder, U-03 (after the ripple PRs), U-04 undo, U-06
     statuses, U-07 remainder, U-08 sorting, U-10 drop feedback, U-12,
     U-28 visible states, U-24 progress and Stop.
-25. V-09 decor previews (reuse `decorCanvases`), V-10 remainder, V-04
+23. V-09 decor previews (reuse `decorCanvases`), V-10 remainder, V-04
     gravel and sim floor, V-06 tilt smoothing, V-08 CRT sharpness,
-    V-14, V-16, V-18, V-19 favicon (page metadata done in #179).
-26. U-14 (if the menu-bar PRs are dropped), U-15 contextual menu, U-18,
+    V-14, V-16, V-18.
+24. U-14 (if the menu-bar PRs are dropped), U-15 contextual menu, U-18,
     U-20 remainder, U-21 real plant names (after F-01), U-25, U-26,
-    U-27, U-29.
-27. V-03 integer scale and V-05 4:3 tank (L, decision needed), V-07
+    U-27, U-29; U-30 Get-Info card and U-31 multi-center pinch (with
+    U-01's open point 3) fit here too.
+25. V-03 integer scale and V-05 4:3 tank (L, decision needed), V-07
     authored pitch poses (after F-01).
 
 **Phase 6: AquaZone fidelity.**
 
-28. F-01 resource map (unlocks most of this phase), then F-02 names
+26. F-01 resource map (unlocks most of this phase), then F-02 names
     and Get Info (with #137), B-33 scripts, F-11 growth rings.
-29. F-21, F-22, F-23, F-24, F-25 more content from archive.org.
-30. F-05 remainder jukebox, F-06 foods, F-07 feeder, F-10 speed, F-14
+27. F-21, F-22, F-23, F-24, F-25 more content from archive.org.
+28. F-05 remainder jukebox, F-06 foods, F-07 feeder, F-10 speed, F-14
     filter, F-13 Tank Log, F-26 save files, F-27 Dock drops, F-29
     picture controls, F-30 history, F-31 dimmer, F-32, F-33.
-31. Product decisions first: F-09, F-12, F-15, F-16, F-17, F-18,
+29. Product decisions first: F-09, F-12, F-15, F-16, F-17, F-18,
     F-19, F-20, F-28, F-04, B-23(b).
 
 **Phase 7: aesthetics and delight as seasoning.**
 
-32. A-04 About This Aquarium, A-05 Balloon Help, A-06 icon, A-02
+30. A-04 About This Aquarium, A-05 Balloon Help, A-06 icon, A-02
     depth modes, A-03, A-07.
-33. D-02, D-03 separation, D-06 remainder, D-08, D-09, D-17, D-04,
+31. D-02, D-03 separation, D-06 remainder, D-09, D-17, D-04,
     D-05, D-10, D-15, D-12, D-14, D-16, D-18, D-19, V-20 to V-25.
-34. D-11, D-13, D-20, D-21, D-22 to D-31 last (D-22's anniversary
+32. D-11, D-13, D-20, D-21, D-22 to D-31 last (D-22's anniversary
     line done in #182; diary messages, per-fish stats and save
     round-trip remain).
 
 ---
 
-*Merged from eleven review passes: passes one to eight were already
+*Merged from twelve review passes: passes one to eight were already
 folded into the previous ANALYSIS.md; the ninth pass's full-repo
 `tmp.md` review and its scorecard are folded here, with implemented
 items moved to the ninth-pass Completed section; the tenth pass's
@@ -5356,7 +5604,11 @@ items moved to the ninth-pass Completed section; the tenth pass's
 are folded into the tenth-pass sections in the same way; the eleventh
 pass's `tmp.md` review, its three PRs (#181, #183, #184) and its nine
 new entries (B-56 through B-61, P-24, V-26, V-27) are folded into the
-eleventh-pass sections in the same way. No open idea
+eleventh-pass sections in the same way; the twelfth pass's `tmp.md`
+review, its seven PRs (#185, #186, #187, #189, #192, #197, #201), its
+seven new entries (B-62 through B-64, P-25, P-26, U-30, U-31) and its
+refutations are folded into the twelfth-pass sections in the same way.
+No open idea
 was removed: duplicates were consolidated into one entry each (see the
 ID map and each entry's "Merged and related" notes), and unsupported
 claims are kept under "Declined, refuted and corrected".*
