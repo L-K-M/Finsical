@@ -696,6 +696,7 @@ function postState(): void {
   bus.post({
     op: "state",
     boot,
+    paused,
     // The native shell retunes the window's aspect to the machine's
     // viewBox outline; prefs needs just the id.
     machine: { id: machine.id, w: machine.vbW, h: machine.vbH,
@@ -1053,6 +1054,23 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   finally { installsInFlight.delete(it.url); }
 }
 
+// ---- pause -----------------------------------------------------------------
+// Stops hunger, rot, filtration, and the day/night clock while the app
+// stays interactive (render, CRT, saves). Keyboard P / Tank ▸ Pause.
+let paused = false;
+const PAUSE_KEY = "finsical:paused";
+function setPaused(on: boolean): boolean {
+  if (paused !== on) {
+    paused = on;
+    try { localStorage.setItem(PAUSE_KEY, on ? "1" : "0"); }
+    catch { /* storage unavailable — pause is session-only */ }
+    postState();
+  }
+  return paused;
+}
+try { paused = localStorage.getItem(PAUSE_KEY) === "1"; }
+catch { /* storage unavailable */ }
+
 // ---- CRT effect ------------------------------------------------------------
 // Optional tube emulation (web/crt.ts): the 320×200 canvas becomes a
 // texture for a device-resolution shader. Off = untouched 2D path.
@@ -1286,7 +1304,9 @@ function changeWater(): void {
   { openImport: () => importPanel.open(), feedFish, changeWater, toggleLights,
     // Menu clicks land here via evaluateJavaScript — not always a
     // user activation, but unlock() is harmless if resume is blocked.
-    toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute };
+    toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute,
+    // Returns the new flag, so the native menu retitles at once.
+    togglePause: () => setPaused(!paused) };
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
 // path. Touch fallback: hover-less devices have no keyboard or native menu.
@@ -1331,6 +1351,8 @@ window.addEventListener("keydown", (e) => {
     toggleLights(); // bare L: the lamp; ⌘L belongs to the native menu
   } else if (bare && k === "m") {
     toggleMute(); // bare M: ⌘M is Minimize
+  } else if (bare && k === "p") {
+    setPaused(!paused); // bare P: ⌘P is Print; the app's menu owns it
   } else if (bare && k === "s" && !inNativeShell()) {
     // Browser-only — the app opens stats.html via Tank ▸ Tank Stats.
     // Reuse without re-navigating: a reload would wipe the 90 s trend
@@ -1729,6 +1751,17 @@ function render(): void {
            waterMotion === "animated" ? sim.tickCount : 0);
 
   drawNight(new Date());
+
+  if (paused) {
+    ctx.save();
+    ctx.fillStyle = "rgba(4,8,24,0.35)";
+    ctx.fillRect(0, 0, TANK.width, TANK.height);
+    ctx.fillStyle = "#e8e8e8";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("PAUSED", TANK.width / 2, TANK.height / 2);
+    ctx.restore();
+  }
 }
 
 /** Night's blue, multiplied over the scene at the darkest demo night:
@@ -1819,8 +1852,14 @@ function frame(now: number): void {
   // Ahead of the tick gate: hover must update (and repaint) even
   // while no tick runs.
   syncFeedHover();
-  for (let i = 0; i < plan.ticks; i++) tickSim();
-  if (plan.ticks === 0 && !frameDirty) return;
+  // Pause freezes the sim clock (hunger, rot, filtration, the demo
+  // day) but not the page: hover, the light timer and repaints still
+  // run. Dropping the accumulator keeps a long pause from
+  // fast-forwarding on resume.
+  if (paused) acc = 0;
+  const ticks = paused ? 0 : plan.ticks;
+  for (let i = 0; i < ticks; i++) tickSim();
+  if (ticks === 0 && !frameDirty) return;
   frameDirty = false;
   render();
   if (crtOn) crt?.render();
