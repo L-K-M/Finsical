@@ -1,7 +1,7 @@
 import { openBus } from "./bus.js";
-import { CRT_DEFAULTS, sanitizeCrtConfig } from "./crt.js";
+import { CRT_DEFAULTS, CRT_PRESETS, sanitizeCrtConfig } from "./crt.js";
 import { MACHINES, previewMarkup } from "./machines.js";
-import type { CrtConfig } from "./crt.js";
+import type { CrtConfig, CrtPreset } from "./crt.js";
 import { centerText, hostWindow, mountList, mountPopup, pushButton,
          registerSprites, setEnabled, trackHighlight, trackPress }
   from "osmium-ui";
@@ -230,9 +230,16 @@ interface SoundItem {
   value?: () => string;
 }
 let described: SliderSpec | LightSpec | SoundItem | null = null;
-function describe(spec: SliderSpec | LightSpec | SoundItem | null): void {
+let describedPreset: CrtPreset | null = null;
+function describe(spec: SliderSpec | LightSpec | SoundItem | null,
+                  preset: CrtPreset | null = null): void {
   described = spec;
+  describedPreset = preset;
   descEl.textContent = "";
+  if (preset) {
+    descEl.append(el("span", "osm-label", preset.label), ` — ${preset.blurb}`);
+    return;
+  }
   if (pane === "machine") {
     const m = MACHINES.find((x) => x.id === machineSel);
     if (m) {
@@ -347,6 +354,44 @@ function showMachine(id: string): void {
   machineList.select(i, false);
   paintPreview();
   if (pane === "machine") describe(null);
+}
+
+// ---- picture presets ---------------------------------------------------
+// One-click full configs beside the per-slider Defaults: Authentic is
+// the tuned defaults, the others are named restore paths (see crt.ts).
+const presetHost = document.getElementById("pfpresets")!;
+const presetBtns: HTMLButtonElement[] = [];
+
+function applyPreset(p: CrtPreset): void {
+  if (!onBox.checked) return;
+  // Drop coalesced slider changes still awaiting their rAF post —
+  // they carry pre-preset values for keys the preset overwrites.
+  pendingCfg = null;
+  cfg = { ...p.config };
+  bus.post({ op: "crtConfig", cfg: { ...p.config } });
+  syncControls();
+}
+
+for (const p of CRT_PRESETS) {
+  const btn = el("button", "osm-button pfpreset", p.label) as HTMLButtonElement;
+  btn.type = "button";
+  pushButton(btn, () => applyPreset(p));
+  btn.addEventListener("pointerenter", () => {
+    if (pane === "monitor" && !described) describe(null, p);
+  });
+  btn.addEventListener("pointerleave", () => {
+    if (describedPreset === p) describe(null);
+  });
+  btn.addEventListener("focus", () => {
+    // Same precedence as pointerenter: a live slider caption wins so
+    // Tab-through doesn't yank it and blur can't reset it to the hint.
+    if (pane === "monitor" && !described) describe(null, p);
+  });
+  btn.addEventListener("blur", () => {
+    if (describedPreset === p) describe(null);
+  });
+  presetHost.appendChild(btn);
+  presetBtns.push(btn);
 }
 
 // ---- sliders ------------------------------------------------------------
@@ -467,9 +512,13 @@ syncControls();
 // the way Mac OS 8 dims controls that depend on an off switch.
 function syncEnabled(): void {
   for (const input of sliders.values()) setEnabled(input, onBox.checked);
+  for (const btn of presetBtns) btn.disabled = !onBox.checked;
   document.getElementById("pfpanes")!
     .classList.toggle("pfcrtoff", !onBox.checked);
-  if (!described) describe(null);
+  // A preset caption is only useful while the effect can take it —
+  // fall back to the pane hint (which switches to offHint when off).
+  if (describedPreset) describe(null);
+  else if (!described) describe(null);
 }
 syncEnabled();
 trackHighlight(document.getElementById("pfcrt")!);

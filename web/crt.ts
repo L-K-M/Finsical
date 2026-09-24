@@ -221,6 +221,63 @@ export function sanitizeCrtConfig(raw: unknown): CrtConfig {
   return c;
 }
 
+/** Named picture-tube setups for one-click restore in the Monitor pane. */
+export interface CrtPreset {
+  readonly id: string;
+  readonly label: string;
+  readonly blurb: string;
+  readonly config: Readonly<CrtConfig>;
+}
+
+/** Full config = defaults plus overrides; frozen so a click can't mutate
+ * the shared preset object. */
+const withDefaults = (over: Partial<CrtConfig>): Readonly<CrtConfig> =>
+  Object.freeze({ ...CRT_DEFAULTS, ...over });
+
+export const CRT_PRESETS: readonly CrtPreset[] = Object.freeze([
+  {
+    id: "authentic",
+    label: "Authentic",
+    blurb: "The tuned defaults — a plausible consumer tube from the era.",
+    config: CRT_DEFAULTS,
+  },
+  {
+    id: "sharp",
+    label: "Sharp",
+    blurb: "Crisp beam and firm scanlines with grain turned down — " +
+      "reads clean on a modern LCD without losing the tube.",
+    config: withDefaults({
+      beam: 0.25, scanlines: 0.55, misconvergence: 0.15,
+      bloom: 0.40, overdrive: 0.55, grille: 0.85,
+      curvature: 0.30, vignette: 0.25, flicker: 0.15, grain: 0.10,
+    }),
+  },
+  {
+    id: "soft",
+    label: "Soft",
+    blurb: "Lower flicker, grain, and scanlines for all-day desktop use — " +
+      "the tube, without the noise.",
+    config: withDefaults({
+      scanlines: 0.20, beam: 0.70, bloom: 0.35, overdrive: 0.40,
+      misconvergence: 0.20, grille: 0.50, curvature: 0.30,
+      vignette: 0.25, flicker: 0.08, grain: 0.10,
+    }),
+  },
+  {
+    id: "pixel-perfect",
+    label: "Pixel Perfect",
+    blurb: "Every tube trait off and the picture neutral — a flat-panel " +
+      "look while the effect stays on.",
+    config: withDefaults({
+      scanlines: 0, beam: 0, bloom: 0, overdrive: 0,
+      misconvergence: 0, grille: 0, curvature: 0, vignette: 0,
+      flicker: 0, grain: 0,
+      brightness: 0.5, contrast: 0.5, zoom: 0,
+      hsize: 0.5, vsize: 0.5, red: 0.5, green: 0.5, blue: 0.5,
+    }),
+  },
+]);
+
 export interface CrtFilter {
   readonly enabled: boolean;
   /** False once the GL context is lost — the effect can't re-enable. */
