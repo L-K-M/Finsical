@@ -315,10 +315,12 @@ function tankSnapshot(): SavedTank {
 // visibilitychange handlers would otherwise save the OLD tank over
 // the freshly imported SAVE_KEY during unload.
 let suppressSave = false;
-// A bfcache restore after the import reload would otherwise keep
-// saving muted for the rest of the session.
+// A bfcache restore brings back the pre-import page: clearing the
+// flag would let its stale tank overwrite the imported SAVE_KEY on
+// the next visibilitychange, so reload into the imported tank —
+// the same strategy the import flow itself uses.
 window.addEventListener("pageshow", (e) => {
-  if (e.persisted) suppressSave = false;
+  if (e.persisted && suppressSave) location.reload();
 });
 function saveTank(): void {
   if (suppressSave) return;
