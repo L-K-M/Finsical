@@ -47,18 +47,31 @@ uniform float uGreen;
 uniform float uBlue;
 uniform float uPower; // 1 = settled; <1 = power-on warm-up in progress
 
-// Game pixel color at lp. The row snaps to its center, so the linear
-// texture filter interpolates along the scan but never between rows:
-// every horizontal effect stays within its own scanline.
+// Device px per game px, set at the top of main().
+vec2 pxScale;
+
+// Sharp-bilinear: the texel center nearest to x, except within one
+// device px of a texel boundary, where it fades to the neighbor. Pure
+// nearest would leave uneven texel widths and moire at fractional
+// scales and under curvature.
+float sharpCoord(float x, float size, float scale) {
+  float p = clamp(x, 0.5, size - 0.5) - 0.5;
+  float i = floor(p);
+  return i + 0.5 + clamp((p - i - 0.5) * scale + 0.5, 0.0, 1.0);
+}
+
+// Game pixel color at lp. Rows sample sharp, so the linear texture
+// filter interpolates along the scan but never between rows: every
+// horizontal effect stays within its own scanline.
 vec3 gamePx(vec2 lp) {
-  lp.y = floor(lp.y) + 0.5;
+  lp.y = sharpCoord(lp.y, uTank.y, pxScale.y);
   vec2 t = clamp(lp, vec2(0.5), uTank - 0.5) / uTank;
   return texture2D(uTex, t).rgb;
 }
 
-// The exact game pixel under lp, unfiltered in both directions.
+// The game pixel under lp, sharp in both directions.
 vec3 texelAt(vec2 lp) {
-  return gamePx(vec2(floor(lp.x) + 0.5, lp.y));
+  return gamePx(vec2(sharpCoord(lp.x, uTank.x, pxScale.x), lp.y));
 }
 
 float hash(vec2 p) {
@@ -67,6 +80,10 @@ float hash(vec2 p) {
 
 void main() {
   vec2 uv = (gl_FragCoord.xy - uRect.xy) / uRect.zw;
+  // Overscan and the size pots below scale the raster up; curvature
+  // and the warm-up squeeze are left out of this estimate.
+  pxScale = uRect.zw / uTank * (1.0 + 0.12 * uZoom) *
+            vec2(0.75 + 0.5 * uHSize, 0.75 + 0.5 * uVSize);
 
   // gc is the position on the glass — vignette and misconvergence
   // follow the tube, not the raster.
@@ -242,8 +259,8 @@ export function sanitizeCrtConfig(raw: unknown): CrtConfig {
   if (raw && typeof raw === "object" && !("softening" in raw) &&
       "beam" in raw) {
     const beam = (raw as Record<string, unknown>).beam;
-    raw = { ...raw, softening:
-      typeof beam === "number" ? beam * LEGACY_BEAM_SCALE : beam };
+    if (typeof beam === "number")
+      raw = { ...raw, softening: beam * LEGACY_BEAM_SCALE };
   }
   if (raw && typeof raw === "object")
     for (const k of Object.keys(c) as (keyof CrtConfig)[]) {
@@ -407,8 +424,8 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
 
   // Linear filtering gives the shader's horizontal taps a smooth beam
-  // smear; gamePx() snaps each sample to its row's center, so rows
-  // never blend into each other.
+  // smear; gamePx() samples rows sharp, so they never blend into each
+  // other.
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
