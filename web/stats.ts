@@ -81,7 +81,7 @@ function render(st: TankStats): void {
     ? `${st.food} pellet${st.food > 1 ? "s" : ""}` +
       (st.foodSettled ? `, ${st.foodSettled} rotting` : "")
     : "none"));
-  field("Light", text(st.phase === "day" ? "Day" : "Night"));
+  field("Light", text(st.lightLabel));
   field("Tank age", text(uptime(st.uptimeMin)));
 
   careEl.textContent = "";

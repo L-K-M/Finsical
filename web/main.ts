@@ -1,21 +1,36 @@
-import { BOTTOM_PAD, FOOD_ROT_TICKS, Sim } from "../core/sim.js";
-import { fishPose, pitch } from "../core/pose.js";
+import { BOTTOM_PAD, DAY_TICKS, FOOD_ENTRY_Y, Sim } from "../core/sim.js";
+import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
+         nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
+import { fishPose, pitch, restPose } from "../core/pose.js";
+import { FISH_CAP, HUNGER_SEEK, SPAWN_HUNGER } from "../core/tuning.js";
+import { planFrame } from "../core/loop.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
-import { keyMask, pickDecorArt } from "../core/data/decor.js";
+import { decorFrame, decorPhase } from "../core/data/decor.js";
+import { pickSwimSheet } from "../core/data/swimsheet.js";
+import { ART_SCALE } from "./artscale.js";
 import { TankAudio } from "./audio.js";
+import { drawRipples, drawSplashes, newSplash, tickRipples,
+         tickSplashes } from "./fx.js";
+import type { Ripple, Splash } from "./fx.js";
 import { pushButton } from "osmium-ui";
 import { fetchAddon, mountImportPanel, qualifySoundItemName,
          COLLECTIONS } from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { sndsGet, sndsMerge } from "./store.js";
-import { imageCanvas, previewOf, soundIcon, swimCanvas } from "./render.js";
+import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
+         swimCanvas } from "./render.js";
+import { containPoint, feedZoneLineY, isFeedZoneY } from "./feedzone.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
+import { drawBubbles, drawFood, drawLight, drawMurk, feedPinch }
+  from "./water.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
   from "./machines.js";
 import type { CrtConfig } from "./crt.js";
+import type { WaterMotion } from "./water.js";
 import type { Machine } from "./machines.js";
+import type { Lighting } from "../core/light.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
 import type { Fish } from "../core/sim.js";
@@ -26,6 +41,14 @@ const TANK = { width: 320, height: 200 };
 const canvas = document.getElementById("tank") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 ctx.imageSmoothingEnabled = false;
+
+// The loop only draws after a sim tick; requestPaint() asks for one draw
+// without a tick, for changes the sim doesn't make (feeding, taps,
+// installs, removals, settings) so they show at once even while no
+// tick runs. Declared first: module-level setup (setCrt, lighting)
+// already requests paints while the module evaluates.
+let frameDirty = true;
+function requestPaint(): void { frameDirty = true; }
 
 // ---- persistence ---------------------------------------------------------
 // Tank state (fish, water, installed add-ons) survives restarts via
@@ -62,17 +85,95 @@ let rosterComplete = saved?.v !== 1;
 
 const sim = new Sim(TANK, 0x9003);
 const audio = new TankAudio();
+// Hidden (Cmd-H, minimized, background tab): rAF stops and the sim
+// freezes, so the ambient loop and the audio device pause with it.
+const syncAudioVisibility = (): void => audio.setHidden(document.hidden);
+document.addEventListener("visibilitychange", syncAudioVisibility);
+syncAudioVisibility();
 if (saved) {
-  if (Number.isFinite(saved.tickCount)) sim.tickCount = saved.tickCount;
+  // Storage is untrusted: a negative or fractional tick count, or water
+  // outside 0..1, would re-persist and skew the day cycle or the murk.
+  if (Number.isFinite(saved.tickCount))
+    sim.tickCount = Math.max(0, Math.trunc(saved.tickCount));
   if (Number.isFinite(saved.waterQuality))
-    sim.waterQuality = saved.waterQuality;
+    sim.waterQuality = Math.min(1, Math.max(0, saved.waterQuality));
+}
+
+// ---- lighting -------------------------------------------------------------
+// The demo cycle runs inside the sim; the light timer follows this
+// Mac's clock (core/light.ts). The clock is read here and handed to
+// the sim, which stays tick-only. Declared this early because
+// postState() reads it and runs during module eval.
+const LIGHTING_KEY = "finsical:lighting";
+let lighting: Lighting = (() => {
+  try {
+    return sanitizeLighting(
+      JSON.parse(localStorage.getItem(LIGHTING_KEY) ?? "null"));
+  } catch { return sanitizeLighting(null); /* storage: defaults */ }
+})();
+const minutesOfDay = (d: Date): number =>
+  d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+function syncLight(now: Date): void {
+  sim.setLight(lightAt(minutesOfDay(now), lighting));
+}
+syncLight(new Date());
+/** Merge a partial schedule (prefs pop-up) onto the current one. */
+function applyLighting(raw: unknown): void {
+  lighting = sanitizeLighting(raw, lighting);
+  syncLight(new Date());
+  requestPaint(); // shows at once, even while no tick runs
+  try { localStorage.setItem(LIGHTING_KEY, JSON.stringify(lighting)); }
+  catch { /* storage unavailable */ }
+  postState();
 }
 const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
   [0, 1, 2, 3].map((i) =>
-    ({ x: 40 + i * 60, y: 50 + i * 30, facing: (i % 2 ? -1 : 1) as 1 | -1 }));
-const roster = (saved?.fish ?? []).filter(
-  (f): f is Partial<Fish> & { x: number; y: number } =>
-    !!f && Number.isFinite(f.x) && Number.isFinite(f.y));
+    ({ x: 40 + i * 60, y: 50 + i * 30, facing: (i % 2 ? -1 : 1) as 1 | -1,
+       hunger: SPAWN_HUNGER }));
+/** Saved fish fields are untrusted input: a corrupted hunger or
+ * heading enters the sim (NaN hunger ⇒ fish can never seek food) and
+ * then re-persists. Clamp each numeric field; keep x/y finite-or-drop
+ * as the hard filter. */
+function sanitizeSavedFish(f: Partial<Fish> & { x: number; y: number }):
+    Partial<Fish> & { x: number; y: number } {
+  const num = (v: number | undefined, lo: number, hi: number,
+               dflt: number): number =>
+    typeof v === "number" && Number.isFinite(v)
+      ? Math.min(hi, Math.max(lo, v)) : dflt;
+  // bandY's fallback must reuse the clamped y — the raw value only
+  // passed the finite check, so a corrupt save could seed an
+  // out-of-bounds band and re-persist it.
+  const y = num(f.y, 0, TANK.height - 1, TANK.height / 2);
+  // Only the fields saveTank writes come back: anything else a save
+  // carries stays out of the sim rather than passing through unchecked.
+  const out: Partial<Fish> & { x: number; y: number } = {
+    x: num(f.x, 0, TANK.width - 1, TANK.width / 2),
+    y,
+    facing: f.facing === -1 ? -1 as const : 1 as const,
+    heading: num(f.heading, -2 * Math.PI, 2 * Math.PI, 0),
+    speed: num(f.speed, 0.1, 8, 1),
+    cruise: num(f.cruise, 0.1, 8, 1),
+    vy: num(f.vy, -8, 8, 0),
+    bandY: num(f.bandY, 0, TANK.height - 1, y),
+    hunger: num(f.hunger, 0, 1, 0.2),
+    // Pre-growth saves carry no scale: those fish are grown, not
+    // juveniles. addFish clamps the value into the sim's range.
+    scale: typeof f.scale === "number" && Number.isFinite(f.scale)
+      ? f.scale : 1,
+    species: typeof f.species === "string" ? f.species : "",
+  };
+  // Optional fields drop rather than zero out — a bogus sheetIdx or
+  // pack must read as "no binding", not bind to slot 0.
+  if (Number.isInteger(f.id) && f.id! >= 0) out.id = f.id!;
+  if (Number.isInteger(f.sheetIdx) && f.sheetIdx! >= 0)
+    out.sheetIdx = f.sheetIdx!;
+  if (typeof f.pack === "string") out.pack = f.pack;
+  return out;
+}
+const roster = (saved?.fish ?? [])
+  .filter((f): f is Partial<Fish> & { x: number; y: number } =>
+    !!f && Number.isFinite(f.x) && Number.isFinite(f.y))
+  .map(sanitizeSavedFish);
 for (const f of roster?.length ? roster : DEFAULT_FISH) sim.addFish(f);
 
 function saveTank(): void {
@@ -83,7 +184,7 @@ function saveTank(): void {
       fish: sim.fish.map((f) => ({
         id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
         heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
-        bandY: f.bandY, hunger: f.hunger,
+        bandY: f.bandY, hunger: f.hunger, scale: f.scale,
         ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
         ...(f.pack !== undefined ? { pack: f.pack } : {}),
       })),
@@ -94,59 +195,145 @@ function saveTank(): void {
   postState(); // panel keeps fresh state even if persistence is off
 }
 window.addEventListener("pagehide", saveTank);
+// WKWebView doesn't reliably deliver pagehide on quit; it does
+// deliver visibilitychange.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") saveTank();
+});
 setInterval(saveTank, 10_000);
 
-// Click near the surface drops food; deeper clicks knock on the glass.
+/** CSS-pixel pointer coords → tank-space point; null in the
+ * letterbox bars (object-fit: contain inside the element box). */
+function tankPoint(clientX: number, clientY: number):
+    { x: number; y: number } | null {
+  return containPoint(clientX, clientY, canvas.getBoundingClientRect(),
+                      TANK);
+}
+
+// Feed-zone affordance: while the pointer is over the tank, a faint
+// line marks where feeding stops, brightening with a crosshair cursor
+// over the strip itself (see render()). Hover is re-evaluated every
+// frame from the last client point (see frame()), so a resize under a
+// stationary pointer can't leave it stale, and getBoundingClientRect
+// runs once per frame instead of per move.
+let overFeedZone = false;
+let lastClient: { x: number; y: number } | null = null;
+function setFeedHover(on: boolean): void {
+  if (on === overFeedZone) return;
+  overFeedZone = on;
+  canvas.style.cursor = on ? "crosshair" : "";
+  requestPaint();
+}
+function syncFeedHover(): void {
+  if (!lastClient) { setFeedHover(false); return; }
+  const p = containPoint(lastClient.x, lastClient.y,
+                         canvas.getBoundingClientRect(), TANK);
+  setFeedHover(p !== null && isFeedZoneY(p.y, TANK.height));
+}
+
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return; // ignore right/middle clicks
-  // object-fit: contain letterboxes the bitmap inside the element box.
-  const r = canvas.getBoundingClientRect();
-  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
-  const x = (e.clientX - r.left - (r.width - TANK.width * s) / 2) / s;
-  const y = (e.clientY - r.top - (r.height - TANK.height * s) / 2) / s;
-  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x >= TANK.width || y < 0 || y >= TANK.height) return; // letterbox bar
+  const p = tankPoint(e.clientX, e.clientY);
+  if (!p) return; // letterbox bar
   audio.unlock();
-  if (y < TANK.height * 0.15) { sim.dropFood(x); audio.feed(); }
-  else { sim.tap(x, y); audio.tap(x, y, TANK.width, TANK.height); }
+  if (isFeedZoneY(p.y, TANK.height)) {
+    const pellet = sim.dropFood(p.x);
+    audio.feed();
+    splashes.push(newSplash(pellet.x, pellet.y));
+  } else {
+    sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
+    ripples.push({ x: p.x, y: p.y, age: 0 });
+  }
+  requestPaint();
+});
+// The nearest calm fish notices the hovering pointer and drifts over
+// to look — hunger and panic still outrank curiosity in the sim.
+canvas.addEventListener("pointermove", (e) => {
+  if (!lastClient) requestPaint(); // the zone line appears
+  lastClient = { x: e.clientX, y: e.clientY };
+  if (!e.isPrimary) return; // one pointer drives curiosity
+  sim.notice = tankPoint(e.clientX, e.clientY);
+});
+canvas.addEventListener("pointerleave", (e) => {
+  lastClient = null;
+  setFeedHover(false); // pointer is definitionally off the tank — clear now
+  requestPaint(); // and the zone line goes
+  if (!e.isPrimary) return; // don't clear the primary's curiosity
+  sim.notice = null;
 });
 
 // ---- sprite loading ----------------------------------------------------
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
 // drag the folder onto the window, and real Aquazone sprites replace the
 // placeholder fish.
-// Best sheet per imported pack; fish get sheets round-robin so a tank can
-// mix species.
+// The adult swim ring per imported pack; fish get sheets round-robin so
+// a tank can mix species.
 let fishSheets: SpriteSheet[] = [];
 function usePack(pack: { sheets: Map<string, SpriteSheet>;
                          manifest?: AzpackManifest },
                  read?: (path: string) => Promise<Uint8Array>): number {
-  // Most orientation groups wins; tiebreak toward the crunchier cell.
-  const sheets = [...pack.sheets.values()];
-  sheets.sort((a, b) =>
-    b.meta.groups - a.meta.groups || a.meta.cellH - b.meta.cellH);
-  if (sheets[0]) fishSheets.push(sheets[0]);
+  const sheet = pickSwimSheet(pack.sheets.values());
+  if (sheet) {
+    fishSheets.push(sheet);
+    // One more sheet re-deals every round-robin fish's art.
+    for (const f of sim.fish) bindExtents(f);
+  }
   if (pack.manifest && read)
     void audio.load(read, pack.manifest)
       .then(() => audio.startAmbient())
       .catch((e) => console.warn("audio load failed:", e));
-  return sheets[0] ? fishSheets.length - 1 : -1;
+  return sheet ? fishSheets.length - 1 : -1;
+}
+
+/** Whether a spawn honors FISH_CAP. Healing a pre-cap roster bypasses
+ * it: those fish were installed before the cap existed. */
+type CapRule = "enforce" | "bypass";
+
+/** Why the tank refuses a new fish, or null when there is room. Both
+ * install paths (the in-page panel and the Import Add-ons window) ask
+ * this before fetching, so neither reports a fish that never spawns. */
+function fishRefusal(section: string): string | null {
+  if (section !== "fish" || sim.fish.length < FISH_CAP) return null;
+  return `The tank is full: ${FISH_CAP} fish is plenty. ` +
+         "Release one from Tank Overview first.";
 }
 
 /** A newly installed fish pack adds one fish bound to its sheet —
  * "Add again" adds another of the same species. `pack` is the add-on's
- * install URL: the precise identity when packs share a species name. */
-function spawnFish(sheetIdx: number, species: string, pack?: string): void {
+ * install URL: the precise identity when packs share a species name.
+ * Returns the new fish, or null when the tank is already full. */
+function spawnFish(sheetIdx: number, species: string, pack?: string,
+                   cap: CapRule = "enforce"): Fish | null {
+  if (cap === "enforce" && sim.fish.length >= FISH_CAP) return null;
   const facing = Math.random() < 0.5 ? 1 : -1;
-  sim.addFish({
-    x: 60 + Math.random() * (TANK.width - 120),
+  const x = 60 + Math.random() * (TANK.width - 120);
+  const f = sim.addFish({
+    x,
     y: 30 + Math.random() * (TANK.height - 90),
     facing: facing as 1 | -1,
     heading: facing > 0 ? 0 : Math.PI,
     cruise: 1.1 + Math.random() * 0.7,
+    hunger: SPAWN_HUNGER,
     sheetIdx, species,
     ...(pack !== undefined ? { pack } : {}),
   });
+  bindExtents(f);
+  // A new fish enters through the surface — pair the splash sound
+  // with droplets where it went in.
+  splashes.push(newSplash(x, FOOD_ENTRY_Y));
   saveTank();
+  requestPaint();
+  return f;
+}
+
+/** A drop-time spawn: splash on success, say why on refusal — after
+ * the idx guard, spawnFish only declines a full tank. Drops have no
+ * panel to ack, so the explanation goes to the console. */
+function spawnFromDrop(idx: number, species: string): void {
+  if (idx < 0) return;
+  if (spawnFish(idx, species)) audio.splash();
+  else console.warn(`Tank is full — ${FISH_CAP} fish max. ` +
+    "Release one from Tank Overview first.");
 }
 
 // Biggest pack image large enough to matter becomes the tank backdrop —
@@ -162,6 +349,36 @@ let backdropCv: HTMLCanvasElement | null = null;
 let backdropSrc = "";
 let gravelCv: HTMLCanvasElement | null = null;
 let gravelSrc = "";
+// Scenery is fitted once at import so render() stays a 1:1 blit:
+// backdrops cover-crop to the tank frame (no aspect distortion,
+// no per-frame scale), gravel pre-scales to tank width.
+// NOTE: these caches bake in the TANK dims (a fixed 320x200
+// logical resolution) — a dynamic TANK would need them rebuilt.
+function fitBackdrop(img: IndexedImage): HTMLCanvasElement {
+  const src = imageCanvas(img, true);
+  const r = coverCrop(src.width, src.height, TANK.width, TANK.height);
+  // Whole texels: a fractional source rect starts mid-texel and
+  // browsers disagree on sampling it with smoothing disabled.
+  const sx = Math.round(r.sx), sy = Math.round(r.sy);
+  const sw = Math.min(Math.round(r.sw), src.width - sx);
+  const sh = Math.min(Math.round(r.sh), src.height - sy);
+  const out = document.createElement("canvas");
+  out.width = TANK.width; out.height = TANK.height;
+  const c = out.getContext("2d")!;
+  c.imageSmoothingEnabled = false; // keep the crunch
+  c.drawImage(src, sx, sy, sw, sh, 0, 0, out.width, out.height);
+  return out;
+}
+function fitGravel(img: IndexedImage): HTMLCanvasElement {
+  const src = imageCanvas(img, false);
+  const out = document.createElement("canvas");
+  out.width = TANK.width;
+  out.height = Math.max(1, Math.round(src.height * TANK.width / src.width));
+  const c = out.getContext("2d")!;
+  c.imageSmoothingEnabled = false; // keep the crunch
+  c.drawImage(src, 0, 0, out.width, out.height);
+  return out;
+}
 function pickBackdrop(images: Iterable<IndexedImage>, src = ""): void {
   let best: IndexedImage | null = null;
   let gravel: IndexedImage | null = null;
@@ -174,9 +391,9 @@ function pickBackdrop(images: Iterable<IndexedImage>, src = ""): void {
   // delete-then-set: Map keeps an existing key's insertion position, so
   // re-picks must reinsert to keep key order == install recency.
   if (best) { backdropByPack.delete(src);
-              backdropByPack.set(src, imageCanvas(best, true)); }
+              backdropByPack.set(src, fitBackdrop(best)); }
   if (gravel) { gravelByPack.delete(src);
-                gravelByPack.set(src, imageCanvas(gravel, false)); }
+                gravelByPack.set(src, fitGravel(gravel)); }
   // A pack with no qualifying art leaves the current winner in place.
   if (best) { backdropCv = backdropByPack.get(src)!; backdropSrc = src; }
   if (gravel) { gravelCv = gravelByPack.get(src)!; gravelSrc = src; }
@@ -189,32 +406,21 @@ function pickGravel(images: Iterable<IndexedImage>, src: string): void {
         (!gravel || img.w > gravel.w)) gravel = img;
   }
   if (gravel) { gravelByPack.delete(src);
-                gravelByPack.set(src, imageCanvas(gravel, false)); }
+                gravelByPack.set(src, fitGravel(gravel)); }
   if (gravel) { gravelCv = gravelByPack.get(src)!; gravelSrc = src; }
 }
 // Decorations (plants/accessories) sit on the gravel between the backdrop
-// and the fish. Each pack's art frame is scaled to fit; the set is
-// re-spaced across the tank floor whenever one is added.
-const decors: { cv: HTMLCanvasElement; pack: string }[] = [];
+// and the fish, all at the fish's art scale; the set is re-spaced across
+// the tank floor whenever one is added. Animated packs loop their frames
+// on the sim clock, each item from its own phase.
+const decors: { frames: HTMLCanvasElement[]; phase: number;
+                pack: string }[] = [];
 function addDecor(images: Iterable<IndexedImage>, src: string): void {
-  // Art frames share one corner key index (0 or 255 depending on the
-  // pack); catalog thumbnails have textured corners and are skipped.
-  const pick = pickDecorArt(images);
-  if (!pick) return;
-  if (!pick.img.w || !pick.img.h) return; // zero-area art renders nothing
-  const cv = pick.guessed
-    ? imageCanvas(pick.img, false) // legacy: global index-0 clear
-    : imageCanvas(pick.img, false, keyMask(pick.img, pick.key));
-  const s = Math.min(1, TANK.height * 0.8 / cv.height,
-                     TANK.width * 0.5 / cv.width);
-  if (s >= 1) { decors.push({ cv, pack: src }); return; }
-  const scaled = document.createElement("canvas");
-  scaled.width = Math.max(1, Math.round(cv.width * s));
-  scaled.height = Math.max(1, Math.round(cv.height * s));
-  const c2 = scaled.getContext("2d")!;
-  c2.imageSmoothingEnabled = false;
-  c2.drawImage(cv, 0, 0, scaled.width, scaled.height);
-  decors.push({ cv: scaled, pack: src });
+  const frames = decorCanvases(images, TANK.height);
+  if (!frames) return;
+  const copy = decors.filter((d) => d.pack === src).length;
+  decors.push({ frames, phase: decorPhase(src, copy, frames.length),
+                pack: src });
 }
 const fishSlot = new WeakMap<Fish, number>();
 const MAX_FISH_SLOTS = 4096;
@@ -263,9 +469,10 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
     packBySheet.set(idx, url);
     // A live fish-pack install adds a real fish; restores replay sheets
     // only — the saved roster already carries those fish.
-    if (live) { spawnFish(idx, name, url); audio.splash(); }
+    if (live && spawnFish(idx, name, url)) audio.splash();
   }
   console.info(`archive.org: imported ${section} ${name}`);
+  requestPaint(); // restores can rebind existing fish to new art
   if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
 }
 
@@ -291,6 +498,7 @@ function remapSheetIdx(): void {
     } else if (f.sheetIdx !== undefined &&
                (f.sheetIdx < 0 || f.sheetIdx >= fishSheets.length))
       delete f.sheetIdx;
+    bindExtents(f);
   }
 }
 
@@ -312,7 +520,9 @@ function reconcileFish(): void {
       continue;
     const idx = sheetByPack.get(it.url) ?? sheetBySpecies.get(it.inner);
     if (idx === undefined) { pending = true; continue; } // restore failed — retry next launch
-    spawnFish(idx, it.inner, it.url);
+    // These packs were installed before fish spawned on install (and
+    // before the cap), so healing them isn't a new fish: bypass it.
+    spawnFish(idx, it.inner, it.url, "bypass");
   }
   // spawnFish's own saves went out as v=1 — stamp the reconciled roster.
   rosterComplete = !pending;
@@ -328,6 +538,7 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
     pickBackdrop(images, src);
   else return;
   console.info(`archive.org: imported scenery ${src}`);
+  requestPaint();
   if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
 }
 function recordInstall(it: Importable): void {
@@ -365,6 +576,7 @@ const importPanel = mountImportPanel({
       .catch((e) => console.warn("sound import failed:", e));
   },
   onInstall: recordInstall,
+  refuse: (it) => fishRefusal(it.section),
   preview: previewOf,
 });
 
@@ -407,6 +619,7 @@ function postState(): void {
     foodSettled: sim.food.reduce((n, f) => n + (f.settled > 0 ? 1 : 0), 0),
     bubbles: sim.bubbles.length,
     light: sim.light,
+    lighting,
     // Preferences window reads this — `on`/`available` reflect the
     // live GL state (a lost context reports off/unavailable even if
     // the stored preference says on).
@@ -445,12 +658,20 @@ function fishThumb(f: Fish): string | null {
   const sheet = sheetOf(f);
   if (!sheet) return null; // placeholder fish — nothing to render
   let url: string | null = null;
-  try {
-    const pose = fishPose(sheet, f);
-    url = scaledThumb(swimCanvas(sheet, 0, pose.mir, pose.g));
-  } catch { /* sheet can't render that pose */ }
+  // Always the level profile, never whatever pose the fish was in at
+  // the moment of the ask: the thumb is memoized for its lifetime.
+  try { url = scaledThumb(thumbFrame(sheet)); }
+  catch { /* sheet can't render that pose */ }
   if (url) thumbMemo.set(key, url);
   return url;
+}
+/** A sheet's right-facing profile, box-filtered down to thumb size. */
+function thumbFrame(sheet: SpriteSheet): HTMLCanvasElement {
+  const pose = restPose(sheet, 1);
+  // Cells hold the fish on its side (swimFrame rotates it upright), so
+  // the drawn width is cellH and the drawn height cellW.
+  const s = Math.min(1, THUMB_W / sheet.meta.cellH, THUMB_H / sheet.meta.cellW);
+  return swimCanvas(sheet, 0, pose.mir, pose.g, s);
 }
 function addonThumb(url: string): string | null {
   const key = `a:${url}`;
@@ -459,10 +680,10 @@ function addonThumb(url: string): string | null {
   let cv: HTMLCanvasElement | null = null;
   const i = sheetByPack.get(url);
   if (i !== undefined && fishSheets[i]) {
-    try { cv = swimCanvas(fishSheets[i]!, 0, 1); } catch { /* scenery below */ }
+    try { cv = thumbFrame(fishSheets[i]!); } catch { /* scenery below */ }
   }
   cv ??= gravelByPack.get(url) ?? backdropByPack.get(url)
-    ?? decors.find((d) => d.pack === url)?.cv ?? null;
+    ?? decors.find((d) => d.pack === url)?.frames[0] ?? null;
   // Sound add-ons have no art: they list with the sound icon.
   if (!cv && installedAddons.some((a) => a.url === url &&
                                          a.section === "sounds"))
@@ -528,6 +749,8 @@ function onBusMessage(m: BusMsg): void {
     setCrt(m.on === true);
   } else if (m.op === "crtConfig") {
     applyCrtConfig(m.cfg);
+  } else if (m.op === "lighting") {
+    applyLighting(m.lighting);
   } else if (m.op === "machine" && typeof m.id === "string") {
     const nm = machineById(m.id);
     if (nm && nm.id !== machine.id) { applyMachine(nm); postState(); }
@@ -599,6 +822,7 @@ function removeAddon(url: string): void {
   sweepThumbs();
   saveTank(); // persists and pushes fresh state to the panel
   bus.post({ op: "uninstalled", url });
+  requestPaint(); // removed fish and decor vanish at once
 }
 
 // Bus messages cross a page boundary — validate before trusting them.
@@ -620,6 +844,13 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   // was in flight — unless the user clicked "Add again", that's a dup.
   if (!again && installedAddons.some((a) => a.url === it.url)) {
     bus.post({ op: "installed", url: it.url });
+    return;
+  }
+  // A fish pack can't be added past the population cap — refuse up
+  // front so the panel explains it instead of fetching for nothing.
+  const refusal = fishRefusal(it.section);
+  if (refusal) {
+    fail(refusal);
     return;
   }
   installsInFlight.add(it.url);
@@ -665,6 +896,9 @@ crt?.configure(crtCfg);
 function setCrt(on: boolean): void {
   crtOn = crt !== null && on;
   crt?.setEnabled(crtOn);
+  // Enabling sizes the WebGL buffer, which clears it: redraw now
+  // rather than show black until the next tick.
+  if (crtOn) requestPaint();
   if (crt !== null) {
     try { localStorage.setItem(CRT_KEY, crtOn ? "1" : "0"); }
     catch { /* storage unavailable */ }
@@ -683,6 +917,7 @@ function applyCrtConfig(raw: unknown): void {
       if (v !== undefined) merged[k] = v;
   crtCfg = sanitizeCrtConfig(merged);
   crt?.configure(crtCfg);
+  requestPaint(); // slider drags show up at once
   try { localStorage.setItem(CRT_CFG_KEY, JSON.stringify(crtCfg)); }
   catch { /* storage unavailable */ }
   postState();
@@ -791,12 +1026,30 @@ document.addEventListener("pointerdown", (e) => {
 postState();
 
 // Native-menu / keyboard entry points (macos/Finsical.swift calls these).
+/** A pinch of pellets, one per hungry fish, scattered around a random
+ * spot on the surface and raining in over a moment: repeated feeds
+ * neither stack into one sinking column nor always pile up in the
+ * middle. Each pellet splashes where it goes in. */
 function feedFish(): void {
-  sim.dropFood(TANK.width / 2);
+  const x = 30 + Math.random() * (TANK.width - 60);
+  const hungry = sim.fish.filter((f) => f.hunger > HUNGER_SEEK).length;
+  for (const p of feedPinch(Math.random, hungry)) {
+    setTimeout(() => {
+      const pellet = sim.dropFood(x + p.dx);
+      splashes.push(newSplash(pellet.x, pellet.y));
+      requestPaint();
+    }, p.delay);
+  }
   audio.feed();
+  requestPaint();
+}
+/** Lamp switch: off holds the tank at night, on hands it back to the
+ * Lighting mode. Persisted with the lighting settings. */
+function toggleLights(): void {
+  applyLighting({ lamp: !lighting.lamp });
 }
 (window as unknown as { finsical?: unknown }).finsical =
-  { openImport: () => importPanel.open(), feedFish,
+  { openImport: () => importPanel.open(), feedFish, toggleLights,
     toggleCrt: () => setCrt(!crtOn) };
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
@@ -832,6 +1085,9 @@ window.addEventListener("keydown", (e) => {
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "c" &&
              !e.repeat && !importPanel.isOpen) {
     setCrt(!crtOn); // bare C: ⌘C is Copy via the Edit menu
+  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "l" &&
+             !e.repeat && !importPanel.isOpen) {
+    toggleLights(); // bare L: the lamp; ⌘L belongs to the native menu
   } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "s" &&
              !e.repeat && !importPanel.isOpen && !inNativeShell()) {
     // Browser-only fallback — the app opens stats.html via Tank ▸
@@ -945,7 +1201,7 @@ window.addEventListener("drop", (e) => {
     if (flat.has("manifest.json")) {
       const pack = await loadAzpack(readFile);
       const idx = usePack(pack, readFile);
-      if (idx >= 0) { spawnFish(idx, pack.manifest.tag); audio.splash(); }
+      spawnFromDrop(idx, pack.manifest.tag);
       const imgs: IndexedImage[] = [];
       for (const c of pack.manifest.chunks) {
         if (!c.image) continue;
@@ -988,7 +1244,7 @@ window.addEventListener("drop", (e) => {
       const sheets = fshToSheets(data);
       if (!sheets.size) continue;
       const idx = usePack({ sheets });
-      if (idx >= 0) { spawnFish(idx, name.replace(/\.[^.]*$/, "")); audio.splash(); }
+      spawnFromDrop(idx, name.replace(/\.[^.]*$/, ""));
       pickBackdrop(packImages(data).values());
       if (fishSheets.length) {
         console.info(`${name}: pack imported`);
@@ -1024,31 +1280,75 @@ function animFrame(f: Fish, nf: number): number {
   return Math.floor(ph);
 }
 
-// Sprite cells run large (the angelfish is 170px tall); scale big
-// sheets down to a share of the tank rather than clipping them.
+// Adult art draws at the shared art scale, so species keep their
+// original sizes relative to each other; a safety cap keeps an
+// unusually large sheet from filling the tank.
 const MAX_FISH_W = TANK.width * 0.6, MAX_FISH_H = TANK.height * 0.6;
+/** Frames are stored vertically: a profile is cellH wide once rotated. */
+function sheetScale(sheet: SpriteSheet): number {
+  return Math.min(ART_SCALE, MAX_FISH_W / sheet.meta.cellH,
+                  MAX_FISH_H / sheet.meta.cellW);
+}
+
+/** Report a fish's half-extents at full growth to the sim, which
+ * scales them by the fish's growth and keeps big bodies inside the
+ * glass by them. Cells hold the fish on its side, so cellH is its
+ * drawn width. Called wherever the fish's sheet can
+ * change (spawn, a pack landing re-dealing round-robin sheets, restore
+ * remaps) rather than while drawing, so no tick runs on stale extents
+ * and a newly bound big fish doesn't snap inward on its next tick. */
+function bindExtents(f: Fish): void {
+  const sheet = sheetOf(f);
+  if (!sheet) {
+    delete f.halfW; delete f.halfH;
+    return;
+  }
+  const s = sheetScale(sheet);
+  f.halfW = sheet.meta.cellH * s / 2;
+  f.halfH = sheet.meta.cellW * s / 2;
+}
+
+/** The scale a fish draws at: its sheet's art scale times its growth.
+ * swimCanvas caches a shrunk frame per exact scale, so growth rounds
+ * to 0.05 steps (finer than a pixel for most fish) to keep that cache
+ * bounded. */
+function drawScale(sheet: SpriteSheet, f: Fish): number {
+  return sheetScale(sheet) * Math.round(f.scale * 20) / 20;
+}
 
 function drawFish(f: Fish): void {
   const sheet = sheetOf(f);
-  if (!sheet) return drawPlaceholder(f.x, f.y, f.facing, pitch(f));
-  const pose = fishPose(sheet, f);
-  const cv = swimCanvas(sheet, animFrame(f, sheet.meta.framesPerGroup),
-                        pose.mir, pose.g);
-  const s = Math.min(1, MAX_FISH_W / cv.width, MAX_FISH_H / cv.height);
-  const w = cv.width * s, h = cv.height * s;
+  if (!sheet) return drawPlaceholder(f.x, f.y, f.facing, pitch(f), f.scale);
+  let cv: HTMLCanvasElement;
+  try {
+    const pose = fishPose(sheet, f);
+    cv = swimCanvas(sheet, animFrame(f, sheet.meta.framesPerGroup),
+                    pose.mir, pose.g, drawScale(sheet, f));
+  } catch (e) {
+    if (!(e instanceof RangeError)) throw e;
+    // A truncated pack can legitimately lack this cell; an uncaught
+    // RangeError here would abort the rest of every frame, so fall back.
+    return drawPlaceholder(f.x, f.y, f.facing, pitch(f), f.scale);
+  }
   ctx.save();
-  ctx.translate(Math.round(f.x), Math.round(f.y));
-  ctx.rotate(pitch(f));
-  ctx.drawImage(cv, -w / 2, -h / 2, w, h);
-  ctx.restore();
+  // finally: a throwing drawImage must not leave its transform behind
+  // for everything drawn after it. Whole-pixel offsets: an odd-sized
+  // frame would otherwise sit on a half pixel.
+  try {
+    ctx.translate(Math.round(f.x), Math.round(f.y));
+    ctx.rotate(pitch(f));
+    ctx.drawImage(cv, -(cv.width >> 1), -(cv.height >> 1));
+  } finally {
+    ctx.restore();
+  }
 }
 
 // Placeholder sprite until real Aquazone assets are imported.
 function drawPlaceholder(x: number, y: number, facing: number,
-                         dev = 0): void {
+                         dev = 0, scale = 1): void {
   ctx.save();
   ctx.translate(Math.round(x), Math.round(y));
-  ctx.scale(-facing, 1);
+  ctx.scale(-facing * scale, scale);
   // In the mirrored draw space the pitch angle flips sign.
   ctx.rotate(-facing * dev);
   ctx.fillStyle = "#e8a33d";
@@ -1067,76 +1367,164 @@ const tankGradient = (() => {
   return g;
 })();
 
-let prevBubbles = 0;
+// Reduced motion freezes the ambient light (caustics, shafts, glint).
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+let waterMotion: WaterMotion = reducedMotion.matches ? "still" : "animated";
+reducedMotion.addEventListener("change", (e) => {
+  waterMotion = e.matches ? "still" : "animated";
+});
+// Water feedback — glass-tap rings and feed splashes, ticked on the
+// sim clock so they animate even while fish pause between decisions.
+const ripples: Ripple[] = [];
+const splashes: Splash[] = [];
 function render(): void {
   if (backdropCv) {
-    ctx.drawImage(backdropCv, 0, 0, TANK.width, TANK.height);
+    ctx.drawImage(backdropCv, 0, 0);
   } else {
     ctx.fillStyle = tankGradient;
     ctx.fillRect(0, 0, TANK.width, TANK.height);
   }
   if (gravelCv) {
-    const gh = Math.round(gravelCv.height * TANK.width / gravelCv.width);
-    ctx.drawImage(gravelCv, 0, TANK.height - gh, TANK.width, gh);
+    ctx.drawImage(gravelCv, 0, TANK.height - gravelCv.height);
   } else if (!backdropCv) {
     ctx.fillStyle = "#8a6d3b"; // gravel
     ctx.fillRect(0, TANK.height - BOTTOM_PAD, TANK.width, BOTTOM_PAD);
   }
   // Decorations spread evenly across the floor, bottoms planted in gravel.
+  // Art keeps its authored width now (no 160 px cap), so a wide piece
+  // is pulled inside the glass rather than hanging past it.
   const dn = decors.length;
   for (let i = 0; i < dn; i++) {
-    const d = decors[i]!.cv;
-    ctx.drawImage(d, Math.round(TANK.width * (i + 0.5) / dn - d.width / 2),
+    const { frames, phase } = decors[i]!;
+    const d = frames[decorFrame(sim.tickCount, frames.length, phase)]!;
+    const x = Math.round(TANK.width * (i + 0.5) / dn - d.width / 2);
+    ctx.drawImage(d, Math.min(Math.max(x, 0), Math.max(0, TANK.width - d.width)),
                   TANK.height - 6 - d.height);
   }
 
-  for (const fd of sim.food) {
-    // Rotting pellets dissolve — fade them out over their rot lifetime.
-    ctx.globalAlpha = 1 - 0.65 * Math.min(1, fd.settled / FOOD_ROT_TICKS);
-    ctx.fillStyle = "#c9a227";
-    ctx.fillRect(Math.round(fd.x) - 1, Math.round(fd.y) - 1, 3, 3);
-    ctx.globalAlpha = 1;
-  }
+  drawLight(ctx, sim.light, sim.tickCount, waterMotion, nightFloor(lighting));
+
+  drawFood(ctx, sim.food);
   for (const f of sim.fish) drawFish(f);
 
-  ctx.fillStyle = "#cfe8ff";
-  for (const b of sim.bubbles) {
-    ctx.fillRect(Math.round(b.x), Math.round(b.y), 2, 2);
+  drawBubbles(ctx, sim.bubbles);
+
+  // On the glass, so over the fish: ripples and splashes paint last.
+  drawRipples(ctx, ripples);
+  drawSplashes(ctx, splashes);
+
+  // Feed-zone boundary, only while the pointer is over the tank: a
+  // permanent line read as a second waterline. Under the murk and night
+  // overlays, so it dims with the water instead of glowing at night.
+  if (lastClient) {
+    ctx.fillStyle = overFeedZone
+      ? "rgba(255,255,255,0.45)"
+      : "rgba(255,255,255,0.14)";
+    ctx.fillRect(0, feedZoneLineY(TANK.height), TANK.width, 1);
   }
-  // Sparse bloops: only some spawns make a sound.
-  if (sim.bubbles.length > prevBubbles && Math.random() < 0.25)
-    audio.bubble();
-  prevBubbles = sim.bubbles.length;
 
   // Fouled water murks the whole scene.
-  const murk = 1 - sim.waterQuality;
-  if (murk > 0.02) {
-    ctx.fillStyle = `rgba(96,80,36,${(murk * 0.28).toFixed(3)})`;
-    ctx.fillRect(0, 0, TANK.width, TANK.height);
-  }
+  drawMurk(ctx, sim.waterQuality,
+           waterMotion === "animated" ? sim.tickCount : 0);
 
-  // day/night dimming
-  const dark = 1 - sim.light;
-  if (dark > 0.01) {
-    ctx.fillStyle = `rgba(4,8,24,${(dark * 0.55).toFixed(3)})`;
-    ctx.fillRect(0, 0, TANK.width, TANK.height);
-  }
+  drawNight(new Date());
 }
 
-// Fixed-step sim; render on rAF.
+/** Night's blue, multiplied over the scene at the darkest demo night:
+ * the water keeps its blues while warm colors fade. A dim blue screen
+ * then lifts the shadows, so fish read as moonlit gray rather than
+ * sinking into black. */
+const NIGHT_TINT = { r: 70, g: 90, b: 150 };
+const NIGHT_LIFT = { r: 26, g: 34, b: 60 };
+/** Moonbeam strength under a full moon. */
+const MOONBEAM_ALPHA = 0.08;
+function drawNight(now: Date): void {
+  const k = Math.min(1, (1 - sim.light) / (1 - DEMO_NIGHT_LIGHT));
+  const W = TANK.width, H = TANK.height;
+  ctx.save();
+  if (k > 0.01) {
+    const mix = (c: number): number => Math.round(255 - (255 - c) * k);
+    ctx.globalCompositeOperation = "multiply";
+    ctx.fillStyle =
+      `rgb(${mix(NIGHT_TINT.r)},${mix(NIGHT_TINT.g)},${mix(NIGHT_TINT.b)})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "screen";
+    ctx.fillStyle = `rgb(${Math.round(NIGHT_LIFT.r * k)},` +
+      `${Math.round(NIGHT_LIFT.g * k)},${Math.round(NIGHT_LIFT.b * k)})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+  const cycle = (sim.tickCount % DAY_TICKS) / DAY_TICKS;
+  const tint = twilightTint(lighting, minutesOfDay(now), cycle);
+  if (tint) {
+    // Warmest at the surface, where the low sun comes in.
+    const rgb = `${tint.r},${tint.g},${tint.b}`;
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, `rgba(${rgb},${tint.a.toFixed(3)})`);
+    g.addColorStop(1, `rgba(${rgb},${(tint.a * 0.3).toFixed(3)})`);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+  // Timer nights get a faint slanted moonbeam that waxes and wanes
+  // with the real moon, so an evening tank has something to glow.
+  const night = lighting.mode === "timer"
+    ? Math.min(1, (1 - sim.light) / (1 - CLOCK_NIGHT_LIGHT)) : 0;
+  const beam = MOONBEAM_ALPHA * night * moonIllumination(now.getTime());
+  if (beam > 0.002) {
+    const x0 = W * 0.62, slant = 70, half = 20;
+    const g = ctx.createLinearGradient(x0 - half, 0, x0 + half, 0);
+    g.addColorStop(0, "rgba(200,220,255,0)");
+    g.addColorStop(0.5, `rgba(200,220,255,${beam.toFixed(3)})`);
+    g.addColorStop(1, "rgba(200,220,255,0)");
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = g;
+    // Skewed so the beam leans down and to the left; the gradient
+    // skews with it and stays centered across the beam.
+    ctx.transform(1, 0, -slant / H, 1, 0, 0);
+    ctx.fillRect(x0 - half, 0, half * 2, H);
+  }
+  ctx.restore();
+}
+
+function tickSim(): void {
+  const bubbles = sim.bubbles.length;
+  sim.tick();
+  tickRipples(ripples);
+  tickSplashes(splashes);
+  // Sparse bloops: only some spawns make a sound. Checked per tick so
+  // the odds don't depend on how often the tank is drawn.
+  if (sim.bubbles.length > bubbles && Math.random() < 0.25)
+    audio.bubble();
+}
+
+// Fixed-step sim on rAF. render() depends only on sim state and
+// installed art, so a frame without a tick would redraw the same
+// picture: at 60 Hz every other frame, at 120 Hz three in four, each
+// also re-uploading the CRT texture. Those frames are skipped (the CRT
+// grain and flicker then move at the tick rate too).
 const TICKS_PER_SECOND = 30;
+const STEP_MS = 1000 / TICKS_PER_SECOND;
 let acc = 0;
 let last = performance.now();
 function frame(now: number): void {
-  acc += Math.min(now - last, 200);
+  // Schedule first: an exception while drawing must not stop the tank.
+  requestAnimationFrame(frame);
+  const plan = planFrame(acc, now - last, STEP_MS);
+  acc = plan.acc;
   last = now;
-  const step = 1000 / TICKS_PER_SECOND;
-  while (acc >= step) {
-    sim.tick();
-    acc -= step;
-  }
+  // The light timer follows the Mac's clock; hand the sim this
+  // frame's light before it ticks.
+  syncLight(new Date());
+  // Ahead of the tick gate: hover must update (and repaint) even
+  // while no tick runs.
+  syncFeedHover();
+  for (let i = 0; i < plan.ticks; i++) tickSim();
+  if (plan.ticks === 0 && !frameDirty) return;
+  frameDirty = false;
   render();
   if (crtOn) crt?.render();
-  requestAnimationFrame(frame);
 }
+// A resize changes the CRT buffer size, and resizing a WebGL canvas
+// clears it: draw on the next frame instead of waiting for a tick.
+window.addEventListener("resize", requestPaint);
 requestAnimationFrame(frame);

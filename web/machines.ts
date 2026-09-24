@@ -56,6 +56,59 @@ export function shellMarkup(m: Machine): string {
   return m.svg;
 }
 
+// Preview palette mirrors the live tank in main.ts — a machine should
+// preview as a running Finsical, not an empty screen.
+const PV_WATER_TOP = "#2e7fc4", PV_WATER_BOT = "#14508c";
+const PV_GRAVEL = "#8a6d3b", PV_FISH = "#e8a33d", PV_EYE = "#1a1a2e";
+const PV_BUBBLE = "#cfe8ff", PV_BACKPLATE = "#050505"; // #screenback
+
+/** The shell over a still of the tank — the prefs machine picker shows
+ * each case as a running aquarium: black backplate behind the glass,
+ * water + gravel + a few placeholder swimmers inside the screen rect,
+ * and the shell art last so its baked-in reflections ride on top. */
+export function previewMarkup(m: Machine): string {
+  const k = m.sw / 320; // logical tank px (320×200) → viewBox units
+  const tx = (x: number) => m.sx + x * k;
+  const ty = (y: number) => m.sy + y * k;
+  const parts: string[] = [];
+  // Backplate — the letterbox matte around the tank. Padded like the
+  // live #screenback: the art's translucent glass rim runs a few px
+  // past the measured hole and would otherwise show the page behind.
+  if (m.hole) {
+    const pad = SCREENBACK_HOLE_PAD;
+    parts.push(`<rect x="${m.hole.x - pad}" y="${m.hole.y - pad}"` +
+      ` width="${m.hole.w + pad * 2}" height="${m.hole.h + pad * 2}"` +
+      ` fill="${PV_BACKPLATE}"/>`);
+  }
+  parts.push(
+    // ids are document-global across inline SVGs — suffix per machine
+    `<defs><linearGradient id="pvwater-${m.id}" x1="0" y1="0" x2="0" y2="1">` +
+      `<stop offset="0" stop-color="${PV_WATER_TOP}"/>` +
+      `<stop offset="1" stop-color="${PV_WATER_BOT}"/>` +
+      `</linearGradient></defs>`,
+    `<rect x="${m.sx}" y="${m.sy}" width="${m.sw}" height="${m.sh}"` +
+      ` fill="url(#pvwater-${m.id})"/>`,
+    // Gravel strip — the tank's bottom 12 logical px, anchored to the
+    // screen bottom (screen rects are ~16:10 but not exactly).
+    `<rect x="${m.sx}" y="${m.sy + m.sh - 12 * k}" width="${m.sw}"` +
+      ` height="${12 * k}" fill="${PV_GRAVEL}"/>`);
+  // Placeholder swimmers — drawPlaceholder's rects, mirrored to face.
+  const fish = (x: number, y: number, facing: 1 | -1, s = 1): string =>
+    `<g transform="translate(${tx(x)} ${ty(y)})` +
+    ` scale(${-facing * k * s} ${k * s})" fill="${PV_FISH}">` +
+    `<rect x="-8" y="-4" width="14" height="8"/>` +
+    `<rect x="6" y="-6" width="6" height="12"/>` +
+    `<rect x="-2" y="-7" width="6" height="3"/>` +
+    `<rect x="-6" y="-2" width="2" height="2" fill="${PV_EYE}"/></g>`;
+  parts.push(fish(84, 78, 1), fish(238, 108, -1), fish(158, 52, 1, 0.7));
+  const bubbles = [[252, 66], [255, 55], [253, 44]]
+    .map(([x, y]) => `<rect x="${tx(x!)}" y="${ty(y!)}"` +
+      ` width="${2 * k}" height="${2 * k}"/>`).join("");
+  parts.push(`<g fill="${PV_BUBBLE}">${bubbles}</g>`);
+  parts.push(shellMarkup(m));
+  return parts.join("");
+}
+
 // All renders: user-supplied art cropped to alpha bounds; hole and
 // screen rects measured from the image's own pixels.
 

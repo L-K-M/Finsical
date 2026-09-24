@@ -1,9 +1,10 @@
 // Pane icons for the Preferences window, 32 x 32. Original artwork in
 // the spirit of Mac OS 8 control panel icons (drawn for Finsical, not
 // copied): a compact Mac with a fish tank on screen, a tube monitor
-// showing scanlines, and a brightness/contrast disc. Registered as
-// Osmium sprites (--osm-sprite-icon-*) by prefs.ts. Also the sound
-// add-ons' icon, a speaker, which the add-on lists draw on canvases.
+// showing scanlines, a brightness/contrast disc and a light bulb.
+// Registered as Osmium sprites (--osm-sprite-icon-*) by prefs.ts. Also
+// the sound add-ons' icon, a speaker, which the add-on lists draw on
+// canvases.
 import type { Palette } from "osmium-ui";
 
 /** Icon colors beyond Osmium's built-in grays and lavender ramp, from
@@ -117,6 +118,41 @@ const ICON_PICTURE = [
   "................................",
 ];
 
+const ICON_LIGHTING = [
+  "................................",
+  "................................",
+  ".............000000.............",
+  "...........00yyyyyy00...........",
+  "..........0yffyyyyyyy0..........",
+  ".........0yfyyyyyyyyyy0.........",
+  "........0yfyyyyyyyyyyyo0........",
+  "........0yfyyyyyyyyyyyo0........",
+  ".......0yfyyyyyyyyyyyyyo0.......",
+  ".......0yyyyyyyyyyyyyyyo0.......",
+  ".......0yyyyyyooooyyyyoo0.......",
+  ".......0yyyyyoyyyyoyyyoo0.......",
+  ".......0yyyyyoyyyyoyyooo0.......",
+  "........0yyyyyoyyoyyooo0........",
+  "........0yyyyyoyyoyyooo0........",
+  ".........0yyyyoyyoyooo0.........",
+  "..........0yyyoyyoyoo0..........",
+  "...........0yyoyyooo0...........",
+  "...........0yyoyyooo0...........",
+  "...........0yyyyyyoo0...........",
+  "...........0000000000...........",
+  "...........0ffddcca90...........",
+  "...........0000000000...........",
+  "...........0ffddcca90...........",
+  "...........0000000000...........",
+  "...........0ffddcca90...........",
+  "...........0000000000...........",
+  "............0ddca990............",
+  ".............000000.............",
+  "................................",
+  "................................",
+  "................................",
+];
+
 /** Sound add-ons' icon, 32 x 24 so it sits unscaled in the add-on
  * lists' 38 x 28 thumbnails: a speaker sending out sound waves. Drawn
  * with grays and ICON_PALETTE only (render.ts rasterizes it). */
@@ -151,4 +187,5 @@ export const ICON_SPRITES: Record<string, readonly string[]> = {
   "icon-machine": ICON_MACHINE,
   "icon-monitor": ICON_MONITOR,
   "icon-picture": ICON_PICTURE,
+  "icon-lighting": ICON_LIGHTING,
 };

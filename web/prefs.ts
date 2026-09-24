@@ -1,17 +1,21 @@
 import { openBus } from "./bus.js";
 import { CRT_DEFAULTS, sanitizeCrtConfig } from "./crt.js";
-import { MACHINES, shellMarkup } from "./machines.js";
+import { MACHINES, previewMarkup } from "./machines.js";
 import type { CrtConfig } from "./crt.js";
-import { centerText, hostWindow, mountList, pushButton, registerSprites,
-         setEnabled, trackHighlight, trackPress } from "osmium-ui";
+import { centerText, hostWindow, mountList, mountPopup, pushButton,
+         registerSprites, setEnabled, trackHighlight, trackPress }
+  from "osmium-ui";
 import { ICON_PALETTE, ICON_SPRITES } from "./icons.js";
+import { hourLabel, LIGHTING_DEFAULTS, sanitizeLighting }
+  from "../core/light.js";
+import type { Lighting, LightMode } from "../core/light.js";
 
-// Preferences window: a Mac OS 8 control panel with three panes —
-// the machine case, the CRT tube effect, and the monitor's picture
-// controls. The tank page owns persistence and rendering: this page
-// renders the state it pushes back (op:"state" carries `crt` and
-// `machine` snapshots) and posts intents: crtEnabled, crtConfig,
-// machine.
+// Preferences window: a Mac OS 8 control panel with four panes: the
+// machine case, the CRT tube effect, the monitor's picture controls
+// and the tank's lighting. The tank page owns persistence and
+// rendering: this page renders the state it pushes back (op:"state"
+// carries `crt`, `machine` and `lighting` snapshots) and posts
+// intents: crtEnabled, crtConfig, machine, lighting.
 
 interface SliderSpec {
   key: keyof CrtConfig;
@@ -110,7 +114,7 @@ const PICTURE_GROUPS: Group[] = [
   { title: "Color", rows: [["red", "green", "blue"]] },
 ];
 
-type PaneId = "machine" | "monitor" | "picture";
+type PaneId = "machine" | "monitor" | "picture" | "lighting";
 const PANES: { id: PaneId; label: string; icon: string; hint: string;
                /** Hint while the CRT effect is off (its sliders dim). */
                offHint?: string;
@@ -128,6 +132,9 @@ const PANES: { id: PaneId; label: string; icon: string; hint: string;
     offHint: "These controls adjust the CRT effect. Turn on Simulate a " +
       "CRT monitor in the Monitor pane to use them.",
     keys: PIC_SPECS.map((s) => s.key) },
+  { id: "lighting", label: "Lighting", icon: "icon-lighting",
+    hint: "How the tank is lit. Point at a pop-up menu to see what it " +
+      "does.", keys: [] },
 ];
 const PANE_KEY = "finsical:prefsPane";
 
@@ -151,6 +158,10 @@ let machineTimer: ReturnType<typeof setTimeout> | undefined;
 // frame, carrying every trait touched since the last one.
 let pendingCfg: Partial<CrtConfig> | null = null;
 let postScheduled = false;
+// Lighting picks latch like machine picks.
+let lighting: Lighting = { ...LIGHTING_DEFAULTS };
+let lightPending: Lighting | null = null;
+let lightTimer: ReturnType<typeof setTimeout> | undefined;
 
 function el(tag: string, cls = "", text = ""): HTMLElement {
   const e = document.createElement(tag);
@@ -185,6 +196,15 @@ const bus = openBus((m) => {
     machinePending = null;
     showMachine(mc.id);
   }
+  // A missing field means an older tank build: keep what's shown.
+  if (m.lighting !== undefined) {
+    const l = sanitizeLighting(m.lighting);
+    if (lightPending === null || sameLighting(l, lightPending)) {
+      lightPending = null;
+      lighting = l;
+      syncLighting();
+    }
+  }
   syncControls();
 });
 
@@ -195,8 +215,8 @@ hostWindow(document.getElementById("pwin")!, { title: "Preferences" });
 // Explains whatever the pointer (or keyboard focus) is on, the way
 // Balloon Help would, and falls back to the pane's own hint.
 let pane: PaneId = "machine";
-let described: SliderSpec | null = null;
-function describe(spec: SliderSpec | null): void {
+let described: SliderSpec | LightSpec | null = null;
+function describe(spec: SliderSpec | LightSpec | null): void {
   described = spec;
   descEl.textContent = "";
   if (pane === "machine") {
@@ -211,9 +231,10 @@ function describe(spec: SliderSpec | null): void {
     descEl.textContent = !onBox.checked && p.offHint ? p.offHint : p.hint;
     return;
   }
-  descEl.append(el("span", "osm-label",
-                   `${spec.label}: ${(spec.fmt ?? pct)(cfg[spec.key])}`),
-                ` — ${spec.blurb}`);
+  const [label, blurb] = "key" in spec
+    ? [`${spec.label}: ${(spec.fmt ?? pct)(cfg[spec.key])}`, spec.blurb]
+    : [`${spec.label}: ${spec.value()}`, spec.blurb()];
+  descEl.append(el("span", "osm-label", label), ` — ${blurb}`);
 }
 
 // ---- pane buttons -------------------------------------------------------
@@ -299,7 +320,7 @@ function paintPreview(): void {
   if (!m) return;
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
-  svg.innerHTML = shellMarkup(m);
+  svg.innerHTML = previewMarkup(m);
   preview.appendChild(svg);
 }
 function showMachine(id: string): void {
@@ -399,7 +420,7 @@ addGroups(PICTURE_GROUPS, document.getElementById("pfpicture")!);
 // level so a missed pointerup can't wedge a slider out of echo sync.
 const endDrags = () => {
   dragging.clear();
-  if (!described) return;
+  if (!described || !("key" in described)) return;
   // WebKit doesn't focus a range input on click, so a release over the
   // slider keeps its caption while the slider is still pointed at.
   const input = sliders.get(described.key)!;
@@ -441,9 +462,121 @@ onBox.addEventListener("change", () => {
   bus.post({ op: "crtEnabled", on: onBox.checked });
 });
 
-// Defaults restores the visible pane's sliders only — the other pane's
-// settings are out of sight and stay as they are.
+// ---- lighting pane -------------------------------------------------------
+// The mode in one pop-up, the timer's hours in two more that dim unless
+// the timer runs. Picks are optimistic; the tank echoes them back.
+interface LightSpec { label: string; value(): string; blurb(): string }
+const MODES: { mode: LightMode; name: string; blurb: string }[] = [
+  { mode: "demo", name: "Fast day and night",
+    blurb: "A whole day and night pass every 13 minutes, with a warm " +
+      "dawn and dusk in between." },
+  { mode: "timer", name: "Light timer",
+    blurb: "The lights follow this Mac's clock, fading on and off at " +
+      "the hours you set. Nights stay light enough to watch, with a " +
+      "moonbeam that follows the real moon." },
+  { mode: "always", name: "Always on", blurb: "Daylight all the time." },
+];
+const HOURS = Array.from({ length: 24 }, (_, h) => hourLabel(h));
+const modeOf = (): (typeof MODES)[number] =>
+  MODES.find((x) => x.mode === lighting.mode)!;
+const sameLighting = (a: Lighting, b: Lighting): boolean =>
+  a.mode === b.mode && a.on === b.on && a.off === b.off &&
+  a.lamp === b.lamp;
+
+function setLighting(p: Partial<Lighting>): void {
+  lighting = { ...lighting, ...p };
+  lightPending = { ...lighting };
+  clearTimeout(lightTimer);
+  // One round-trip is plenty; after that the next push resyncs.
+  lightTimer = setTimeout(() => { lightPending = null; }, 1500);
+  syncLighting();
+  bus.post({ op: "lighting", lighting });
+}
+
+/** Wire a pop-up and its title to a caption, like the sliders. */
+function lightControl(id: string, spec: LightSpec,
+                      items: string[], label: string,
+                      onChange: (i: number) => void) {
+  const btn = document.getElementById(`pl-${id}`) as HTMLButtonElement;
+  const unit = document.getElementById(`plc-${id}`)!;
+  const pop = mountPopup(btn, { items, selected: 0, label, onChange });
+  const open = () => btn.getAttribute("aria-expanded") === "true";
+  unit.addEventListener("pointerenter", () => describe(spec));
+  unit.addEventListener("pointerleave", () => {
+    // An open menu keeps its caption while the pointer is on it.
+    if (described === spec && !open() && document.activeElement !== btn)
+      describe(null);
+  });
+  btn.addEventListener("focus", () => describe(spec));
+  btn.addEventListener("blur", () => {
+    // Opening the menu moves focus into it; the caption stays for it.
+    if (described === spec && !open() && !unit.matches(":hover"))
+      describe(null);
+  });
+  return { btn, pop, title: unit.querySelector("label")! };
+}
+const modeCtl = lightControl("mode", {
+  label: "Lighting", value: () => modeOf().name, blurb: () => modeOf().blurb,
+}, MODES.map((x) => x.name), "Lighting",
+  (i) => setLighting({ mode: MODES[i]!.mode }));
+const onCtl = lightControl("on", {
+  label: "Lights on at", value: () => hourLabel(lighting.on),
+  blurb: () => "The timer switches the lights on at this hour, and they " +
+    "brighten through a warm dawn over the next half hour.",
+}, HOURS, "Lights on at", (h) => setLighting({ on: h }));
+const offCtl = lightControl("off", {
+  label: "Off at", value: () => hourLabel(lighting.off),
+  blurb: () => "The timer switches the lights off at this hour, and they " +
+    "dim through a sunset glow into a moonlit night.",
+}, HOURS, "Lights off at", (h) => setLighting({ off: h }));
+
+// The lamp checkbox, captioned like the pop-ups.
+const lampBox = document.getElementById("pl-lamp") as HTMLInputElement;
+const lampUnit = document.getElementById("pflamp")!;
+const lampSpec: LightSpec = {
+  label: "Lamp", value: () => lighting.lamp ? "On" : "Off",
+  blurb: () => "Switch the lamp off for night, whatever the Lighting " +
+    "setting says, and on again to hand the tank back to it. The L key " +
+    "and Tank > Toggle Lights do the same.",
+};
+trackHighlight(lampUnit);
+lampUnit.addEventListener("pointerenter", () => describe(lampSpec));
+lampUnit.addEventListener("pointerleave", () => {
+  if (described === lampSpec && document.activeElement !== lampBox)
+    describe(null);
+});
+lampBox.addEventListener("focus", () => describe(lampSpec));
+lampBox.addEventListener("blur", () => {
+  if (described === lampSpec && !lampUnit.matches(":hover")) describe(null);
+});
+lampBox.addEventListener("change",
+  () => setLighting({ lamp: lampBox.checked }));
+
+function syncLighting(): void {
+  // setSelected closes an open menu, so only touch pop-ups that differ.
+  const pick = (c: typeof modeCtl, i: number) => {
+    if (c.pop.selected !== i) c.pop.setSelected(i);
+  };
+  pick(modeCtl, MODES.indexOf(modeOf()));
+  pick(onCtl, lighting.on);
+  pick(offCtl, lighting.off);
+  lampBox.checked = lighting.lamp;
+  const timer = lighting.mode === "timer";
+  for (const c of [onCtl, offCtl]) {
+    c.btn.disabled = !timer;
+    c.title.classList.toggle("osm-disabled", !timer);
+  }
+  if (described && !("key" in described)) describe(described);
+}
+syncLighting();
+
+// Defaults restores the visible pane's settings only. The other panes
+// are out of sight and stay as they are.
 pushButton(defaultsBtn, () => {
+  if (pane === "lighting") {
+    setLighting({ ...LIGHTING_DEFAULTS });
+    return;
+  }
   const keys = PANES.find((p) => p.id === pane)!.keys;
   if (!keys.length) return;
   // Drop coalesced slider changes still awaiting their rAF post for

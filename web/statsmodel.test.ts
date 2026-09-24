@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { deriveStats, hungerLabel, trend, uptime } from "./statsmodel.js";
+import { DAY_TICKS, Sim } from "../core/sim.js";
+import { HUNGER_SEEK } from "../core/tuning.js";
 
 const base = {
   fish: [
@@ -95,6 +97,30 @@ describe("deriveStats", () => {
     expect(s.phase).toBe("night");
     expect(s.bubbles).toBe(4);
   });
+
+  it("reads night for a real share of the demo cycle", () => {
+    const sim = new Sim({ width: 100, height: 100 }, 1);
+    let night = 0;
+    for (let i = 0; i < DAY_TICKS; i++) {
+      sim.tick();
+      if (deriveStats({ ...base, light: sim.light }).phase === "night")
+        night++;
+    }
+    expect(night / DAY_TICKS).toBeGreaterThanOrEqual(0.3);
+  });
+
+  it("names the next switch under the light timer", () => {
+    const timer = { mode: "timer", on: 8, off: 22 };
+    expect(deriveStats({ ...base, light: 0.45, lighting: timer }).lightLabel)
+      .toBe("Night (lights on at 08:00)");
+    expect(deriveStats({ ...base, light: 1, lighting: timer }).lightLabel)
+      .toBe("Day (lights off at 22:00)");
+    for (const lighting of [undefined, { ...timer, mode: "demo" },
+                            { ...timer, mode: "always" },
+                            { ...timer, on: 9, off: 9 }])
+      expect(deriveStats({ ...base, light: 0.3, lighting }).lightLabel)
+        .toBe("Night");
+  });
 });
 
 describe("labels", () => {
@@ -107,6 +133,9 @@ describe("labels", () => {
     expect(hungerLabel(0.1)).toBe("full");
     expect(hungerLabel(0.5)).toBe("peckish");
     expect(hungerLabel(0.9)).toBe("hungry");
+    // "peckish" starts where the sim's fish start looking for food.
+    expect(hungerLabel(HUNGER_SEEK - 0.01)).toBe("full");
+    expect(hungerLabel(HUNGER_SEEK)).toBe("peckish");
   });
   it("trend", () => {
     expect(trend(null, 0.5)).toBe("→");
