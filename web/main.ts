@@ -1471,7 +1471,7 @@ function feedFish(): void {
   audio.unlock();
   const x = 30 + Math.random() * (TANK.width - 60);
   const hungry = sim.fish.filter((f) => f.hunger > HUNGER_SEEK).length;
-  const room = FOOD_CAP - sim.food.length;
+  const room = FOOD_CAP - sim.food.filter((p) => !p.eaten).length;
   if (room <= 0) {
     // The tank's already full of uneaten food — a bare blip where the
     // pinch would have landed, no pellets and no shake sound.
@@ -1481,6 +1481,9 @@ function feedFish(): void {
   }
   for (const p of feedPinch(Math.random, Math.min(hungry, room))) {
     setTimeout(() => {
+      // Re-check at drop time: a second click fills the tank while a
+      // first pinch is still falling.
+      if (sim.food.filter((q) => !q.eaten).length >= FOOD_CAP) return;
       const pellet = sim.dropFood(x + p.dx);
       splashAt(pellet.x, pellet.y, PUSH.pellet);
       requestPaint();
