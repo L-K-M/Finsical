@@ -200,7 +200,7 @@ const SCHOOL_PULL = 0.6;
 /** Loose scatter around a schoolmate, px — grouping, not lockstep. */
 const SCHOOL_RADIUS = 42;
 /** Above this hunger a fish begs near the surface between meals. */
-const BEG_HUNGER = 0.75;
+export const BEG_HUNGER = 0.75;
 /** The hovered pointer is noticed inside this radius. */
 const NOTICE_RADIUS = 80;
 /** Smallest half-size of a fish's pick box, in tank px (fishAt). */

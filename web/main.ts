@@ -1,5 +1,5 @@
-import { BOTTOM_PAD, CORPSE_TICKS, DAY_TICKS, FOOD_ENTRY_Y, Sim,
-         SURFACE } from "../core/sim.js";
+import { BEG_HUNGER, BOTTOM_PAD, CORPSE_TICKS, DAY_TICKS, FOOD_ENTRY_Y,
+         Sim, SURFACE } from "../core/sim.js";
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
@@ -2314,6 +2314,11 @@ function drawPaw(cx: number, top: number): void {
   }
 }
 
+// Dinner bell: one soft chime when somebody first starts begging —
+// edge-triggered, so a tank that stays hungry doesn't nag, and a fed
+// tank re-arms the bell for next time.
+let bellHungry = false;
+
 function tickSim(): void {
   const bubbles = sim.bubbles.length;
   stirSurface();
@@ -2336,6 +2341,9 @@ function tickSim(): void {
   if (rosterChanged) saveTank();
   tickSurface(surface);
   pawTick();
+  const anyBegging = sim.fish.some((f) => f.hunger >= BEG_HUNGER);
+  if (anyBegging && !bellHungry) audio.dinnerBell();
+  bellHungry = anyBegging;
   tickRipples(ripples);
   tickSplashes(splashes);
   // Sparse bloops: only some spawns make a sound. Checked per tick so

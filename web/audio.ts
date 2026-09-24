@@ -401,6 +401,11 @@ export class TankAudio {
     this.play(this.named("eventbirth"), 0.8);
   }
 
+  /** Fish are begging — the original's timer chime as a dinner bell. */
+  dinnerBell(): void {
+    this.play(this.named("timeronoff"), 0.45);
+  }
+
   /** Tap sounds are positional in the original app. */
   tap(x: number, y: number, w: number, h: number): void {
     const dx = Math.min(x, w - x), dy = Math.min(y, h - y);
