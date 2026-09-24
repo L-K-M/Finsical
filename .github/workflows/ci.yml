@@ -22,6 +22,9 @@ jobs:
         with:
           persist-credentials: false
       - run: bash -n scripts/*.sh
+      # package.json, Info.plist and the README's "Latest release" marker
+      # must name the same version; scripts/release.sh bumps all three.
+      - run: node scripts/check-version.mjs
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
