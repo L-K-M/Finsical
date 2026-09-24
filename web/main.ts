@@ -2122,6 +2122,11 @@ const ripples: Ripple[] = [];
 const splashes: Splash[] = [];
 // The surface's springs, and the waterline drawn from them each frame.
 const surface = newSurface();
+// Surface columns are indexed by tank x — the widths must agree or
+// the waterline, air cover and bubble masking land off by the drift.
+if (SURFACE_W !== TANK.width)
+  throw new Error(
+    `SURFACE_W (${SURFACE_W}) must match TANK.width (${TANK.width})`);
 const waterline = new Int16Array(SURFACE_W);
 
 /** How hard things push the surface, px/tick. */

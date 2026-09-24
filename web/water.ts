@@ -398,6 +398,13 @@ export function drawRefraction(ctx: CanvasRenderingContext2D,
     const dx = refractShift(Math.max(top + r, SURFACE + 1), t);
     if (dx === 0) continue;
     ctx.drawImage(refractScratch, 0, r, W, 1, dx, top + r, W, 1);
+    // Clamp-fill the sliver the shift leaves bare so no unshifted
+    // pixels survive at the tank's edges.
+    if (dx > 0)
+      ctx.drawImage(refractScratch, 0, r, 1, 1, 0, top + r, dx, 1);
+    else
+      ctx.drawImage(refractScratch, W - 1, r, 1, 1,
+                    W + dx, top + r, -dx, 1);
   }
 }
 

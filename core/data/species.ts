@@ -105,7 +105,7 @@ export function parseFsti(p: Uint8Array): SpeciesCare | null {
   // at birth: fall back to the stand-in's, never beyond the span.
   const lifeSpan = raw >= 2 ? raw : DEFAULT_CARE.lifeSpan;
   return {
-    tolerance, breedAge: v.getInt16(0, true),
+    tolerance, breedAge: Math.max(0, v.getInt16(0, true)),
     unhealthy: Math.min(100, Math.max(0, v.getInt16(0x9e, true))),
     adultAge: adultAge > 0 && adultAge < lifeSpan ? adultAge
       : Math.min(DEFAULT_CARE.adultAge, lifeSpan - 1),
@@ -158,8 +158,9 @@ export function sanitizeCare(raw: unknown): SpeciesCare | null {
     tolerance[k] = { idealMin, idealMax, liveMin, liveMax, rateOfChange };
   }
   const { breedAge, unhealthy, adultAge, lifeSpan, susceptible } = o;
-  if (!fin(breedAge) || !fin(unhealthy) || !fin(adultAge) || !fin(lifeSpan) ||
-      !(adultAge > 0) || !(adultAge < lifeSpan) || !Array.isArray(susceptible))
+  if (!fin(breedAge) || breedAge < 0 || !fin(unhealthy) || !fin(adultAge) ||
+      !fin(lifeSpan) || !(adultAge > 0) || !(adultAge < lifeSpan) ||
+      !Array.isArray(susceptible))
     return null;
   const ids = susceptible.filter((x): x is number => Number.isInteger(x));
   return {
