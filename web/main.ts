@@ -115,8 +115,13 @@ let rosterComplete = saved?.v !== 1;
 
 // A random seed, so each launch plays a fresh tape rather than the
 // same one — tests keep determinism by passing a seed to Sim().
-const simSeed = (Math.random() * 0x100000000) >>> 0;
-console.debug("tank sim seed:", simSeed); // log so bug reports are replayable
+// ?seed=<uint32> pins the tape so a reported oddity can be replayed.
+const seedParam = new URLSearchParams(location.search).get("seed");
+const simSeed = seedParam !== null && /^\d+$/.test(seedParam)
+  ? Number(seedParam) >>> 0
+  : (Math.random() * 0x100000000) >>> 0;
+// console.log, not debug — Chrome's default filter hides Verbose.
+console.log("tank sim seed:", simSeed);
 const sim = new Sim(TANK, simSeed);
 const audio = new TankAudio();
 // Hidden (Cmd-H, minimized, background tab): rAF stops and the sim
