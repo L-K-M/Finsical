@@ -259,7 +259,8 @@ function sndsGetStrict(): Promise<StoredSnd[] | null> {
   return rwStrict<StoredSnd[]>("meta", "readonly", (s) => s.get(SNDS_KEY));
 }
 function sndsPut(out: StoredSnd[]): Promise<unknown> {
-  return rwStrict("meta", "readwrite", (s) => s.put(out, SNDS_KEY));
+  return rwStrict("meta", "readwrite", (s) => s.put(out, SNDS_KEY))
+    .then(() => true); // rq.result is the key — resolve an explicit boolean
 }
 
 /** Read-modify-write of the snds record, factored for tests. `get`
