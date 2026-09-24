@@ -624,13 +624,16 @@ export function fetchAddon(url: string): Promise<PackResult[]> {
   // Least-recently-used eviction — insertion order is LRU order —
   // skipping in-flight entries: a burst may exceed the cap by its
   // pending count rather than evict work that's still downloading.
+  // Keep evicting settled entries until back at the cap, so a burst
+  // drains instead of ratcheting the steady-state size upward.
   if (packCache.size > PACK_CACHE_MAX)
-    for (const k of packCache.keys())
+    for (const k of packCache.keys()) {
+      if (packCache.size <= PACK_CACHE_MAX) break;
       if (packSettled.has(k)) {
         packCache.delete(k);
         packSettled.delete(k);
-        break;
       }
+    }
   // Failed fetches stay retryable; only evict if the entry is still
   // this promise (a rider may have replaced it already).
   p.then(() => { if (packCache.get(url) === p) packSettled.add(url); },
