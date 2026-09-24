@@ -236,18 +236,24 @@ describe("TankAudio.load", () => {
   });
 
   it("restarts the loop on a same-length re-encode", async () => {
-    // Same name and duration, different bytes — duration alone can't
-    // tell a remaster from the original; the content probe can.
+    // Same name and duration, and identical endpoints — a remaster
+    // that only differs mid-clip. Duration or an endpoint probe can't
+    // tell it from the original; the sparse probe can.
     const audio = new TankAudio();
     wavs.set(`s/${LOOP}.wav`, wav(30));
     await audio.load(readWav, manifestOf(LOOP));
     audio.startAmbient();
     const ac = FakeContext.last!;
-    wavs.set(`s/${LOOP}.wav`, new Uint8Array(30).fill(9));
+    const remaster = new Uint8Array(30);
+    remaster[12] = 9; // silent ends, different middle (a probed index)
+    wavs.set(`s/${LOOP}.wav`, remaster);
     await audio.load(readWav, manifestOf(LOOP));
     const loops = ac.sources.filter((s) => s.loop);
     expect(loops[0]!.stops).toHaveLength(1); // old loop stopped
     expect(loops[1]!.starts).toBe(1);        // replacement running
+    // And it's the new clip looping, not a stale restart of the old.
+    expect(loops[1]!.buffer).not.toBe(loops[0]!.buffer);
+    expect(loops[1]!.buffer!.getChannelData(0)[12]).toBe(9);
     expect(ac.loops()).toBe(1);
   });
 });

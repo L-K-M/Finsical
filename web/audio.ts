@@ -47,6 +47,18 @@ const LEVEL_GLIDE_S = 0.01;
 /** The filter's bubbling: the one sound the original loops, under all
  * the others. */
 const FILTER_BUBBLING = "az bubble 9003";
+
+/** Identity key for a decoded clip. name+duration alone can't tell a
+ * same-length re-encode from the original, so the key probes channel
+ * 0 — sparsely across the clip, not just the ends, since a faded
+ * remaster can share silent endpoints with the original. */
+function bufferKey(name: string, buf: AudioBuffer): string {
+  const d = buf.getChannelData(0);
+  let taps = "";
+  for (let i = 0; i < 8; i++)
+    taps += `:${d[Math.floor(i * (d.length - 1) / 7)] ?? 0}`;
+  return `${name}:${buf.sampleRate}:${buf.duration}${taps}`;
+}
 /** Played once as an aquarium opens. */
 const OPENING = "aqua";
 /** The bubbling's own level is close to the effects', so it loops at
@@ -342,15 +354,10 @@ export class TankAudio {
   }
 
   /** Content key of whichever buffer would loop as ambience now, or
-   * "" when the bank has no bubbling at all. name+duration alone can't
-   * tell a same-length re-encode from the original, so the key also
-   * probes the ends of channel 0. */
+   * "" when the bank has no bubbling at all. */
   private ambientPick(): string {
     const e = this.namedEntry(FILTER_BUBBLING);
-    if (!e) return "";
-    const d = e.buf.getChannelData(0);
-    return `${e.name}:${e.buf.sampleRate}:${e.buf.duration}:` +
-           `${d[0] ?? 0}:${d[d.length - 1] ?? 0}`;
+    return e ? bufferKey(e.name, e.buf) : "";
   }
 
   private play(buf: AudioBuffer | null, gain = 0.8, loop = false,
@@ -455,9 +462,11 @@ export class TankAudio {
   startAmbient(): void {
     if (!this.ambientOn || this.ambientSrc) return; // off, or already live
     this.ambientWanted = true;
-    this.ambientKey = this.ambientPick();
+    // One lookup feeds both the key and the source — two independent
+    // picks could disagree if tie-breaking ever diverged.
+    const e = this.namedEntry(FILTER_BUBBLING);
+    this.ambientKey = e ? bufferKey(e.name, e.buf) : "";
     this.ambientGen++; // stale pending starts abort in play()
-    this.ambientSrc =
-      this.play(this.named(FILTER_BUBBLING), AMBIENT_GAIN, true);
+    this.ambientSrc = this.play(e?.buf ?? null, AMBIENT_GAIN, true);
   }
 }
