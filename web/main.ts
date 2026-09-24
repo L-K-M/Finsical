@@ -1707,8 +1707,10 @@ window.addEventListener("dragleave", (e) => {
 });
 window.addEventListener("dragover", (e) => e.preventDefault());
 // Capture phase: a drop ends the drag without a leave event, and a
-// descendant handler that stops propagation must not strand the cue.
-window.addEventListener("drop", () => {
+// descendant handler that stops propagation must not strand the cue —
+// nor let the browser navigate away to the dropped file.
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
   dragDepth = 0;
   setDragging(false);
 }, true);
