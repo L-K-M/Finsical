@@ -575,8 +575,9 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       // sin() args are identical modulo 2π at every point in time —
       // no wrap jump, no precision loss on a long-running clock.
       const t = performance.now() / 1000, TAU = Math.PI * 2;
-      // Apparent flicker / rolling-band rates. These scale t (seconds)
-      // into sin() arguments, so they're radians/sec (Hz = value / TAU).
+      // Apparent flicker / rolling-band rates. x/y scale t (seconds)
+      // into sin() arguments, so they're radians/sec (Hz = value / TAU);
+      // z is a [0,1) hash seed (grain) and wraps by 1, not 2π.
       const FLICKER_RATE = 61, BAND_RATE = 4; // ≈9.7 Hz, ≈0.64 Hz
       gl.uniform3f(uPhase, (t * FLICKER_RATE) % TAU,
                    (t * BAND_RATE) % TAU, t % 1);
