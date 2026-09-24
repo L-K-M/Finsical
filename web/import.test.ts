@@ -159,6 +159,24 @@ describe("archive.org nested collections", () => {
     expect(rs).toHaveLength(1);
     expect(rs[0]!.sounds).toEqual([{ name: "Macinfish", wav: MP3_BYTES }]);
   });
+
+  it("delivers each collection's items before the whole list resolves",
+     async () => {
+    // Progressive listing: the panel shows rows per landed collection
+    // rather than waiting on the slowest one.
+    const batches: Importable[][] = [];
+    let resolved = false;
+    const p = listAddons(undefined, (items) => {
+      expect(resolved).toBe(false); // fires before the promise settles
+      batches.push(items);
+    }).then((items) => { resolved = true; return items; });
+    const items = await p;
+    expect(batches.length).toBeGreaterThan(0);
+    expect(batches.flat().map((i) => i.url).sort())
+      .toEqual(items.map((i) => i.url).sort());
+    // Every delivered item carries its collection's section.
+    expect(batches.flat().every((i) => i.section !== "")).toBe(true);
+  });
 });
 
 describe("qualifySoundItemName", () => {
