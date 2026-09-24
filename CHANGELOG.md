@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Click a rising bubble to pop it. It bursts with a soft plip, or with
+  a sound of your own that has "pop" in its name, and doesn't knock on
+  the glass: no fish is startled and the tapping sign stays away. The
+  Bubble sounds switch in Preferences turns the plip off.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the

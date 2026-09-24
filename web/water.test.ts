@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { SURFACE } from "../core/sim.js";
 import { makeRng } from "../core/rng.js";
 import {
-  bubbleOffset, bubblePops, bubbleSize, CAUSTIC_TILE_H, CAUSTIC_TILE_W, drawAir,
+  bubbleAt, BUBBLE_HIT_R, bubbleOffset, bubblePops, bubbleSize, CAUSTIC_TILE_H,
+  CAUSTIC_TILE_W, drawAir, POP_TICKS, tickPops,
   causticShimmer, causticTile, causticValue, feedPinch, murkParams,
   MURK_BOTTOM, MURK_TOP, pelletDrift, PINCH_MAX, PINCH_SPREAD, REFRACT_ROWS,
   refractShift, sunFactor,
@@ -35,6 +36,43 @@ describe("bubbles", () => {
     expect(bubblePops(SURFACE + 0.8)).toBe(true);
     expect(bubblePops(SURFACE + 0.3)).toBe(true);
     expect(bubblePops(SURFACE + 0.81)).toBe(false);
+  });
+});
+
+describe("bubbleAt", () => {
+  // Where a bubble is drawn: its x plus its wobble.
+  const at = (x: number, y: number) => ({ x: x + bubbleOffset(x, y), y });
+
+  it("finds a bubble under the click, wobble included", () => {
+    const bs = [{ x: 100, y: 90 }];
+    const d = at(100, 90);
+    expect(bubbleAt(bs, d.x, d.y)).toBe(0);
+    expect(bubbleAt(bs, d.x + BUBBLE_HIT_R - 0.5, d.y)).toBe(0);
+  });
+
+  it("misses a click farther away than the hit radius", () => {
+    const bs = [{ x: 100, y: 90 }];
+    const d = at(100, 90);
+    expect(bubbleAt(bs, d.x + BUBBLE_HIT_R + 0.5, d.y)).toBe(-1);
+    expect(bubbleAt([], 100, 90)).toBe(-1);
+  });
+
+  it("picks the nearest of two bubbles in reach", () => {
+    const bs = [{ x: 100, y: 90 }, { x: 104, y: 90 }];
+    const d = at(104, 90);
+    expect(bubbleAt(bs, d.x, d.y)).toBe(1);
+  });
+});
+
+describe("clicked pops", () => {
+  it("play out over POP_TICKS ticks, then go", () => {
+    const ps = [{ x: 10, y: 50, age: 0 }];
+    for (let t = 1; t < POP_TICKS; t++) {
+      tickPops(ps);
+      expect(ps).toHaveLength(1);
+    }
+    tickPops(ps);
+    expect(ps).toHaveLength(0);
   });
 });
 

@@ -967,3 +967,28 @@ describe("Sim", () => {
     expect(b.state).not.toBe("seek");
   });
 });
+
+
+describe("popBubble", () => {
+  it("takes the clicked bubble out and returns it", () => {
+    const sim = new Sim({ width: 320, height: 200 });
+    sim.bubbles.push({ x: 10, y: 50 }, { x: 20, y: 60 });
+    expect(sim.popBubble(1)).toEqual({ x: 20, y: 60 });
+    expect(sim.bubbles).toEqual([{ x: 10, y: 50 }]);
+  });
+
+  it("ignores an index with no bubble", () => {
+    const sim = new Sim({ width: 320, height: 200 });
+    sim.bubbles.push({ x: 10, y: 50 });
+    for (const i of [-1, 1, 0.5, NaN]) expect(sim.popBubble(i)).toBeNull();
+    expect(sim.bubbles).toHaveLength(1);
+  });
+
+  it("scares no fish, unlike a tap on the glass", () => {
+    const sim = new Sim({ width: 320, height: 200 });
+    const f = sim.addFish({ x: 100, y: 100 });
+    sim.bubbles.push({ x: 102, y: 100 });
+    sim.popBubble(0);
+    expect(f.state).toBe("drift");
+  });
+});

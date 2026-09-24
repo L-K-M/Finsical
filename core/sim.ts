@@ -316,6 +316,14 @@ export class Sim {
       if (this.food[i]!.settled > 0) this.food.splice(i, 1);
   }
 
+  /** Pop bubble `i` (a click on it): it leaves the water at once and
+   * disturbs nothing. Returns the bubble, or null for a bad index. */
+  popBubble(i: number): Bubble | null {
+    if (!Number.isInteger(i) || i < 0 || i >= this.bubbles.length)
+      return null;
+    return this.bubbles.splice(i, 1)[0]!;
+  }
+
   /** Knock on the glass: startle fish near (x, y), strength fading
    * with distance like the original's 1 − dist/radius falloff. */
   tap(x: number, y: number): void {

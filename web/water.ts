@@ -149,6 +149,44 @@ export function drawBubbles(ctx: CanvasRenderingContext2D,
   }
 }
 
+/** How far from a bubble's drawn centre a click still pops it, tank px:
+ * a bit more than the biggest bubble, so a small one near the gravel
+ * is still a fair target. */
+export const BUBBLE_HIT_R = 5;
+
+/** Index of the bubble a click at (x, y) pops: the nearest one within
+ * `r` of where it is drawn, wobble included. -1 when none is. */
+export function bubbleAt(bubbles: readonly Bubble[], x: number, y: number,
+                         r = BUBBLE_HIT_R): number {
+  let best = -1, bd = r * r;
+  bubbles.forEach((b, i) => {
+    const dx = b.x + bubbleOffset(b.x, b.y) - x, dy = b.y - y;
+    const d = dx * dx + dy * dy;
+    if (d <= bd) { bd = d; best = i; }
+  });
+  return best;
+}
+
+/** A bubble popped mid-water by a click, drawn with the surface pop's
+ * two rings: the inner one, then the outer. Render-only. */
+export interface BubblePop { x: number; y: number; age: number }
+/** Ticks a clicked pop shows for: two per ring (~130 ms). */
+export const POP_TICKS = 4;
+
+export function tickPops(ps: BubblePop[]): void {
+  for (let i = ps.length - 1; i >= 0; i--)
+    if (++ps[i]!.age >= POP_TICKS) ps.splice(i, 1);
+}
+
+export function drawPops(ctx: CanvasRenderingContext2D,
+                         ps: readonly BubblePop[]): void {
+  popSprites ??= [spriteOf(POP_ART_INNER), spriteOf(POP_ART)];
+  for (const p of ps) {
+    const s = popSprites[p.age < POP_TICKS / 2 ? 0 : 1]!;
+    ctx.drawImage(s, Math.round(p.x) - 2, Math.round(p.y) - 2);
+  }
+}
+
 // ---- food ------------------------------------------------------------------
 
 /** Most pellets one feed drops. */

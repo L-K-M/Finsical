@@ -52,6 +52,11 @@ const OPENING = "aqua";
 /** The bubbling's own level is close to the effects', so it loops at
  * the gain single bubbles play at, under them. */
 const AMBIENT_GAIN = 0.4;
+/** The synthesized pop: a sine gliding up an octave and a bit, gone in
+ * 60 ms, at about a single bubble's level. */
+const POP_HZ = [700, 1600] as const;
+const POP_S = 0.06;
+const POP_GAIN = 0.25;
 
 export class TankAudio {
   private ctx: AudioContext | null = null;
@@ -405,6 +410,33 @@ export class TankAudio {
   bubble(): void {
     if (!this.bubblesOn) return;
     this.play(this.find(["bubble"], FILTER_BUBBLING), 0.4);
+  }
+
+  /** A bubble popped by a click. A sound the user added with "pop" in
+   * its name plays if there is one; otherwise a soft rising plip is
+   * synthesized, like the resonance of a small bubble bursting. Off
+   * with the other bubble sounds, and silent in a tank without sounds
+   * (no context yet), as every other event is. */
+  pop(): void {
+    if (!this.bubblesOn) return;
+    const own = this.find(["pop"]);
+    if (own) { this.play(own, 0.5); return; }
+    const ac = this.ctx;
+    if (!ac || this.hidden || ac.state !== "running") return;
+    const t = ac.currentTime;
+    const osc = ac.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(POP_HZ[0], t);
+    osc.frequency.exponentialRampToValueAtTime(POP_HZ[1], t + POP_S / 2);
+    const g = ac.createGain();
+    // Exponential ramps can't start from 0: from a whisper to the peak
+    // in 4 ms, then away, so it never clicks on or off.
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(POP_GAIN, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + POP_S);
+    osc.connect(g).connect(this.master!);
+    osc.start(t);
+    osc.stop(t + POP_S + 0.01);
   }
 
   /** The tank has opened with its saved sounds loaded: start the

@@ -35,8 +35,9 @@ import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
 import { stateLabel } from "./overviewmodel.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
-import { bubblePops, drawAir, drawBubbles, drawFood, drawLight, drawMurk,
-         drawRefraction, drawSurface, feedPinch, sunFactor } from "./water.js";
+import { bubbleAt, bubbleOffset, bubblePops, drawAir, drawBubbles, drawFood,
+         drawLight, drawMurk, drawPops, drawRefraction, drawSurface,
+         feedPinch, sunFactor, tickPops } from "./water.js";
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
   from "./surface.js";
 import {
@@ -44,7 +45,7 @@ import {
   shellMarkup,
 } from "./machines.js";
 import type { CrtConfig } from "./crt.js";
-import type { WaterMotion } from "./water.js";
+import type { BubblePop, WaterMotion } from "./water.js";
 import type { SoundConfig } from "./audio.js";
 import type { Machine } from "./machines.js";
 import type { Lighting } from "../core/light.js";
@@ -294,10 +295,19 @@ canvas.addEventListener("pointerdown", (e) => {
     if (f) openInfo(f); else closeInfo();
     return;
   }
+  // A click on a rising bubble pops it: something gentle to click that
+  // neither knocks on the glass nor scares anyone. Only in the water,
+  // so a feed click beside a bubble about to burst still drops food.
+  const bubble = isFeedZoneY(p.y) ? null
+    : sim.popBubble(bubbleAt(sim.bubbles, p.x, p.y));
   if (isFeedZoneY(p.y)) {
     const pellet = sim.dropFood(p.x);
     audio.feed();
     splashAt(pellet.x, pellet.y, PUSH.pellet);
+  } else if (bubble) {
+    pops.push({ x: bubble.x + bubbleOffset(bubble.x, bubble.y),
+                y: bubble.y, age: 0 });
+    audio.pop();
   } else {
     sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
     ripples.push({ x: p.x, y: p.y, age: 0 });
@@ -1975,6 +1985,8 @@ reducedMotion.addEventListener("change", (e) => {
 // sim clock so they animate even while fish pause between decisions.
 const ripples: Ripple[] = [];
 const splashes: Splash[] = [];
+/** Bubbles popped by a click, playing out their rings. */
+const pops: BubblePop[] = [];
 // The surface's springs, and the waterline drawn from them each frame.
 const surface = newSurface();
 const waterline = new Int16Array(SURFACE_W);
@@ -2050,6 +2062,7 @@ function render(): void {
   // with the water instead of glowing at night.
   drawSurface(ctx, waterline, sun, t, overFeedZone);
   drawBubbles(ctx, sim.bubbles, waterline);
+  drawPops(ctx, pops);
 
   // On the glass, so over the fish: ripples and splashes paint last.
   drawRipples(ctx, ripples);
@@ -2135,6 +2148,7 @@ function tickSim(): void {
   tickSurface(surface);
   tickRipples(ripples);
   tickSplashes(splashes);
+  tickPops(pops);
   // Sparse bloops: only some spawns make a sound. Checked per tick so
   // the odds don't depend on how often the tank is drawn.
   if (sim.bubbles.length > bubbles && Math.random() < 0.25)

@@ -59,6 +59,7 @@ Add-ons.
 | --- | --- |
 | Feed the fish | Click above the waterline, in the dark strip at the top of the tank (the pointer becomes a crosshair) |
 | Tap the glass | Click in the water; nearby fish startle |
+| Pop a bubble | Click a rising bubble: it pops with a soft plip, and no fish is startled |
 | See a fish's name | Point at it: a balloon names it and says what it is doing |
 | Get Info on a fish | Option-click it: a card follows it with its hunger and mood |
 | Move the window | In the app, drag the computer case around the tank, or the top edge of the window |
@@ -160,6 +161,8 @@ AquaZone did:
 
 The game has no sound for a single rising bubble. **Bubble sounds**
 plays one only if you add a short sound with "bubble" in its name.
+A bubble you pop plays a soft plip, or a sound you add with "pop" in
+its name; **Bubble sounds** switches that off too.
 The rest of the set, for breeding, sickness, medicine, the filter,
 timers and the game's dialogs, has no matching feature in Finsical
 yet.

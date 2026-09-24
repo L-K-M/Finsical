@@ -9,8 +9,14 @@ import type { AzpackManifest } from "../core/data/azpack.js";
 class FakeParam {
   value = 1;
   targets: [number, number, number][] = [];
+  /** setValueAtTime and exponential ramps, as [value, time]. */
+  points: [number, number][] = [];
   setTargetAtTime(v: number, t: number, tau: number): void {
     this.targets.push([v, t, tau]);
+  }
+  setValueAtTime(v: number, t: number): void { this.points.push([v, t]); }
+  exponentialRampToValueAtTime(v: number, t: number): void {
+    this.points.push([v, t]);
   }
 }
 class FakeNode {
@@ -27,6 +33,10 @@ class FakeSource extends FakeNode {
   start(): void { this.starts++; }
   stop(t?: number): void { this.stops.push(t); }
 }
+class FakeOsc extends FakeSource {
+  type = "sine";
+  frequency = new FakeParam();
+}
 class FakeContext {
   static last: FakeContext | null = null;
   state = "running";
@@ -34,7 +44,13 @@ class FakeContext {
   destination = new FakeNode();
   gains: FakeGain[] = [];
   sources: FakeSource[] = [];
+  oscs: FakeOsc[] = [];
   constructor() { FakeContext.last = this; }
+  createOscillator(): FakeOsc {
+    const o = new FakeOsc();
+    this.oscs.push(o);
+    return o;
+  }
   createGain(): FakeGain {
     const g = new FakeGain();
     this.gains.push(g);
@@ -363,6 +379,45 @@ describe("TankAudio bubbles, as the original plays them", () => {
     expect(ac.sources).toHaveLength(0);
     audio.startAmbient();
     expect(played(ac)).toEqual([[30, true]]);
+  });
+
+  it("pops a clicked bubble with a short synthesized plip", async () => {
+    const { audio, ac, master } = await tank({ [LOOP]: 30 });
+    audio.pop();
+    expect(ac.sources).toHaveLength(0); // the loop is never a pop
+    expect(ac.oscs).toHaveLength(1);
+    const o = ac.oscs[0]!;
+    expect(o.starts).toBe(1);
+    expect(o.stops[0]).toBeLessThan(ac.currentTime + 0.1);
+    // It glides up, and its gain starts and ends near silence.
+    const [from, to] = o.frequency.points;
+    expect(to![0]).toBeGreaterThan(from![0]);
+    const g = (o.out[0] as FakeGain).gain.points;
+    expect(g[0]![0]).toBeLessThan(0.001);
+    expect(g.at(-1)![0]).toBeLessThan(0.001);
+    expect(sinkOf(o)).toBe(master);
+  });
+
+  it("pops with the user's own pop sound when there is one", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30, "Pop!": 3 });
+    audio.pop();
+    expect(played(ac)).toEqual([[3, false]]);
+    expect(ac.oscs).toHaveLength(0);
+  });
+
+  it("stays quiet with bubble sounds off or the tank hidden", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.setOptions({ bubbles: false });
+    audio.pop();
+    audio.setOptions({ bubbles: true });
+    audio.setHidden(true);
+    audio.pop();
+    expect(ac.oscs).toHaveLength(0);
+  });
+
+  it("makes no sound in a tank with no sounds at all", () => {
+    new TankAudio().pop();
+    expect(FakeContext.last).toBeNull();
   });
 
   it("plays a separate bubble sound for single bubbles", async () => {
