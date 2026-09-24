@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- With the CRT effect on, the Height control can now stretch the
+  picture to fill the whole screen glass. On machines whose glass is
+  taller than the tank, such as the Performa 450, the stretched
+  picture used to be cut off by black bars above and below it.
 - The tank plays AquaZone's own sound effects. Finsical downloads the
   game's 25 sounds (AZ_WAVES) from the Internet Archive: the first-run
   starter set now includes them, and Import Add-ons lists them under

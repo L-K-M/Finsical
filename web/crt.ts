@@ -290,6 +290,21 @@ export const CRT_PRESETS: readonly CrtPreset[] = Object.freeze([
   },
 ]);
 
+/** A sub-rect of the CRT canvas as 0–1 fractions, top-down. */
+export interface RasterBox { x: number; y: number; w: number; h: number; }
+
+/** Where the neutral raster lands in a bufW×bufH buffer: `src`
+ * contain-fit (like object-fit) into `box`, as the shader's uRect
+ * [x, y, w, h] in buffer pixels with y up (gl_FragCoord's origin). */
+export function crtRasterRect(bufW: number, bufH: number,
+    srcW: number, srcH: number, box: RasterBox): [number, number, number, number] {
+  const bx = box.x * bufW, bw = box.w * bufW, bh = box.h * bufH;
+  const by = bufH - (box.y + box.h) * bufH; // flip to y-up
+  const s = Math.min(bw / srcW, bh / srcH);
+  const w = srcW * s, h = srcH * s;
+  return [bx + (bw - w) / 2, by + (bh - h) / 2, w, h];
+}
+
 export interface CrtFilter {
   readonly enabled: boolean;
   /** False once the GL context is lost — the effect can't re-enable. */
@@ -301,6 +316,9 @@ export interface CrtFilter {
   /** Live-update shader params; `config` reflects the merged result. */
   configure(cfg: Partial<CrtConfig>): void;
   readonly config: CrtConfig;
+  /** Where the tank sits inside the canvas — the canvas may span more
+   * glass than the tank so the size pots have room to grow into. */
+  setRasterBox(box: RasterBox): void;
   /** Upload the latest tank frame and re-run the shader (no-op off). */
   render(): void;
 }
@@ -388,6 +406,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   for (const k of Object.keys(TRAIT_UNIFORMS) as (keyof CrtConfig)[])
     traitLoc[k] = gl.getUniformLocation(prog, TRAIT_UNIFORMS[k]);
   let cfg = { ...CRT_DEFAULTS };
+  let rasterBox: RasterBox = { x: 0, y: 0, w: 1, h: 1 };
   const upload = (): void => {
     for (const k of Object.keys(traitLoc) as (keyof CrtConfig)[])
       gl.uniform1f(traitLoc[k], cfg[k]);
@@ -460,14 +479,12 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       cfg = sanitizeCrtConfig(merged);
       upload();
     },
+    setRasterBox(box: RasterBox): void { rasterBox = { ...box }; },
     render(): void {
       if (!enabled) return;
       resize(); // dirty-flagged — catches zoom/fullscreen/dpr changes
-      // Same math as object-fit: contain, in buffer pixels (y-up).
-      const s = Math.min(out.width / src.width, out.height / src.height);
-      const w = src.width * s, h = src.height * s;
-      gl.uniform4f(uRect,
-        (out.width - w) / 2, (out.height - h) / 2, w, h);
+      gl.uniform4f(uRect, ...crtRasterRect(
+        out.width, out.height, src.width, src.height, rasterBox));
       // Bound the clock: mediump floats lose sin() precision fast once
       // uTime*61 grows — wrap every 100s (flicker is noise-like anyway).
       gl.uniform1f(uTime, (performance.now() / 1000) % 100);
