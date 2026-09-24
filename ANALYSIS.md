@@ -4576,6 +4576,9 @@ or it teaches overfeeding.
 **Acceptance.** (derived) Sim test: a golden flag survives to the
 eater and sets a roll; rate stays ~1/50 over a seeded run.
 
+Thirteenth-pass update: PR #254 (open) implements it — the eater
+takes a victory roll; the pellet draws brighter gold.
+
 ### D-33 'Don't feed the fish' sign for overfeeding
 
 Size S · Severity idea · Value 2/5 · Risk 1/5 (thirteenth pass, N-17)
