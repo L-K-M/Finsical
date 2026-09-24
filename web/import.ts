@@ -116,6 +116,37 @@ export interface Importable {
   /** Sound record names this add-on contributed — persisted with the
    * install so uninstall can drop exactly these from the bank. */
   sounds?: string[];
+  /** Plants/accessories only: how many copies "Add Again" put in the
+   * tank. Absent means one — and every other section ignores it. */
+  copies?: number;
+}
+
+/** "Add Again" is unbounded in-session; the persisted count caps so a
+ * corrupt save or a bus-injected field can't spawn a floor full of
+ * decor on relaunch. */
+export const DECOR_COPIES_MAX = 16;
+
+/** The single clamp for a decor copy *count* — persisted records and
+ * per-call live counts both pass through it. Bounding the live tank
+ * itself is decorCopyRoom's job below; this only bounds one number. */
+export function clampDecorCopies(n: unknown): number {
+  return Number.isInteger(n)
+    ? Math.min(DECOR_COPIES_MAX, Math.max(1, n as number)) : 1;
+}
+
+/** Live slots left for one decor pack before the tank holds more
+ * copies than a save could restore. addDecor() keys each copy by its
+ * `src` verbatim, so filtering placed copies by `pack === src` counts
+ * every earlier Add Again click. */
+export function decorCopyRoom(decors: ReadonlyArray<{ pack: string }>,
+                              src: string): number {
+  return Math.max(0, DECOR_COPIES_MAX -
+    decors.filter((d) => d.pack === src).length);
+}
+
+/** The persisted copy count, clamped to sanity (storage is untrusted). */
+function decorCopies(it: Importable): number {
+  return clampDecorCopies(it.copies);
 }
 
 /** Raw zip bytes, memoized by URL and persisted in IndexedDB — nested
@@ -125,6 +156,11 @@ export interface Importable {
  * uploader replacing a file serves stale bytes until LRU trims it —
  * accepted, since the worst case is dated sprite art. */
 const zipCache = new Map<string, Promise<Uint8Array>>();
+/** Zips bigger than this aren't memoized — a collection zip (the JPN
+ * set is >100MB) pinned in RAM dwarfs every other cache, and IDB
+ * already persists the bytes for archive.org hosts, so re-reads are
+ * still local. */
+const ZIP_MEMO_MAX = 32 * 1024 * 1024;
 /** Per-URL bytes on archive.org never change — safe to persist
  * forever. Other hosts (a dev server, a mutable mirror) keep only
  * their in-session memo so stale bytes can't wedge a dev loop. */
@@ -193,6 +229,13 @@ function fetchZip(url: string): Promise<Uint8Array> {
       return d;
     })();
     zipCache.set(url, p);
+    // A big collection zip memoizes for this session's callers, then
+    // leaves once it lands — it resolves, everyone holding `p` still
+    // gets the bytes, but the entry stops pinning them after that.
+    p.then((d) => {
+      if (d.byteLength > ZIP_MEMO_MAX && zipCache.get(url) === p)
+        zipCache.delete(url);
+    }, () => {}); // rejections are the catch below's job
     // Delete only if still ours — a same-tick caller may have swapped in
     // a replacement promise before this one rejected.
     p.catch(() => { if (zipCache.get(url) === p) zipCache.delete(url); });
@@ -294,7 +337,7 @@ async function listCollection(col: Collection): Promise<Importable[]> {
     for (const e of zipEntries(z)) {
       if (e.name.endsWith("/")) continue; // directory entry
       if (exts.test(e.name) && (col.deep || !e.name.includes("/"))) {
-        push(e.name, `${zipUrl}#${e.name}`);
+        push(e.name, `${zipUrl}#${fragEncode(e.name)}`);
         continue;
       }
       if (!col.inside?.test(e.name)) continue;
@@ -306,7 +349,8 @@ async function listCollection(col: Collection): Promise<Importable[]> {
       catch { continue; } // matched the .zip filter but isn't one
       for (const leaf of leaves) {
         if (leaf.name.endsWith("/") || !exts.test(leaf.name)) continue;
-        push(leaf.name, `${zipUrl}#${e.name}#${leaf.name}`);
+        push(leaf.name,
+             `${zipUrl}#${fragEncode(e.name)}#${fragEncode(leaf.name)}`);
       }
     }
     return out;
@@ -361,6 +405,17 @@ async function listCollection(col: Collection): Promise<Importable[]> {
 
 interface RawBlob { name: string; data: Uint8Array }
 
+/** Minimal encoding for a zip-entry name inside a URL fragment: only
+ * `#` and `%` are escaped, so a name without either keeps its raw
+ * spelling and stays identical to URLs stored before encoding was
+ * added (the URL doubles as the add-on's persisted identity). */
+export const fragEncode = (name: string): string =>
+  name.replace(/%/g, "%25").replace(/#/g, "%23");
+/** Inverse of fragEncode: %23 decodes first so an escaped %25
+ * can't decode into a fake %23 escape. */
+export const fragDecode = (frag: string): string =>
+  frag.replace(/%23/g, "#").replace(/%25/g, "%");
+
 /** Fetch an add-on's raw file bytes. URL fragments chain: "{zip}#{entry}"
  * addresses one entry inside a nested collection zip, and a fragment
  * that is itself a zip entry descends another level ("{zip}#{a.zip}
@@ -378,7 +433,13 @@ async function fetchInnerBlobs(url: string): Promise<RawBlob[]> {
   }
   let z = await fetchZip(zipUrl!);
   for (let i = 0; i < frags.length; i++) {
-    const e = zipEntries(z).find((x) => x.name === frags[i]);
+    // Fragments are fragEncode'd at listing time; raw match first
+    // keeps URLs stored before encoding (and a literal %23 name)
+    // working.
+    const frag = frags[i]!;
+    const decoded = fragDecode(frag);
+    const e = zipEntries(z)
+      .find((x) => x.name === frag || x.name === decoded);
     if (!e) throw new Error(`${url}: entry missing`);
     const d = await zipRead(z, e);
     if (i === frags.length - 1) return [{ name: e.name, data: d }];
@@ -428,10 +489,19 @@ export function recordAddon(list: Importable[], it: Importable,
   const rec = list.find((a) => a.url === it.url);
   if (!rec) {
     if (mode === "refresh") return false;
+    // A bus-sent item could carry a copies field — a fresh record
+    // always starts at one; re-installs grow it below.
+    const clean = { ...it };
+    delete clean.copies;
     list.push(soundNames.length
-      ? { ...it, sounds: [...new Set(soundNames)] } : it);
+      ? { ...clean, sounds: [...new Set(soundNames)] } : clean);
     return true;
   }
+  // Add Again on a decor pack persists one more copy; scenery and
+  // fish records carry no count.
+  if (mode === "install" &&
+      (it.section === "plants" || it.section === "accessories"))
+    rec.copies = Math.min(DECOR_COPIES_MAX, (decorCopies(rec)) + 1);
   if (soundNames.length)
     rec.sounds = [...new Set([...(rec.sounds ?? []), ...soundNames])];
   return true;
@@ -534,9 +604,10 @@ export interface ImportHandlers {
   onSheets(sheets: Map<string, SpriteSheet>, name: string, url: string,
            section: string, live: boolean): void;
   /** `live` as for onSheets: a restore must not change the choice of
-   * scenery on display. */
+   * scenery on display. `count` is the persisted decor copy count —
+   * 1 on a live install, `copies` on restore. */
   onImages(images: Iterable<IndexedImage>, src: string, section: string,
-           live: boolean): void;
+           live: boolean, count?: number): void;
   /** Sound records from a sound-bearing add-on — audio files and
    * 'snd ' resource forks alike arrive pre-flattened to {name, wav}.
    * `live` marks user installs vs restores (a restore must not play). */
@@ -587,19 +658,48 @@ function audioType(d: Uint8Array): string {
 
 // Packs are immutable per URL — memoize so re-visits skip the download.
 // Module-level so the tank page's remote-install path shares the cache.
+// Bounded: a PackResult holds decoded sheets and images — browsing the
+// whole catalog without a cap would pin hundreds of MB of Uint8Arrays.
 const packCache = new Map<string, Promise<PackResult[]>>();
+// URLs whose import promise has resolved — eviction victims are chosen
+// only among these, so a burst can't evict an in-flight import and
+// immediately duplicate its download.
+const packSettled = new Set<string>();
+const PACK_CACHE_MAX = 16;
 /** The sound preview's live Blob URL — one at a time, revoked when the
  * detail pane rebuilds. */
 let sndObjUrl: string | null = null;
 export function fetchAddon(url: string): Promise<PackResult[]> {
   let p = packCache.get(url);
-  if (!p) {
-    p = importAddon(url);
+  if (p) {
+    // Refresh recency: Map keeps insertion order, so a hit moves the
+    // entry youngest-first-evicted-last.
+    packCache.delete(url);
     packCache.set(url, p);
-    // Failed fetches stay retryable; only evict if the entry is still
-    // this promise (a rider may have replaced it already).
-    p.catch(() => { if (packCache.get(url) === p) packCache.delete(url); });
+    return p;
   }
+  p = importAddon(url);
+  packCache.set(url, p);
+  // Least-recently-used eviction — insertion order is LRU order —
+  // skipping in-flight entries: a burst may exceed the cap by its
+  // pending count rather than evict work that's still downloading.
+  // Keep evicting settled entries until back at the cap, so a burst
+  // drains instead of ratcheting the steady-state size upward.
+  if (packCache.size > PACK_CACHE_MAX)
+    for (const k of packCache.keys()) {
+      if (packCache.size <= PACK_CACHE_MAX) break;
+      if (packSettled.has(k)) {
+        packCache.delete(k);
+        packSettled.delete(k);
+      }
+    }
+  // Failed fetches stay retryable; only evict if the entry is still
+  // this promise (a rider may have replaced it already).
+  p.then(() => { if (packCache.get(url) === p) packSettled.add(url); },
+         () => { if (packCache.get(url) === p) {
+           packCache.delete(url);
+           packSettled.delete(url);
+         } });
   return p;
 }
 
@@ -685,6 +785,27 @@ export function loadProblem(e: unknown): string {
   if (/abort/i.test(msg))
     return "The download took too long — try again.";
   return "Check the connection and try again.";
+}
+
+/** True when a failure could be a transient download hiccup — HTTP
+ * statuses, short/empty bodies and network/timeout errors. Decode and
+ * validation failures recur identically on retry, so the panel must
+ * not offer Try Again for them. */
+export function transientFailure(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /: \d{3}$/.test(msg) || /: (empty|entry missing)$/.test(msg) ||
+         /abort|failed to fetch|networkerror|load failed|timeout/i.test(msg);
+}
+
+/** One user-facing line for a failed install: archive.org fetch
+ * errors go through loadProblem; errors the tank raised itself
+ * (cancelled installs, decode failures, refusals) already read as
+ * plain prose and pass through. */
+export function installProblem(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  return transientFailure(msg) || msg === "no pack inside"
+    ? loadProblem(msg)
+    : msg;
 }
 
 export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
@@ -789,6 +910,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   // One button carries the browser's next step: add the shown add-on,
   // add it again, or retry whatever failed.
   let addAction: (() => void) | null = null;
+  // A double-click on a row whose detail is still fetching: the add
+  // fires as soon as the fetch lands and offers an action.
+  let dblAdd = false;
   function setAdd(title: string, action: (() => void) | null): void {
     addAction = action;
     add.disabled = !action;
@@ -847,6 +971,15 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     onSelect: (i) => {
       const it = rows[i];
       if (it) showDetail(it); else clearDetail();
+    },
+    // Chooser convention: double-click installs the add-on. While its
+    // detail is still fetching there's no action yet — queue the add
+    // and fire it when the fetch lands and offers one.
+    onOpen: (i) => {
+      const it = rows[i];
+      if (!it || detailRef?.url !== it.url) return;
+      if (addAction) addAction();
+      else dblAdd = true;
     },
   });
 
@@ -941,7 +1074,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     status.textContent = section === "sounds"
       ? "AZ_WAVES holds the game's own sound effects. You can also drop " +
         "your copy's .rsrc, .bin, .hqx or .REZ file on the tank or this " +
-        "window."
+        "window. Plain audio works too: .wav, .mp3, .aiff, .m4a, .ogg " +
+        "or .flac."
       : all.length ? "Select an add-on to preview it." : "";
     if (all.length) setAdd("Add to Tank", null);
   }
@@ -981,6 +1115,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     releaseSound();
     pending = null;
     offer = null;
+    dblAdd = false;
     shownPreview = null;
     pvBox.textContent = "";
     dname.textContent = it.inner;
@@ -1065,11 +1200,21 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         setAdd(again ? "Add Again" : "Add to Tank", () => addIt(again));
       };
       offer();
+      // The row was double-clicked while the detail fetched — the
+      // offered action is what that click meant.
+      if (dblAdd) { dblAdd = false; addAction?.(); }
     }).catch((e) => {
       if (detailRef !== ref) return;
+      dblAdd = false;
       console.warn(`add-on ${it.inner} failed to load:`, e);
-      status.textContent = `Couldn't load it. ${loadProblem(e)}`;
-      setAdd("Try Again", () => showDetail(it));
+      // installProblem, not loadProblem: a deterministic failure keeps
+      // the tank's own message instead of "try again" beside a disabled
+      // Try Again button.
+      status.textContent = `Couldn't load it. ${installProblem(e)}`;
+      // A decode or validation failure recurs identically — retrying
+      // only repeats the same dead end, so the button stays off.
+      setAdd("Try Again", transientFailure(e) ? () => showDetail(it)
+                                              : null);
     });
   }
 
@@ -1289,7 +1434,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       if (r.sheets.size)
         h.onSheets(r.sheets, it.inner, it.url, it.section, live);
       if (r.images.size)
-        h.onImages(r.images.values(), it.url, it.section, live);
+        h.onImages(r.images.values(), it.url, it.section, live,
+                   live ? 1 : decorCopies(it));
       if (r.sounds.length) {
         const recs = qualifySoundItemName(r.sounds, it.inner);
         // The handler may rename colliding records in place — read the
@@ -1351,6 +1497,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       byUrl.clear();
       for (const it of items) byUrl.set(it.url, it);
       sections = [...new Set(items.map((x) => x.section))];
+      // Archive order scatters near-identical names across the list —
+      // show each section alphabetically like a Finder window would.
+      all.sort((a, b) =>
+        a.inner.localeCompare(b.inner, undefined, { sensitivity: "base" }));
       let start = sections[0]!;
       try {
         const saved = localStorage.getItem(SECTION_KEY);
@@ -1442,6 +1592,33 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
             wanted: (it: Importable) => boolean): Promise<Importable[]> {
       if (remote) return Promise.resolve([]); // the tank page owns the sim
       const failed: Importable[] = [];
+      // Warm fetches a few at a time: packCache dedupes by URL, so the
+      // serial chain below awaits work already running instead of
+      // starting each download as the previous pack applies. Four
+      // concurrent fetches hide most of restore's latency without a
+      // thundering herd against archive.org (or a decode burst on the
+      // main thread) at the moment of maximum contention. Errors
+      // surface through the chain's own catch, so the warm-up
+      // promise's rejection only needs swallowing.
+      const RESTORE_FETCH_CAP = 4;
+      const warm = list.filter((it) => !installed.has(it.url) && wanted(it));
+      let wi = 0, active = 0;
+      const pump = (): void => {
+        while (wi < warm.length && active < RESTORE_FETCH_CAP) {
+          const it = warm[wi++]!;
+          // Re-check both gates: installed can change while the pump
+          // idles between settles (a manual import landing mid-restore).
+          if (installed.has(it.url) || !wanted(it)) continue;
+          active++;
+          // The trailing catch covers a throwing re-pump (a wanted
+          // predicate throwing inside .finally) — the warm-up path can
+          // never produce an unhandled rejection.
+          void fetchPack(it.url).catch(() => {})
+            .finally(() => { active--; pump(); })
+            .catch(() => {});
+        }
+      };
+      pump();
       let p: Promise<void> = Promise.resolve();
       for (const it of list) {
         p = p.then(() => {

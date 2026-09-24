@@ -1,7 +1,7 @@
 import { openBus } from "./bus.js";
 import { hostWindow, pushButton } from "osmium-ui";
 import { deriveStats, hungerLabel, SPARK_H, SPARK_W, sparkColumns, sparkRow,
-         trend, uptime } from "./statsmodel.js";
+         summaryText, trend, uptime } from "./statsmodel.js";
 import type { BusMsg } from "./bus.js";
 import type { StatsInput, TankStats } from "./statsmodel.js";
 
@@ -129,10 +129,12 @@ function render(st: TankStats): void {
 }
 
 let greeted = false;
+let lastStats: TankStats | null = null;
 const bus = openBus((m: BusMsg) => {
   if (m.op !== "state") return;
   greeted = true;
   const st = deriveStats(m as StatsInput);
+  lastStats = st;
   history.push({ t: Date.now(), avgHunger: st.avgHunger,
                  water: st.waterPct / 100 });
   // Trim by age, keeping the newest pre-cutoff sample that trendBase()
@@ -168,6 +170,43 @@ bus.post({ op: "hello" });
 // settled pellets). The next state push re-renders the numbers.
 pushButton(document.getElementById("schange") as HTMLButtonElement,
            () => bus.post({ op: "changeWater" }));
+
+// Copy Summary — the window's rows as plain text on the clipboard, so
+// a tank's state can leave the app (the tank diary's quick share).
+const copyBtn = document.getElementById("scopy") as HTMLButtonElement;
+pushButton(copyBtn, () => {
+  const st = lastStats;
+  const done = (label: string): void => {
+    copyBtn.textContent = label;
+    setTimeout(() => { copyBtn.textContent = "Copy Summary"; }, 1500);
+  };
+  if (!st) { done("No data yet"); return; }
+  const text = summaryText(st);
+  // Older WebKit and non-secure (plain-http) contexts have no async
+  // clipboard API at all — the textarea + execCommand fallback covers
+  // them, and also catches writeText rejections (denied permission).
+  const fallback = (): void => {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.readOnly = true; // stops iOS raising the soft keyboard on focus
+    ta.style.cssText = "position:fixed;opacity:0";
+    document.body.appendChild(ta);
+    try {
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length); // older iOS
+      done(document.execCommand("copy") ? "Copied!" : "Copy failed");
+    } catch { done("Copy failed"); }
+    // focus() moved it to the textarea — give it back so keyboard
+    // users don't land on <body> when this path runs.
+    finally { ta.remove(); copyBtn.focus(); }
+  };
+  if (typeof navigator.clipboard?.writeText === "function")
+    navigator.clipboard.writeText(text)
+      .then(() => done("Copied!"))
+      .catch(fallback);
+  else fallback();
+});
 
 // Ungated on `greeted`: if the tank tab opens after the greet retries
 // gave up, this heartbeat is the revival path — one cheap message, and
