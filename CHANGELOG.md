@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A hungry fish between two pellets picks one and eats it. Near the
+  midpoint it used to roll back and forth between them, sometimes for a
+  minute, while both sank and fouled the water.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the
