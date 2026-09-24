@@ -1,6 +1,9 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
-import { MACHINES, SCREENBACK_HOLE_PAD, previewMarkup, shellMarkup } from "./machines.js";
+import {
+  MACHINES, SCREENBACK_HOLE_PAD, machineById, previewMarkup, rasterInGlass,
+  shellMarkup,
+} from "./machines.js";
 
 // Each machine's `shape` is hand-synced to the outer <rect> geometry
 // of its svg — the native shell unions it into the window's layer
@@ -183,6 +186,34 @@ describe("previewMarkup", () => {
       expect((tank.match(/<g transform=/g) ?? []).length, m.id).toBe(3);
       expect(mk, m.id).toContain('fill="#8a6d3b"');
       expect(mk, m.id).toContain('fill="#cfe8ff"');
+    }
+  });
+});
+
+// The CRT canvas covers the glass aperture; the raster sits at the
+// tank's rect within it. A tank shorter than its glass (Performa 450)
+// must leave room above and below for the height pot to grow into.
+describe("rasterInGlass", () => {
+  it("places the Performa 450 tank inside its taller glass", () => {
+    const r = rasterInGlass(machineById("performa")!);
+    expect(r.x).toBe(0);
+    expect(r.w).toBe(1);
+    expect(r.y).toBeCloseTo((137 - 99) / 541);
+    expect(r.h).toBeCloseTo(466 / 541);
+  });
+
+  it("is the whole box for a machine without a hole", () => {
+    expect(rasterInGlass(machineById("bare")!))
+      .toEqual({ x: 0, y: 0, w: 1, h: 1 });
+  });
+
+  it("keeps every tank inside its glass", () => {
+    for (const m of MACHINES) {
+      const r = rasterInGlass(m);
+      expect(r.x, m.id).toBeGreaterThanOrEqual(0);
+      expect(r.y, m.id).toBeGreaterThanOrEqual(0);
+      expect(r.x + r.w, m.id).toBeLessThanOrEqual(1);
+      expect(r.y + r.h, m.id).toBeLessThanOrEqual(1);
     }
   });
 });

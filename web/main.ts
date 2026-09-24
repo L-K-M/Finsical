@@ -38,8 +38,10 @@ import { bubblePops, drawAir, drawBubbles, drawFood, drawLight, drawMurk,
          drawRefraction, drawSurface, feedPinch, sunFactor } from "./water.js";
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
   from "./surface.js";
-import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
-  from "./machines.js";
+import {
+  DEFAULT_MACHINE, glassRect, machineById, rasterInGlass, SCREENBACK_HOLE_PAD,
+  shellMarkup,
+} from "./machines.js";
 import type { CrtConfig } from "./crt.js";
 import type { WaterMotion } from "./water.js";
 import type { SoundConfig } from "./audio.js";
@@ -1356,6 +1358,7 @@ catch { /* storage unavailable — default off */ }
 const machineEl = document.getElementById("machine")!;
 const shellEl = document.getElementById("shell")!;
 const screenEl = document.getElementById("screen")!;
+const crtEl = document.getElementById("crt")!;
 // Cosmetic layer — recreate #screenback and enforce sibling order when
 // stale markup is detected (#machine/#shell/#screen must still exist).
 let backEl = document.getElementById("screenback");
@@ -1389,6 +1392,15 @@ function layoutMachine(): void {
   screenEl.style.top = `${oy + machine.sy * s}px`;
   screenEl.style.width = `${machine.sw * s}px`;
   screenEl.style.height = `${machine.sh * s}px`;
+  // The CRT canvas spans the whole glass, not just the tank, so the
+  // height/width pots can grow the raster into the aperture's black
+  // margins. Offsets are relative to #screen, its parent.
+  const glass = glassRect(machine);
+  crtEl.style.left = `${(glass.x - machine.sx) * s}px`;
+  crtEl.style.top = `${(glass.y - machine.sy) * s}px`;
+  crtEl.style.width = `${glass.w * s}px`;
+  crtEl.style.height = `${glass.h * s}px`;
+  crt?.setRasterBox(rasterInGlass(machine));
   if (backEl) {
     const hole = machine.hole;
     backEl.style.display = hole ? "block" : "none";

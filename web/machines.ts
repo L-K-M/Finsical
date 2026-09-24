@@ -10,6 +10,8 @@
 // the silhouette the mask fills. `sx/sy/sw/sh` is the tank itself —
 // the 1.6-aspect aquarium letterboxed inside the glass.
 
+import type { RasterBox } from "./crt.js";
+
 /** A rounded rect in viewBox units — a building block of the window
  * silhouette. The native shell unions these into a CGPath layer mask,
  * so the window's visible shape can be irregular (stepped bases,
@@ -42,6 +44,25 @@ export interface Machine {
                             // its alpha IS the silhouette
   svg: string;              // inner markup for the shell <svg>
                             // (empty for image machines)
+}
+
+/** The glass aperture in viewBox units: the hole, or the tank's own
+ * screen rect for a machine without one. */
+export function glassRect(m: Machine): { x: number; y: number; w: number; h: number } {
+  return m.hole ?? { x: m.sx, y: m.sy, w: m.sw, h: m.sh };
+}
+
+/** The tank's rect as fractions of the glass: the hole, or the screen
+ * rect itself when there is none. The CRT canvas spans the whole glass
+ * so its size pots can grow the raster past the 1.6 tank rect (the
+ * Performa's glass is much taller than its tank), and draws the
+ * neutral raster at this box. */
+export function rasterInGlass(m: Machine): RasterBox {
+  const g = glassRect(m);
+  return {
+    x: (m.sx - g.x) / g.w, y: (m.sy - g.y) / g.h,
+    w: m.sw / g.w, h: m.sh / g.h,
+  };
 }
 
 /** The shell svg's inner markup — vector art, or the raster image
