@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The tank reopens exactly where you left it, even when part of it was
+  off the edge of the screen. It used to be pushed back onto the
+  screen at launch.
 - The tank window can shrink much smaller: its minimum size is now a
   quarter of the machine case instead of just under half.
 - With the CRT effect on, the Height control can now stretch the
