@@ -673,16 +673,25 @@ const packBySheet = new Map<number, { url: string; part: string }>();
  * thumbnail, a legacy roster's healing). */
 const firstSlot = (url: string): number | undefined =>
   sheetByPack.get(url)?.values().next().value;
-function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
+/** One pack's sheets arriving. `inner` is the add-on's listing name,
+ * `part` the pack's entry in it and `parts` how many sheet packs the
+ * add-on holds: a fish is named after its own pack when there are
+ * several. */
+function handleSheets(sheets: Map<string, SpriteSheet>, inner: string,
                       url: string, section: string, live: boolean,
-                      part: string): void {
+                      part: string, parts: number): void {
   // Only fish sections register sheets — a tank/scenery pack's sprite
   // streams mustn't join the fish pool or starter fish could
   // round-robin onto art nobody chose.
   if (section !== "fish") return;
+  const name = partName(inner, part, parts);
   const idx = usePack({ sheets });
   if (idx >= 0) {
     sheetBySpecies.set(name, idx);
+    // The oldest saves name a fish only by its add-on: let that name
+    // reach the add-on's first pack.
+    if (name !== inner && !sheetBySpecies.has(inner))
+      sheetBySpecies.set(inner, idx);
     // A reinstall can rebind the part to a new slot — drop the old
     // reverse entry so the two maps stay exact inverses.
     let parts = sheetByPack.get(url);
@@ -763,9 +772,15 @@ function reconcileFish(): void {
       continue;
     const idx = firstSlot(it.url) ?? sheetBySpecies.get(it.inner);
     if (idx === undefined) { pending = true; continue; } // restore failed — retry next launch
+    // The part only when the slot is this add-on's: a species-name hit
+    // can be another add-on's pack, whose part would never resolve here.
+    const own = packBySheet.get(idx);
+    const part = own?.url === it.url ? own.part : undefined;
+    const name = part === undefined ? it.inner
+      : partName(it.inner, part, sheetByPack.get(it.url)?.size ?? 1);
     // These packs were installed before fish spawned on install (and
     // before the cap), so healing them isn't a new fish: bypass it.
-    spawnFish(idx, it.inner, it.url, "bypass", packBySheet.get(idx)?.part);
+    spawnFish(idx, name, it.url, "bypass", part);
   }
   // spawnFish's own saves went out as v=1 — stamp the reconciled roster.
   rosterComplete = !pending;
@@ -1257,8 +1272,8 @@ async function downloadAddon(it: Importable): Promise<void> {
   if (refusal) throw new Error(refusal);
   for (const r of usable) {
     if (r.sheets.size)
-      handleSheets(r.sheets, partName(it.inner, r.entry, parts), it.url,
-                   it.section, true, r.entry);
+      handleSheets(r.sheets, it.inner, it.url, it.section, true, r.entry,
+                   parts);
     if (r.images.size)
       handleImages(r.images.values(), it.url, it.section, true);
   }
@@ -1871,7 +1886,7 @@ window.addEventListener("drop", (e) => {
       // url and spawns the fish; scenery keys by url so Overview's
       // Remove clears it.
       if (p.sheets.size)
-        handleSheets(p.sheets, p.name, url, "fish", true, name);
+        handleSheets(p.sheets, p.name, url, "fish", true, name, 1);
       if (p.images.size)
         handleImages(p.images.values(), url, p.section, true);
       // Only when the bytes persisted — a dangling record would throw

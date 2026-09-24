@@ -18,7 +18,6 @@ import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
 import { bankSounds } from "../core/data/sndbank.js";
 import { isLocalPack, LOCAL_PREFIX, metaGet, metaPut, packDelete, packGet,
          packPut } from "./store.js";
-import { partName } from "./tankmodel.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
@@ -533,11 +532,15 @@ export async function listAddons(
 // ---- import panel --------------------------------------------------------
 
 export interface ImportHandlers {
-  /** `name` is the display/species label; `url` is the add-on identity.
-   * `live` = user-initiated install; false on launch-time restore, which
-   * must not spawn fish (the saved roster already holds them). */
+  /** `name` is the add-on's listing name; `url` is the add-on identity;
+   * `part` is this pack's entry in the add-on and `parts` how many sheet
+   * packs it holds (the tank names each fish of a multi-pack add-on
+   * after its own pack). `live` = user-initiated install; false on
+   * launch-time restore, which must not spawn fish (the saved roster
+   * already holds them). */
   onSheets(sheets: Map<string, SpriteSheet>, name: string, url: string,
-           section: string, live: boolean, part: string): void;
+           section: string, live: boolean, part: string,
+           parts: number): void;
   /** `live` as for onSheets: a restore must not change the choice of
    * scenery on display. */
   onImages(images: Iterable<IndexedImage>, src: string, section: string,
@@ -1296,8 +1299,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     const parts = usable.filter((r) => r.sheets.size).length;
     for (const r of usable) {
       if (r.sheets.size)
-        h.onSheets(r.sheets, partName(it.inner, r.entry, parts), it.url,
-                   it.section, live, r.entry);
+        h.onSheets(r.sheets, it.inner, it.url, it.section, live, r.entry,
+                   parts);
       if (r.images.size)
         h.onImages(r.images.values(), it.url, it.section, live);
       if (r.sounds.length) {
