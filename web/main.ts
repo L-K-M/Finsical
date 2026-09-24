@@ -1706,10 +1706,14 @@ window.addEventListener("dragleave", (e) => {
   if (dragDepth > 0 && --dragDepth === 0) setDragging(false);
 });
 window.addEventListener("dragover", (e) => e.preventDefault());
+// Capture phase: a drop ends the drag without a leave event, and a
+// descendant handler that stops propagation must not strand the cue.
+window.addEventListener("drop", () => {
+  dragDepth = 0;
+  setDragging(false);
+}, true);
 window.addEventListener("drop", (e) => {
   e.preventDefault();
-  dragDepth = 0; // a drop ends the drag without a leave event
-  setDragging(false);
   // Entries must be read before the handler returns — items invalidate.
   const items = e.dataTransfer?.items;
   const entries: FileSystemEntry[] = [];
