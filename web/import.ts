@@ -18,6 +18,7 @@ import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
 import { bankSounds } from "../core/data/sndbank.js";
 import { isLocalPack, metaGet, metaPut, packDelete, packGet, packPut }
   from "./store.js";
+import { lruGet, lruSet } from "./lru.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
@@ -154,7 +155,11 @@ function decorCopies(it: Importable): number {
  * URLs, and a cached zip survives restarts so restores and re-browses
  * never touch archive.org twice. Items are treated as immutable; an
  * uploader replacing a file serves stale bytes until LRU trims it —
- * accepted, since the worst case is dated sprite art. */
+ * accepted, since the worst case is dated sprite art. Bounded: outer
+ * archives can run to tens of MB, and browsing several nested
+ * collections would otherwise pin each one's bytes for the session.
+ * An evicted URL refetches through IndexedDB, not the network. */
+const ZIP_CACHE_CAP = 8;
 const zipCache = new Map<string, Promise<Uint8Array>>();
 /** Zips bigger than this aren't memoized — a collection zip (the JPN
  * set is >100MB) pinned in RAM dwarfs every other cache, and IDB
@@ -213,7 +218,7 @@ async function readBody(r: Response, kick: () => void):
   return out;
 }
 function fetchZip(url: string): Promise<Uint8Array> {
-  let p = zipCache.get(url);
+  let p = lruGet(zipCache, url);
   if (!p) {
     p = (async () => {
       const hit = immutableHost(url) ? await packGet(url) : null;
@@ -228,7 +233,7 @@ function fetchZip(url: string): Promise<Uint8Array> {
       if (immutableHost(url)) void packPut(url, d).catch(() => {});
       return d;
     })();
-    zipCache.set(url, p);
+    lruSet(zipCache, url, p, ZIP_CACHE_CAP);
     // A big collection zip memoizes for this session's callers, then
     // leaves once it lands — it resolves, everyone holding `p` still
     // gets the bytes, but the entry stops pinning them after that.
@@ -658,8 +663,11 @@ function audioType(d: Uint8Array): string {
 
 // Packs are immutable per URL — memoize so re-visits skip the download.
 // Module-level so the tank page's remote-install path shares the cache.
-// Bounded: a PackResult holds decoded sheets and images — browsing the
-// whole catalog without a cap would pin hundreds of MB of Uint8Arrays.
+// Bounded: a PackResult pins the decoded sheets and images — the
+// expensive part of a pack, and the reason the render-side WeakMaps
+// (swimCanvas, sheetScales) could never collect. Scrolling the whole
+// catalog would otherwise keep every decoded pack in memory; an
+// evicted URL re-derives from the zip cache/IndexedDB on revisit.
 const packCache = new Map<string, Promise<PackResult[]>>();
 // URLs whose import promise has resolved — eviction victims are chosen
 // only among these, so a burst can't evict an in-flight import and
