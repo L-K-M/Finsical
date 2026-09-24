@@ -59,8 +59,11 @@ const removeBtn = document.getElementById("oremove") as HTMLButtonElement;
 // readers won't announce those).
 const removeStatus = document.createElement("span");
 removeStatus.setAttribute("role", "status");
+// Explicit too — some older AT doesn't map role=status to a live region.
+removeStatus.setAttribute("aria-live", "polite");
+removeStatus.setAttribute("aria-atomic", "true");
 removeStatus.style.cssText = "position:absolute;width:1px;height:1px;" +
-  "overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap";
+  "overflow:hidden;clip-path:inset(50%);white-space:nowrap";
 removeBtn.after(removeStatus);
 
 let tankBoot: string | undefined;
@@ -148,14 +151,20 @@ const armOrRemove = (): void => {
   if (!it) { disarmRemove("Removal cancelled."); return; }
   // If the arm and the selection ever drift apart (a future path that
   // changed selection without disarming), re-arm on the row the user
-  // actually picked instead of removing an unconfirmed one.
-  if (removeBtn.dataset.armed === "1" && it.key !== removeArmedKey)
-    disarmRemove("Removal cancelled.");
+  // actually picked instead of removing an unconfirmed one. The
+  // re-target is announced distinctly — "Removal cancelled." followed
+  // by the same "Press again to confirm." it showed before would
+  // batch to no announcement at all in some screen readers.
+  const drifted = removeBtn.dataset.armed === "1" &&
+    it.key !== removeArmedKey;
+  if (drifted) disarmRemove();
   if (removeBtn.dataset.armed !== "1") {
     removeBtn.dataset.armed = "1";
     removeArmedKey = it.key;
     removeBtn.textContent = "Really remove?";
-    removeStatus.textContent = "Press again to confirm.";
+    removeStatus.textContent = drifted
+      ? "Selection changed — press again to confirm."
+      : "Press again to confirm.";
     removeArmedAt = performance.now();
     removeArmTimer = window.setTimeout(
       () => disarmRemove("Removal cancelled."), 4000);
