@@ -1392,10 +1392,11 @@ function setCrt(on: boolean): void {
   postState();
 }
 /** Ring the degauss coil — the raster wobble plus the BWONG. Silent
- * no-op while the tube is off. */
+ * no-op while the tube is off or dead. */
 function degaussTube(): void {
-  if (!crtOn) return;
-  crt?.degauss();
+  // Dead tube — nothing to degauss; don't play the BWONG either.
+  if (!crtOn || !crt?.usable) return;
+  crt.degauss();
   // Menu/keyboard paths may carry activation — degauss() itself stays
   // silent when the context can't run, but unlock() costs nothing.
   audio.unlock();

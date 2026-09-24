@@ -592,8 +592,11 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     get config(): CrtConfig { return { ...cfg }; },
     setEnabled(on: boolean): void {
       if (on && lost) return; // dead context — stay on the plain path
-      if (!on && enabled && !Number.isFinite(offT0) &&
-          !reducedMotion.matches) {
+      // A collapse in flight ignores re-disable — the instant-off
+      // branch would strand offT0 finite with enabled false, and the
+      // next enable would render one dead frame and self-disable.
+      if (!on && enabled && Number.isFinite(offT0)) return;
+      if (!on && enabled && !reducedMotion.matches) {
         // Real tubes don't cut to black — the raster collapses to a
         // hot line first. enabled stays true so render() keeps drawing
         // the fall; render() clears the flag when the line dies.
