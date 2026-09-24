@@ -263,7 +263,14 @@ canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return; // ignore right/middle clicks
   const p = tankPoint(e.clientX, e.clientY);
   if (!p) return; // letterbox bar
-  audio.unlock();
+  audio.unlock(); // an ⌥-click is a gesture too
+  if (e.altKey) {
+    // ⌥-click is "Get Info": open the card on the fish under the
+    // pointer, or dismiss it when the water is empty.
+    const f = fishAt(p.x, p.y);
+    if (f) openInfo(f); else closeInfo();
+    return;
+  }
   if (isFeedZoneY(p.y, TANK.height)) {
     const pellet = sim.dropFood(p.x);
     audio.feed();
@@ -326,6 +333,93 @@ canvas.addEventListener("pointerleave", (e) => {
   if (!e.isPrimary) return; // don't clear the primary's curiosity
   sim.notice = null;
 });
+
+// ---- fish Get-Info card -------------------------------------------------
+// A tiny Mac window that follows the ⌥-clicked fish — its name, hunger
+// and mood. Closed by its close box, Escape, an ⌥-click on empty water,
+// or the fish leaving the tank.
+const INFO_MOODS: Record<Fish["state"], string> = {
+  drift: "wandering", seek: "looking for food",
+  startle: "startled!", turn: "turning", sleep: "sleeping",
+};
+/** Pick radius in tank px — big cells render large, so a fixed radius
+ * under the body center is the honest "near the fish" test. */
+const INFO_PICK_R = 22;
+let infoCard: {
+  root: HTMLElement; hunger: HTMLElement; mood: HTMLElement; fish: Fish;
+} | null = null;
+
+function fishAt(x: number, y: number): Fish | null {
+  let best: Fish | null = null, bd = INFO_PICK_R * INFO_PICK_R;
+  for (const f of sim.fish) {
+    const d = (f.x - x) ** 2 + (f.y - y) ** 2;
+    if (d < bd) { bd = d; best = f; }
+  }
+  return best;
+}
+
+function closeInfo(): void {
+  infoCard?.root.remove();
+  infoCard = null;
+}
+
+function openInfo(f: Fish): void {
+  closeInfo();
+  const root = document.createElement("div");
+  root.className = "finfo";
+  const title = document.createElement("div");
+  title.className = "fintitle";
+  const close = document.createElement("button");
+  close.className = "finclose";
+  close.type = "button";
+  close.setAttribute("aria-label", "Close");
+  close.addEventListener("click", () => closeInfo());
+  const name = document.createElement("div");
+  name.className = "finname";
+  name.textContent = f.species || "Fish";
+  title.append(close, name);
+  const body = document.createElement("div");
+  body.className = "finbody";
+  const hunger = document.createElement("div");
+  const mood = document.createElement("div");
+  body.append(hunger, mood);
+  root.append(title, body);
+  // A press on the card is on the card — never feed or tap through it.
+  root.addEventListener("pointerdown", (e) => e.stopPropagation());
+  screenEl.appendChild(root);
+  infoCard = { root, hunger, mood, fish: f };
+}
+
+/** Reposition the card over its fish and refresh the two live lines.
+ * Runs per frame from render(); the fish's removal closes it. */
+function layoutInfo(): void {
+  const card = infoCard;
+  if (!card) return;
+  const f = card.fish;
+  if (!sim.fish.includes(f)) { closeInfo(); return; }
+  const r = canvas.getBoundingClientRect();
+  const sr = screenEl.getBoundingClientRect();
+  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
+  // Card space is screenEl-relative — rect deltas stay right under
+  // scroll and regardless of which ancestor is positioned.
+  const ox = r.left - sr.left + (r.width - TANK.width * s) / 2;
+  const oy = r.top - sr.top + (r.height - TANK.height * s) / 2;
+  const cw = card.root.offsetWidth, ch = card.root.offsetHeight;
+  let px = ox + f.x * s - cw / 2;
+  let py = oy + f.y * s - ch - 8;
+  if (py < 0) py = oy + f.y * s + 16; // too near the surface: go under
+  // Bounds are screenEl-relative like the offsets above — the canvas
+  // may not fill the screen exactly.
+  card.root.style.left =
+    `${Math.max(0, Math.min(px, sr.width - cw))}px`;
+  card.root.style.top =
+    `${Math.max(0, Math.min(py, sr.height - ch))}px`;
+  const hunger = `Hunger  ${Math.round(f.hunger * 100)}%`;
+  const mood = INFO_MOODS[f.state];
+  if (card.hunger.textContent !== hunger)
+    card.hunger.textContent = hunger;
+  if (card.mood.textContent !== mood) card.mood.textContent = mood;
+}
 
 // ---- sprite loading ----------------------------------------------------
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
@@ -1380,6 +1474,7 @@ window.addEventListener("keydown", (e) => {
   // handlers so the first keyboard action also starts ambient sound.
   audio.unlock();
   const k = e.key.toLowerCase();
+  if (k === "escape" && infoCard) { closeInfo(); return; }
   // Bare keys stand down while a menu or the add-on window owns them.
   const bare = !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat &&
     !importPanel.isOpen && !menuOpen() && !docOpen();
@@ -1807,6 +1902,8 @@ function render(): void {
     ctx.fillText("PAUSED", TANK.width / 2, TANK.height / 2);
     ctx.restore();
   }
+
+  layoutInfo();
 }
 
 /** Night's blue, multiplied over the scene at the darkest demo night:

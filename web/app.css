@@ -82,6 +82,36 @@ body.crt canvas#tank { opacity: 0; }
   flex: none; width: 92px; font: var(--osm-font-system); font-weight: bold;
 }
 .dbkeys .osm-button { margin-top: 14px; }
+/* ---- fish Get-Info card (web/main.ts) ------------------------------------
+   ⌥-click a fish: a tiny Mac window pinned over it — striped title bar
+   with a close box, live hunger and mood underneath. */
+.finfo {
+  position: absolute; z-index: 2; width: 118px;
+  background: #fff; border: 1px solid #000;
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, .3);
+  font: var(--osm-font-small); line-height: 12px;
+}
+.fintitle {
+  position: relative; height: 13px;
+  border-bottom: 1px solid #000;
+  /* the OS 8 title-bar pinstripes */
+  background: repeating-linear-gradient(
+    to bottom, #fff 0, #fff 2px, #ddd 2px, #ddd 3px);
+}
+.finclose {
+  position: absolute; left: 3px; top: 3px; width: 7px; height: 7px;
+  padding: 0; background: #fff; border: 1px solid #000;
+  cursor: pointer;
+}
+/* The 7px box is authentic but untappable — an invisible halo widens
+   its hit area without changing the look. */
+.finclose::before { content: ""; position: absolute; inset: -6px; }
+.finclose:active { background: #000; }
+.finname {
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  text-align: center; padding: 0 14px;
+}
+.finbody { padding: 2px 6px 5px; }
 
 /* ---- client windows --------------------------------------------------
    Preferences, Tank Overview, Import Add-ons and Tank Stats are Mac OS
