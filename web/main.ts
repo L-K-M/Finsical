@@ -77,6 +77,9 @@ ctx.imageSmoothingEnabled = false;
 let frameDirty = true;
 function requestPaint(): void { frameDirty = true; }
 
+/** Sim id the Overview's selection spotlights; null = none. */
+let focusId: number | null = null;
+
 // ---- persistence ---------------------------------------------------------
 // Tank state (fish, water, installed add-ons) survives restarts via
 // localStorage. Add-ons are re-imported on launch — archives are
@@ -1138,6 +1141,11 @@ function fishOutAfter(remove: () => void): void {
 
 function onBusMessage(m: BusMsg): void {
   if (m.op === "hello") postState(HELLO_MIN_MS);
+  else if (m.op === "focusFish") {
+    // The Overview's selection spotlights a fish — null lifts it.
+    focusId = typeof m.id === "number" ? m.id : null;
+    requestPaint();
+  }
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
   else if (m.op === "removeFish" && typeof m.id === "number") {
@@ -2386,6 +2394,33 @@ function render(): void {
     if (p) drawSnail(p.x, p.paused, snail.dir);
   }
   for (const f of sim.fish) drawFish(f);
+
+  // The Overview's pick spotlights its fish with a marching-ants
+  // marquee — the Finder's own selection cue. Ants march on the sim
+  // clock so a paused tank doesn't freeze them mid-stroke.
+  if (focusId !== null) {
+    const f = sim.fish.find((x) => x.id === focusId);
+    if (f) {
+      // halfW/halfH are unscaled extents — a juvenile's box shrinks
+      // with its growth scale, matching sim.halfW().
+      const hw = (f.halfW ?? 10) * f.scale + 3;
+      const hh = (f.halfH ?? 7) * f.scale + 3;
+      const x0 = Math.max(1, Math.round(f.x - hw));
+      const y0 = Math.max(1, Math.round(f.y - hh));
+      const x1 = Math.min(TANK.width - 1, Math.round(f.x + hw));
+      const y1 = Math.min(TANK.height - 1, Math.round(f.y + hh));
+      ctx.save();
+      ctx.setLineDash([2, 2]);
+      ctx.lineWidth = 1;
+      ctx.lineDashOffset = -(sim.tickCount % 8) / 2;
+      ctx.strokeStyle = "rgba(0,0,0,.8)";
+      ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
+      ctx.lineDashOffset += 1;
+      ctx.strokeStyle = "rgba(255,255,255,.8)";
+      ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
+      ctx.restore();
+    }
+  }
 
   // Ambient motion (swell, glint, shimmer) holds still under reduced
   // motion; waves from splashes and taps still play out, like ripples.

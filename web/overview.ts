@@ -138,7 +138,15 @@ const list = mountList(listEl, {
   label: "Tank contents",
   // A selection move disarms Remove — the armed button pointed at the
   // previous row, not the new one.
-  onSelect: () => { disarmRemove("Removal cancelled."); syncRemove(); },
+  onSelect: () => {
+    disarmRemove("Removal cancelled.");
+    syncRemove();
+    // Picking a fish spotlights it in the tank — like double-clicking
+    // a Finder item to see it. Add-on rows and a cleared selection
+    // lift the marker.
+    const it = items[list.selected];
+    bus.post({ op: "focusFish", id: it?.fishId ?? null });
+  },
 });
 // Until the first state push lands, blank is "not heard yet", not
 // "empty" — render() swaps in the empty-tank text once it knows.
@@ -344,4 +352,8 @@ setInterval(() => {
 // Snap to fresh state the moment the window is shown again.
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) bus.post({ op: "hello" });
+});
+// Closing the window must not leave a fish spotlighted forever.
+window.addEventListener("pagehide", () => {
+  bus.post({ op: "focusFish", id: null });
 });
