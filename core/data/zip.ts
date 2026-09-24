@@ -98,7 +98,10 @@ export async function zipRead(d: Uint8Array, e: ZipEntry, maxBytes = MAX_ENTRY):
   if (e.usize > maxBytes)
     throw new Error(`zip ${e.name}: entry too large (${e.usize} bytes)`);
   let out: Uint8Array;
-  try { out = await inflateCap(data, "deflate-raw", maxBytes); }
+  // Cap at the declared size, not maxBytes: an entry inflating past
+  // its own usize is malformed, so fail at the first extra byte
+  // rather than after maxBytes of work.
+  try { out = await inflateCap(data, "deflate-raw", e.usize); }
   catch (err) {
     throw new Error(`zip ${e.name}: ` +
       (err instanceof Error ? err.message : String(err)),
