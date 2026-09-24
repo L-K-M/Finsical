@@ -1179,12 +1179,16 @@ function installAddon(it: Importable, again: boolean): Promise<void> {
   if (running) {
     if (!again) return running;
     // "Add Again" means one more copy — riding the in-flight run would
-    // install just the one. Chain a real install behind it; the slot
-    // clears inside the callback (the run's finally may have deleted it
-    // already), so the inner call can't find and re-ride the settled
-    // promise, and extra clicks each queue their own tail.
-    return running.then(() => { installsInFlight.delete(it.url);
-                                return installAddon(it, again); });
+    // install just the one. Chain a real install behind it. Only our
+    // own run's slot may be cleared: a second queued tail fires after
+    // the first has already registered a fresh run, and an
+    // unconditional delete would drop that registration and let two
+    // installs of one add-on overlap.
+    return running.then(() => {
+      if (installsInFlight.get(it.url) === running)
+        installsInFlight.delete(it.url);
+      return installAddon(it, again);
+    });
   }
   // A restore may have landed this add-on while the panel's detail fetch
   // was in flight — unless the user clicked "Add again", that's a dup.
@@ -1208,7 +1212,12 @@ function installAddon(it: Importable, again: boolean): Promise<void> {
   }, (e: unknown) => {
     bus.post({ op: "installFailed", url: it.url, error: String(e) });
     throw e;
-  }).finally(() => installsInFlight.delete(it.url));
+  }).finally(() => {
+    // Identity guard: a settling run must not delete a newer run's
+    // slot if a queued tail already re-registered the url.
+    if (installsInFlight.get(it.url) === run)
+      installsInFlight.delete(it.url);
+  });
   installsInFlight.set(it.url, run);
   return run;
 }
