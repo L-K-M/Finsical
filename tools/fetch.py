@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fetch — download Aquazone source archives from archive.org and turn
+r"""fetch — download Aquazone source archives from archive.org and turn
 what's inside into .azpack bundles.
 
     python3 tools/fetch.py                      # default item, into packs/
@@ -36,7 +36,7 @@ META = "https://archive.org/metadata/{ident}"
 DOWNLOAD = "https://archive.org/download/{ident}/{name}"
 DEFAULT_IDENT = "aquazonewithguppiesandaddons"
 IMPORTABLE = (".fsh", ".acc", ".plt", ".azn", ".rez", ".rsrc",
-            ".grv", ".fod", ".med", ".bin", ".hqx")
+            ".grv", ".fd", ".dna", ".med", ".bin", ".hqx")
 _EMITTED: set[str] = set()  # paths written this run (re-runs replace)
 _MAX_ARCHIVE_BYTES = 1 << 30  # cap for a single in-memory download
 _MAX_ISO_BYTES = 4 << 30    # ISOs stream to disk; cap is anti-abuse
@@ -133,6 +133,26 @@ _MAX_TOTAL_BYTES = 512 << 20  # shared across the recursion tree
 # bounded so a fan-out bomb stops)
 
 
+def _entry_name(zi: zipfile.ZipInfo) -> str:
+    """Decode an entry's stored name like core/data/zip.ts does: UTF-8
+    when the general-purpose flag says so, else strict UTF-8, then
+    Shift-JIS (the JPN add-on archives carry unflagged SJIS names), and
+    Python's CP437 decode as the last resort. Normalizing backslashes
+    must happen on the decoded name — a Shift-JIS trail byte can be
+    0x5C, which reads as a separator if it runs first."""
+    if zi.flag_bits & 0x800:
+        return zi.filename
+    raw = zi.orig_filename.encode("cp437")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    try:
+        return raw.decode("shift_jis")
+    except UnicodeDecodeError:
+        return zi.filename
+
+
 def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,
              budget: list[int] | None = None) -> list[str]:
     """Recurse into archives; emit .azpack for anything importable."""
@@ -149,30 +169,31 @@ def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,
         except zipfile.BadZipFile:
             return []
         for zi in zf.infolist():
-            norm = zi.filename.replace("\\", "/")
+            entry = _entry_name(zi)
+            norm = entry.replace("\\", "/")
             base = os.path.basename(norm)
             if (zi.is_dir() or "__MACOSX/" in norm
                     or not base or base.startswith("._")):
                 continue
             if zi.file_size > _ENTRY_CAP:
-                print(f"  {zi.filename}: skipped, declares "
+                print(f"  {entry}: skipped, declares "
                       f"{zi.file_size} bytes over cap", file=sys.stderr)
                 continue
             if budget[0] <= 0:
-                print(f"  {zi.filename}: skipped, total byte budget "
+                print(f"  {entry}: skipped, total byte budget "
                       "exhausted", file=sys.stderr)
                 continue
             try:
                 blob = _read_capped(zf, zi, min(_ENTRY_CAP, budget[0]))
                 if blob is None:
-                    print(f"  {zi.filename}: skipped, decompressed data "
+                    print(f"  {entry}: skipped, decompressed data "
                           "over cap or remaining budget",
                           file=sys.stderr)
                     continue
                 budget[0] -= len(blob)
                 made += _harvest(base, blob, outdir, depth + 1, budget)
             except Exception as e:
-                print(f"  {zi.filename}: {type(e).__name__}: {e}",
+                print(f"  {entry}: {type(e).__name__}: {e}",
                       file=sys.stderr)
         return made
     return []

@@ -34,6 +34,17 @@ def bmp_8bit(w=4, h=4) -> bytes:
         pal + bytes([1] * img)
 
 
+class SjisInfo(zipfile.ZipInfo):
+    """A zip entry whose name is stored as raw Shift-JIS bytes with the
+    UTF-8 flag clear, the way the JPN add-on archives were written."""
+    def __init__(self, name: str):
+        super().__init__(name)
+
+    def _encodeFilenameFlags(self):
+        return self.filename.encode("shift_jis"), \
+            self.flag_bits & ~0x800
+
+
 class TestHarvest(unittest.TestCase):
     def setUp(self):
         tools.fetch._EMITTED.clear()  # keep tests order-independent
@@ -81,6 +92,22 @@ class TestHarvest(unittest.TestCase):
         for p in made:
             self.assertEqual(os.path.commonpath([p, self.out]), self.out)
         self.assertFalse(any("._" in os.path.basename(p) for p in made))
+
+    def test_sjis_entry_names(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr(SjisInfo("グッピー1.fsh"), fake_pack(bmp_8bit()))
+            # ソ's trail byte is 0x5C — decodes to a name, not a path.
+            z.writestr(SjisInfo("ソ.fsh"), fake_pack(bmp_8bit()))
+        made = _harvest("jpn.zip", buf.getvalue(), self.out)
+        self.assertEqual(
+            sorted(os.path.basename(p) for p in made),
+            ["グッピー1.azpack", "ソ.azpack"])
+
+    def test_food_pack_extension_harvests(self):
+        made = _harvest("flake.fd", fake_pack(bmp_8bit()), self.out)
+        self.assertEqual(len(made), 1)
+        self.assertIn("flake", made[0])
 
     def test_garbage_is_skipped(self):
         self.assertEqual(_harvest("x.bin", b"not a pack", self.out), [])
