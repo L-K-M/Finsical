@@ -133,7 +133,7 @@ export function summaryText(st: TankStats): string {
   const fish = `${st.fishCount} fish` +
     (st.seeking ? `, ${st.seeking} seeking food` : "") +
     (st.startled ? `, ${st.startled} startled` : "");
-  const hunger = st.avgHunger === null ? "no fish"
+  const hunger = st.avgHunger === null ? "no hunger data"
     : `avg hunger ${Math.round(st.avgHunger * 100)}%`;
   const food = st.food
     ? `${st.food} pellet${st.food > 1 ? "s" : ""}` +

@@ -218,7 +218,7 @@ describe("summaryText", () => {
   it("handles an empty tank", () => {
     const text = summaryText(deriveStats({ fish: [], tickCount: 0 }));
     expect(text.split("\n")[0]).toContain("0 fish");
-    expect(text).toContain("no fish");
+    expect(text).toContain("no hunger data");
     expect(text).toContain("Hungriest: —");
   });
 });
