@@ -33,6 +33,10 @@ one entry per idea, and each merge is recorded in that entry's
   Size, severity, value and risk for entries tagged "(from passes
   ...)" are estimates made during this merge; ninth-pass entries carry
   the verifier's values.
+- Tenth pass (2026-09-24, `origin/main` `62b8572`): review PRs #179,
+  #180 and #182 are open for the maintainer (all at steady state, none
+  merged). Tenth-pass entries name that revision; verify against
+  `origin/main` before re-scoping, since those PRs may have landed.
 
 ## Baselines
 
@@ -54,6 +58,16 @@ one entry per idea, and each merge is recorded in that entry's
   (scripts, screenshots) lived in the review scratchpad and is not in
   the repo. Swift is compile-checked by CI on macOS only; native
   behavior claims marked "not run on macOS" are code-verified only.
+- Tenth pass (full-repo review at `62b8572`, 2026-09-24): three
+  dimension agents (sim/rendering, import/audio/UI/shell, tools and
+  AquaZone fidelity) plus targeted verification (vitest 38 files / 471
+  tests green; `npm run typecheck` and `npm run build` clean). Findings
+  became `tmp.md`, then three PRs (#179 page metadata, #180 Prefs
+  off-caption, #182 Fish Diary milestones), each reviewed by GLM 5.3 to
+  steady state and left open. Claims that did not survive verification
+  are recorded under "Refuted or dropped in the tenth-pass review".
+  The Python suite was not re-run this pass (no tool changes). Swift
+  behavior code-verified only, as before.
 
 ## ID scheme and map
 
@@ -817,6 +831,48 @@ Closed from the open lists during this merge (no separate entry):
   statsmodel tests were added; re-verify after any further light
   change (and keep D-01's sleep threshold consistent with it).
 - Real-clock day/night: PR #155 (F-08). The dimmer stays open (F-31).
+
+### Completed (tenth pass, PRs open for review, all at steady state)
+
+Tenth-pass baseline `62b8572`. Each PR is one branch cut from
+`origin/main`, left open for the maintainer. Round counts and declines
+are in the tenth-pass review-response log.
+
+- **PR #179** (`audit/page-metadata`): every page names a viewport,
+  description, theme-color and color-scheme, carries a noscript note,
+  and the tank page carries basic Open Graph tags. Only the tank page
+  had a viewport: V-19 treated the client-page viewports as done via
+  PRs #90/#93, but `62b8572` has none on the four client pages (the
+  consolidation did not carry them), so this re-lands that half of
+  V-19; the favicon half stays open. Round 1 applied: noscript blocks
+  hide their page's empty window chrome, `color-scheme` light on the
+  platinum pages (dark on the tank page), OG tags on index. Round 2
+  clean; og:image deferred (no canonical domain or promo asset).
+- **PR #180** (`audit/prefs-off-caption`): pointing at a Monitor or
+  Picture slider while the CRT effect is off showed its value as if it
+  applied, although the sliders dim. Tube sliders now fall back to the
+  pane's off hint through pure `tubeCaption` (`web/caption.ts` +
+  `web/caption.test.ts`). Round 1 applied: one hoisted PANES lookup
+  shared by both hint paths (verified only Monitor/Picture mount key
+  sliders, both define offHint, `syncEnabled` dims exactly those
+  inputs), truthy off-hint check with an empty-hint test; the hint
+  discriminant and Sound/Lighting extension declined with reasons
+  (single caller; muted-volume and disabled-timer values persist and
+  reapply, while CRT-off slider values are inert). Round 2 clean; the
+  Record-keyed lookup deferred (the suggested cast verifies nothing).
+- **PR #182** (`audit/tank-milestones`): D-22's anniversary line.
+  `milestone()` in `web/statsmodel.ts` names the highest tank-time
+  anniversary reached (first hour, full day, week, month or more),
+  wired through `deriveStats` and rendered as a Diary row in
+  `web/stats.ts` only once earned, with boundary and wiring tests.
+  Round 1 applied: hoisted `uptimeMin`, month tier reworded for older
+  tanks. Round 2 clean; pinning the "or more" wording in the test
+  deferred (one line in `web/statsmodel.test.ts`).
+
+Tenth-pass top picks, with status: viewport/client metadata (PR #179),
+Prefs off-caption (PR #180), Diary anniversaries (PR #182, D-22 part);
+still open and highest value per risk: B-04 pack identity, S-07 schema
+boundary, F-01 resource map.
 
 ## Bugs and reliability (open)
 
@@ -2104,12 +2160,18 @@ and log a `/favicon.ico` 404.
 **Evidence.** `web/index.html` and the four client pages;
 `media-sources/icon-finsical.png`.
 
-**Change.** Add `<link rel="icon" href="assets/icon-32.png">` (generated
-from `media-sources/icon-finsical.png`) to all pages. Note on V-17's
-viewport meta (done in PRs #90/#93): V-17 proposed it for
-`web/index.html` only, since the four client pages are fixed-size
-Osmium windows that would overflow at 390 px, while PR #93 adds it to
-all five pages; check each client page on a phone before merging #93.
+ **Change.** Add `<link rel="icon" href="assets/icon-32.png">` (generated
+ from `media-sources/icon-finsical.png`) to all pages. Note on V-17's
+ viewport meta (done in PRs #90/#93): V-17 proposed it for
+ `web/index.html` only, since the four client pages are fixed-size
+ Osmium windows that would overflow at 390 px, while PR #93 adds it to
+ all five pages; check each client page on a phone before merging #93.
+
+ Tenth-pass update: the client-page viewports never reached `main`:
+ `62b8572` names a viewport on `index.html` only. PR #179 re-lands
+ viewports (plus description, theme-color, color-scheme and noscript)
+ on all five pages; re-check narrow-window clipping (U-27) on merge.
+ The favicon half of this entry stays open.
 
 **Acceptance.** (derived) No favicon 404 in the console; the tab shows
 the icon. When merging #90/#93, V-17's viewport check applies:
@@ -3579,8 +3641,14 @@ depth band per fish. Tank-age milestones: a floating message at 1 hour,
 anniversary line at 24 h and 7 d. Uptime is visible hours today
 (B-53).
 
-**Acceptance.** (derived) A pure milestone scheduler test (each fires
-once); diary stats round-trip through the save.
+ **Acceptance.** (derived) A pure milestone scheduler test (each fires
+ once); diary stats round-trip through the save.
+
+ Tenth-pass update: the anniversary line is done in PR #182
+ (`milestone()` in `web/statsmodel.ts`, Diary row in `web/stats.ts`,
+ boundary and wiring tests; tank time advances only while the page is
+ visible). Still open: floating messages, per-fish diary stats, and
+ save round-trip.
 
 ### D-23 Easter eggs: Konami bonus fish, hidden credits screen
 
@@ -4450,6 +4518,31 @@ Claims that verification refuted, downgraded to a non-issue, or replaced with a 
 - **`buildBmp8`/`buildZip` are duplicated helpers** (T-07): the two copies have different signatures.
 - **Lure test with a 900-tick fixed lure** (D-02): contradicts the 600-tick fade; measure ticks 100-550.
 
+### Refuted or dropped in the tenth-pass review (tmp.md)
+
+Checked against `origin/main` `62b8572` with node/vitest/typecheck;
+code citations are from that revision. Do not re-raise them without
+new evidence.
+
+- **Clamp `decorScale` against non-positive scales**
+  (`web/render.ts:121-123`): unreachable. Scale goes <= 0 only if
+  `tankH <= 8` (the constant 200) or `h <= 0`; the sole caller guards
+  zero-area art (`web/render.ts:132`).
+- **Panic cascades past `MAX_PANIC_HOPS` within one tick**
+  (`core/sim.ts:387-399`): the depth bound holds. A fish reached as
+  `b` spreads as `a` later in the same tick, but every transmission
+  adds one hop and stops at the cap; only the timing compresses (by
+  milliseconds at 30 tps), not the depth.
+- **`fishAt` picks the last fish instead of the nearest**
+  (`core/sim.ts:343`): `d <= bd` only ever replaces with an
+  equally-near-or-nearer fish; exact ties (mirrored equidistant bodies)
+  go to the later roster entry, deterministically. The "nearest centre"
+  contract holds.
+- **The Add-ons sound-drop success message fires for evicted records**
+  (`web/addons.ts:63`, `web/store.ts:213-227`): merge failures already
+  return before posting, and `capSnds` eviction needs over 64 MB of
+  stored WAVs against a ~2 MB full set. Vanishingly rare; no change.
+
 ## Design notes (preserved)
 
 - `core/sim.ts`: excellent isolation; pure logic, easy to test.
@@ -4770,6 +4863,52 @@ steady state and was left open for human review and merge):
   B-17 (planned in #159) remain open; see their entries.
 - Review gaps: none; every PR completed at least one GLM round.
 
+### Tenth pass (this pass, PRs #179, #180, #182)
+
+Final scorecard (automated GLM 5.3 reviewer rounds; every PR reached
+steady state and was left open for human review and merge):
+
+| PR | Branch | Items | Rounds | State |
+| --- | --- | --- | --- | --- |
+| #179 | `audit/page-metadata` | V-19 viewport half | 2 (R1 minor + 2 info fixed `734259f`; R2 0 actionable) | steady |
+| #180 | `audit/prefs-off-caption` | dimmed-slider captions | 2 (R1 major verified non-issue + hardened, minor fixed `4e8f5ca`; R2 minor-only, declined) | steady |
+| #182 | `audit/tank-milestones` | D-22 anniversary line | 2 (R1 2 minors fixed `6577ddd`; R2 minor-only, declined) | steady |
+
+- Applied:
+  - #179: R1 noscript blocks hide their page's empty window chrome;
+    `color-scheme` light on the platinum pages (dark on the tank page,
+    matching its #000 background; no color-scheme existed in CSS);
+    og:title/og:description/og:type on index (`734259f`).
+  - #180: R1 one hoisted PANES lookup shared by both hint paths, with
+    the invariant documented (only Monitor/Picture mount key sliders,
+    both define offHint, `syncEnabled` dims exactly those inputs);
+    truthy off-hint check with an empty-hint test (`4e8f5ca`).
+  - #182: R1 hoisted `uptimeMin` so the stats literal is complete at
+    construction; month tier reworded for older tanks (`6577ddd`).
+- Declined with reasons:
+  - #179 R2 og:image (needs an absolute URL; no canonical domain or
+    promo asset exists; suggest adding both with a hosted image later).
+  - #180 R1 hint discriminant on `Caption` (single caller; contract
+    pinned by doc comment and tests); extending the off-hint to
+    Sound/Lighting controls (muted-volume and disabled-timer values
+    persist and reapply, while CRT-off slider values are inert); R2
+    Record-keyed pane lookup (the suggested `as` cast verifies nothing,
+    and the lookup provably cannot miss today).
+  - #182 R2 pinning the "or more" wording in the test (one-line
+    follow-up in `web/statsmodel.test.ts`, left for the merger).
+- Refuted with evidence: the tenth-pass "Refuted or dropped" entries
+  above (decorScale, panic depth, fishAt ties, sound-drop message).
+- Verified: `npm run typecheck` clean and `npx vitest run` 38 files /
+  471 tests green at baseline, plus the new suites (475 with #180's
+  caption tests, 474 with #182's milestone tests on their branches);
+  `npm run build` ok on every branch. Native behavior code-verified
+  only (no macOS runner); CI (core-linux + native-macos) green on all
+  three PRs.
+- Process note: the shared worktree lost committed lines once mid-pass
+  (another session on the same filesystem); always inspect `git diff`
+  before committing and confirm it holds exactly the intended change.
+- Review gaps: none; every PR completed two GLM rounds.
+
 ## Implementation Order (suggested)
 
 Highest value per risk first. Phase 0 is a merge backlog, not new
@@ -4842,7 +4981,7 @@ Then T-33 (publish the release).
     U-28 visible states, U-24 progress and Stop.
 25. V-09 decor previews (reuse `decorCanvases`), V-10 remainder, V-04
     gravel and sim floor, V-06 tilt smoothing, V-08 CRT sharpness,
-    V-14, V-16, V-18, V-19 favicon.
+    V-14, V-16, V-18, V-19 favicon (page metadata done in #179).
 26. U-14 (if the menu-bar PRs are dropped), U-15 contextual menu, U-18,
     U-20 remainder, U-21 real plant names (after F-01), U-25, U-26,
     U-27, U-29.
@@ -4866,14 +5005,18 @@ Then T-33 (publish the release).
     depth modes, A-03, A-07.
 33. D-02, D-03 separation, D-06 remainder, D-08, D-09, D-17, D-04,
     D-05, D-10, D-15, D-12, D-14, D-16, D-18, D-19, V-20 to V-25.
-34. D-11, D-13, D-20, D-21, D-22 to D-31 last.
+34. D-11, D-13, D-20, D-21, D-22 to D-31 last (D-22's anniversary
+    line done in #182; diary messages, per-fish stats and save
+    round-trip remain).
 
 ---
 
-*Merged from nine review passes: passes one to eight were already
+*Merged from ten review passes: passes one to eight were already
 folded into the previous ANALYSIS.md; the ninth pass's full-repo
 `tmp.md` review and its scorecard are folded here, with implemented
-items moved to the ninth-pass Completed section. No open idea was
-removed: duplicates were consolidated into one entry each (see the ID
-map and each entry's "Merged and related" notes), and unsupported
+items moved to the ninth-pass Completed section; the tenth pass's
+`tmp.md` review, its three PRs (#179, #180, #182) and its refutations
+are folded into the tenth-pass sections in the same way. No open idea
+was removed: duplicates were consolidated into one entry each (see the
+ID map and each entry's "Merged and related" notes), and unsupported
 claims are kept under "Declined, refuted and corrected".*
