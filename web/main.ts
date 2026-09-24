@@ -1690,9 +1690,26 @@ async function walkEntry(ent: FileSystemEntry, prefix: string,
     }
   }
 }
+// Drop cue: while files hover the window, the glass shows a dashed
+// frame and a hint. dragenter/dragleave nest per element, so a depth
+// counter — not the events alone — owns the class.
+let dragDepth = 0;
+const setDragging = (on: boolean): void => {
+  document.body.classList.toggle("dragging", on);
+};
+window.addEventListener("dragenter", (e) => {
+  if (!e.dataTransfer?.types.includes("Files")) return;
+  if (++dragDepth === 1) setDragging(true);
+});
+window.addEventListener("dragleave", (e) => {
+  if (!e.dataTransfer?.types.includes("Files")) return;
+  if (dragDepth > 0 && --dragDepth === 0) setDragging(false);
+});
 window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener("drop", (e) => {
   e.preventDefault();
+  dragDepth = 0; // a drop ends the drag without a leave event
+  setDragging(false);
   // Entries must be read before the handler returns — items invalidate.
   const items = e.dataTransfer?.items;
   const entries: FileSystemEntry[] = [];
