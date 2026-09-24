@@ -408,10 +408,12 @@ export class TankAudio {
    * a per-frame lookup for the whole episode. */
   dinnerBell(): boolean {
     if (!this.ctx || this.ctx.state !== "running") return false;
-    // A missing sample is not worth a per-frame retry: buffers don't
-    // appear mid-episode, so latch as rung once audio is running.
-    this.play(this.named("timeronoff"), 0.45);
-    return true;
+    const chime = this.named("timeronoff");
+    // A missing buffer never appears mid-episode — latch without it.
+    if (!chime) return true;
+    // Otherwise report whether it actually sounded, so a transient
+    // play() decline retries next tick instead of muting the episode.
+    return this.play(chime, 0.45) !== null;
   }
 
   /** Tap sounds are positional in the original app. */
