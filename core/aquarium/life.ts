@@ -312,3 +312,40 @@ export function vigorOf(l: FishLife, care: SpeciesCare): number {
   if (l.dead) return 0;
   return l.health < care.unhealthy ? 1 - (care.unhealthy - l.health) / 100 : 1;
 }
+
+/** A saved FishLife, validated; undefined when it isn't one (the fish
+ * then gets a fresh life). */
+export function sanitizeLife(raw: unknown): FishLife | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const num = (v: unknown, lo: number, hi: number): number | null =>
+    typeof v === "number" && Number.isFinite(v)
+      ? Math.min(hi, Math.max(lo, v)) : null;
+  const health = num(o.health, 0, 100), age = num(o.age, 0, 1e9);
+  if (health === null || age === null) return undefined;
+  const c = (o.clock ?? {}) as Record<string, unknown>;
+  const sick = o.sick as Record<string, unknown> | null | undefined;
+  const dead = o.dead as Record<string, unknown> | null | undefined;
+  // Ids index tables: out of range means corrupt, not "nearest".
+  const id = (v: unknown, n: number, lo: number): number | null =>
+    Number.isInteger(v) && (v as number) >= lo && (v as number) < n
+      ? v as number : null;
+  const disease = id(sick?.disease, DISEASES.length, 0);
+  const cause = id(dead?.cause, CAUSES.length, 1);
+  const stomach = num(o.stomach, 1, 1000) ?? 2;
+  return {
+    health, age,
+    vitality: num(o.vitality, 0, 99) ?? 50,
+    vitalityBase: num(o.vitalityBase, 0, 99) ?? 50,
+    resilience: num(o.resilience, 1, 99) ?? 50,
+    stomach, ate: num(o.ate, 0, stomach) ?? 0,
+    sick: disease === null ? null
+      : { disease, amount: num(sick?.amount, 0, 100) ?? 1 },
+    dead: cause === null ? null
+      : { cause, at: num(dead?.at, 0, Number.MAX_SAFE_INTEGER) ?? 0 },
+    clock: {
+      hunger: num(c.hunger, 0, 1e6) ?? 0, age: num(c.age, 0, 1e6) ?? 0,
+      health: num(c.health, 0, 1e6) ?? 0, sick: num(c.sick, 0, 1e6) ?? 0,
+    },
+  };
+}

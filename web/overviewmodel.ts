@@ -4,11 +4,14 @@ import { fishThumbKey } from "./bus.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
 import type { FishState } from "../core/sim.js";
+import { conditionLabel } from "./lifecopy.js";
 import { hungerLabel, uptime } from "./statsmodel.js";
 
 export interface FishSnap {
   id: number; species: string; hunger: number; state: string;
   pack?: string;
+  /** From the life model: health 0..100, disease index, cause of death. */
+  health?: number; sick?: number | null; dead?: number | null;
 }
 export interface TankState extends BusMsg {
   addons?: Importable[];
@@ -50,7 +53,7 @@ const KINDS: Record<string, string> = {
 // (the Overview, the hover tip and Get Info all read it).
 const STATES: Record<FishState, string> = {
   drift: "Swimming", seek: "Looking for food", startle: "Startled",
-  turn: "Turning", sleep: "Sleeping",
+  turn: "Turning", sleep: "Sleeping", dead: "Dead",
 };
 // Sections that produce replaceable scenery — gravel art fills the
 // floor, backgrounds/tanks fill the walls (aspect decides which at
@@ -81,8 +84,10 @@ export function itemsOf(s: TankState): Item[] {
     name: f.species || "Fish",
     kind: "Fish",
     // Bus data is untrusted: an unknown state reads as swimming.
-    status: `${STATES[f.state as FishState] ?? "Swimming"}, ` +
-      hungerLabel(f.hunger),
+    status: typeof f.dead === "number" || typeof f.sick === "number"
+      ? conditionLabel(f)
+      : `${STATES[f.state as FishState] ?? "Swimming"}, ` +
+        hungerLabel(f.hunger),
     rank: 0,
     remove: { op: "removeFish", id: f.id },
   }));

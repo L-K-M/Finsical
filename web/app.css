@@ -221,7 +221,15 @@ body.crt canvas#tank { opacity: 0; }
 #srows { margin-bottom: 6px; }
 #scare { margin-top: 3px; }
 /* Change Water — clear of the grow box, like the overview's Remove. */
-#sfoot { padding: 6px 22px 10px 0; text-align: right; }
+#skeep { margin: 8px 0 10px; }
+.skrow { display: flex; align-items: center; gap: 4px; margin: 3px 0; }
+.skrow > .osm-label, .skrow > .osm-popup-title {
+  flex: none; width: 66px; text-align: right;
+}
+.skright { justify-content: flex-end; }
+.skval { min-width: 48px; text-align: center; }
+.skat { margin: 0 2px; }
+.osm-button.sstep { min-width: 0; }
 .scarehead { line-height: 17px; }
 .scareline { padding-left: 9px; text-indent: -9px; }
 /* "• ": the escape eats the first space, the second follows the bullet. */

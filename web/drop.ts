@@ -5,6 +5,8 @@
  * and what do they contain" half so it stays testable in node.
  */
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
+import { packSpeciesCare } from "../core/data/species.js";
+import type { SpeciesCare } from "../core/data/species.js";
 import type { IndexedImage, SpriteSheet } from "../core/data/azpack.js";
 
 export interface DroppedPack {
@@ -16,6 +18,8 @@ export interface DroppedPack {
    * .REZ only. Scenery packs' sprite streams stay out of the fish pool,
    * matching handleSheets' fish-only registration. */
   sheets: Map<string, SpriteSheet>;
+  /** The species' care needs, when the pack spawns a fish. */
+  care: SpeciesCare | null;
   /** Scenery art. Empty for fish packs: their catalog portraits must
    * not take the tank's backdrop. */
   images: Map<string, IndexedImage>;
@@ -53,7 +57,7 @@ export function decodeDroppedPacks(
       if (!sheets.size && !images.size) continue;
       // The same extension dropSection reads: never across a slash.
       out.push({ name: name.replace(/\.[^./]+$/, ""), section, sheets,
-                 images });
+                 images, care: sheets.size ? packSpeciesCare(data) : null });
     } catch (e) {
       console.warn(`drop: skipping undecodable pack ${name}:`, e);
     }

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- The tank now lives the way the original AquaZone's did, reimplemented
+  from its Mac and Windows engines. Water has a temperature, pH,
+  hardness, oxygen, CO2, nitrate, ammonia, chlorine and dissolved food,
+  each fish needs the ranges its species' pack records, and time passes
+  in real time, including while Finsical is closed. Fish get hungry
+  over a day, age over years, and can fall sick with White Spot,
+  Tailrot, Bellworm, Chilodonella or Water Mold when their health runs
+  down; a sick fish can infect others. Fish that die float belly-up and
+  sink, and you are told why they died.
+- Tank Stats shows the water and has a heater, Clean Filter, a water
+  change with amount and temperature, a medicine cabinet (three remedies
+  and five water treatments) and a Time setting from real time to 100
+  times faster. The filter is what aerates the water, as in the
+  original.
 - Until your first pack lands, the stand-in fish are a pixel-art guppy
   with a wagging tail instead of a few rectangles.
 - Fish swim more calmly: they stroke and glide toward where they are

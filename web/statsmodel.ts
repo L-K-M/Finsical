@@ -7,11 +7,28 @@
  */
 import { DUSK_LIGHT, hourLabel, sanitizeLighting } from "../core/light.js";
 import { HUNGER_SEEK, QUALITY_SEEK } from "../core/tuning.js";
+import { MEDICINES } from "../core/aquarium/disease.js";
+import { diseaseName } from "./lifecopy.js";
 
 export interface StatsFish {
   species?: string;
   hunger?: number; // 0 full .. 1 starving
   state?: string;
+  health?: number;        // 0..100
+  sick?: number | null;   // disease index
+  dead?: number | null;   // cause of death
+}
+
+/** The tank page's aquariumState() payload: water per litre and the
+ * equipment settings. */
+export interface AquariumInput {
+  litres?: number; temp?: number; pH?: number; gH?: number;
+  o2?: number; co2?: number; nitrate?: number; ammonia?: number;
+  chlorine?: number; organics?: number; oxygenSat?: number;
+  heaterTarget?: number; heaterMin?: number; heaterMax?: number;
+  filterDirt?: number; doses?: { id?: number; ml?: number }[];
+  speed?: number; days?: number;
+  change?: { fraction?: number; temp?: number };
 }
 export interface StatsInput {
   fish?: StatsFish[];
@@ -22,6 +39,17 @@ export interface StatsInput {
   light?: number;        // 0.3 night .. 1 day
   lighting?: unknown;    // core/light.ts Lighting, validated here
   tickCount?: number;    // 30 ticks per second
+  aquarium?: AquariumInput;
+}
+
+/** Water readings and equipment, ready to show; NaN-safe. */
+export interface WaterStats {
+  litres: number; temp: number; pH: number; gH: number; o2: number;
+  oxygenPct: number; co2: number; nitrate: number; ammonia: number;
+  chlorine: number; heaterTarget: number; heaterMin: number;
+  heaterMax: number; filterDirt: number; speed: number; days: number;
+  doses: { name: string; ml: number }[];
+  change: { fraction: number; temp: number };
 }
 
 export interface TankStats {
@@ -42,6 +70,10 @@ export interface TankStats {
   uptimeMin: number;
   /** Ordered care hints — the most urgent first, capped at two. */
   advice: string[];
+  /** Names and diseases of the sick fish, and the count of bodies. */
+  sick: { name: string; disease: number }[];
+  dead: number;
+  water: WaterStats | null;
 }
 
 /** Hunger where "hungry" becomes "starving" for the worst-off fish. */
@@ -54,8 +86,39 @@ const HUNGER_FEED = 0.55;
 const fin = (v: number | undefined, d: number): number =>
   Number.isFinite(v) ? v! : d;
 
+/** The aquarium payload with every number checked. */
+export function deriveWater(a: AquariumInput | undefined): WaterStats | null {
+  if (!a || typeof a !== "object") return null;
+  const n = (v: unknown, d = 0): number =>
+    typeof v === "number" && Number.isFinite(v) ? v : d;
+  const doses = Array.isArray(a.doses) ? a.doses : [];
+  return {
+    litres: n(a.litres, 100), temp: n(a.temp), pH: n(a.pH, 7), gH: n(a.gH),
+    o2: n(a.o2), oxygenPct: Math.round(n(a.oxygenSat, 1) * 100),
+    co2: n(a.co2), nitrate: n(a.nitrate), ammonia: n(a.ammonia),
+    chlorine: n(a.chlorine), heaterTarget: n(a.heaterTarget, 26.5),
+    heaterMin: n(a.heaterMin, 16), heaterMax: n(a.heaterMax, 36),
+    filterDirt: Math.min(100, Math.max(0, n(a.filterDirt))),
+    speed: n(a.speed, 1), days: Math.max(0, n(a.days)),
+    doses: doses.flatMap((d) => {
+      const m = MEDICINES.find((x) => x.id === d?.id);
+      return m ? [{ name: m.name, ml: Math.round(n(d.ml)) }] : [];
+    }),
+    change: { fraction: n(a.change?.fraction, 0.2), temp: n(a.change?.temp, 26.5) },
+  };
+}
+
+/** Medicines that cure a disease, by name. */
+export function curesFor(disease: number): string[] {
+  return MEDICINES.filter((m) => m.kind === 1 && (m.cures >> disease & 1))
+    .map((m) => m.name);
+}
+
 export function deriveStats(s: StatsInput): TankStats {
-  const fish = (s.fish ?? []).filter((f): f is StatsFish => !!f);
+  const all = (s.fish ?? []).filter((f): f is StatsFish => !!f);
+  const isDead = (f: StatsFish): boolean => typeof f.dead === "number";
+  // Care is about the living: a body neither hungers nor swims.
+  const fish = all.filter((f) => !isDead(f));
   const hungries = fish
     .filter((f): f is StatsFish & { hunger: number } =>
       Number.isFinite(f.hunger))
@@ -83,6 +146,10 @@ export function deriveStats(s: StatsInput): TankStats {
     lightLabel: lightLabel(phase, s.lighting),
     uptimeMin: Math.floor(fin(s.tickCount, 0) / 30 / 60),
     advice: [],
+    sick: fish.filter((f) => typeof f.sick === "number")
+      .map((f) => ({ name: f.species || "Fish", disease: f.sick! })),
+    dead: all.filter(isDead).length,
+    water: deriveWater(s.aquarium),
   };
   stats.advice = advice(stats, water);
   return stats;
@@ -100,9 +167,32 @@ function lightLabel(phase: "day" | "night", raw: unknown): string {
 
 function advice(st: TankStats, water: number): string[] {
   const out: string[] = [];
+  if (st.dead) {
+    out.push(`${st.dead > 1 ? `${st.dead} dead fish are` : "A dead fish is"} ` +
+             "fouling the water — remove it in Tank Overview.");
+  }
   if (!st.fishCount) {
-    out.push("No fish yet — add some from the Add-ons importer.");
+    if (!st.dead) out.push("No fish yet — add some from the Add-ons importer.");
     return out;
+  }
+  for (const f of st.sick.slice(0, 1)) {
+    const cures = curesFor(f.disease);
+    out.push(`${f.name} has ${diseaseName(f.disease)} — ` +
+      (cures.length ? `treat the tank with ${cures.join(" or ")}.`
+                    : "no medicine is known to cure it."));
+  }
+  const w = st.water;
+  if (w) {
+    if (w.chlorine > 0.1)
+      out.push("There is chlorine in the water — add Chlorine Remover, " +
+               "or let it gas off over a few days.");
+    if (w.ammonia > 1)
+      out.push("Ammonia is building up — change some water. A filter " +
+               "breaks it down once it has some dirt in it.");
+    if (w.nitrate > 20)
+      out.push("Nitrate is high — change some water.");
+    if (w.filterDirt > 80)
+      out.push("The filter is clogging — clean it, a little at a time.");
   }
   if (water < QUALITY_SEEK) {
     out.push("Water is foul — fish won't eat until it clears. " +

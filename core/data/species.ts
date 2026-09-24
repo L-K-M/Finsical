@@ -136,3 +136,31 @@ export function packSpeciesCare(d: Uint8Array): SpeciesCare | null {
   }
   return null;
 }
+
+/** A saved SpeciesCare, validated; null when any part is off (the fish
+ * then fall back to DEFAULT_CARE until their pack restores). */
+export function sanitizeCare(raw: unknown): SpeciesCare | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const fin = (v: unknown): v is number =>
+    typeof v === "number" && Number.isFinite(v);
+  const tol = (o.tolerance ?? {}) as Record<string, unknown>;
+  const tolerance = {} as Record<ToleranceKey, Tolerance>;
+  for (const k of WATER_TOLERANCES) {
+    const t = (tol[k] ?? {}) as Record<string, unknown>;
+    const { idealMin, idealMax, liveMin, liveMax, rateOfChange } = t;
+    if (!fin(idealMin) || !fin(idealMax) || !fin(liveMin) || !fin(liveMax) ||
+        !fin(rateOfChange) || idealMin > idealMax || liveMin > liveMax)
+      return null;
+    tolerance[k] = { idealMin, idealMax, liveMin, liveMax, rateOfChange };
+  }
+  const { breedAge, unhealthy, adultAge, lifeSpan, susceptible } = o;
+  if (!fin(breedAge) || !fin(unhealthy) || !fin(adultAge) || !fin(lifeSpan) ||
+      !(lifeSpan > 0) || !(adultAge > 0) || !Array.isArray(susceptible))
+    return null;
+  const ids = susceptible.filter((x): x is number => Number.isInteger(x));
+  return {
+    tolerance, breedAge, unhealthy: Math.min(100, Math.max(0, unhealthy)),
+    adultAge, lifeSpan, susceptible: ids.length ? ids : [...DEFAULT_SUSCEPTIBLE],
+  };
+}

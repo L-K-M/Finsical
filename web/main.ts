@@ -5,6 +5,12 @@ import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
 import { fishPose, pitch, restPose } from "../core/pose.js";
 import { FISH_CAP, HUNGER_SEEK, SPAWN_HUNGER } from "../core/tuning.js";
 import { planFrame } from "../core/loop.js";
+import { Aquarium } from "../core/aquarium/aquarium.js";
+import type { SavedAquarium } from "../core/aquarium/aquarium.js";
+import { sanitizeLife } from "../core/aquarium/life.js";
+import { DEFAULT_CARE, sanitizeCare } from "../core/data/species.js";
+import type { SpeciesCare } from "../core/data/species.js";
+import { conditionLabel, eventText, noticeText } from "./lifecopy.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { isPack } from "../core/data/fsh.js";
 import { decodeDroppedPacks } from "./drop.js";
@@ -78,6 +84,15 @@ interface SavedTank {
   addons: Importable[];
   /** The chosen scenery (see sceneryChoice) — add-on urls. */
   scenery?: SceneryChoice;
+  /** Water, equipment and medicine (core/aquarium); absent in saves
+   * from before the life model, which start with fresh aged water. */
+  aquarium?: SavedAquarium;
+  /** When this was saved (ms since 1970): the time the tank was away,
+   * which the aquarium catches up on the next launch. */
+  savedAt?: number;
+  /** Each installed fish pack's care needs, by pack url, so catch-up
+   * can run before the packs themselves have restored. */
+  care?: Record<string, SpeciesCare>;
 }
 function loadTank(): SavedTank | null {
   try {
@@ -116,13 +131,45 @@ const syncAudioVisibility = (): void => audio.setHidden(document.hidden);
 document.addEventListener("visibilitychange", syncAudioVisibility);
 syncAudioVisibility();
 if (saved) {
-  // Storage is untrusted: a negative or fractional tick count, or water
-  // outside 0..1, would re-persist and skew the day cycle or the murk.
+  // Storage is untrusted: a negative or fractional tick count would
+  // re-persist and skew the day cycle.
   if (Number.isFinite(saved.tickCount))
     sim.tickCount = Math.max(0, Math.trunc(saved.tickCount));
-  if (Number.isFinite(saved.waterQuality))
-    sim.waterQuality = Math.min(1, Math.max(0, saved.waterQuality));
+  if (saved.aquarium)
+    sim.aquarium = Aquarium.fromJSON(saved.aquarium,
+                                     () => Math.random());
 }
+// Species care by pack url: from the save now, from each pack as it
+// (re)installs. Fish without a known pack get the stand-in's needs.
+const careByPack = new Map<string, SpeciesCare>();
+for (const [url, raw] of Object.entries(saved?.care ?? {})) {
+  const c = sanitizeCare(raw);
+  if (c) careByPack.set(url, c);
+}
+sim.careOf = (f) =>
+  (f.pack !== undefined ? careByPack.get(f.pack) : undefined) ?? DEFAULT_CARE;
+// Wall-clock time (ms) the aquarium has been run up to. The tank lives
+// on real time like the original — at speed 1 a stomach empties in 18
+// hours — so the time since the last save is caught up at launch.
+let lifeClock = typeof saved?.savedAt === "number" &&
+  Number.isFinite(saved.savedAt) && saved.savedAt <= Date.now()
+  ? saved.savedAt : Date.now();
+// The water change Tank ▸ Change Water repeats: the last one set in
+// Tank Stats (default a fifth of the tank at the heater's temperature).
+const CHANGE_KEY = "finsical:waterChange";
+interface WaterChange { fraction: number; temp: number }
+let waterChangeCfg: WaterChange = (() => {
+  try {
+    const o = JSON.parse(localStorage.getItem(CHANGE_KEY) ?? "null") as
+      Partial<WaterChange> | null;
+    const f = o?.fraction, t = o?.temp;
+    if (typeof f === "number" && Number.isFinite(f) &&
+        typeof t === "number" && Number.isFinite(t))
+      return { fraction: Math.min(0.9, Math.max(0.01, f)),
+               temp: Math.min(36, Math.max(16, t)) };
+  } catch { /* storage unavailable */ }
+  return { fraction: 0.2, temp: sim.aquarium.heater.target };
+})();
 
 // ---- lighting -------------------------------------------------------------
 // The demo cycle runs inside the sim; the light timer follows this
@@ -196,6 +243,13 @@ function sanitizeSavedFish(f: Partial<Fish> & { x: number; y: number }):
   if (Number.isInteger(f.sheetIdx) && f.sheetIdx! >= 0)
     out.sheetIdx = f.sheetIdx!;
   if (typeof f.pack === "string") out.pack = f.pack;
+  const life = sanitizeLife(f.life);
+  if (life) {
+    out.life = life;
+    // A body is found on the bottom, as the original reloads its
+    // dead: it settles straight there rather than floating up again.
+    if (life.dead) out.corpse = "sink";
+  }
   return out;
 }
 const roster = (saved?.fish ?? [])
@@ -211,6 +265,32 @@ const placeholderIds = new Set<number>();
 if (roster.length || keepEmpty) for (const f of roster) sim.addFish(f);
 else for (const f of DEFAULT_FISH) placeholderIds.add(sim.addFish(f).id);
 
+// ---- life clock and notices --------------------------------------------
+// Fish that die, fall sick or recover are announced like the original's
+// event dialogs; a burst (a long catch-up) folds into one notice.
+const pendingNotices: string[] = [];
+function collectEvents(): void {
+  const ev = sim.aquarium.events.splice(0);
+  for (const e of ev) {
+    const f = sim.fish.find((x) => x.id === e.fish);
+    pendingNotices.push(eventText(e, f?.species || "A fish"));
+  }
+  if (ev.length) { requestPaint(); saveTank(); }
+}
+function showNotices(): void {
+  if (!pendingNotices.length || alertOpen()) return;
+  showAlert({ icon: "note", text: noticeText(pendingNotices.splice(0)),
+              buttons: [{ title: "OK", default: true, cancel: true }] });
+}
+/** Run the aquarium up to now. Paused, time stands still (the
+ * original's speed 0). */
+function runLife(): void {
+  const now = Date.now();
+  if (!paused && now > lifeClock) sim.advanceLife((now - lifeClock) / 1000);
+  lifeClock = now;
+  collectEvents();
+}
+
 function saveTank(): void {
   try {
     const s: SavedTank = {
@@ -222,9 +302,13 @@ function saveTank(): void {
         bandY: f.bandY, hunger: f.hunger, scale: f.scale,
         ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
         ...(f.pack !== undefined ? { pack: f.pack } : {}),
+        ...(f.life ? { life: f.life } : {}),
       })),
       addons: installedAddons,
       scenery: sceneryChoice,
+      aquarium: sim.aquarium.toJSON(),
+      savedAt: lifeClock,
+      care: Object.fromEntries(careByPack),
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(s));
   } catch { /* storage unavailable — the tank still runs */ }
@@ -315,7 +399,14 @@ const fishToName = (p: { x: number; y: number }): Fish | null =>
     ? null : fishAtPoint(p);
 const fishTipLabel = (f: Fish): string =>
   (f.species || "Fish") +
-  (f.state === "drift" ? "" : ` — ${stateLabel(f.state)}`);
+  (f.life?.dead || f.life?.sick ? ` — ${conditionLabel(conditionOf(f))}`
+    : f.state === "drift" ? "" : ` — ${stateLabel(f.state)}`);
+function conditionOf(f: Fish): { health?: number; sick?: number | null;
+                                dead?: number | null } {
+  const l = f.life;
+  return l ? { health: l.health, sick: l.sick?.disease ?? null,
+               dead: l.dead?.cause ?? null } : {};
+}
 // Tank coords of the last hover — the frame loop re-checks it so the
 // tip doesn't linger when the fish swims away from a parked cursor.
 let lastHover: { x: number; y: number } | null = null;
@@ -413,8 +504,10 @@ function layoutInfo(): void {
     `${Math.max(0, Math.min(px, sr.width - cw))}px`;
   card.root.style.top =
     `${Math.max(0, Math.min(py, sr.height - ch))}px`;
-  const hunger = `Hunger  ${Math.round(f.hunger * 100)}%`;
-  const mood = stateLabel(f.state);
+  const hunger = f.life?.dead ? conditionLabel(conditionOf(f))
+    : `Health  ${f.life?.health ?? 100}%  Hunger  ${Math.round(f.hunger * 100)}%`;
+  const mood = f.life?.sick && !f.life.dead
+    ? conditionLabel(conditionOf(f)) : stateLabel(f.state);
   if (card.hunger.textContent !== hunger)
     card.hunger.textContent = hunger;
   if (card.mood.textContent !== mood) card.mood.textContent = mood;
@@ -649,11 +742,13 @@ const sheetByPack = new Map<string, number>();
 // species-bound fish onto the URL binding of the sheet they render.
 const packBySheet = new Map<number, string>();
 function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
-                      url: string, section: string, live: boolean): void {
+                      url: string, section: string, live: boolean,
+                      care?: SpeciesCare | null): void {
   // Only fish sections register sheets — a tank/scenery pack's sprite
   // streams mustn't join the fish pool or starter fish could
   // round-robin onto art nobody chose.
   if (section !== "fish") return;
+  if (care) careByPack.set(url, care);
   const idx = usePack({ sheets });
   if (idx >= 0) {
     sheetBySpecies.set(name, idx);
@@ -840,6 +935,23 @@ const bus = openBus(onBusMessage);
 // in-flight wants died with the old page) and re-ask once.
 const boot = Math.random().toString(36).slice(2);
 
+/** The tank's water and equipment for Tank Stats: readings per litre,
+ * as the original's water window showed them. */
+function aquariumState(): Record<string, unknown> {
+  const a = sim.aquarium, w = a.water, L = w.litres;
+  return {
+    litres: L, temp: w.temp, pH: w.pH, gH: w.gH,
+    o2: w.o2 / L, co2: w.co2 / L, nitrate: w.nitrate / L,
+    ammonia: w.ammonia / L, chlorine: w.chlorine / L,
+    organics: a.organics(), oxygenSat: 1 - a.oxygenDeficit(),
+    heaterTarget: a.heater.target, heaterMin: a.heater.min,
+    heaterMax: a.heater.max, filterDirt: a.filter.dirt,
+    doses: a.doses.map((d) => ({ id: d.medicine, ml: d.ml })),
+    speed: a.speed, days: a.minutes / 1440,
+    change: waterChangeCfg,
+  };
+}
+
 function postState(): void {
   bus.post({
     op: "state",
@@ -857,10 +969,14 @@ function postState(): void {
     scenery: { backdrop: backdropSrc, gravel: gravelSrc },
     // `pack` lets the panel tell pack-bound fish from loose ones —
     // a fish add-on with a living fish doesn't repeat in Add-ons.
-    fish: sim.fish.map(({ id, species, hunger, state, pack }) =>
+    fish: sim.fish.map(({ id, species, hunger, state, pack, life }) =>
       ({ id, species, hunger, state,
-         ...(pack !== undefined ? { pack } : {}) })),
+         ...(pack !== undefined ? { pack } : {}),
+         ...(life ? { health: life.health, ageDays: life.age / 1440,
+                      sick: life.sick?.disease ?? null,
+                      dead: life.dead?.cause ?? null } : {}) })),
     waterQuality: sim.waterQuality,
+    aquarium: aquariumState(),
     tickCount: sim.tickCount,
     // The stats window reads these; kept as raw counts so it can derive
     // its own guidance (e.g. settled pellets foul the water as they rot).
@@ -1001,7 +1117,15 @@ function onBusMessage(m: BusMsg): void {
   } else if (m.op === "wantThumbs" && Array.isArray(m.keys)) {
     serveThumbs(m.keys);
   } else if (m.op === "changeWater") {
-    changeWater();
+    changeWater({ fraction: m.fraction as number, temp: m.temp as number });
+  } else if (m.op === "cleanFilter") {
+    cleanFilter();
+  } else if (m.op === "heaterTarget") {
+    setHeater(m.value);
+  } else if (m.op === "addMedicine") {
+    addMedicine(m.id, m.ml);
+  } else if (m.op === "simSpeed") {
+    setSimSpeed(m.value);
   } else if (m.op === "crtEnabled") {
     setCrt(m.on === true);
   } else if (m.op === "crtConfig") {
@@ -1463,16 +1587,56 @@ function takePicture(): void {
     `${pad(d.getSeconds())}.png`;
   a.click();
 }
-// A partial water change, also callable from the stats window's bus op.
-function changeWater(): void {
+// ---- keeping the tank --------------------------------------------------
+// The water change, filter, heater, medicine and speed controls live in
+// Tank Stats (web/stats.ts); Tank ▸ Change Water repeats the last change
+// set there. Fresh tap water carries chlorine and, at another
+// temperature, shocks the fish, as in the original.
+function changeWater(cfg: Partial<WaterChange> = {}): void {
   audio.unlock(); // Tank ▸ Change Water can be the first gesture
-  sim.changeWater();
+  runLife(); // settle the tank up to now before the fresh water goes in
+  const f = typeof cfg.fraction === "number" && Number.isFinite(cfg.fraction)
+    ? Math.min(0.9, Math.max(0.01, cfg.fraction)) : waterChangeCfg.fraction;
+  const t = typeof cfg.temp === "number" && Number.isFinite(cfg.temp)
+    ? Math.min(36, Math.max(16, cfg.temp)) : waterChangeCfg.temp;
+  waterChangeCfg = { fraction: f, temp: t };
+  try { localStorage.setItem(CHANGE_KEY, JSON.stringify(waterChangeCfg)); }
+  catch { /* storage unavailable */ }
+  sim.changeWater(f, t);
+  collectEvents();
   audio.splash();
   requestPaint(); // the murk clears at once, even while paused
   saveTank(); // persists + pushes fresh state to open panels
 }
+function cleanFilter(): void {
+  runLife();
+  sim.aquarium.cleanFilter();
+  saveTank();
+}
+function setHeater(t: unknown): void {
+  if (typeof t !== "number") return;
+  runLife();
+  sim.aquarium.setHeaterTarget(t);
+  saveTank();
+}
+function addMedicine(id: unknown, ml: unknown): void {
+  if (typeof id !== "number" || typeof ml !== "number") return;
+  runLife();
+  if (sim.aquarium.addMedicine(id, Math.min(10000, ml))) {
+    audio.unlock();
+    audio.feed();
+    saveTank();
+  }
+}
+function setSimSpeed(v: unknown): void {
+  if (typeof v !== "number") return;
+  runLife(); // time so far runs at the old speed, as in the original
+  sim.aquarium.setSpeed(v);
+  saveTank();
+}
 (window as unknown as { finsical?: unknown }).finsical =
-  { openImport: () => importPanel.open(), feedFish, changeWater, toggleLights,
+  { openImport: () => importPanel.open(), feedFish,
+    changeWater: () => changeWater(), toggleLights,
     // Menu clicks land here via evaluateJavaScript — not always a
     // user activation, but unlock() is harmless if resume is blocked.
     toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute,
@@ -1766,7 +1930,8 @@ window.addEventListener("drop", (e) => {
       // The archive install path: handleSheets binds the sheet to the
       // url and spawns the fish; scenery keys by url so Overview's
       // Remove clears it.
-      if (p.sheets.size) handleSheets(p.sheets, p.name, url, "fish", true);
+      if (p.sheets.size)
+        handleSheets(p.sheets, p.name, url, "fish", true, p.care);
       if (p.images.size)
         handleImages(p.images.values(), url, p.section, true);
       // Only when the bytes persisted — a dangling record would throw
@@ -1797,6 +1962,7 @@ const animPhase = new WeakMap<Fish, number>();
 const lastTick = new WeakMap<Fish, number>();
 let nextPhase = 0;
 function animFrame(f: Fish, nf: number): number {
+  if (f.state === "dead") return 0; // a body doesn't wag its tail
   let ph = animPhase.get(f);
   if (ph === undefined) { ph = nextPhase; nextPhase += 1.618; }
   const last = lastTick.get(f) ?? sim.tickCount;
@@ -1872,11 +2038,18 @@ function drawFish(f: Fish): void {
   // frame would otherwise sit on a half pixel.
   try {
     ctx.translate(Math.round(f.x), Math.round(f.y));
-    ctx.rotate(pitch(f));
+    if (f.state === "dead") bellyUp();
+    else ctx.rotate(pitch(f));
     ctx.drawImage(cv, -(cv.width >> 1), -(cv.height >> 1));
   } finally {
     ctx.restore();
   }
+}
+
+/** A dead fish floats belly-up, its colour gone grey. */
+function bellyUp(): void {
+  ctx.scale(1, -1);
+  ctx.filter = "grayscale(0.7) brightness(0.85)";
 }
 
 // Placeholder until real Aquazone assets are imported: a pixel guppy
@@ -1889,9 +2062,10 @@ function drawPlaceholder(f: Fish): void {
   const scale = Math.round(f.scale * 20) / 20; // as drawScale rounds it
   ctx.save();
   ctx.translate(Math.round(f.x), Math.round(f.y));
+  if (f.state === "dead") bellyUp();
   ctx.scale(-f.facing * scale, scale);
   // In the mirrored draw space the pitch angle flips sign.
-  ctx.rotate(-f.facing * pitch(f));
+  if (f.state !== "dead") ctx.rotate(-f.facing * pitch(f));
   ctx.drawImage(cv, -(cv.width >> 1), -(cv.height >> 1));
   ctx.restore();
 }
@@ -2071,6 +2245,8 @@ function frame(now: number): void {
   if (paused) acc = 0;
   const ticks = paused ? 0 : plan.ticks;
   for (let i = 0; i < ticks; i++) tickSim();
+  runLife();
+  showNotices();
   // An open Get-Info card follows its fish, and moves with the window
   // on a resize, whether or not a tick runs.
   if (infoCard) layoutInfo();

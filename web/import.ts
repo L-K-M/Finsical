@@ -13,6 +13,8 @@
 import { ownBytes } from "../core/data/bytes.js";
 import { zipEntries, zipRead } from "../core/data/zip.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
+import { packSpeciesCare } from "../core/data/species.js";
+import type { SpeciesCare } from "../core/data/species.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
 import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
 import { isLocalPack, metaGet, metaPut, packDelete, packGet, packPut }
@@ -378,6 +380,8 @@ export interface PackResult {
   /** Sound records — `wav` is the encoded payload (literal WAV for
    * 'snd ' decodes, the compressed stream for audio files). */
   sounds: { name: string; wav: Uint8Array }[];
+  /** The species' care needs (FsTI), for fish packs that carry them. */
+  care?: SpeciesCare | null;
 }
 
 /** Record names the leaving add-ons exclusively own — a name still
@@ -453,14 +457,14 @@ export async function importAddon(url: string): Promise<PackResult[]> {
     // sound records — dropped loose audio already persisted via
     // handleSounds/sndsPut at drop time.
     return [{ sheets: fshToSheets(d), images: packImages(d),
-              sounds: [] }];
+              sounds: [], care: packSpeciesCare(d) }];
   }
   const blobs = await fetchInnerBlobs(url);
   const out: PackResult[] = [];
   for (const b of blobs) {
     if (isPack(b.data)) {
       out.push({ sheets: fshToSheets(b.data), images: packImages(b.data),
-                 sounds: [] });
+                 sounds: [], care: packSpeciesCare(b.data) });
     } else if (isBmp(b.data)) {
       const img = decodeBmp(b.data);
       if (img) out.push({ sheets: new Map(), sounds: [],
@@ -507,7 +511,7 @@ export interface ImportHandlers {
    * `live` = user-initiated install; false on launch-time restore, which
    * must not spawn fish (the saved roster already holds them). */
   onSheets(sheets: Map<string, SpriteSheet>, name: string, url: string,
-           section: string, live: boolean): void;
+           section: string, live: boolean, care?: SpeciesCare | null): void;
   /** `live` as for onSheets: a restore must not change the choice of
    * scenery on display. */
   onImages(images: Iterable<IndexedImage>, src: string, section: string,
@@ -1259,7 +1263,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     const soundNames: string[] = [];
     for (const r of usable) {
       if (r.sheets.size)
-        h.onSheets(r.sheets, it.inner, it.url, it.section, live);
+        h.onSheets(r.sheets, it.inner, it.url, it.section, live, r.care);
       if (r.images.size)
         h.onImages(r.images.values(), it.url, it.section, live);
       if (r.sounds.length) {

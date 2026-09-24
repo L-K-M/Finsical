@@ -124,12 +124,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         frameKey: "FinsicalAddons", size: NSSize(width: 621, height: 441),
         minSize: NSSize(width: 441, height: 301)))
     /// The stats page clips rather than scrolls (Mac OS 8 windows
-    /// without scroll bars), so its minimum keeps every field and two
-    /// care hints visible.
+    /// without scroll bars), so its minimum keeps the water readings,
+    /// two care hints and the Keeping controls visible.
     private lazy var stats = host.add(OsmiumWindowSpec(
         url: page("stats.html"), title: "Tank Stats",
-        frameKey: "FinsicalStats", size: NSSize(width: 360, height: 320),
-        minSize: NSSize(width: 300, height: 250)))
+        frameKey: "FinsicalStats", size: NSSize(width: 380, height: 640),
+        minSize: NSSize(width: 340, height: 560)))
 
     private func page(_ name: String) -> URL {
         URL(string: "\(WebHandler.scheme)://app/\(name)")!

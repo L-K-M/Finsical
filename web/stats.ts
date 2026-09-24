@@ -1,9 +1,11 @@
 import { openBus } from "./bus.js";
-import { hostWindow, pushButton } from "osmium-ui";
+import { hostWindow, mountPopup, pushButton, setButtonTitle }
+  from "osmium-ui";
+import { MEDICINES } from "../core/aquarium/disease.js";
 import { deriveStats, hungerLabel, SPARK_H, SPARK_W, sparkColumns, sparkRow,
          trend, uptime } from "./statsmodel.js";
 import type { BusMsg } from "./bus.js";
-import type { StatsInput, TankStats } from "./statsmodel.js";
+import type { StatsInput, TankStats, WaterStats } from "./statsmodel.js";
 
 // Tank Stats — an optional secondary window drawn as a Mac OS 8
 // document window (Osmium UI) and laid out like a Get Info window:
@@ -112,7 +114,11 @@ function render(st: TankStats): void {
             history.map((s) => ({ t: s.t, v: s.avgHunger }))));
   field("Hungriest", text(st.hungriest
     ? `${st.hungriest.name} — ${hungerLabel(st.hungriest.hunger)}` : "—"));
+  const w = st.water;
+  if (w) waterRows(w);
   field("Fish", text(`${st.fishCount}` +
+    (st.sick.length ? `, ${st.sick.length} sick` : "") +
+    (st.dead ? `, ${st.dead} dead` : "") +
     (st.seeking ? ` (${st.seeking} seeking food)` : "") +
     (st.startled ? ` (${st.startled} startled)` : "")));
   field("Food", text(st.food
@@ -120,11 +126,116 @@ function render(st: TankStats): void {
       (st.foodSettled ? `, ${st.foodSettled} rotting` : "")
     : "none"));
   field("Light", text(st.lightLabel));
-  field("Tank age", text(uptime(st.uptimeMin)));
+  field("Tank age", text(w ? days(w.days) : uptime(st.uptimeMin)));
 
   careEl.textContent = "";
   careEl.appendChild(el("div", "osm-label scarehead", "Care:"));
   for (const a of st.advice) careEl.appendChild(el("div", "scareline", a));
+}
+
+/** The original's water window, per litre. */
+function waterRows(w: WaterStats): void {
+  const mg = (v: number, d = 2): string => `${v.toFixed(d)} mg/L`;
+  field("Temperature", text(`${w.temp.toFixed(1)} °C`));
+  field("pH", text(`${w.pH.toFixed(2)}, hardness ${w.gH.toFixed(1)} °dH`));
+  field("Oxygen", text(`${mg(w.o2)} (${w.oxygenPct}%)`));
+  field("Carbon dioxide", text(mg(w.co2, 1)));
+  field("Nitrate", text(mg(w.nitrate)));
+  field("Ammonia", text(mg(w.ammonia)));
+  field("Chlorine", text(mg(w.chlorine)));
+  field("Filter dirt", meter(w.filterDirt / 100,
+                             `${Math.round(w.filterDirt)}%`, ""));
+  field("Medicine", text(w.doses.length
+    ? w.doses.map((d) => `${d.name} ${d.ml} ml`).join(", ") + " dissolving"
+    : "none"));
+}
+
+/** "3 days", "1 day", "5 hours" of tank time. */
+function days(d: number): string {
+  if (d < 1) {
+    const h = Math.floor(d * 24);
+    return `${h} hour${h === 1 ? "" : "s"}`;
+  }
+  const n = Math.floor(d);
+  return `${n} day${n === 1 ? "" : "s"}`;
+}
+
+// ---- keeping -------------------------------------------------------------
+// Controls for the tank's care. The tank page applies them and pushes the
+// new state; values here only mirror that state (plus the water change
+// and medicine being prepared, which are this window's own).
+const HEAT_STEP = 0.5;
+const AMOUNTS = [0.05, 0.1, 0.2, 0.25, 0.33, 0.5, 0.75, 0.9];
+const SPEEDS = [1, 2, 5, 10, 30, 60, 100];
+let water: WaterStats | null = null;
+let changeTemp: number | null = null;
+let doseMed = MEDICINES.findIndex((m) => m.name === "Green Remedy");
+const $ = (id: string): HTMLButtonElement =>
+  document.getElementById(id) as HTMLButtonElement;
+const heatEl = document.getElementById("sheat")!;
+const tempEl = document.getElementById("stemp")!;
+const amountPop = mountPopup($("samt"), {
+  items: AMOUNTS.map((a) => `${Math.round(a * 100)}%`), selected: 2,
+  label: "Change", onChange: () => { /* read when Change Water is pressed */ },
+});
+mountPopup($("smed"), {
+  items: MEDICINES.map((m) => m.name), selected: doseMed, label: "Medicine",
+  onChange: (i) => { doseMed = i; refreshKeeping(); },
+});
+const speedLabel = (v: number): string =>
+  v === 1 ? "Real time" : `${v}× faster`;
+const speedPop = mountPopup($("sspeed"), {
+  items: SPEEDS.map(speedLabel), selected: 0, label: "Time",
+  onChange: (i) => bus.post({ op: "simSpeed", value: SPEEDS[i] }),
+});
+/** A dose sized for the tank: the label's amount per 10 litres. */
+function doseMl(): number {
+  const m = MEDICINES[doseMed];
+  return m ? Math.round(m.dosePer10L * (water?.litres ?? 100) / 10) : 0;
+}
+function refreshKeeping(): void {
+  const w = water;
+  heatEl.textContent = w ? `${w.heaterTarget.toFixed(1)} °C` : "—";
+  const t = changeTemp ?? w?.change.temp ?? 26.5;
+  tempEl.textContent = `${t.toFixed(1)} °C`;
+  setButtonTitle($("sdose"), `Add ${doseMl()} ml`);
+}
+const clampTemp = (t: number): number =>
+  Math.min(water?.heaterMax ?? 36, Math.max(water?.heaterMin ?? 16, t));
+pushButton($("sheatdn"), () => water && bus.post(
+  { op: "heaterTarget", value: water.heaterTarget - HEAT_STEP }));
+pushButton($("sheatup"), () => water && bus.post(
+  { op: "heaterTarget", value: water.heaterTarget + HEAT_STEP }));
+pushButton($("sclean"), () => bus.post({ op: "cleanFilter" }));
+const stepTemp = (d: number) => () => {
+  changeTemp = clampTemp((changeTemp ?? water?.change.temp ?? 26.5) + d);
+  refreshKeeping();
+};
+pushButton($("stempdn"), stepTemp(-HEAT_STEP));
+pushButton($("stempup"), stepTemp(HEAT_STEP));
+// Fresh tap water carries chlorine and, at another temperature, shocks
+// the fish; the tank page applies the change as the original did.
+pushButton($("schange"), () => bus.post({
+  op: "changeWater", fraction: AMOUNTS[amountPop.selected],
+  temp: changeTemp ?? water?.change.temp,
+}));
+pushButton($("sdose"), () => bus.post({
+  op: "addMedicine", id: MEDICINES[doseMed]?.id, ml: doseMl(),
+}));
+let keepingSeeded = false;
+function syncKeeping(w: WaterStats | null): void {
+  water = w;
+  if (w && !keepingSeeded) {
+    // The last change the tank made is where this window starts.
+    keepingSeeded = true;
+    const i = AMOUNTS.findIndex((a) => Math.abs(a - w.change.fraction) < 0.005);
+    if (i >= 0) amountPop.setSelected(i);
+  }
+  if (w) {
+    const i = SPEEDS.indexOf(w.speed);
+    if (i >= 0 && i !== speedPop.selected) speedPop.setSelected(i);
+  }
+  refreshKeeping();
 }
 
 let greeted = false;
@@ -142,6 +253,7 @@ const bus = openBus((m: BusMsg) => {
   while (history.length > 1 && history[1]!.t <= cutoff) history.shift();
   if (history.length > 512) history.splice(1, history.length - 512);
   render(st);
+  syncKeeping(st.water);
 });
 
 // ---- window chrome -------------------------------------------------------
@@ -149,8 +261,8 @@ const bus = openBus((m: BusMsg) => {
 // and two care hints visible (the window clips rather than scrolls).
 hostWindow(win, {
   title: "Tank Stats",
-  zoom: { standard: { w: 400, h: 360 } },
-  grow: { min: { w: 300, h: 60 } },
+  zoom: { standard: { w: 380, h: 640 } },
+  grow: { min: { w: 340, h: 60 } },
 });
 
 // The tank page may still be loading when the window opens — retry the
@@ -163,10 +275,6 @@ const greet = setInterval(() => {
 }, 500);
 bus.post({ op: "hello" });
 
-// Change Water — a partial change on the tank sim (it also siphons
-// settled pellets). The next state push re-renders the numbers.
-pushButton(document.getElementById("schange") as HTMLButtonElement,
-           () => bus.post({ op: "changeWater" }));
 
 // Ungated on `greeted`: if the tank tab opens after the greet retries
 // gave up, this heartbeat is the revival path — one cheap message, and
