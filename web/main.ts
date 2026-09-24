@@ -37,6 +37,8 @@ import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
   from "./catpaw.js";
 import type { PawVisit } from "./catpaw.js";
 import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
+import { bootPhase, drawBoot, fadeProgress, paradeIcon }
+  from "./boot.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
@@ -122,6 +124,27 @@ function loadTank(): SavedTank | null {
 }
 const saved = loadTank();
 const installedAddons: Importable[] = [...(saved?.addons ?? [])];
+
+// ---- startup parade (web/boot.ts) ---------------------------------------
+// A 90s-Mac boot over the first seconds: black, the smiling fishbowl
+// on a grey desktop, restored add-ons marching in along the bottom,
+// then a fade to the water. Skipped with nothing to restore, under
+// reduced motion, or when the Tank menu turns it off; a click or a
+// key skips it outright.
+const BOOT_KEY = "finsical:boot";
+let bootEnabled = true;
+try { bootEnabled = localStorage.getItem(BOOT_KEY) !== "off"; }
+catch { /* storage unavailable: default on */ }
+let bootT0 = bootEnabled && installedAddons.length > 0 &&
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ? performance.now() : null;
+let bootDoneAt: number | null = null; // elapsed ms when restore settled
+const paradeIcons: string[][] = [];   // one icon per restored add-on
+function skipBoot(): void {
+  if (bootT0 === null) return;
+  bootT0 = null;
+  requestPaint();
+}
 // The scenery the user chose: what their latest live install, "Use"
 // or Remove put on display. It is saved instead of what happens to be
 // showing, so a chosen pack that can't restore on one launch doesn't
@@ -360,6 +383,7 @@ function syncFeedHover(): void {
 }
 
 canvas.addEventListener("pointerdown", (e) => {
+  if (bootT0 !== null) { skipBoot(); return; } // a click skips the boot
   if (e.button !== 0) return; // ignore right/middle clicks
   const p = tankPoint(e.clientX, e.clientY);
   if (!p) return; // letterbox bar
@@ -977,7 +1001,11 @@ const importPanel = mountImportPanel({
       .catch((e) => console.warn("sound import failed:", e));
   },
   onInstall: recordInstall,
-  onRestore: refreshInstall,
+  onRestore: (it, names) => {
+    refreshInstall(it, names);
+    // A boot in progress marches each restored add-on in as an icon.
+    if (bootT0 !== null) { paradeIcons.push(paradeIcon(it.section)); }
+  },
   refuse: (it) => fishRefusal(it.section),
   preview: previewOf,
 });
@@ -1673,6 +1701,7 @@ applyMachine(machine);
 // The machine art is pointer-events:none — a press anywhere that
 // isn't the tank or real UI means a grab on the case → window drag.
 document.addEventListener("pointerdown", (e) => {
+  if (bootT0 !== null) skipBoot(); // a click on the case skips too
   // Native performDrag loops on real mouse state — a synthesized
   // leftMouseDown from a touch tap has none and could hang it.
   if (e.button !== 0 || e.pointerType !== "mouse") return;
@@ -1834,6 +1863,7 @@ window.addEventListener("keydown", (e) => {
   // Any key is a user gesture for WebAudio — unlock before the F/C
   // handlers so the first keyboard action also starts ambient sound.
   audio.unlock();
+  if (bootT0 !== null) { skipBoot(); return; } // a key skips the boot
   const k = e.key.toLowerCase();
   // One Escape closes one thing: the card claims it first, then Zen
   // mode, and a key another window already handled leaves both alone.
@@ -1903,9 +1933,14 @@ mountTankMenuBar({
     try { localStorage.setItem(SCOLD_KEY, scoldOn ? "on" : "off"); }
     catch { /* storage unavailable */ }
   },
+  toggleBoot: () => {
+    bootEnabled = !bootEnabled;
+    try { localStorage.setItem(BOOT_KEY, bootEnabled ? "on" : "off"); }
+    catch { /* storage unavailable */ }
+  },
   state: () => ({ autoFeed, crtUsable: crt?.usable ?? false, crtOn,
                   lampOn: lighting.lamp, muted: soundCfg.muted, paused,
-                  zen, scoldOn }),
+                  zen, scoldOn, bootOn: bootEnabled }),
 });
 
 // web/pack/ is gitignored and no build ships one, so a missing
@@ -1945,7 +1980,11 @@ void (async () => {
   // rebind saved fish to their species' actual sheet slot and heal
   // pre-spawning rosters that never gained their fish.
   .then(() => importPanel.restore([...installedAddons], stillListed))
-  .then((failed) => { restoreFailed = failed; })
+  .then((failed) => {
+    restoreFailed = failed;
+    // The parade holds a beat after the last add-on settles (boot.ts).
+    if (bootT0 !== null) bootDoneAt = performance.now() - bootT0;
+  })
   // Imported 'snd ' sets persist — restore them so dropped sounds
   // survive relaunch even when no pack in use carries audio. Best
   // effort: a restore failure must not skip the fish roster healing.
@@ -2405,6 +2444,18 @@ function stirSurface(): void {
   }
 }
 function render(): void {
+  // The startup parade owns the canvas until it fades: black, desktop,
+  // marching icons — then the tank draws normally under a fading boot
+  // screen, so the crossfade needs no compositing machinery.
+  let bootFade = -1;
+  if (bootT0 !== null) {
+    const elapsed = performance.now() - bootT0;
+    const phase = bootPhase(elapsed, bootDoneAt);
+    if (phase === "done") bootT0 = null;
+    else if (phase === "fade")
+      bootFade = fadeProgress(elapsed, bootDoneAt);
+    else { drawBoot(ctx, phase, paradeIcons); return; }
+  }
   if (backdropCv) {
     ctx.drawImage(backdropCv, 0, 0);
   } else {
@@ -2543,6 +2594,13 @@ function render(): void {
     ctx.font = "10px monospace";
     ctx.textAlign = "center";
     ctx.fillText("PAUSED", TANK.width / 2, TANK.height / 2);
+    ctx.restore();
+  }
+
+  if (bootFade >= 0) {
+    ctx.save();
+    ctx.globalAlpha = 1 - bootFade;
+    drawBoot(ctx, "parade", paradeIcons);
     ctx.restore();
   }
 }
@@ -2760,9 +2818,10 @@ function frame(now: number): void {
   if (infoCard) layoutInfo();
   // The CRT's tube animations (warm-up, collapse, degauss) run on
   // their own clock — collapse in particular must keep drawing after
-  // crtOn has already cleared.
+  // crtOn has already cleared. The boot parade also animates on its
+  // own clock: it needs a draw per frame even before the first tick.
   const crtBusy = crt?.animating ?? false;
-  if (ticks === 0 && !frameDirty && !crtBusy) return;
+  if (ticks === 0 && !frameDirty && !crtBusy && bootT0 === null) return;
   frameDirty = false;
   render();
   // A parked cursor doesn't re-hit-test: hide the tip once the fish
