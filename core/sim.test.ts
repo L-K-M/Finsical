@@ -1026,8 +1026,10 @@ describe("lifecycle", () => {
                   scale: 1, pack: "p" });
     sim.addFish({ x: 120, y: 110, species: "guppy", hunger: 0.1,
                   scale: 1, pack: "p" });
+    // The window is 10x the mean roll period: a shifted rand() stream
+    // (any feature change consuming draws) can't flake this test.
     let fry = 0;
-    for (let i = 0; i < 40000 && !fry; i++) {
+    for (let i = 0; i < 180000 && !fry; i++) {
       // Keep the parents thriving: birth rolls are per-tick.
       for (const f of sim.fish) f.hunger = 0.1;
       sim.tick();

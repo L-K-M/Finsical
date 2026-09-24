@@ -1948,6 +1948,8 @@ function drawFish(f: Fish): void {
       ctx.scale(1, -1);
     } else if (f.sick) {
       ctx.globalAlpha = 0.55; // wan, but still swimming
+    } else {
+      ctx.globalAlpha = 1; // never inherit a corpse's alpha
     }
     ctx.rotate(pitch(f));
     ctx.drawImage(cv, -(cv.width >> 1), -(cv.height >> 1));
@@ -2157,8 +2159,10 @@ function tickSim(): void {
   // also binds the fry's sprite extents and splashes it in.
   for (const e of sim.events.splice(0)) {
     if (e.type === "sick") audio.sick();
-    else if (e.type === "dead") audio.dead();
-    else {
+    else if (e.type === "dead") {
+      audio.dead();
+      saveTank(); // the roster shrank — don't resurrect it on reload
+    } else if (e.type === "birth") {
       bindExtents(e.fish);
       splashAt(e.fish.x, e.fish.y, PUSH.newFish);
       audio.birth();
