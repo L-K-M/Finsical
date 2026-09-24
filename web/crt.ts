@@ -84,8 +84,9 @@ float hash(vec2 p) {
 void main() {
   vec2 uv = (gl_FragCoord.xy - uRect.xy) / uRect.zw;
   // Overscan and the size pots below scale the raster up; the
-  // geometry warps, curvature and the warm-up squeeze are left out
-  // of this estimate.
+  // keystone corrects this per fragment below, while skew (a pure
+  // shear — area-preserving), curvature and the warm-up squeeze are
+  // left out of the estimate.
   pxScale = uRect.zw / uTank * (1.0 + 0.12 * uZoom) *
             vec2(0.75 + 0.5 * uHSize, 0.75 + 0.5 * uVSize);
 
@@ -110,6 +111,9 @@ void main() {
   uv.x -= (uSkew - 0.5) * 0.5 * (uv.y - 0.5);
   float depth = 1.0 - (uPersp - 0.5) * 1.2 * (uv.x - 0.5);
   uv = (uv - 0.5) / depth + 0.5;
+  // The keystone magnifies texels by depth locally (it varies only
+  // with x), so the sharp-bilinear blend width tracks the warp.
+  pxScale *= depth;
   // Power-on: a real tube lights as a bright line at the vertical
   // center that opens into the full raster. Pixels outside the
   // opening band stay black; inside it the whole raster squeezes in.
