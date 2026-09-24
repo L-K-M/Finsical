@@ -100,8 +100,14 @@ final class TankWebView: WKWebView {
 /// a tank the user had parked partly offscreen, so the restore turns
 /// the constraint off until the window is up. Drags stay constrained.
 final class TankWindow: NSWindow {
-    /// Set while the saved frame is restored and first shown.
-    var keepsFrame = false
+    private var keepsFrame = false
+
+    /// Runs `body` with the constraint off, so frames it sets stay put.
+    func keepingFrame(_ body: () -> Void) {
+        keepsFrame = true
+        defer { keepsFrame = false }
+        body()
+    }
 
     override func constrainFrameRect(_ frameRect: NSRect,
                                      to screen: NSScreen?) -> NSRect {
@@ -777,10 +783,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
 
         // Exactly where the user left it, even partly offscreen. A
         // frame on no attached screen still comes back centered.
-        window.keepsFrame = true
-        frames.restore(window, key: "FinsicalTank")
-        window.makeKeyAndOrderFront(nil)
-        window.keepsFrame = false
+        window.keepingFrame {
+            frames.restore(window, key: "FinsicalTank")
+            window.makeKeyAndOrderFront(nil)
+        }
 
         webView.load(URLRequest(url: page("index.html")))
     }
