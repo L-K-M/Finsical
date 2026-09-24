@@ -42,9 +42,9 @@ import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
 import { stateLabel } from "./overviewmodel.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
-import { bubbleOffset, bubblePops, bubbleSize, drawAir, drawBubblePop,
+import { bubbleOffset, bubblePops, drawAir, drawBubblePop,
          drawBubbles, drawFood, drawLight, drawMurk, drawRefraction,
-         drawSurface, feedPinch, sunFactor } from "./water.js";
+         drawSurface, feedPinch, sunFactor, tapBubble } from "./water.js";
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
   from "./surface.js";
 import {
@@ -387,14 +387,7 @@ canvas.addEventListener("pointerdown", (e) => {
     // ripples; this is the toy on top. The nearest bubble inside its
     // drawn radius (plus a finger's worth of slop) wins, so clustered
     // bubbles pop the one the tap actually touched.
-    let bi = -1, bd = Infinity;
-    for (let i = 0; i < sim.bubbles.length; i++) {
-      const b = sim.bubbles[i]!;
-      const r = bubbleSize(b.y) / 2 + 4;
-      const d = (b.x + bubbleOffset(b.x, b.y) - p.x) ** 2 +
-                (b.y - p.y) ** 2;
-      if (d < r * r && d < bd) { bd = d; bi = i; }
-    }
+    const bi = tapBubble(sim.bubbles, p.x, p.y);
     if (bi >= 0) {
       const [b] = sim.bubbles.splice(bi, 1);
       // The same pop ring the waterline path draws — a tap-pop reads
