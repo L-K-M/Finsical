@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { deriveStats, hungerLabel, trend, uptime } from "./statsmodel.js";
+import { deriveStats, hungerLabel, SPARK_H, SPARK_SLOT_MS, SPARK_W,
+         sparkColumns, sparkRow, trend, uptime } from "./statsmodel.js";
 import { DAY_TICKS, Sim } from "../core/sim.js";
 import { HUNGER_SEEK } from "../core/tuning.js";
 
@@ -163,5 +164,39 @@ describe("labels", () => {
     expect(s.uptimeMin).toBe(0);
     // A NaN must not silently suppress the rotting-food hint — zero
     // genuinely means none settled, so this just mustn't read "NaN".
+  });
+});
+
+describe("sparkline", () => {
+  it("keeps a full-scale line off the frame's top edge", () => {
+    // Row 0 sits under the 1 px border: 100% water vanished into it.
+    expect(sparkRow(1)).toBe(1);
+    expect(sparkRow(0)).toBe(SPARK_H - 2);
+    expect(sparkRow(7)).toBe(1); // clamped
+  });
+
+  it("lays samples out by time, not by push", () => {
+    const now = 100_000;
+    // Two pushes in one slot (another window said hello) draw one
+    // column, the later one; a column holds until the next sample.
+    const cols = sparkColumns([
+      { t: now - 10_500, v: 0.2 }, { t: now - 10_100, v: 0.4 },
+      { t: now, v: 0.5 },
+    ], now);
+    expect(cols).toHaveLength(SPARK_W);
+    const first = SPARK_W - 1 - Math.floor(10_000 / SPARK_SLOT_MS);
+    expect(cols[first - 1]).toBeUndefined(); // before the first sample
+    expect(cols[first]).toBe(0.4);
+    expect(cols[first + 1]).toBe(0.4);
+    expect(cols[SPARK_W - 1]).toBe(0.5);
+  });
+
+  it("shows a missing sample as a gap", () => {
+    const now = 100_000;
+    const cols = sparkColumns([
+      { t: now - 2 * SPARK_SLOT_MS, v: 0.5 },
+      { t: now - SPARK_SLOT_MS, v: null }, { t: now, v: 0.5 },
+    ], now);
+    expect(cols[SPARK_W - 2]).toBeNull();
   });
 });

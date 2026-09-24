@@ -318,6 +318,42 @@ describe("Sim", () => {
     expect(fd.eaten).toBe(true);
   });
 
+  it("a water change recovers quality and siphons settled food", () => {
+    const sim = new Sim({ width: 200, height: 100 }, 1);
+    sim.dropFood(50);
+    for (let i = 0; i < 400; i++) sim.tick(); // pellet settles, fouls the water
+    expect(sim.food[0]!.settled).toBeGreaterThan(0);
+    sim.waterQuality = 0.2;
+    sim.changeWater();
+    expect(sim.waterQuality).toBeCloseTo(0.68, 5); // 0.2 + 0.8*0.6
+    expect(sim.food.length).toBe(0);               // siphoned
+  });
+
+  it("finds the fish whose body covers a point", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    // A big adult: 35 px from its centre is still on its body, well
+    // past the fixed 18-22 px radius the hover and Get Info used.
+    const big = sim.addFish({ x: 100, y: 100, scale: 1,
+                              halfW: 40, halfH: 20 });
+    expect(sim.fishAt(135, 110)).toBe(big);
+    expect(sim.fishAt(145, 100)).toBeNull();
+    // Growth shrinks the body: at half size 35 px is off it.
+    big.scale = 0.5;
+    expect(sim.fishAt(135, 100)).toBeNull();
+    // A fish with no sheet bound yet still gets a small target.
+    const small = sim.addFish({ x: 250, y: 60 });
+    expect(sim.fishAt(256, 55)).toBe(small);
+    expect(sim.fishAt(262, 60)).toBeNull();
+  });
+
+  it("picks the nearer body where two overlap", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const a = sim.addFish({ x: 100, y: 100, scale: 1, halfW: 30, halfH: 15 });
+    const b = sim.addFish({ x: 120, y: 100, scale: 1, halfW: 30, halfH: 15 });
+    expect(sim.fishAt(105, 100)).toBe(a);
+    expect(sim.fishAt(118, 100)).toBe(b);
+  });
+
   it("fish lose their appetite in foul water", () => {
     const sim = new Sim({ width: 200, height: 100 }, 5);
     const f = sim.addFish({ x: 40, y: 50, hunger: 0.9 });

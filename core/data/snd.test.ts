@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { ownBytes } from "./bytes.js";
 import { fileSoundRecords, hasSounds, mace3Decode, parseSnd,
          qualifySoundNames, soundsFromRsrc, unwrapContainer, wavBytes }
   from "./snd.js";
 
 const sha256 = async (d: Uint8Array): Promise<string> =>
-  [...new Uint8Array(await crypto.subtle.digest("SHA-256", d))]
+  [...new Uint8Array(await crypto.subtle.digest("SHA-256", ownBytes(d)))]
     .map((b) => b.toString(16).padStart(2, "0")).join("");
 
 // --- fixtures (mirror tools/tests) -----------------------------------
@@ -274,16 +275,62 @@ describe("parseSnd", () => {
     tiny[2] = 0xFF; tiny[3] = 0xFF; // numDataTypes pushes p past EOF
     expect(() => parseSnd(tiny)).toThrow(/truncated snd header/);
   });
+
+  it("decodes a cmpSH (0xFE) MACE 3:1 resource", async () => {
+    // Same fixture and hash as tools/tests/test_snd.py.
+    const r = parseSnd(sndFmt1Mace(new Uint8Array(20).fill(0x24), 10));
+    expect(r.width).toBe(2);
+    expect(r.rateHz).toBe(22254);
+    expect(r.pcm).toHaveLength(10 * 6 * 2);
+    expect(await sha256(r.pcm))
+      .toBe("0e7832566fa0a88c9a6fc29b927df72d93d3ce0f72d5c4a9af808b60b1bfa398");
+  });
 });
 
 describe("mace3Decode", () => {
+  // 0x39 0xF1 repeated: the golden-vector input of tools/tests/test_snd.py.
+  const repeat39F1 = (npackets: number): Uint8Array => {
+    const data = new Uint8Array(npackets * 2).fill(0x39);
+    for (let i = 0; i < data.length; i += 2) data[i + 1] = 0xF1;
+    return data;
+  };
+
+  // Same generator as lcg_bytes in tools/tests/test_snd.py.
+  const lcgBytes = (n: number, seed = 1): Uint8Array => {
+    const out = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      seed = (Math.imul(seed, 1103515245) + 12345) & 0x7FFFFFFF;
+      out[i] = (seed >> 16) & 0xFF;
+    }
+    return out;
+  };
+
+  const mean = (pcm: Uint8Array): number => {
+    const v = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+    let sum = 0;
+    for (let i = 0; i < pcm.length; i += 2) sum += v.getInt16(i, true);
+    return sum / (pcm.length / 2);
+  };
+
   it("pins the FFmpeg decode with a golden hash", async () => {
-    // Same vector as tools/tests/test_snd.py — cross-implementation pin.
-    const data = new Uint8Array(200).fill(0x39);
-    for (let i = 0; i < 200; i += 2) data[i + 1] = 0xF1;
-    const out = mace3Decode(data, 100);
+    // Hash from a line-by-line port of FFmpeg's mace.c with its
+    // per-position tables; same vector as tools/tests/test_snd.py.
+    const out = mace3Decode(repeat39F1(100), 100);
     expect(await sha256(out))
-      .toBe("150be20e43645c06031f3dbde785d2a7e996450eb07766e331a5ad94656b9eac");
+      .toBe("b0a200e1b12b8b030724fd034cfb19c104e8131fbb3c7429d0bc337707cb9a5f");
+  });
+
+  it("matches the Python decoder on a pseudo-random stream", async () => {
+    const out = mace3Decode(lcgBytes(2000), 1000);
+    expect(await sha256(out))
+      .toBe("c56379769c0e49253d408696f7b47b76040cefd65cd0409837e843ef8dc763b0");
+  });
+
+  it("has no DC drift", () => {
+    // The middle 2-bit code must use MACEtab3/4, which can go negative;
+    // with the 3-bit tables the level rails near +32767.
+    expect(Math.abs(mean(mace3Decode(repeat39F1(2000), 2000))))
+      .toBeLessThan(2000);
   });
 
   it("rejects truncated packet data", () => {

@@ -1,6 +1,8 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { browserGeometry, importAddon, listAddons, loadProblem,
-         qualifySoundItemName } from "./import.js";
+         isListed, orphanedSounds, qualifySoundItemName, recordAddon }
+  from "./import.js";
+import type { Importable } from "./import.js";
 
 const enc = new TextEncoder();
 
@@ -165,6 +167,66 @@ describe("qualifySoundItemName", () => {
     // Qualifier + extension both strip before the stem compare.
     expect(qualifySoundItemName([rec("dup")], "dup (2).mp3")
       .map((r) => r.name)).toEqual(["dup (2).mp3"]);
+  });
+});
+
+describe("recordAddon", () => {
+  const it0 = (url: string): Importable =>
+    ({ url, inner: url, section: "sounds" }) as Importable;
+  it("adds a new install and merges later sound names into it", () => {
+    const list: Importable[] = [];
+    expect(recordAddon(list, it0("a.zip"), ["x"], "install")).toBe(true);
+    expect(recordAddon(list, it0("a.zip"), ["x", "y"], "install")).toBe(true);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.sounds).toEqual(["x", "y"]);
+  });
+  it("lets a restore refresh a record but never re-add a removed one", () => {
+    const list: Importable[] = [{ ...it0("a.zip"), sounds: ["x"] }];
+    expect(recordAddon(list, it0("a.zip"), ["y"], "refresh")).toBe(true);
+    expect(list[0]!.sounds).toEqual(["x", "y"]);
+    // Removed while its restore was downloading: it stays removed.
+    expect(recordAddon(list, it0("gone.zip"), ["z"], "refresh")).toBe(false);
+    expect(list).toHaveLength(1);
+  });
+});
+
+describe("isListed", () => {
+  const it0 = (url: string): Importable =>
+    ({ url, inner: url, section: "fish" }) as Importable;
+  it("tells a still-installed add-on from one removed since", () => {
+    // Removed (or the tank emptied) while its restore or retry was
+    // pending: the restore must not bring it back.
+    const list = [it0("b.zip"), it0("a.zip")];
+    expect(isListed(list, it0("a.zip"))).toBe(true);
+    expect(isListed(list, it0("gone.zip"))).toBe(false);
+    expect(isListed([], it0("a.zip"))).toBe(false);
+  });
+});
+
+describe("orphanedSounds", () => {
+  const addon = (url: string, sounds?: string[]) =>
+    ({ section: "sounds", inner: url, url, ...(sounds ? { sounds } : {}) });
+  it("returns names only the leaving add-ons owned", () => {
+    expect(orphanedSounds(
+      [addon("a.zip", ["tap", "drop"])], [addon("b.zip", ["aqua"])]))
+      .toEqual(["tap", "drop"]);
+  });
+  it("keeps a name a surviving add-on still claims", () => {
+    // Two add-ons can ship a same-named record — the survivor's copy
+    // is the one in the store, so the name must not be dropped.
+    expect(orphanedSounds(
+      [addon("a.zip", ["bubbles"])], [addon("b.zip", ["bubbles"])]))
+      .toEqual([]);
+  });
+  it("treats add-ons without recorded sounds as contributing none", () => {
+    expect(orphanedSounds([addon("a.zip")], [addon("b.zip")]))
+      .toEqual([]);
+  });
+  it("keeps everything when the leaving add-on still sits in rest", () => {
+    // Pins the caller contract: `rest` must already exclude `gone`,
+    // otherwise removeAddon silently drops nothing.
+    const a = addon("a.zip", ["tap"]);
+    expect(orphanedSounds([a], [a, addon("b.zip")])).toEqual([]);
   });
 });
 

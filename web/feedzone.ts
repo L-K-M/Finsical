@@ -1,23 +1,15 @@
 /**
- * The surface strip that drops food on click, instead of knocking on
- * the glass, plus the object-fit:contain letterbox mapping shared by
- * click and hover. Pure so vitest can pin both without a DOM.
+ * The air above the waterline, where a click drops food instead of
+ * knocking on the glass, plus the object-fit:contain letterbox mapping
+ * shared by click and hover. Pure so vitest can pin both without a DOM.
  */
+import { SURFACE } from "../core/sim.js";
 
-/** Top fraction of the tank that feeds. Matches the original: clicks
- * with y < height * 0.15 drop a pellet; deeper clicks knock. */
-export const FEED_ZONE = 0.15;
-
-/** True when a tank-space y falls inside the feed strip. The bound is
- * exclusive, same as the pointerdown check it replaced. */
-export function isFeedZoneY(y: number, tankHeight: number): boolean {
-  return y < tankHeight * FEED_ZONE;
-}
-
-/** First tank row that is *not* feedable — where the boundary line is
- * drawn so it sits on the first non-feed pixel, not inside the strip. */
-export function feedZoneLineY(tankHeight: number): number {
-  return Math.ceil(tankHeight * FEED_ZONE);
+/** True when a tank-space y is above the water: the air strip, or the
+ * surface line's own row, so a click on the line feeds too. Anything
+ * lower is in the water and knocks on the glass. */
+export function isFeedZoneY(y: number): boolean {
+  return y < SURFACE + 1;
 }
 
 /**

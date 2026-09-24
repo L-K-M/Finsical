@@ -70,6 +70,14 @@ function rw<T>(store: string, mode: IDBTransactionMode,
   });
 }
 
+/** Dropped packs persist under a `local:` key — the scheme is shared
+ * by the store (trim exemption), the importer (decode path) and the
+ * tank (mint/delete), so it lives here, defined once. */
+export const LOCAL_PREFIX = "local:";
+export function isLocalPack(url: string): boolean {
+  return url.startsWith(LOCAL_PREFIX);
+}
+
 export function packGet(url: string): Promise<Uint8Array | null> {
   const got = rw<Uint8Array>("packs", "readonly", (s) => s.get(url));
   // Refresh the stat's age on hit so eviction is least-recently-used
@@ -117,9 +125,13 @@ async function trimPacks(): Promise<void> {
               { bytes?: unknown; at?: unknown } | undefined;
             const bytes = typeof v?.bytes === "number" ? v.bytes : 0;
             const at = typeof v?.at === "number" ? v.at : 0;
+            const url = k.slice(STAT_PREFIX.length);
+            // User-dropped packs (local:) are stored user data, not a
+            // fetch cache — the only copy of the file lives here, so
+            // they neither count against the budget nor ever evict.
+            if (isLocalPack(url)) return;
             total += bytes;
-            recs.push({ stat: k, url: k.slice(STAT_PREFIX.length),
-                        at, bytes });
+            recs.push({ stat: k, url, at, bytes });
           });
           recs.sort((a, b) => a.at - b.at); // oldest evicts first
           for (const r of recs) {
@@ -226,5 +238,19 @@ export function sndsMerge(records: StoredSnd[]): Promise<unknown> {
     return metaPut(SNDS_KEY, out);
   }));
   sndsChain = run.catch(() => {}); // a failed merge mustn't poison the chain
+  return run;
+}
+
+/** Drop records by name — add-on uninstall. Serialized with merges so a
+ * removal can't be overwritten by a merge that read the old baseline. */
+export function sndsRemove(names: Iterable<string>): Promise<unknown> {
+  const drop = new Set(names);
+  if (!drop.size) return Promise.resolve(null);
+  const run = sndsChain.then(() => sndsGet().then((cur) => {
+    if (!cur?.length) return null;
+    const out = cur.filter((r) => !drop.has(r.name));
+    return out.length === cur.length ? null : metaPut(SNDS_KEY, out);
+  }));
+  sndsChain = run.catch(() => {});
   return run;
 }

@@ -1,6 +1,7 @@
 import { openBus } from "./bus.js";
-import { hostWindow } from "osmium-ui";
-import { deriveStats, hungerLabel, trend, uptime } from "./statsmodel.js";
+import { hostWindow, pushButton } from "osmium-ui";
+import { deriveStats, hungerLabel, SPARK_H, SPARK_W, sparkColumns, sparkRow,
+         trend, uptime } from "./statsmodel.js";
 import type { BusMsg } from "./bus.js";
 import type { StatsInput, TankStats } from "./statsmodel.js";
 
@@ -30,10 +31,11 @@ function field(label: string, value: HTMLElement): void {
 function text(value: string): HTMLElement {
   return el("span", "sval", value);
 }
-/** A level as a progress bar, its percentage and trend arrow. The bar
- * repeats what the text says, so assistive tech reads only the text. */
-function meter(frac: number | null, pct: string,
-               arrow: string): HTMLElement {
+/** A level as a progress bar, its percentage, trend arrow, and a
+ * sparkline of the recent samples. The bar repeats what the text says,
+ * so assistive tech reads only the text. */
+function meter(frac: number | null, pct: string, arrow: string,
+               series?: { t: number; v: number | null }[]): HTMLElement {
   const cell = el("span", "smeter");
   const bar = el("div", "osm-progress");
   bar.setAttribute("aria-hidden", "true");
@@ -43,7 +45,41 @@ function meter(frac: number | null, pct: string,
   track.appendChild(el("div", "osm-progress-fill"));
   bar.appendChild(track);
   cell.append(bar, el("span", "spct", pct), el("span", "strend", arrow));
+  // No framed blank: an all-gap history (null/NaN/Infinity — the
+  // same definition spark() can't draw) is "no data yet".
+  if (series && series.some((s) => Number.isFinite(s.v)))
+    cell.appendChild(spark(series));
   return cell;
+}
+
+/** A 1-bit sparkline of the rolling history — newest on the right,
+ * a column per time slot (sparkColumns), gaps where a sample is
+ * missing. */
+function spark(series: { t: number; v: number | null }[]): HTMLCanvasElement {
+  const cv = document.createElement("canvas");
+  cv.className = "sspark";
+  cv.width = SPARK_W; cv.height = SPARK_H;
+  cv.setAttribute("aria-hidden", "true");
+  const c = cv.getContext("2d")!;
+  c.fillStyle = "#fff"; c.fillRect(0, 0, SPARK_W, SPARK_H);
+  c.fillStyle = "#000";
+  let py = -1;
+  sparkColumns(series, Date.now()).forEach((v, i) => {
+    // NaN counts as a gap too — otherwise it would no-op the fillRect
+    // and poison the next sample's connector through py.
+    if (v === undefined || v === null || !Number.isFinite(v)) {
+      py = -1;
+      return;
+    }
+    const y = sparkRow(v);
+    if (py < 0) c.fillRect(i, y, 1, 1);
+    else {
+      const lo = Math.min(py, y), hi = Math.max(py, y);
+      c.fillRect(i, lo, 1, hi - lo + 1);
+    }
+    py = y;
+  });
+  return cv;
 }
 
 // Rolling window of recent pushes — trends compare now vs ~90 s ago.
@@ -67,11 +103,13 @@ function render(st: TankStats): void {
   const old = trendBase();
   const water = st.waterPct / 100;
   field("Water quality", meter(water, `${st.waterPct}%`,
-                               trend(old?.water ?? null, water)));
+                               trend(old?.water ?? null, water),
+                               history.map((s) => ({ t: s.t, v: s.water }))));
   field("Avg. hunger", st.avgHunger === null
     ? meter(null, "—", "")
     : meter(st.avgHunger, `${Math.round(st.avgHunger * 100)}%`,
-            trend(old?.avgHunger ?? null, st.avgHunger)));
+            trend(old?.avgHunger ?? null, st.avgHunger),
+            history.map((s) => ({ t: s.t, v: s.avgHunger }))));
   field("Hungriest", text(st.hungriest
     ? `${st.hungriest.name} — ${hungerLabel(st.hungriest.hunger)}` : "—"));
   field("Fish", text(`${st.fishCount}` +
@@ -124,6 +162,11 @@ const greet = setInterval(() => {
   else bus.post({ op: "hello" });
 }, 500);
 bus.post({ op: "hello" });
+
+// Change Water — a partial change on the tank sim (it also siphons
+// settled pellets). The next state push re-renders the numbers.
+pushButton(document.getElementById("schange") as HTMLButtonElement,
+           () => bus.post({ op: "changeWater" }));
 
 // Ungated on `greeted`: if the tank tab opens after the greet retries
 // gave up, this heartbeat is the revival path — one cheap message, and

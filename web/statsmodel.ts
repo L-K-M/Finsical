@@ -106,7 +106,8 @@ function advice(st: TankStats, water: number): string[] {
   }
   if (water < QUALITY_SEEK) {
     out.push("Water is foul — fish won't eat until it clears. " +
-             "Stop feeding and let the filter catch up.");
+             "Stop feeding and change some water, or let the filter " +
+             "catch up.");
   }
   // Foul water already says "stop feeding" — the portion-size hint
   // would contradict it, so it only runs once water is recovering.
@@ -116,8 +117,8 @@ function advice(st: TankStats, water: number): string[] {
   }
   if (water >= QUALITY_SEEK) {
     if (st.avgHunger !== null && st.avgHunger >= HUNGER_FEED) {
-      out.push("Fish are hungry — drop food near the surface " +
-               "(press F or click high in the tank).");
+      out.push("Fish are hungry — press F, or click above the " +
+               "waterline to drop food.");
     } else if (st.hungriest && st.hungriest.hunger >= HUNGER_STARVING) {
       out.push(`${st.hungriest.name} is starving — feed soon.`);
     }
@@ -149,4 +150,36 @@ export function trend(prev: number | null, cur: number,
   const d = cur - prev;
   if (Math.abs(d) < deadZone) return "→";
   return d > 0 ? "↑" : "↓";
+}
+
+/** Sparkline size in pixels, and the time one column covers: 44
+ * columns of 2 s span the ~90 s history the trend arrows use. */
+export const SPARK_W = 44;
+export const SPARK_H = 14;
+export const SPARK_SLOT_MS = 2_000;
+
+/** One value per sparkline column, oldest on the left: the latest
+ * sample by the end of the column's time slot, held until the next.
+ * Columns are time, not pushes: every open client window adds pushes,
+ * so a column per push stretched and squeezed with the window count.
+ * undefined is before the first sample, null a missing one. */
+export function sparkColumns(
+    series: readonly { t: number; v: number | null }[],
+    now: number): (number | null | undefined)[] {
+  const start = now - SPARK_W * SPARK_SLOT_MS;
+  const cols: (number | null | undefined)[] = [];
+  let j = 0;
+  let cur: number | null | undefined;
+  for (let i = 0; i < SPARK_W; i++) {
+    const end = start + (i + 1) * SPARK_SLOT_MS;
+    while (j < series.length && series[j]!.t <= end) cur = series[j++]!.v;
+    cols.push(cur);
+  }
+  return cols;
+}
+
+/** The canvas row for a 0..1 value, in rows 1..SPARK_H-2: row 0 sits
+ * under the frame's 1 px border, where a full-scale line vanished. */
+export function sparkRow(v: number): number {
+  return 1 + Math.round((1 - Math.min(1, Math.max(0, v))) * (SPARK_H - 3));
 }

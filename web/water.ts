@@ -347,6 +347,24 @@ export function drawLight(ctx: CanvasRenderingContext2D, light: number,
   ctx.globalAlpha = 1;
 }
 
+// ---- air -------------------------------------------------------------------
+
+let airFill: CanvasGradient | null = null;
+
+/** The air under the hood, above the surface line. Backdrops are
+ * underwater scenes, so this covers them there, and a leaf or fin
+ * reaching past the surface passes behind the hood's lip. Drawn after
+ * the fish; bubble pops and splash drops go on top of it. */
+export function drawAir(ctx: CanvasRenderingContext2D): void {
+  if (!airFill) {
+    airFill = ctx.createLinearGradient(0, 0, 0, SURFACE);
+    airFill.addColorStop(0, "#07090c");
+    airFill.addColorStop(1, "#1b2632");
+  }
+  ctx.fillStyle = airFill;
+  ctx.fillRect(0, 0, W, SURFACE);
+}
+
 // ---- murk ------------------------------------------------------------------
 
 /** Wash opacity at full strength, at the surface and at the gravel:

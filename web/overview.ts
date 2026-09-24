@@ -31,6 +31,8 @@ const thumbRequested = new Set<string>();     // asked once per page
 const summaryEl = document.getElementById("osummary")!;
 const headsEl = document.getElementById("oheads")!;
 const listEl = document.getElementById("olist")!;
+const useBtn = document.getElementById("ouse") as HTMLButtonElement;
+const emptyBtn = document.getElementById("oempty") as HTMLButtonElement;
 const removeBtn = document.getElementById("oremove") as HTMLButtonElement;
 
 let tankBoot: string | undefined;
@@ -46,6 +48,9 @@ const bus = openBus((m) => {
       lastStructure = "";
     }
     tankState = m;
+    // Emptied some other way (Remove, another window): nothing is left
+    // to confirm, so an armed Empty Tank button stands down now.
+    if (emptyBtn.dataset.armed && !tankItems()) disarmEmpty();
     render();
   } else if (m.op === "thumbs" &&
              m.thumbs && typeof m.thumbs === "object") {
@@ -97,15 +102,55 @@ const list = mountList(listEl, {
   label: "Tank contents",
   onSelect: () => syncRemove(),
 });
+// Until the first state push lands, blank is "not heard yet", not
+// "empty" — render() swaps in the empty-tank text once it knows.
+list.setEmpty("Waiting for the tank…");
 // Keys go to the list from the start (arrows, type-select, Delete).
 listEl.focus({ preventScroll: true });
 
 function syncRemove(): void {
-  removeBtn.disabled = !items[list.selected];
+  const it = items[list.selected];
+  removeBtn.disabled = !it;
+  useBtn.disabled = !it?.use;
 }
 pushButton(removeBtn, () => {
   const it = items[list.selected];
   if (it) bus.post(it.remove);
+});
+// "Use" swaps a scenery pack into view (backdrop/gravel by aspect);
+// the next state push re-tags the rows "Showing"/"In tank".
+pushButton(useBtn, () => {
+  const it = items[list.selected];
+  if (it?.use) bus.post(it.use);
+});
+// The danger action: every fish and add-on leaves the tank. Kept
+// stateless — the next state push just lists an empty tank. Confirm
+// in-page: window.confirm() silently returns false in embedded
+// pages whose host never wires up the panel delegate (our WKWebView
+// shell included) — a two-click arm works everywhere.
+let emptyArmTimer = 0;
+let emptyArmedAt = 0;
+const disarmEmpty = (): void => {
+  window.clearTimeout(emptyArmTimer);
+  delete emptyBtn.dataset.armed;
+  emptyBtn.textContent = "Empty Tank…";
+};
+const tankItems = (): number =>
+  (tankState?.fish ?? []).length + (tankState?.addons ?? []).length;
+pushButton(emptyBtn, () => {
+  if (!tankItems()) { disarmEmpty(); return; }
+  if (emptyBtn.dataset.armed !== "1") {
+    emptyBtn.dataset.armed = "1";
+    emptyBtn.textContent = "Really empty?";
+    emptyArmedAt = performance.now();
+    emptyArmTimer = window.setTimeout(disarmEmpty, 4000);
+    return;
+  }
+  // A double-click would confirm within milliseconds of arming —
+  // that's an accident, not a decision. Require a beat between.
+  if (performance.now() - emptyArmedAt < 350) return;
+  disarmEmpty();
+  bus.post({ op: "emptyTank" });
 });
 // Delete (or Command-Delete, the Finder's Move to Trash) removes the
 // selected line.

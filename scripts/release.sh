@@ -6,6 +6,7 @@ set -euo pipefail
 readonly SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 readonly REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 readonly INFO_PLIST="$REPOSITORY_ROOT/macos/Info.plist"
+readonly README="$REPOSITORY_ROOT/README.md"
 readonly PLIST_BUDDY="/usr/libexec/PlistBuddy"
 readonly HOST_MACOS="Darwin"
 readonly VERSION_PATTERN='^[0-9]+\.[0-9]+\.[0-9]+$'
@@ -75,10 +76,15 @@ next_build=$((current_build + 1))
 "$PLIST_BUDDY" -c "Set :CFBundleShortVersionString $version" "$INFO_PLIST"
 "$PLIST_BUDDY" -c "Set :CFBundleVersion $next_build" "$INFO_PLIST"
 npm version "$version" --no-git-tag-version --allow-same-version
+# The README's "Latest release" line reads this marker. BSD sed: the
+# script only runs on macOS. sed succeeds even when nothing matched, so
+# the check below confirms all three versions landed.
+sed -i '' -E "s|(<!-- version -->)[^<]*(<!-- /version -->)|\1$version\2|" "$README"
+node "$SCRIPT_DIR/check-version.mjs"
 
 "$SCRIPT_DIR/build.sh" --clean
 
-git add "$INFO_PLIST" package.json package-lock.json
+git add "$INFO_PLIST" "$README" package.json package-lock.json
 git commit -s -m "Release Finsical $version" \
   -m "Prepare the native macOS release metadata."
 git tag -a "$tag" -m "Finsical $version"
@@ -88,3 +94,7 @@ if [[ "$push_option" == "--push" ]]; then
 fi
 
 echo "Created $tag."
+# The Release workflow only uploads a draft, and the README's Download
+# link (releases/latest) skips drafts, so publishing stays a manual step.
+echo "After the Release workflow finishes, review the draft and publish it:"
+echo "  gh release edit $tag --draft=false --latest"

@@ -49,6 +49,70 @@ canvas#crt {
 body.crt canvas#crt { display: block; }
 body.crt canvas#tank { opacity: 0; }
 
+/* ---- browser menu bar (web/menubar.ts) ---------------------------------
+   The browser tank page is the whole desktop, so it gets the desktop's
+   menu bar: Platinum bar, pull-downs, a clock in the corner. Sits
+   above the machine art (z 2), below the overlay windows (z 10). */
+#menubar { position: fixed; top: 0; left: 0; right: 0; z-index: 6; }
+#menubar .mbclock {
+  position: absolute; right: 12px; top: 2px;
+  font: var(--osm-font-system); color: #000;
+  pointer-events: none;
+}
+/* ---- document windows (About, Shortcuts) ------------------------------- */
+.dbwin { width: 344px; }
+/* Osmium positions window content absolutely inside a sized window; a
+   document window sizes to its content instead, so the content flows. */
+.dbwin .osm-content { position: static; margin: 21px 5px 5px; }
+.dbdoc { padding: 4px 14px 12px; font: var(--osm-font-small); }
+.dbabout { text-align: center; }
+.dbabout .dbicon {
+  width: 96px; height: 96px; margin: 10px auto 6px;
+  background: var(--osm-sprite-icon-machine) 0 0 / 96px 96px no-repeat;
+  image-rendering: pixelated;
+}
+.dbtitle { font: var(--osm-font-system); font-weight: bold; }
+.dbblurb { margin-top: 8px; text-align: left; line-height: 15px; }
+.dbcredit { margin-top: 8px; text-align: left; color: #555; }
+.dbfoot {
+  display: flex; justify-content: center; gap: 12px; margin-top: 12px;
+}
+.dbkeys .dbkeyrow { display: flex; margin-top: 6px; line-height: 15px; }
+.dbkeys .dbkey {
+  flex: none; width: 92px; font: var(--osm-font-system); font-weight: bold;
+}
+.dbkeys .osm-button { margin-top: 14px; }
+/* ---- fish Get-Info card (web/main.ts) ------------------------------------
+   ⌥-click a fish: a tiny Mac window pinned over it — striped title bar
+   with a close box, live hunger and mood underneath. */
+.finfo {
+  position: absolute; z-index: 2; width: 118px;
+  background: #fff; border: 1px solid #000;
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, .3);
+  font: var(--osm-font-small); line-height: 12px;
+}
+.fintitle {
+  position: relative; height: 13px;
+  border-bottom: 1px solid #000;
+  /* the OS 8 title-bar pinstripes */
+  background: repeating-linear-gradient(
+    to bottom, #fff 0, #fff 2px, #ddd 2px, #ddd 3px);
+}
+.finclose {
+  position: absolute; left: 3px; top: 3px; width: 7px; height: 7px;
+  padding: 0; background: #fff; border: 1px solid #000;
+  cursor: pointer;
+}
+/* The 7px box is authentic but untappable — an invisible halo widens
+   its hit area without changing the look. */
+.finclose::before { content: ""; position: absolute; inset: -6px; }
+.finclose:active { background: #000; }
+.finname {
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  text-align: center; padding: 0 14px;
+}
+.finbody { padding: 2px 6px 5px; }
+
 /* ---- client windows --------------------------------------------------
    Preferences, Tank Overview, Import Add-ons and Tank Stats are Mac OS
    8 windows drawn by Osmium UI (osmium.css), each page one borderless
@@ -91,8 +155,15 @@ body.crt canvas#tank { opacity: 0; }
 /* Lines up with the Lighting pane's pop-ups (82 px titles, 6 px gap). */
 #pflamp { display: flex; width: max-content; margin-left: 88px; }
 #crt-warn { position: absolute; left: 196px; right: 0; top: 0; }
+/* One-click picture-tube presets under the CRT switch. */
+#pfpresets {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: 10px; margin-bottom: 2px;
+}
+#pfpresets .pfpreset { min-width: 0; }
 .pfgroup { padding: 12px 11px 6px; }
-#pftraits .pfgroup:first-child { margin-top: 28px; }
+/* The preset row clears the checkbox — the groups need less air. */
+#pftraits .pfgroup:first-child { margin-top: 12px; }
 #pftraits .pfgroup + .pfgroup { margin-top: 24px; }
 #pfpicture .pfgroup { margin-top: 12px; }
 #pfpicture .pfgroup + .pfgroup { margin-top: 30px; }
@@ -101,8 +172,18 @@ body.crt canvas#tank { opacity: 0; }
 .pfslider { flex: none; width: 125px; }
 .pflabel { display: block; padding-left: 4px; margin-bottom: 5px; }
 .pfends { display: flex; justify-content: space-between; margin-top: 2px; padding: 0 1px 0 3px; }
-/* CRT off: the sliders are disabled and their captions dim with them. */
-.pfcrtoff .pfslider { color: #888; }
+/* CRT off: the sliders and preset buttons are disabled and their
+   captions dim with them. */
+.pfcrtoff :is(#pftraits, #pfpicture) .pfslider, .pfslider.pfoff { color: #888; }
+
+/* Sound: the volume slider with Mute beside it, as in Monitors & Sound,
+   then a group of checkboxes for the tank's own sounds. */
+#pane-sound .pfgroup { margin-top: 12px; }
+#pane-sound .pfgroup + .pfgroup { margin-top: 30px; }
+#pane-sound .pfrow { align-items: flex-start; gap: 24px; }
+#pfmute { margin-top: 1px; }
+#pane-sound .osm-checkbox { display: flex; width: max-content; }
+#pane-sound .osm-checkbox + .osm-checkbox { margin-top: 6px; }
 
 /* Lighting: titled pop-ups in a group box. */
 .pflrow { display: flex; gap: 24px; }
@@ -133,9 +214,14 @@ body.crt canvas#tank { opacity: 0; }
 .smeter .osm-progress { flex: 1; min-width: 16px; margin-top: 1px; }
 .spct { flex: none; width: 31px; text-align: right; }
 .strend { flex: none; width: 9px; text-align: center; }
+/* No CSS size — the canvas renders at its intrinsic 44x14 backing
+   store, so a border-box reset can't squeeze the 1-bit columns. */
+.sspark { flex: none; margin-top: 1px; border: 1px solid #000; image-rendering: pixelated; }
 .sval { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #srows { margin-bottom: 6px; }
 #scare { margin-top: 3px; }
+/* Change Water — clear of the grow box, like the overview's Remove. */
+#sfoot { padding: 6px 22px 10px 0; text-align: right; }
 .scarehead { line-height: 17px; }
 .scareline { padding-left: 9px; text-indent: -9px; }
 /* "• ": the escape eats the first space, the second follows the bullet. */
@@ -184,6 +270,19 @@ body.crt canvas#tank { opacity: 0; }
 .osm-selected .othumb img { filter: brightness(0.5); }
 #obar { position: relative; height: 31px; border-top: 1px solid #000; }
 #oremove { position: absolute; right: 22px; top: 5px; }
+#ouse { position: absolute; right: 110px; top: 5px; }
+/* Danger action sits alone on the left, away from Remove. */
+#oempty { position: absolute; left: 22px; top: 5px; color: #a00; }
+#oempty[data-armed] { font-weight: bold; }
+
+/* Hover a fish: its species in a System 7 Balloon-Help-style tip. */
+/* Above the machine art (z 2), below the menu bar (6) and overlay
+   windows (10) — it hides while any of those is up anyway. */
+#fishtip {
+  position: fixed; z-index: 5; pointer-events: none;
+  background: #ffc; border: 1px solid #000; border-radius: 4px;
+  padding: 2px 6px; font: var(--osm-font-small); color: #000;
+}
 
 /* ---- the add-on browser (web/import.ts) ----------------------------------
    Laid out like the Chooser: Show: pop-up across the top, the section's
@@ -197,6 +296,21 @@ body.crt canvas#tank { opacity: 0; }
 }
 .ishow { font: var(--osm-font-system); margin: 1px 6px 0 0; }
 .ipop { flex: none; width: 180px; }
+/* Plain Mac-style text field: white box, 1px black rule, no chrome. */
+.ifilter {
+  flex: 0 1 130px; min-width: 48px; margin-left: 8px; height: 19px;
+  box-sizing: border-box; padding: 0 4px; border-radius: 0;
+  border: 1px solid #000; background: #fff; color: #000;
+  font: var(--osm-font-small); appearance: none;
+}
+.ifilter::placeholder { color: #767676; }
+.ifilter:focus { outline: none; border-color: #000; box-shadow: 0 0 0 1px #fff, 0 0 0 2px #000; }
+.ifilter:disabled { background: #ddd; }
+/* Forced-colors mode suppresses box-shadow — fall back to a real
+   outline so the focused field stays visible. */
+@media (forced-colors: active) {
+  .ifilter:focus { outline: 2px solid Highlight; box-shadow: none; }
+}
 .icount {
   flex: 0 1 auto; min-width: 0; margin: 3px 0 0 auto;
   white-space: nowrap; overflow: hidden;
@@ -243,3 +357,47 @@ body.crt canvas#tank { opacity: 0; }
 .inarrow.isound .iname { margin-right: 71px; }
 .inarrow .ipreview, .inarrow .icredit, .inarrow .icount { display: none; }
 .inarrow .idonate { margin-left: 0; }
+
+/* ---- alerts (web/alert.ts) -----------------------------------------------
+   Mac OS 8's modal dialog frame around a dd face: the black outline, a
+   raised bevel (white over 99), a face-colored row, then an inset bevel
+   (99 over white), and the 1px drop shadow starting two pixels in. The
+   note or caution icon sits top left, the text beside it, the buttons
+   along the bottom right with the default button last. The scrim over
+   the page is transparent: Mac OS 8 doesn't dim what's under an alert. */
+.alertscrim { position: fixed; inset: 0; z-index: 20; cursor: default; }
+.alertwin {
+  position: absolute; box-sizing: border-box;
+  /* A short window scrolls the alert rather than hiding its buttons
+   * (16px = alert.ts EDGE on both sides). */
+  max-height: calc(100vh - 16px); overflow-y: auto;
+  display: grid; grid-template-columns: 32px minmax(0, 1fr);
+  column-gap: 14px; padding: 14px 14px 13px;
+  background: var(--osm-dialog);
+  box-shadow: inset 0 0 0 1px #000, inset 2px 2px #fff, inset -2px -2px #999;
+  color: #000; font: var(--osm-font-system); font-synthesis: none;
+  -webkit-font-smoothing: none;
+  user-select: none; -webkit-user-select: none;
+}
+.alertwin::before {
+  content: ""; position: absolute; inset: 3px; pointer-events: none;
+  box-shadow: inset 1px 1px #999, inset -1px -1px #fff;
+}
+.alertwin::after {
+  content: ""; position: absolute; z-index: -1;
+  left: 2px; top: 2px; right: 0; bottom: 0;
+  box-shadow: 1px 1px #000;
+}
+.alerticon {
+  grid-row: 1 / span 2; width: 32px; height: 32px;
+  background: no-repeat;
+}
+.alerttext { grid-column: 2; min-height: 32px; overflow-wrap: anywhere; }
+.alertprogress { grid-column: 2; margin-top: 9px; }
+.alertprogress[hidden] { display: none; }
+.alertbuttons {
+  grid-column: 1 / -1; margin-top: 15px;
+  display: flex; flex-wrap: wrap; justify-content: flex-end;
+  align-items: center; gap: 8px 12px;
+}
+.alertbuttons:empty { display: none; }

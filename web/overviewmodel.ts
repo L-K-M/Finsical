@@ -3,6 +3,7 @@
 import { fishThumbKey } from "./bus.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
+import type { FishState } from "../core/sim.js";
 import { hungerLabel, uptime } from "./statsmodel.js";
 
 export interface FishSnap {
@@ -14,6 +15,8 @@ export interface TankState extends BusMsg {
   fish?: FishSnap[];
   waterQuality?: number;
   tickCount?: number;
+  /** Add-on urls whose backdrop/gravel art is on display. */
+  scenery?: { backdrop?: string; gravel?: string };
 }
 
 /** One line of the list: a fish, or an add-on with no fish of its own
@@ -27,6 +30,8 @@ export interface Item {
   /** 0 for a fish, 1 for an add-on (the header's counts). */
   rank: number;
   remove: BusMsg;
+  /** "Use" intent for scenery packs not currently on display. */
+  use?: BusMsg | undefined;
 }
 
 export type Column = "name" | "kind" | "status";
@@ -41,10 +46,20 @@ const KINDS: Record<string, string> = {
   accessories: "Accessory", backgrounds: "Background", tanks: "Tank",
   sounds: "Sound",
 };
-const STATES: Record<string, string> = {
+// Exhaustive: a new sim state fails the build until it has a label
+// (the Overview, the hover tip and Get Info all read it).
+const STATES: Record<FishState, string> = {
   drift: "Swimming", seek: "Looking for food", startle: "Startled",
   turn: "Turning", sleep: "Sleeping",
 };
+// Sections that produce replaceable scenery — gravel art fills the
+// floor, backgrounds/tanks fill the walls (aspect decides which at
+// decode). Plants/accessories stack as decor; nothing to switch.
+const USABLE = new Set(["gravel", "backgrounds", "tanks"]);
+/** Display label for a fish's sim state — the hover tip shares it. */
+export function stateLabel(state: string): string {
+  return STATES[state as FishState] ?? state;
+}
 
 /** The Finder-style header line: "8 fish, 3 add-ons, water 96%, up
  * 2h 3m" (the sim ticks 30 times a second). */
@@ -65,22 +80,30 @@ export function itemsOf(s: TankState): Item[] {
     thumb: fishThumbKey(f),
     name: f.species || "Fish",
     kind: "Fish",
-    status: `${STATES[f.state] ?? "Swimming"}, ${hungerLabel(f.hunger)}`,
+    // Bus data is untrusted: an unknown state reads as swimming.
+    status: `${STATES[f.state as FishState] ?? "Swimming"}, ` +
+      hungerLabel(f.hunger),
     rank: 0,
     remove: { op: "removeFish", id: f.id },
   }));
+  const showing = new Set(
+    [s.scenery?.backdrop, s.scenery?.gravel].filter(
+      (u): u is string => typeof u === "string" && u !== ""));
   for (const a of s.addons ?? []) {
     if (a.section === "fish" && fish.some((f) => f.pack === a.url ||
         (f.pack === undefined && f.species === a.inner)))
       continue;
+    const on = showing.has(a.url);
     items.push({
       key: `a:${a.url}`,
       thumb: `a:${a.url}`,
       name: a.inner,
       kind: KINDS[a.section] ?? a.section,
-      status: "In tank",
+      status: on ? "Showing" : "In tank",
       rank: 1,
       remove: { op: "removeAddon", url: a.url },
+      use: !on && USABLE.has(a.section)
+        ? { op: "useAddon", url: a.url } : undefined,
     });
   }
   return items;

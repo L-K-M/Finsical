@@ -1,34 +1,46 @@
-import { BOTTOM_PAD, DAY_TICKS, FOOD_ENTRY_Y, Sim } from "../core/sim.js";
+import { BOTTOM_PAD, DAY_TICKS, FOOD_ENTRY_Y, Sim, SURFACE }
+  from "../core/sim.js";
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
 import { FISH_CAP, HUNGER_SEEK, SPAWN_HUNGER } from "../core/tuning.js";
 import { planFrame } from "../core/loop.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
-import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
+import { isPack } from "../core/data/fsh.js";
+import { decodeDroppedPacks } from "./drop.js";
 import { decorFrame, decorPhase } from "../core/data/decor.js";
-import { pickSwimSheet } from "../core/data/swimsheet.js";
-import { ART_SCALE } from "./artscale.js";
-import { TankAudio } from "./audio.js";
+import { bodySize, pickSwimSheet } from "../core/data/swimsheet.js";
+import { fishScale } from "./artscale.js";
+import { sanitizeSoundConfig, TankAudio } from "./audio.js";
 import { drawRipples, drawSplashes, newSplash, tickRipples,
          tickSplashes } from "./fx.js";
 import type { Ripple, Splash } from "./fx.js";
 import { pushButton } from "osmium-ui";
-import { fetchAddon, mountImportPanel, qualifySoundItemName,
-         COLLECTIONS } from "./import.js";
+import { alertOpen, showAlert } from "./alert.js";
+import { recentTaps, shouldScold } from "./scold.js";
+import { showWelcome, wantsWelcome } from "./welcome.js";
+import { fetchAddon, mountImportPanel, orphanedSounds, recordAddon,
+         qualifySoundItemName, isListed, COLLECTIONS }
+  from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
-import { sndsGet, sndsMerge } from "./store.js";
+import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
+         sndsMerge, sndsRemove } from "./store.js";
 import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
          swimCanvas } from "./render.js";
-import { containPoint, feedZoneLineY, isFeedZoneY } from "./feedzone.js";
+import { placeholderFrames } from "./placeholder.js";
+import { containPoint, isFeedZoneY } from "./feedzone.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
+import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
+  from "./menubar.js";
+import { stateLabel } from "./overviewmodel.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
-import { drawBubbles, drawFood, drawLight, drawMurk, feedPinch }
+import { drawAir, drawBubbles, drawFood, drawLight, drawMurk, feedPinch }
   from "./water.js";
 import { DEFAULT_MACHINE, machineById, SCREENBACK_HOLE_PAD, shellMarkup }
   from "./machines.js";
 import type { CrtConfig } from "./crt.js";
 import type { WaterMotion } from "./water.js";
+import type { SoundConfig } from "./audio.js";
 import type { Machine } from "./machines.js";
 import type { Lighting } from "../core/light.js";
 import type { BusMsg } from "./bus.js";
@@ -64,6 +76,8 @@ interface SavedTank {
   waterQuality: number;
   fish: Partial<Fish>[];
   addons: Importable[];
+  /** The chosen scenery (see sceneryChoice) — add-on urls. */
+  scenery?: SceneryChoice;
 }
 function loadTank(): SavedTank | null {
   try {
@@ -78,6 +92,17 @@ function loadTank(): SavedTank | null {
 }
 const saved = loadTank();
 const installedAddons: Importable[] = [...(saved?.addons ?? [])];
+// The scenery the user chose: what their latest live install, "Use"
+// or Remove put on display. It is saved instead of what happens to be
+// showing, so a chosen pack that can't restore on one launch doesn't
+// lose its place to whatever the restore chain showed instead.
+type SceneryKind = "backdrop" | "gravel";
+type SceneryChoice = Partial<Record<SceneryKind, string>>;
+const sceneryChoice: SceneryChoice = {};
+for (const kind of ["backdrop", "gravel"] as const) {
+  const url: unknown = (saved?.scenery as SceneryChoice | undefined)?.[kind];
+  if (typeof url === "string" && url !== "") sceneryChoice[kind] = url;
+}
 // A v=1 save keeps writing v=1 until reconcileFish() has run once —
 // otherwise an offline first launch would stamp the roster "final"
 // before its fish packs could restore.
@@ -114,7 +139,10 @@ let lighting: Lighting = (() => {
 const minutesOfDay = (d: Date): number =>
   d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
 function syncLight(now: Date): void {
+  const before = sim.light;
   sim.setLight(lightAt(minutesOfDay(now), lighting));
+  // A paused tank runs no ticks, but the timer's light still moves.
+  if (sim.light !== before) requestPaint();
 }
 syncLight(new Date());
 /** Merge a partial schedule (prefs pop-up) onto the current one. */
@@ -174,7 +202,14 @@ const roster = (saved?.fish ?? [])
   .filter((f): f is Partial<Fish> & { x: number; y: number } =>
     !!f && Number.isFinite(f.x) && Number.isFinite(f.y))
   .map(sanitizeSavedFish);
-for (const f of roster?.length ? roster : DEFAULT_FISH) sim.addFish(f);
+// A saved, deliberately empty v=2 roster stays empty (Empty Tank, or
+// every fish removed); only a missing or pre-roster save gets starters.
+const keepEmpty = saved?.v === 2 && saved.fish.length === 0;
+// A fresh tank's stand-ins, which the starter set replaces when the
+// user accepts it on first launch (web/welcome.ts).
+const placeholderIds = new Set<number>();
+if (roster.length || keepEmpty) for (const f of roster) sim.addFish(f);
+else for (const f of DEFAULT_FISH) placeholderIds.add(sim.addFish(f).id);
 
 function saveTank(): void {
   try {
@@ -189,6 +224,7 @@ function saveTank(): void {
         ...(f.pack !== undefined ? { pack: f.pack } : {}),
       })),
       addons: installedAddons,
+      scenery: sceneryChoice,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(s));
   } catch { /* storage unavailable — the tank still runs */ }
@@ -210,12 +246,19 @@ function tankPoint(clientX: number, clientY: number):
                       TANK);
 }
 
-// Feed-zone affordance: while the pointer is over the tank, a faint
-// line marks where feeding stops, brightening with a crosshair cursor
-// over the strip itself (see render()). Hover is re-evaluated every
-// frame from the last client point (see frame()), so a resize under a
-// stationary pointer can't leave it stale, and getBoundingClientRect
-// runs once per frame instead of per move.
+/** The fish under a tank point. None in the air above the waterline:
+ * a fin reaching up there is hidden behind the air strip, and a click
+ * there feeds. */
+function fishAtPoint(p: { x: number; y: number }): Fish | null {
+  return isFeedZoneY(p.y) ? null : sim.fishAt(p.x, p.y);
+}
+
+// Feed-zone affordance: over the air above the waterline, where a
+// click drops food, the cursor becomes a crosshair and the waterline
+// brightens (see render()). Hover is re-evaluated every frame from the
+// last client point (see frame()), so a resize under a stationary
+// pointer can't leave it stale, and getBoundingClientRect runs once
+// per frame instead of per move.
 let overFeedZone = false;
 let lastClient: { x: number; y: number } | null = null;
 function setFeedHover(on: boolean): void {
@@ -228,39 +271,168 @@ function syncFeedHover(): void {
   if (!lastClient) { setFeedHover(false); return; }
   const p = containPoint(lastClient.x, lastClient.y,
                          canvas.getBoundingClientRect(), TANK);
-  setFeedHover(p !== null && isFeedZoneY(p.y, TANK.height));
+  setFeedHover(p !== null && isFeedZoneY(p.y));
 }
 
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return; // ignore right/middle clicks
   const p = tankPoint(e.clientX, e.clientY);
   if (!p) return; // letterbox bar
-  audio.unlock();
-  if (isFeedZoneY(p.y, TANK.height)) {
+  if (alertOpen()) return; // the alert's scrim covers the tank anyway
+  audio.unlock(); // an ⌥-click is a gesture too
+  if (e.altKey) {
+    // ⌥-click is "Get Info": open the card on the fish under the
+    // pointer, or dismiss it when the water is empty.
+    const f = fishAtPoint(p);
+    if (f) openInfo(f); else closeInfo();
+    return;
+  }
+  if (isFeedZoneY(p.y)) {
     const pellet = sim.dropFood(p.x);
     audio.feed();
     splashes.push(newSplash(pellet.x, pellet.y));
   } else {
     sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
     ripples.push({ x: p.x, y: p.y, age: 0 });
+    noteGlassTap();
   }
   requestPaint();
 });
 // The nearest calm fish notices the hovering pointer and drifts over
 // to look — hunger and panic still outrank curiosity in the sim.
+
+// Hover a fish and its species (and mood) pops up in a little
+// balloon — a nod to System 7's Balloon Help.
+const fishTip = document.createElement("div");
+fishTip.id = "fishtip";
+fishTip.style.display = "none";
+document.body.appendChild(fishTip);
+/** The fish to name under a hovered point — none while Get Info, a
+ * menu, the add-on window, a document window or an alert is up (the
+ * tip would float over them). */
+const fishToName = (p: { x: number; y: number }): Fish | null =>
+  infoCard || importPanel.isOpen || menuOpen() || docOpen() || alertOpen()
+    ? null : fishAtPoint(p);
+const fishTipLabel = (f: Fish): string =>
+  (f.species || "Fish") +
+  (f.state === "drift" ? "" : ` — ${stateLabel(f.state)}`);
+// Tank coords of the last hover — the frame loop re-checks it so the
+// tip doesn't linger when the fish swims away from a parked cursor.
+let lastHover: { x: number; y: number } | null = null;
+
 canvas.addEventListener("pointermove", (e) => {
-  if (!lastClient) requestPaint(); // the zone line appears
   lastClient = { x: e.clientX, y: e.clientY };
   if (!e.isPrimary) return; // one pointer drives curiosity
-  sim.notice = tankPoint(e.clientX, e.clientY);
+  const p = tankPoint(e.clientX, e.clientY);
+  sim.notice = p;
+  if (e.pointerType === "touch") return; // no hover on touch
+  lastHover = p;
+  const best = p && fishToName(p);
+  if (!best) { fishTip.style.display = "none"; return; }
+  fishTip.textContent = fishTipLabel(best);
+  fishTip.style.display = "";
+  // Clamp inside the viewport — the tank usually fills the window,
+  // so an unclamped +14 offset clips at the right and bottom edges.
+  fishTip.style.left = `${Math.max(4, Math.min(e.clientX + 14,
+    innerWidth - fishTip.offsetWidth - 4))}px`;
+  fishTip.style.top = `${Math.max(4, Math.min(e.clientY + 14,
+    innerHeight - fishTip.offsetHeight - 4))}px`;
 });
 canvas.addEventListener("pointerleave", (e) => {
   lastClient = null;
+  lastHover = null;
+  fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
-  requestPaint(); // and the zone line goes
   if (!e.isPrimary) return; // don't clear the primary's curiosity
   sim.notice = null;
 });
+
+// ---- fish Get-Info card -------------------------------------------------
+// A tiny Mac window that follows the ⌥-clicked fish — its name, hunger
+// and mood. Closed by its close box, Escape, an ⌥-click on empty water,
+// or the fish leaving the tank.
+let infoCard: {
+  root: HTMLElement; hunger: HTMLElement; mood: HTMLElement; fish: Fish;
+} | null = null;
+
+function closeInfo(): void {
+  infoCard?.root.remove();
+  infoCard = null;
+}
+
+function openInfo(f: Fish): void {
+  closeInfo();
+  fishTip.style.display = "none"; // the card says more
+  const root = document.createElement("div");
+  root.className = "finfo";
+  const title = document.createElement("div");
+  title.className = "fintitle";
+  const close = document.createElement("button");
+  close.className = "finclose";
+  close.type = "button";
+  close.setAttribute("aria-label", "Close");
+  close.addEventListener("click", () => closeInfo());
+  const name = document.createElement("div");
+  name.className = "finname";
+  name.textContent = f.species || "Fish";
+  title.append(close, name);
+  const body = document.createElement("div");
+  body.className = "finbody";
+  const hunger = document.createElement("div");
+  const mood = document.createElement("div");
+  body.append(hunger, mood);
+  root.append(title, body);
+  // A press on the card is on the card — never feed or tap through it.
+  root.addEventListener("pointerdown", (e) => e.stopPropagation());
+  screenEl.appendChild(root);
+  infoCard = { root, hunger, mood, fish: f };
+}
+
+/** Reposition the card over its fish and refresh the two live lines.
+ * Runs every frame from frame() while a card is open; the fish's
+ * removal closes it. */
+function layoutInfo(): void {
+  const card = infoCard;
+  if (!card) return;
+  const f = card.fish;
+  if (!sim.fish.includes(f)) { closeInfo(); return; }
+  const r = canvas.getBoundingClientRect();
+  const sr = screenEl.getBoundingClientRect();
+  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
+  // Card space is screenEl-relative — rect deltas stay right under
+  // scroll and regardless of which ancestor is positioned.
+  const ox = r.left - sr.left + (r.width - TANK.width * s) / 2;
+  const oy = r.top - sr.top + (r.height - TANK.height * s) / 2;
+  const cw = card.root.offsetWidth, ch = card.root.offsetHeight;
+  let px = ox + f.x * s - cw / 2;
+  let py = oy + f.y * s - ch - 8;
+  if (py < 0) py = oy + f.y * s + 16; // too near the surface: go under
+  // Bounds are screenEl-relative like the offsets above — the canvas
+  // may not fill the screen exactly.
+  card.root.style.left =
+    `${Math.max(0, Math.min(px, sr.width - cw))}px`;
+  card.root.style.top =
+    `${Math.max(0, Math.min(py, sr.height - ch))}px`;
+  const hunger = `Hunger  ${Math.round(f.hunger * 100)}%`;
+  const mood = stateLabel(f.state);
+  if (card.hunger.textContent !== hunger)
+    card.hunger.textContent = hunger;
+  if (card.mood.textContent !== mood) card.mood.textContent = mood;
+}
+
+// A knocking spree gets the public aquarium's sign (web/scold.ts).
+let glassTaps: number[] = [];
+let scoldedAt: number | null = null;
+function noteGlassTap(): void {
+  const now = performance.now();
+  glassTaps = [...recentTaps(glassTaps, now), now];
+  if (!shouldScold(glassTaps, now, scoldedAt)) return;
+  scoldedAt = now;
+  glassTaps = [];
+  showAlert({ icon: "caution",
+              text: "Please don't tap on the glass. It frightens the fish.",
+              buttons: [{ title: "OK", default: true, cancel: true }] });
+}
 
 // ---- sprite loading ----------------------------------------------------
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
@@ -409,6 +581,26 @@ function pickGravel(images: Iterable<IndexedImage>, src: string): void {
                 gravelByPack.set(src, fitGravel(gravel)); }
   if (gravel) { gravelCv = gravelByPack.get(src)!; gravelSrc = src; }
 }
+/** Record what now shows as the user's choice ("" clears it). */
+function chooseScenery(kind: SceneryKind, src: string): void {
+  if (src) sceneryChoice[kind] = src;
+  else delete sceneryChoice[kind];
+}
+/** Put the chosen scenery back on display wherever its pack has
+ * loaded: after the launch restore chain, and after a retry lands a
+ * pack. A choice whose pack isn't loaded keeps the current art. */
+function applySceneryChoice(): void {
+  const bd = sceneryChoice.backdrop, gr = sceneryChoice.gravel;
+  if (bd !== undefined && backdropByPack.has(bd)) {
+    backdropCv = backdropByPack.get(bd)!;
+    backdropSrc = bd;
+  }
+  if (gr !== undefined && gravelByPack.has(gr)) {
+    gravelCv = gravelByPack.get(gr)!;
+    gravelSrc = gr;
+  }
+  requestPaint();
+}
 // Decorations (plants/accessories) sit on the gravel between the backdrop
 // and the fish, all at the fish's art scale; the set is re-spaced across
 // the tank floor whenever one is added. Animated packs loop their frames
@@ -458,8 +650,12 @@ const sheetByPack = new Map<string, number>();
 const packBySheet = new Map<number, string>();
 function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
                       url: string, section: string, live: boolean): void {
+  // Only fish sections register sheets — a tank/scenery pack's sprite
+  // streams mustn't join the fish pool or starter fish could
+  // round-robin onto art nobody chose.
+  if (section !== "fish") return;
   const idx = usePack({ sheets });
-  if (section === "fish" && idx >= 0) {
+  if (idx >= 0) {
     sheetBySpecies.set(name, idx);
     // A reinstall can rebind the url to a new slot — drop the old
     // reverse entry so the two maps stay exact inverses.
@@ -528,8 +724,48 @@ function reconcileFish(): void {
   rosterComplete = !pending;
   if (rosterComplete) saveTank();
 }
+
+// A failed restore is usually a transient fetch — retry a couple of
+// times in the background so one flaky launch doesn't leave art-less
+// fish (or missing scenery) for the whole session. Only runs remap/
+// reconcile again when at least one pack actually landed.
+const RESTORE_RETRY_DELAYS = [15_000, 60_000];
+/** Restores and their retries skip an add-on removed since they were
+ * queued (Remove, Empty Tank) instead of bringing it back. */
+const stillListed = (it: Importable): boolean => isListed(installedAddons, it);
+// Each exhausted offline round would arm its own "online" listener —
+// dedupe so one reconnect launches one retry round, not N concurrent
+// chains racing the same sequential restore path.
+let onlineRetryArmed = false;
+function retryRestores(failed: Importable[], attempt = 0): void {
+  if (!failed.length) return;
+  if (attempt >= RESTORE_RETRY_DELAYS.length) {
+    // Timers ran out — if we're simply offline, connectivity returning
+    // earns one fresh round of retries instead of a reload.
+    if (!navigator.onLine && !onlineRetryArmed) {
+      onlineRetryArmed = true;
+      window.addEventListener("online", () => {
+        onlineRetryArmed = false;
+        retryRestores(restoreFailed, 0);
+      }, { once: true });
+    }
+    return;
+  }
+  setTimeout(() => {
+    const wanted = failed.filter(stillListed);
+    void importPanel.restore(wanted, stillListed).then((still) => {
+      restoreFailed = still;
+      if (still.length < wanted.length) {
+        applySceneryChoice(); // a landed pack must not override it
+        remapSheetIdx(); reconcileFish(); postState();
+      }
+      retryRestores(still, attempt + 1);
+    }).catch((e) =>
+      console.warn("add-on restore retry failed:", e));
+  }, RESTORE_RETRY_DELAYS[attempt]);
+}
 function handleImages(images: Iterable<IndexedImage>, src: string,
-                      section: string): void {
+                      section: string, live: boolean): void {
   // fish packs carry portraits too — only scenery sections touch the tank
   if (section === "gravel") pickGravel(images, src);
   else if (section === "plants" || section === "accessories")
@@ -537,14 +773,23 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
   else if (section === "backgrounds" || section === "tanks")
     pickBackdrop(images, src);
   else return;
+  // A live install shows its art and so becomes the choice; a restore
+  // only puts art back and leaves the choice alone.
+  if (live && backdropSrc === src) chooseScenery("backdrop", src);
+  if (live && gravelSrc === src) chooseScenery("gravel", src);
   console.info(`archive.org: imported scenery ${src}`);
   requestPaint();
   if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
 }
-function recordInstall(it: Importable): void {
-  if (!installedAddons.some((a) => a.url === it.url))
-    installedAddons.push(it);
+// `soundNames` are the bank records this install contributed — stored
+// on the add-on so uninstall can drop exactly its own sounds.
+function recordInstall(it: Importable, soundNames: string[] = []): void {
+  recordAddon(installedAddons, it, soundNames, "install");
   saveTank();
+}
+/** A launch restore only refreshes a record that is still there. */
+function refreshInstall(it: Importable, soundNames: string[]): void {
+  if (recordAddon(installedAddons, it, soundNames, "refresh")) saveTank();
 }
 
 /** Imported sound records (audio file or 'snd ' fork) enter the live
@@ -576,6 +821,7 @@ const importPanel = mountImportPanel({
       .catch((e) => console.warn("sound import failed:", e));
   },
   onInstall: recordInstall,
+  onRestore: refreshInstall,
   refuse: (it) => fishRefusal(it.section),
   preview: previewOf,
 });
@@ -598,6 +844,7 @@ function postState(): void {
   bus.post({
     op: "state",
     boot,
+    paused,
     // The native shell retunes the window's aspect to the machine's
     // viewBox outline; prefs needs just the id.
     machine: { id: machine.id, w: machine.vbW, h: machine.vbH,
@@ -606,6 +853,8 @@ function postState(): void {
                // scale it identically or backplate and mask drift.
                hole: machine.hole ?? null },
     addons: installedAddons,
+    // Which scenery packs are on display — Overview's "Use" acts on it.
+    scenery: { backdrop: backdropSrc, gravel: gravelSrc },
     // `pack` lets the panel tell pack-bound fish from loose ones —
     // a fish add-on with a living fish doesn't repeat in Add-ons.
     fish: sim.fish.map(({ id, species, hunger, state, pack }) =>
@@ -628,6 +877,7 @@ function postState(): void {
       on: crt?.enabled ?? false,
       cfg: crtCfg,
     },
+    sound: soundCfg,
   });
 }
 
@@ -743,14 +993,23 @@ function onBusMessage(m: BusMsg): void {
   } else if (m.op === "removeAddon" &&
              typeof m.url === "string" && m.url !== "") {
     removeAddon(m.url);
+  } else if (m.op === "useAddon" &&
+             typeof m.url === "string" && m.url !== "") {
+    useScenery(m.url);
+  } else if (m.op === "emptyTank") {
+    emptyTank();
   } else if (m.op === "wantThumbs" && Array.isArray(m.keys)) {
     serveThumbs(m.keys);
+  } else if (m.op === "changeWater") {
+    changeWater();
   } else if (m.op === "crtEnabled") {
     setCrt(m.on === true);
   } else if (m.op === "crtConfig") {
     applyCrtConfig(m.cfg);
   } else if (m.op === "lighting") {
     applyLighting(m.lighting);
+  } else if (m.op === "soundConfig") {
+    applySoundConfig(m.cfg);
   } else if (m.op === "machine" && typeof m.id === "string") {
     const nm = machineById(m.id);
     if (nm && nm.id !== machine.id) { applyMachine(nm); postState(); }
@@ -767,6 +1026,19 @@ function onBusMessage(m: BusMsg): void {
       });
     }).catch((e) => console.warn("snd reload failed:", e));
   }
+}
+
+/** Overview's "Use": show this pack's backdrop/gravel art. A pack can
+ * supply either or both (aspect decides at decode); a url that
+ * produced neither just resyncs the panel. Persists through the save
+ * so the choice survives relaunch. */
+function useScenery(url: string): void {
+  const bd = backdropByPack.get(url), gr = gravelByPack.get(url);
+  if (!bd && !gr) { postState(); return; }
+  if (bd) chooseScenery("backdrop", url);
+  if (gr) chooseScenery("gravel", url);
+  applySceneryChoice();
+  saveTank(); // also retags the panel's row now, not on the next tick
 }
 
 /** Uninstall an add-on: drops it from the saved list (it won't restore
@@ -808,6 +1080,17 @@ function removeAddon(url: string): void {
     backdropCv = prev !== undefined ? backdropByPack.get(prev)! : null;
     backdropSrc = prev ?? "";
   }
+  // Removing the chosen pack makes its stand-in the choice.
+  if (sceneryChoice.gravel === url) chooseScenery("gravel", gravelSrc);
+  if (sceneryChoice.backdrop === url) chooseScenery("backdrop", backdropSrc);
+  // Sounds this add-on put in the bank leave it — unless a surviving
+  // add-on claims the same record name.
+  const dropSnds = orphanedSounds(gone, installedAddons);
+  if (dropSnds.length) {
+    audio.removeWavs(dropSnds);
+    void sndsRemove(dropSnds)
+      .catch((e) => console.warn("snd removal failed:", e));
+  }
   for (const s of orphaned) sheetBySpecies.delete(s);
   const slot = sheetByPack.get(url);
   // Only delete the reverse entry it still owns — a rebind may have
@@ -815,6 +1098,10 @@ function removeAddon(url: string): void {
   if (slot !== undefined && packBySheet.get(slot) === url)
     packBySheet.delete(slot);
   sheetByPack.delete(url);
+  // A dropped pack's stored bytes are the only copy — uninstall
+  // deletes them (archive packs keep their cache entries).
+  if (isLocalPack(url)) void packDelete(url)
+    .catch((e) => console.warn("pack delete failed:", e));
   // Drop thumb state that can only rot: this pack's own memo and any
   // queued ask, plus entries for fish that no longer exist anywhere.
   thumbMemo.delete(`a:${url}`);
@@ -825,60 +1112,133 @@ function removeAddon(url: string): void {
   requestPaint(); // removed fish and decor vanish at once
 }
 
+// Bumped by Empty Tank — an install that was fetching when the wipe
+// ran discards its results instead of repopulating the emptied tank.
+let tankEpoch = 0;
+
+/** The Overview's danger button: uninstall every add-on (removes its
+ * fish, decor and scenery) then release whatever fish remain —
+ * bundled-pack or legacy fish no add-on claimed. Preferences, water
+ * and the sound bank stay; scenery leaves with its add-on, so the
+ * default gradient backdrop returns. */
+function emptyTank(): void {
+  tankEpoch++;
+  // Nothing is left to reconcile: the empty roster is final (saves as
+  // v=2), so a relaunch keeps the tank empty.
+  rosterComplete = true;
+  for (const a of [...installedAddons]) removeAddon(a.url);
+  for (const f of [...sim.fish]) sim.removeFish(f.id);
+  sweepThumbs();
+  requestPaint();
+  saveTank(); // persists the empty roster and resyncs the panel
+}
+
 // Bus messages cross a page boundary — validate before trusting them.
 const KNOWN_SECTIONS = new Set(COLLECTIONS.map((c) => c.section));
-const installsInFlight = new Set<string>();
+const installsInFlight = new Map<string, Promise<void>>();
 async function remoteInstall(it: Importable, again: boolean): Promise<void> {
-  const fail = (error: string) =>
-    bus.post({ op: "installFailed", url: it?.url ?? "", error });
   if (!it?.url || typeof it.url !== "string" ||
       !it.url.startsWith("https://archive.org/") ||
       !KNOWN_SECTIONS.has(it.section)) {
-    fail("invalid add-on item");
+    bus.post({ op: "installFailed", url: it?.url ?? "",
+               error: "invalid add-on item" });
     return;
   }
+  // installAddon reports the outcome to the panel itself.
+  await installAddon(it, again).catch(() => {});
+}
+
+/** Add an add-on to the tank: the one install path for the Import
+ * Add-ons window's requests and the first-run starter set. Acks the
+ * outcome over the bus either way (the panel may be waiting on this
+ * url), and rejects on failure. */
+function installAddon(it: Importable, again: boolean): Promise<void> {
   // The panel's retry timeout can fire while the original fetch is still
-  // running — a second request for the same url would double-install.
-  if (installsInFlight.has(it.url)) return; // original request will ack
+  // running, and a starter install can overlap a panel request: a second
+  // request for the same url rides the first instead of double-installing.
+  const running = installsInFlight.get(it.url);
+  if (running) return running;
   // A restore may have landed this add-on while the panel's detail fetch
   // was in flight — unless the user clicked "Add again", that's a dup.
   if (!again && installedAddons.some((a) => a.url === it.url)) {
+    importPanel.notify({ op: "installed", url: it.url });
     bus.post({ op: "installed", url: it.url });
-    return;
+    return Promise.resolve();
   }
   // A fish pack can't be added past the population cap — refuse up
   // front so the panel explains it instead of fetching for nothing.
   const refusal = fishRefusal(it.section);
   if (refusal) {
-    fail(refusal);
-    return;
+    bus.post({ op: "installFailed", url: it.url, error: refusal });
+    return Promise.reject(new Error(refusal));
   }
-  installsInFlight.add(it.url);
-  try {
-    const rs = await fetchAddon(it.url);
-    const usable = rs.filter(
-      (r) => r.sheets.size || r.images.size || r.sounds.length);
-    if (!usable.length) throw new Error("no pack inside");
-    for (const r of usable) {
-      if (r.sheets.size)
-        handleSheets(r.sheets, it.inner, it.url, it.section, true);
-      if (r.images.size) handleImages(r.images.values(), it.url, it.section);
-    }
-    // One batch across resources: dedupes names globally, plays the
-    // feedback once, and a decode failure can't fail the install. The
-    // listing's qualified `inner` is the record identity — a sibling
-    // stem installed separately mustn't overwrite under the basename.
-    const sounds = usable.flatMap(
-      (r) => qualifySoundItemName(r.sounds, it.inner));
-    if (sounds.length)
-      await handleSounds(sounds)
-        .catch((e) => console.warn("sound install skipped:", e));
-    recordInstall(it);
+  const run = downloadAddon(it).then(() => {
+    // The in-page add-on window marks it too, so it offers Add Again.
+    // recordInstall's save already pushed fresh state.
+    importPanel.notify({ op: "installed", url: it.url });
     bus.post({ op: "installed", url: it.url });
-    postState();
-  } catch (e) { fail(String(e)); }
-  finally { installsInFlight.delete(it.url); }
+  }, (e: unknown) => {
+    bus.post({ op: "installFailed", url: it.url, error: String(e) });
+    throw e;
+  }).finally(() => installsInFlight.delete(it.url));
+  installsInFlight.set(it.url, run);
+  return run;
 }
+
+async function downloadAddon(it: Importable): Promise<void> {
+  const epoch = tankEpoch;
+  const rs = await fetchAddon(it.url);
+  // The tank was emptied while this pack was fetching — applying
+  // it now would repopulate the tank the user just cleared.
+  if (epoch !== tankEpoch)
+    throw new Error("cancelled — the tank was emptied mid-install");
+  const usable = rs.filter(
+    (r) => r.sheets.size || r.images.size || r.sounds.length);
+  if (!usable.length) throw new Error("no pack inside");
+  for (const r of usable) {
+    if (r.sheets.size)
+      handleSheets(r.sheets, it.inner, it.url, it.section, true);
+    if (r.images.size)
+      handleImages(r.images.values(), it.url, it.section, true);
+  }
+  // One batch across resources: dedupes names globally, plays the
+  // feedback once, and a decode failure can't fail the install. The
+  // listing's qualified `inner` is the record identity — a sibling
+  // stem installed separately mustn't overwrite under the basename.
+  const sounds = usable.flatMap(
+    (r) => qualifySoundItemName(r.sounds, it.inner));
+  let storedNames: string[] = [];
+  if (sounds.length)
+    await handleSounds(sounds)
+      // handleSounds dedupes colliding names in place — record the
+      // final ones, and only on success: a failed decode must not
+      // claim provenance over records never written.
+      .then(() => { storedNames = sounds.map((s) => s.name); })
+      .catch((e) => console.warn("sound install skipped:", e));
+  // Re-check after the awaits: a wipe during sound decode would
+  // otherwise record an add-on whose fish are already gone.
+  if (epoch !== tankEpoch)
+    throw new Error("cancelled — the tank was emptied mid-install");
+  recordInstall(it, storedNames); // saveTank() inside pushes fresh state
+}
+
+// ---- pause -----------------------------------------------------------------
+// Stops hunger, rot, filtration, and the day/night clock while the app
+// stays interactive (render, CRT, saves). Keyboard P / Tank ▸ Pause.
+let paused = false;
+const PAUSE_KEY = "finsical:paused";
+function setPaused(on: boolean): boolean {
+  if (paused !== on) {
+    paused = on;
+    requestPaint(); // the banner comes and goes without a tick
+    try { localStorage.setItem(PAUSE_KEY, on ? "1" : "0"); }
+    catch { /* storage unavailable — pause is session-only */ }
+    postState();
+  }
+  return paused;
+}
+try { paused = localStorage.getItem(PAUSE_KEY) === "1"; }
+catch { /* storage unavailable */ }
 
 // ---- CRT effect ------------------------------------------------------------
 // Optional tube emulation (web/crt.ts): the 320×200 canvas becomes a
@@ -934,6 +1294,38 @@ let machine: Machine =
     return machineById(localStorage.getItem(MACHINE_KEY) ?? "");
   } catch { return undefined; } })()
   ?? machineById(DEFAULT_MACHINE)!;
+
+// ---- sound settings ------------------------------------------------------
+// Volume, mute and the bubble/ambience switches. Declared before the
+// setCrt call below for the same TDZ reason: postState() reads them.
+const SOUND_KEY = "finsical:sound";
+let soundCfg: SoundConfig = sanitizeSoundConfig(
+  (() => { try {
+    return JSON.parse(localStorage.getItem(SOUND_KEY) ?? "null");
+  } catch { return null; /* storage or JSON: defaults */ } })());
+function configureAudio(): void {
+  audio.setVolume(soundCfg.volume);
+  audio.setMuted(soundCfg.muted);
+  audio.setOptions({ bubbles: soundCfg.bubbles, ambient: soundCfg.ambient });
+}
+configureAudio();
+/** Merge a partial config (Sound pane, Mute Sound, the M key) onto the
+ * current one, sanitize, persist and apply. */
+function applySoundConfig(raw: unknown): void {
+  const merged: Record<string, unknown> = { ...soundCfg };
+  if (raw && typeof raw === "object")
+    for (const [k, v] of Object.entries(raw))
+      if (v !== undefined) merged[k] = v;
+  soundCfg = sanitizeSoundConfig(merged);
+  configureAudio();
+  try { localStorage.setItem(SOUND_KEY, JSON.stringify(soundCfg)); }
+  catch { /* storage unavailable */ }
+  postState();
+}
+const toggleMute = (): void => {
+  audio.unlock(); // Tank > Mute Sound can be the first gesture
+  applySoundConfig({ muted: !soundCfg.muted });
+};
 
 try { setCrt(localStorage.getItem(CRT_KEY) === "1"); }
 catch { /* storage unavailable — default off */ }
@@ -1031,6 +1423,10 @@ postState();
  * neither stack into one sinking column nor always pile up in the
  * middle. Each pellet splashes where it goes in. */
 function feedFish(): void {
+  // Bare F is a real user gesture, but Tank ▸ Feed Fish arrives via
+  // evaluateJavaScript with no user activation — without unlock() the
+  // context stays suspended until the first tank click.
+  audio.unlock();
   const x = 30 + Math.random() * (TANK.width - 60);
   const hungry = sim.fish.filter((f) => f.hunger > HUNGER_SEEK).length;
   for (const p of feedPinch(Math.random, hungry)) {
@@ -1046,11 +1442,42 @@ function feedFish(): void {
 /** Lamp switch: off holds the tank at night, on hands it back to the
  * Lighting mode. Persisted with the lighting settings. */
 function toggleLights(): void {
+  audio.unlock(); // Tank > Lamp On can be the first gesture
   applyLighting({ lamp: !lighting.lamp });
 }
+// A souvenir PNG of the live tank at 2x, nearest-neighbor so the
+// pixels stay crisp. The 2D canvas always holds the scene, CRT or not.
+function takePicture(): void {
+  const out = document.createElement("canvas");
+  out.width = TANK.width * 2;
+  out.height = TANK.height * 2;
+  const c = out.getContext("2d")!;
+  c.imageSmoothingEnabled = false;
+  c.drawImage(canvas, 0, 0, out.width, out.height);
+  const d = new Date();
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  const a = document.createElement("a");
+  a.href = out.toDataURL("image/png");
+  a.download = `finsical-${d.getFullYear()}${pad(d.getMonth() + 1)}` +
+    `${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}` +
+    `${pad(d.getSeconds())}.png`;
+  a.click();
+}
+// A partial water change, also callable from the stats window's bus op.
+function changeWater(): void {
+  audio.unlock(); // Tank ▸ Change Water can be the first gesture
+  sim.changeWater();
+  audio.splash();
+  requestPaint(); // the murk clears at once, even while paused
+  saveTank(); // persists + pushes fresh state to open panels
+}
 (window as unknown as { finsical?: unknown }).finsical =
-  { openImport: () => importPanel.open(), feedFish, toggleLights,
-    toggleCrt: () => setCrt(!crtOn) };
+  { openImport: () => importPanel.open(), feedFish, changeWater, toggleLights,
+    // Menu clicks land here via evaluateJavaScript — not always a
+    // user activation, but unlock() is harmless if resume is blocked.
+    toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute,
+    // Returns the new flag, so the native menu retitles at once.
+    togglePause: () => setPaused(!paused) };
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
 // path. Touch fallback: hover-less devices have no keyboard or native menu.
@@ -1076,58 +1503,73 @@ const syncTrigger = (show: boolean): void => {
 syncTrigger(hoverNone.matches);
 hoverNone.addEventListener("change", (e) => syncTrigger(e.matches));
 window.addEventListener("keydown", (e) => {
+  // Any key is a user gesture for WebAudio — unlock before the F/C
+  // handlers so the first keyboard action also starts ambient sound.
+  audio.unlock();
   const k = e.key.toLowerCase();
-  if ((e.metaKey || e.ctrlKey) && k === "i") {
+  // One Escape closes one thing: the card claims it first, and a key
+  // another window already handled leaves the card alone.
+  if (k === "escape" && infoCard && !e.defaultPrevented && !alertOpen()) {
+    closeInfo();
+    e.preventDefault();
+    return;
+  }
+  // Bare keys stand down while a menu, the add-on window or a modal
+  // alert owns them.
+  const bare = !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat &&
+    !importPanel.isOpen && !menuOpen() && !docOpen() && !alertOpen();
+  if ((e.metaKey || e.ctrlKey) && k === "i" && !inNativeShell() &&
+      !alertOpen()) {
+    // The app's Tank menu owns Cmd-I and opens the Import Add-ons
+    // window; the overlay would squeeze into the tank.
     importPanel.open(); e.preventDefault();
-  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "f" &&
-             !e.repeat && !importPanel.isOpen) {
+  } else if (bare && k === "f") {
     feedFish(); // bare F: Cmd-F is Find in browsers; the native menu owns ⌘F
-  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "c" &&
-             !e.repeat && !importPanel.isOpen) {
+  } else if (bare && k === "c") {
     setCrt(!crtOn); // bare C: ⌘C is Copy via the Edit menu
-  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "l" &&
-             !e.repeat && !importPanel.isOpen) {
+  } else if (bare && k === "l") {
     toggleLights(); // bare L: the lamp; ⌘L belongs to the native menu
-  } else if (!e.metaKey && !e.ctrlKey && !e.altKey && k === "s" &&
-             !e.repeat && !importPanel.isOpen && !inNativeShell()) {
-    // Browser-only fallback — the app opens stats.html via Tank ▸
-    // Tank Stats; over BroadcastChannel the new tab finds the tank.
+  } else if (bare && k === "m") {
+    toggleMute(); // bare M: ⌘M is Minimize
+  } else if (bare && k === "p") {
+    setPaused(!paused); // bare P: ⌘P is Print; the app's menu owns it
+  } else if (bare && k === "s" && !inNativeShell()) {
+    // Browser-only — the app opens stats.html via Tank ▸ Tank Stats.
     // Reuse without re-navigating: a reload would wipe the 90 s trend
     // window stats.ts keeps for the arrows.
-    const existing = window.open("", "finsical-stats");
-    try {
-      if (existing && !existing.closed &&
-          existing.location.pathname.endsWith("/stats.html")) {
-        existing.focus();
-      } else if (existing && !existing.closed) {
-        // Navigate the tab this gesture already grabbed — a second
-        // window.open can be blocked (one open per gesture in Safari).
-        // Resolve against our URL — assign uses the target's base.
-        existing.location.assign(
-          new URL("stats.html", location.href).href);
-        existing.focus();
-      } else {
-        window.open("stats.html", "finsical-stats");
-      }
-    } catch {
-      // The named tab went cross-origin — reading location throws
-      // SecurityError, but writing href is allowed. Steer the tab
-      // home instead of a second window.open (blocked in Safari).
-      if (existing) {
-        existing.location.href = new URL("stats.html", location.href).href;
-        existing.focus();
-      } else {
-        window.open("stats.html", "finsical-stats");
-      }
-    }
+    openClientWindow("stats");
   }
 });
 
+// The browser shell gets a Mac OS 8 menu bar of its own — the native
+// app has its real menu. Its windows (Preferences, Tank Overview, Tank
+// Stats) talk back over the BroadcastChannel bus, and About/Shortcuts
+// are little in-page documents.
+mountTankMenuBar({
+  feed: feedFish,
+  changeWater,
+  importAddons: () => importPanel.open(),
+  takePicture,
+  toggleCrt: () => setCrt(!crtOn),
+  toggleLamp: toggleLights,
+  toggleMute,
+  togglePause: () => { setPaused(!paused); },
+  state: () => ({ crtUsable: crt?.usable ?? false, crtOn,
+                  lampOn: lighting.lamp, muted: soundCfg.muted, paused }),
+});
+
+// web/pack/ is gitignored and no build ships one, so a missing
+// manifest means no bundled pack, not a failure worth a warning.
+class NoBundledPack extends Error {}
 const packFetch = async (p: string): Promise<Uint8Array> => {
   const r = await fetch(`pack/${p}`);
+  if (r.status === 404 && p === "manifest.json") throw new NoBundledPack();
   if (!r.ok) throw new Error(`${p}: ${r.status}`);
   return new Uint8Array(await r.arrayBuffer());
 };
+// Add-ons the launch-time restore couldn't fetch — retried in the
+// background by retryRestores once the chain settles.
+let restoreFailed: Importable[] = [];
 void (async () => {
   const pack = await loadAzpack(packFetch);
   const idx = usePack(pack, packFetch);
@@ -1140,11 +1582,15 @@ void (async () => {
   }
   pickBackdrop(imgs);
 })()
-  .catch((e) => console.warn("azpack load failed; using placeholder fish:", e))
+  .catch((e) => {
+    if (e instanceof NoBundledPack) console.info("no bundled pack in pack/");
+    else console.warn("azpack load failed; using placeholder fish:", e);
+  })
   // Saved add-ons re-import after the bundled pack; once they've landed,
   // rebind saved fish to their species' actual sheet slot and heal
   // pre-spawning rosters that never gained their fish.
-  .then(() => importPanel.restore([...installedAddons]))
+  .then(() => importPanel.restore([...installedAddons], stillListed))
+  .then((failed) => { restoreFailed = failed; })
   // Imported 'snd ' sets persist — restore them so dropped sounds
   // survive relaunch even when no pack in use carries audio. Best
   // effort: a restore failure must not skip the fish roster healing.
@@ -1153,7 +1599,30 @@ void (async () => {
   }))
   .then((recs) => recs?.length ? audio.addWavs(recs).catch((e) =>
     console.warn("snd decode failed:", e)) : undefined)
-  .then(() => { remapSheetIdx(); reconcileFish(); });
+  .then(() => {
+    // The user's chosen scenery wins over install-recency — applied
+    // once every pack has had its restore chance. A pack that failed
+    // to restore leaves whatever the chain picked, until a retry.
+    applySceneryChoice();
+    remapSheetIdx(); reconcileFish();
+    retryRestores(restoreFailed);
+  });
+
+// First launch: offer to stock the tank (web/welcome.ts). Accepting
+// installs through the same path as the Import Add-ons window, and the
+// stand-ins leave once a real fish is in; declining keeps them.
+if (wantsWelcome(saved !== null)) {
+  showWelcome({
+    install: (it) => installAddon(it, false),
+    fishArrived: removePlaceholders,
+  });
+}
+function removePlaceholders(): void {
+  let gone = false;
+  for (const id of placeholderIds) gone = sim.removeFish(id) || gone;
+  placeholderIds.clear();
+  if (gone) { sweepThumbs(); requestPaint(); saveTank(); }
+}
 
 // Drag an .azpack folder onto the window to import it.
 async function walkEntry(ent: FileSystemEntry, prefix: string,
@@ -1182,9 +1651,26 @@ window.addEventListener("drop", (e) => {
     const ent = items[i]!.webkitGetAsEntry?.();
     if (ent) entries.push(ent);
   }
+  // Snapshot the flat list now: the DataTransfer item list is cleared
+  // once the drop event finishes dispatching, so reading .files after
+  // an await sees nothing.
+  const droppedFiles = Array.from(e.dataTransfer?.files ?? []);
   void (async () => {
     const files = new Map<string, File>();
     for (const ent of entries) await walkEntry(ent, "", files);
+    // Items that expose no filesystem entry (webkitGetAsEntry missing
+    // or returning null, as for items a script created): fall back to
+    // the flat file list. Single .fsh/.REZ/audio drops still import;
+    // an .azpack folder needs its entries.
+    if (!files.size && droppedFiles.length) {
+      for (const f of droppedFiles) files.set(f.name, f);
+      if (files.size)
+        console.info("drop: no folder entries; importing the files alone");
+    }
+    if (!files.size) {
+      console.warn("drop: nothing readable in the drop");
+      return;
+    }
     // Strip a shared top-level folder so manifest.json sits at the root.
     const first = [...files.keys()][0] ?? "";
     let flat = new Map(files);
@@ -1218,10 +1704,12 @@ window.addEventListener("drop", (e) => {
     // ~16MB, but .bin/.hqx wrappers inflate that (BinHex text is ~4/3),
     // so allow up to 32MB before skipping.
     const recs: { name: string; wav: Uint8Array }[] = [];
+    // Pack files are collected here (their head is read once) and
+    // decoded in the pass below, so no file is buffered twice.
+    const packFiles: [string, File][] = [];
     for (const [name, file] of flat) {
-      // A pack file belongs to the pass below — don't buffer it twice.
       const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());
-      if (isPack(head)) continue;
+      if (isPack(head)) { packFiles.push([name, file]); continue; }
       if (file.size > 32 * 1024 * 1024) {
         console.warn("snd skip (too large):", name);
         continue;
@@ -1236,22 +1724,61 @@ window.addEventListener("drop", (e) => {
     if (recs.length)
       await handleSounds(recs)
         .catch((e) => console.warn("sound import failed:", e));
-    // Not an .azpack folder — try each dropped file as a raw .fsh/.REZ pack.
-    for (const [name, file] of flat) {
-      const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());
-      if (!isPack(head)) continue;
-      const data = new Uint8Array(await file.arrayBuffer());
-      const sheets = fshToSheets(data);
-      if (!sheets.size) continue;
-      const idx = usePack({ sheets });
-      spawnFromDrop(idx, name.replace(/\.[^.]*$/, ""));
-      pickBackdrop(packImages(data).values());
-      if (fishSheets.length) {
-        console.info(`${name}: pack imported`);
-        return;
+    // Not an .azpack folder — every dropped pack file imports, not
+    // just the first (web/drop.ts, tested there). One file at a time:
+    // an unreadable file costs only itself, and a folder drop never
+    // holds every pack's bytes at once. Sections come from the
+    // extension like remote installs' collections: a .fsh fish adds
+    // no scenery, so its catalog art can't take the backdrop.
+    let imported = 0;
+    for (const [name, file] of packFiles) {
+      let data: Uint8Array;
+      try { data = new Uint8Array(await file.arrayBuffer()); }
+      catch (e) {
+        console.warn(`drop: skipping unreadable ${name}:`, e);
+        continue;
       }
+      const [p] = decodeDroppedPacks([[name, data]]);
+      if (!p) continue;
+      // A full tank takes no new fish: say so rather than store and
+      // record a pack whose fish never spawns.
+      const refusal = p.sheets.size ? fishRefusal("fish") : null;
+      if (refusal) {
+        console.warn(`drop: ${name}: ${refusal}`);
+        continue;
+      }
+      // A dropped pack has no home URL — mint a local: identity so the
+      // bytes persist (the only copy lives in IndexedDB) and the pack
+      // restores next launch like an installed add-on. Same-named
+      // drops reuse the record and overwrite the stored bytes.
+      const url = `${LOCAL_PREFIX}${name}`;
+      // Await the write: a quota/private-mode failure should be logged
+      // now, not discovered as a missing pack on next launch. The
+      // catch is belt-and-braces: packPut's contract is never-fail,
+      // but a rejection here would skip the remaining files.
+      const stored = await packPut(url, data).catch((err) => {
+        console.warn(`drop: ${name} packPut rejected`, err);
+        return null;
+      });
+      if (!stored)
+        console.warn(`drop: ${name} could not be stored — it won't ` +
+          "survive a relaunch");
+      // The archive install path: handleSheets binds the sheet to the
+      // url and spawns the fish; scenery keys by url so Overview's
+      // Remove clears it.
+      if (p.sheets.size) handleSheets(p.sheets, p.name, url, "fish", true);
+      if (p.images.size)
+        handleImages(p.images.values(), url, p.section, true);
+      // Only when the bytes persisted — a dangling record would throw
+      // "stored pack missing" on every launch. A pack with fish records
+      // as fish (a .REZ's scenery then stays session-only).
+      if (stored)
+        recordInstall({ section: p.sheets.size ? "fish" : p.section,
+                        inner: p.name, url });
+      imported++;
+      console.info(`${name}: pack imported${stored ? "" : " (session only)"}`);
     }
-    if (!recs.length)
+    if (!imported && !recs.length)
       console.warn("drop: no manifest.json, pack file, or 'snd ' found");
   })().catch((e) => console.warn("azpack import failed:", e));
 });
@@ -1280,14 +1807,23 @@ function animFrame(f: Fish, nf: number): number {
   return Math.floor(ph);
 }
 
-// Adult art draws at the shared art scale, so species keep their
-// original sizes relative to each other; a safety cap keeps an
-// unusually large sheet from filling the tank.
+// Small species draw at the shared art scale and big ones compress
+// (fishScale), judged by the body their frames paint; a safety cap
+// keeps an unusually large cell from filling the tank.
 const MAX_FISH_W = TANK.width * 0.6, MAX_FISH_H = TANK.height * 0.6;
-/** Frames are stored vertically: a profile is cellH wide once rotated. */
+const sheetScales = new WeakMap<SpriteSheet, number>();
+/** Frames are stored vertically: a profile is cellH wide once rotated.
+ * Memoized: every drawn frame asks, and measuring scans the art. */
 function sheetScale(sheet: SpriteSheet): number {
-  return Math.min(ART_SCALE, MAX_FISH_W / sheet.meta.cellH,
-                  MAX_FISH_H / sheet.meta.cellW);
+  let s = sheetScales.get(sheet);
+  if (s === undefined) {
+    const body = bodySize(sheet, restPose(sheet, 1).g);
+    s = Math.min(fishScale(body, TANK.width, TANK.height),
+                 MAX_FISH_W / sheet.meta.cellH,
+                 MAX_FISH_H / sheet.meta.cellW);
+    sheetScales.set(sheet, s);
+  }
+  return s;
 }
 
 /** Report a fish's half-extents at full growth to the sim, which
@@ -1318,7 +1854,7 @@ function drawScale(sheet: SpriteSheet, f: Fish): number {
 
 function drawFish(f: Fish): void {
   const sheet = sheetOf(f);
-  if (!sheet) return drawPlaceholder(f.x, f.y, f.facing, pitch(f), f.scale);
+  if (!sheet) return drawPlaceholder(f);
   let cv: HTMLCanvasElement;
   try {
     const pose = fishPose(sheet, f);
@@ -1328,7 +1864,7 @@ function drawFish(f: Fish): void {
     if (!(e instanceof RangeError)) throw e;
     // A truncated pack can legitimately lack this cell; an uncaught
     // RangeError here would abort the rest of every frame, so fall back.
-    return drawPlaceholder(f.x, f.y, f.facing, pitch(f), f.scale);
+    return drawPlaceholder(f);
   }
   ctx.save();
   // finally: a throwing drawImage must not leave its transform behind
@@ -1343,20 +1879,20 @@ function drawFish(f: Fish): void {
   }
 }
 
-// Placeholder sprite until real Aquazone assets are imported.
-function drawPlaceholder(x: number, y: number, facing: number,
-                         dev = 0, scale = 1): void {
+// Placeholder until real Aquazone assets are imported: a pixel guppy
+// (web/placeholder.ts) whose tail wags on the same clock as real fish.
+function drawPlaceholder(f: Fish): void {
+  // Takes the fish, not loose numbers: the frame, pitch and growth all
+  // come from it, so no caller can pass a pitch where a frame goes.
+  const frames = placeholderFrames();
+  const cv = frames[animFrame(f, frames.length)]!;
+  const scale = Math.round(f.scale * 20) / 20; // as drawScale rounds it
   ctx.save();
-  ctx.translate(Math.round(x), Math.round(y));
-  ctx.scale(-facing * scale, scale);
+  ctx.translate(Math.round(f.x), Math.round(f.y));
+  ctx.scale(-f.facing * scale, scale);
   // In the mirrored draw space the pitch angle flips sign.
-  ctx.rotate(-facing * dev);
-  ctx.fillStyle = "#e8a33d";
-  ctx.fillRect(-8, -4, 14, 8);   // body
-  ctx.fillRect(6, -6, 6, 12);    // tail
-  ctx.fillRect(-2, -7, 6, 3);    // dorsal
-  ctx.fillStyle = "#1a1a2e";
-  ctx.fillRect(-6, -2, 2, 2);    // eye
+  ctx.rotate(-f.facing * pitch(f));
+  ctx.drawImage(cv, -(cv.width >> 1), -(cv.height >> 1));
   ctx.restore();
 }
 
@@ -1407,20 +1943,19 @@ function render(): void {
   drawFood(ctx, sim.food);
   for (const f of sim.fish) drawFish(f);
 
+  drawAir(ctx);
   drawBubbles(ctx, sim.bubbles);
 
   // On the glass, so over the fish: ripples and splashes paint last.
   drawRipples(ctx, ripples);
   drawSplashes(ctx, splashes);
 
-  // Feed-zone boundary, only while the pointer is over the tank: a
-  // permanent line read as a second waterline. Under the murk and night
-  // overlays, so it dims with the water instead of glowing at night.
-  if (lastClient) {
-    ctx.fillStyle = overFeedZone
-      ? "rgba(255,255,255,0.45)"
-      : "rgba(255,255,255,0.14)";
-    ctx.fillRect(0, feedZoneLineY(TANK.height), TANK.width, 1);
+  // The waterline divides feeding from tapping, so it brightens while
+  // a click would feed. Under the murk and night overlays, so it dims
+  // with the water instead of glowing at night.
+  if (overFeedZone) {
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.fillRect(0, SURFACE, TANK.width, 1);
   }
 
   // Fouled water murks the whole scene.
@@ -1428,6 +1963,17 @@ function render(): void {
            waterMotion === "animated" ? sim.tickCount : 0);
 
   drawNight(new Date());
+
+  if (paused) {
+    ctx.save();
+    ctx.fillStyle = "rgba(4,8,24,0.35)";
+    ctx.fillRect(0, 0, TANK.width, TANK.height);
+    ctx.fillStyle = "#e8e8e8";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("PAUSED", TANK.width / 2, TANK.height / 2);
+    ctx.restore();
+  }
 }
 
 /** Night's blue, multiplied over the scene at the darkest demo night:
@@ -1518,10 +2064,32 @@ function frame(now: number): void {
   // Ahead of the tick gate: hover must update (and repaint) even
   // while no tick runs.
   syncFeedHover();
-  for (let i = 0; i < plan.ticks; i++) tickSim();
-  if (plan.ticks === 0 && !frameDirty) return;
+  // Pause freezes the sim clock (hunger, rot, filtration, the demo
+  // day) but not the page: hover, the light timer and repaints still
+  // run. Dropping the accumulator keeps a long pause from
+  // fast-forwarding on resume.
+  if (paused) acc = 0;
+  const ticks = paused ? 0 : plan.ticks;
+  for (let i = 0; i < ticks; i++) tickSim();
+  // An open Get-Info card follows its fish, and moves with the window
+  // on a resize, whether or not a tick runs.
+  if (infoCard) layoutInfo();
+  // The CRT's power-on warm-up animates on its own clock.
+  const warming = crtOn && (crt?.animating ?? false);
+  if (ticks === 0 && !frameDirty && !warming) return;
   frameDirty = false;
   render();
+  // A parked cursor doesn't re-hit-test: hide the tip once the fish
+  // under it has swum off, and refresh the label while it stays —
+  // the state word would otherwise go stale between pointermoves.
+  if (lastHover && fishTip.style.display !== "none") {
+    const best = fishToName(lastHover);
+    if (!best) fishTip.style.display = "none";
+    else {
+      const label = fishTipLabel(best);
+      if (fishTip.textContent !== label) fishTip.textContent = label;
+    }
+  }
   if (crtOn) crt?.render();
 }
 // A resize changes the CRT buffer size, and resizing a WebGL canvas

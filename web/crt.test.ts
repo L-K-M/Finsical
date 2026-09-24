@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { CRT_DEFAULTS, sanitizeCrtConfig } from "./crt.js";
+import {
+  CRT_DEFAULTS, CRT_PRESETS, PICTURE_KEYS, presetTube, sanitizeCrtConfig,
+} from "./crt.js";
+import type { CrtConfig } from "./crt.js";
 
 // sanitizeCrtConfig is the trust boundary for localStorage payloads and
 // bus messages from the prefs window — anything odd must fall back to
@@ -34,5 +37,59 @@ describe("sanitizeCrtConfig", () => {
     const c = sanitizeCrtConfig(CRT_DEFAULTS);
     expect(c).toEqual(CRT_DEFAULTS);
     expect(c).not.toBe(CRT_DEFAULTS); // a copy — defaults stay frozen
+  });
+});
+
+describe("CRT_PRESETS", () => {
+  it("has unique ids and labels", () => {
+    const ids = CRT_PRESETS.map((p) => p.id);
+    const labels = CRT_PRESETS.map((p) => p.label);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it("every preset is a complete, in-range CrtConfig", () => {
+    const keys = Object.keys(CRT_DEFAULTS) as (keyof CrtConfig)[];
+    for (const p of CRT_PRESETS) {
+      for (const k of keys) expect(p.config[k]).toBeTypeOf("number");
+      expect(sanitizeCrtConfig(p.config)).toEqual(p.config);
+    }
+  });
+
+  it("Authentic is the tuned defaults", () => {
+    const auth = CRT_PRESETS.find((p) => p.id === "authentic");
+    expect(auth?.config).toEqual(CRT_DEFAULTS);
+  });
+
+  it("Pixel Perfect zeros every tube trait", () => {
+    const flat = CRT_PRESETS.find((p) => p.id === "pixel-perfect");
+    expect(flat).toBeDefined();
+    // Tube keys are everything but the picture controls, so a new trait
+    // can't silently keep a nonzero Pixel Perfect default.
+    const tube = Object.keys(presetTube(flat!)) as (keyof CrtConfig)[];
+    expect(tube.length).toBeGreaterThan(0);
+    for (const k of tube) expect(flat!.config[k]).toBe(0);
+  });
+
+  it("a preset sets the tube and leaves the picture trims alone", () => {
+    // The Picture pane's brightness, geometry and color gains are the
+    // user's; a preset clicked on the Monitor pane must not reset them.
+    const mine: CrtConfig = { ...CRT_DEFAULTS, brightness: 0.9, red: 0.2,
+                              zoom: 0.7, grain: 0.8 };
+    for (const p of CRT_PRESETS) {
+      const next = { ...mine, ...presetTube(p) };
+      for (const k of PICTURE_KEYS) expect(next[k]).toBe(mine[k]);
+      expect(next.grain).toBe(p.config.grain);
+    }
+    // Every key is one or the other: a picture trim added later but
+    // left out of PICTURE_KEYS would count as tube and be reset.
+    const tube = Object.keys(presetTube(CRT_PRESETS[0]!));
+    expect([...PICTURE_KEYS, ...tube].sort())
+      .toEqual(Object.keys(CRT_DEFAULTS).sort());
+  });
+
+  it("configs are frozen so a click cannot mutate the shared object", () => {
+    for (const p of CRT_PRESETS)
+      expect(Object.isFrozen(p.config)).toBe(true);
   });
 });

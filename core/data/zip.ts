@@ -5,6 +5,7 @@
  * Environment-agnostic: deflate goes through DecompressionStream, which
  * exists in both node >= 18 and WebKit.
  */
+import { ownBytes } from "./bytes.js";
 
 export interface ZipEntry {
   name: string;
@@ -97,7 +98,7 @@ export async function zipRead(d: Uint8Array, e: ZipEntry, maxBytes = MAX_ENTRY):
   if (e.usize > maxBytes)
     throw new Error(`zip ${e.name}: entry too large (${e.usize} bytes)`);
   const ds = new DecompressionStream("deflate-raw");
-  const stream = new Blob([data]).stream().pipeThrough(ds);
+  const stream = new Blob([ownBytes(data)]).stream().pipeThrough(ds);
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;

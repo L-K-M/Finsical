@@ -10,11 +10,12 @@
  * with no native bridge. Add-on identity is the entry URL (`inner` is
  * only a display name/species tag — basenames collide across folders).
  */
+import { ownBytes } from "../core/data/bytes.js";
 import { zipEntries, zipRead } from "../core/data/zip.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
 import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
-import { metaGet, metaPut, packDelete, packGet, packPut }
+import { isLocalPack, metaGet, metaPut, packDelete, packGet, packPut }
   from "./store.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
@@ -96,7 +97,12 @@ function pageUrl(item: string, outer: string): string {
   return `${BASE}/${item}/${encodeURIComponent(outer)}/`;
 }
 
-export interface Importable { section: string; inner: string; url: string }
+export interface Importable {
+  section: string; inner: string; url: string;
+  /** Sound record names this add-on contributed — persisted with the
+   * install so uninstall can drop exactly these from the bank. */
+  sounds?: string[];
+}
 
 /** Raw zip bytes, memoized by URL and persisted in IndexedDB — nested
  * collections share one parent download across all of their entry
@@ -112,20 +118,67 @@ function immutableHost(u: string): boolean {
   try { return /(^|\.)archive\.org$/.test(new URL(u).hostname); }
   catch { return false; }
 }
+/** archive.org occasionally stalls mid-response. Without a timeout a
+ * hung request pins its cache slot (and the caller's in-flight
+ * install) forever — the panel's Try Again then no-ops against the
+ * wedged entry. Aborting rejects like a network error, the cache
+ * entry drops, and the retry starts a fresh request. */
+const FETCH_TIMEOUT_MS = 30_000;
+/** fetch + consume the body under a stall budget — any phase that
+ * makes no progress for the limit aborts the request and rejects like
+ * a network error. `kick` resets the clock: callers streaming a body
+ * call it per chunk so a slow-but-healthy download always finishes —
+ * only a true wedge dies. */
+async function fetchTimed<T>(url: string,
+                             read: (r: Response, kick: () => void)
+                               => Promise<T>):
+    Promise<T> {
+  const ctl = new AbortController();
+  let t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+  const kick = () => {
+    clearTimeout(t);
+    t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+  };
+  try { return await read(await fetch(url, { signal: ctl.signal }), kick); }
+  finally { clearTimeout(t); }
+}
+/** Body bytes via a reader so each arrived chunk can kick the stall
+ * clock — `r.arrayBuffer()` would give no progress signal. */
+async function readBody(r: Response, kick: () => void):
+    Promise<Uint8Array> {
+  const rd = r.body?.getReader();
+  if (!rd) return new Uint8Array(await r.arrayBuffer());
+  const chunks: Uint8Array[] = [];
+  let len = 0;
+  for (;;) {
+    const { done, value } = await rd.read();
+    if (done) break;
+    chunks.push(value);
+    len += value.length;
+    kick();
+  }
+  const out = new Uint8Array(len);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
 function fetchZip(url: string): Promise<Uint8Array> {
   let p = zipCache.get(url);
   if (!p) {
     p = (async () => {
       const hit = immutableHost(url) ? await packGet(url) : null;
       if (hit) return hit;
-      const r = await fetch(url);
-      if (!r.ok) throw new Error(`${url}: ${r.status}`);
-      const d = new Uint8Array(await r.arrayBuffer());
+      const d = await fetchTimed(url, async (r, kick) => {
+        if (!r.ok) throw new Error(`${url}: ${r.status}`);
+        return readBody(r, kick);
+      });
       if (immutableHost(url)) void packPut(url, d).catch(() => {});
       return d;
     })();
     zipCache.set(url, p);
-    p.catch(() => zipCache.delete(url));
+    // Delete only if still ours — a same-tick caller may have swapped in
+    // a replacement promise before this one rejected.
+    p.catch(() => { if (zipCache.get(url) === p) zipCache.delete(url); });
   }
   return p;
 }
@@ -161,9 +214,13 @@ async function listPage(item: string, outer: string): Promise<string> {
         Number.isFinite(hit.t) && Date.now() - hit.t < PAGE_TTL_MS)
       return hit;
     try {
-      const r = await fetch(page);
-      if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
-      const fresh = { t: Date.now(), html: await r.text() };
+      // Read through readBody, not r.text(): each chunk resets the
+      // stall clock, so a big listing on a slow link isn't cut off.
+      const fresh = await fetchTimed(page, async (r, kick) => {
+        if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
+        return { t: Date.now(),
+                 html: new TextDecoder().decode(await readBody(r, kick)) };
+      });
       if (immutableHost(page))
         void metaPut(page, fresh).catch(() => {});
       return fresh;
@@ -178,7 +235,7 @@ async function listPage(item: string, outer: string): Promise<string> {
     }
   })();
   pageCache.set(page, p);
-  p.catch(() => pageCache.delete(page));
+  p.catch(() => { if (pageCache.get(page) === p) pageCache.delete(page); });
   return (await p).html;
 }
 
@@ -323,6 +380,48 @@ export interface PackResult {
   sounds: { name: string; wav: Uint8Array }[];
 }
 
+/** Record names the leaving add-ons exclusively own — a name still
+ * claimed by a surviving add-on stays in the bank (same-name records
+ * overwrite each other in the store, so the survivor's copy is the
+ * one that's actually there). */
+export function orphanedSounds(gone: Importable[],
+                               rest: Importable[]): string[] {
+  const keep = new Set(rest.flatMap((a) => a.sounds ?? []));
+  return [...new Set(gone.flatMap((a) => a.sounds ?? []))]
+    .filter((n) => !keep.has(n));
+}
+
+/** How a finished install is recorded: "install" (a user's install)
+ * adds the add-on when it is missing; "refresh" (a launch restore) only
+ * updates an existing record, so an add-on removed while its restore
+ * was still downloading stays removed. */
+export type RecordMode = "install" | "refresh";
+
+/** Record `it` in the saved add-on list with the sound names its
+ * install put in the bank (merged into any names already recorded, so
+ * uninstall knows what to drop). Returns whether the add-on is on the
+ * list afterwards. Mutates `list`. */
+export function recordAddon(list: Importable[], it: Importable,
+                            soundNames: string[], mode: RecordMode): boolean {
+  const rec = list.find((a) => a.url === it.url);
+  if (!rec) {
+    if (mode === "refresh") return false;
+    list.push(soundNames.length
+      ? { ...it, sounds: [...new Set(soundNames)] } : it);
+    return true;
+  }
+  if (soundNames.length)
+    rec.sounds = [...new Set([...(rec.sounds ?? []), ...soundNames])];
+  return true;
+}
+
+/** Whether `it` is still on the saved add-on `list`. A restore asks
+ * right before applying a pack: an add-on removed since the restore
+ * was queued (Remove, Empty Tank) must not come back. */
+export function isListed(list: Importable[], it: Importable): boolean {
+  return list.some((a) => a.url === it.url);
+}
+
 /** The listing qualifies colliding leaf names ("sub/dup", "dup (2)");
  * an audio-file record takes its name from the basename stem, so it
  * must carry the same qualification — otherwise installing the sibling
@@ -344,6 +443,18 @@ export function qualifySoundItemName(
  * the caller can pick each one's best sheet. Sound-bearing entries
  * (audio files, 'snd ' resource forks) come back as sound records. */
 export async function importAddon(url: string): Promise<PackResult[]> {
+  // Dropped packs persist as raw bytes under a `local:` key — nothing
+  // to download; decode them like any other pack blob.
+  if (isLocalPack(url)) {
+    const d = await packGet(url);
+    if (!d) throw new Error(`${url}: stored pack missing`);
+    if (!isPack(d)) throw new Error(`${url}: stored data is not a pack`);
+    // Same shape as the remote isPack branch: a pack blob yields no
+    // sound records — dropped loose audio already persisted via
+    // handleSounds/sndsPut at drop time.
+    return [{ sheets: fshToSheets(d), images: packImages(d),
+              sounds: [] }];
+  }
   const blobs = await fetchInnerBlobs(url);
   const out: PackResult[] = [];
   for (const b of blobs) {
@@ -363,16 +474,19 @@ export async function importAddon(url: string): Promise<PackResult[]> {
   return out;
 }
 
-/** Fetch the listing pages of all collections, grouped by section in
- * COLLECTIONS order. Never rejects: a failed section just comes back
- * empty. */
-export async function listAddons(): Promise<Importable[]> {
+/** Fetch the listing pages of all collections (or those `only`
+ * accepts), grouped by section in COLLECTIONS order. Never rejects: a
+ * failed section just comes back empty. */
+export async function listAddons(
+    only: (c: Collection) => boolean = () => true,
+): Promise<Importable[]> {
   // First collection index per section — items group under it.
   const rank = new Map<string, number>();
   COLLECTIONS.forEach((c, i) => {
     if (!rank.has(c.section)) rank.set(c.section, i);
   });
-  const lists = await Promise.all(COLLECTIONS.map(async (col) => {
+  const cols = COLLECTIONS.filter(only);
+  const lists = await Promise.all(cols.map(async (col) => {
     try {
       const items = await listCollection(col);
       for (const it of items) it.section = col.section;
@@ -394,15 +508,25 @@ export interface ImportHandlers {
    * must not spawn fish (the saved roster already holds them). */
   onSheets(sheets: Map<string, SpriteSheet>, name: string, url: string,
            section: string, live: boolean): void;
-  onImages(images: Iterable<IndexedImage>, src: string, section: string): void;
+  /** `live` as for onSheets: a restore must not change the choice of
+   * scenery on display. */
+  onImages(images: Iterable<IndexedImage>, src: string, section: string,
+           live: boolean): void;
   /** Sound records from a sound-bearing add-on — audio files and
    * 'snd ' resource forks alike arrive pre-flattened to {name, wav}.
    * `live` marks user installs vs restores (a restore must not play). */
   onSounds?(recs: { name: string; wav: Uint8Array }[],
             live: boolean): void;
   /** Fired once per successful install — lets the caller record which
-   * add-ons went into the tank so they can be restored later. */
-  onInstall?(it: Importable): void;
+   * add-ons went into the tank so they can be restored later.
+   * `soundNames` are the record names (post-dedup) the install put in
+   * the sound bank — uninstall needs them for provenance. */
+  onInstall?(it: Importable, soundNames: string[]): void;
+  /** Fired after a launch restore re-applies an add-on, with the sound
+   * names it put back: refreshes the saved record's provenance (legacy
+   * installs heal after one launch) without re-recording an add-on the
+   * user removed while its restore was downloading. */
+  onRestore?(it: Importable, soundNames: string[]): void;
   /** Why the tank can't take this add-on right now (e.g. it is full),
    * or null. Asked before a local install; the Import Add-ons window
    * gets the same answer from the tank page as an installFailed. */
@@ -447,7 +571,9 @@ export function fetchAddon(url: string): Promise<PackResult[]> {
   if (!p) {
     p = importAddon(url);
     packCache.set(url, p);
-    p.catch(() => packCache.delete(url)); // failed fetches stay retryable
+    // Failed fetches stay retryable; only evict if the entry is still
+    // this promise (a rider may have replaced it already).
+    p.catch(() => { if (packCache.get(url) === p) packCache.delete(url); });
   }
   return p;
 }
@@ -529,12 +655,16 @@ export function loadProblem(e: unknown): string {
     return "The download has no add-on in it.";
   if (msg.endsWith(": entry missing"))
     return "The download is missing the add-on's file.";
+  if (/abort/i.test(msg))
+    return "The download took too long — try again.";
   return "Check the connection and try again.";
 }
 
 export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     { open(): void; close(): void; readonly isOpen: boolean;
-      restore(list: Importable[]): Promise<void>;
+      /** Resolves to the add-ons that failed to restore. */
+      restore(list: Importable[],
+              wanted: (it: Importable) => boolean): Promise<Importable[]>;
       notify(m: BusMsg): void } {
   const remote = opts?.remote;
   const installed = new Set<string>(); // add-on urls, not display names
@@ -571,8 +701,14 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   popBtn.type = "button";
   popBtn.id = "imp-show";
   showLabel.htmlFor = popBtn.id;
+  const filter = el("input", "ifilter");
+  filter.placeholder = "Filter";
+  filter.setAttribute("aria-label", "Filter the add-on list");
+  filter.autocomplete = "off";
+  filter.spellcheck = false;
   const count = el("div", "icount");
-  head.append(showLabel, popBtn, count);
+  count.setAttribute("aria-live", "polite");
+  head.append(showLabel, popBtn, filter, count);
 
   const listHost = el("div", "ilist");
   const detail = el("div", "idetail");
@@ -644,6 +780,12 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     setButtonTitle(play, "Play");
   };
   audio.addEventListener("ended", stopSound);
+  // The Import Add-ons window hides on close instead of unloading, and
+  // close() only handles the overlay: without this a preview
+  // would keep playing with no window left to stop it from.
+  if (!ov) document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stopSound();
+  });
   pushButton(play, () => {
     if (!audio.paused) { stopSound(); return; }
     void audio.play().then(() => setButtonTitle(play, "Stop"),
@@ -667,6 +809,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   });
   function setShowEnabled(on: boolean): void {
     popBtn.disabled = !on;
+    filter.disabled = !on;
     showLabel.classList.toggle("osm-disabled", !on);
   }
   setShowEnabled(false);
@@ -700,8 +843,18 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   function showSection(sec: string): void {
     section = sec;
     try { localStorage.setItem(SECTION_KEY, sec); } catch { /* unavailable */ }
-    rows = all.filter((x) => x.section === sec);
-    // Drop still-pending thumbs from the previous section; in-flight
+    applyFilter();
+  }
+
+  /** Rebuild the list for the current section under the filter text —
+   * substring, case-insensitive, on the add-on's display name. The
+   * query survives a section switch so "guppy" can be tried in each. */
+  function applyFilter(): void {
+    const q = filter.value.trim().toLowerCase();
+    const pool = all.filter((x) => x.section === section);
+    rows = q ? pool.filter((x) => x.inner.toLowerCase().includes(q))
+             : pool;
+    // Drop still-pending thumbs from the previous listing; in-flight
     // fetches complete anyway and their results stay memoized.
     thumbQueue.length = 0;
     thumbQueued.clear();
@@ -713,9 +866,26 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       if (!it || it.section === "sounds") continue;
       if (io) io.observe(r); else wantThumb(it);
     }
-    count.textContent = `${rows.length} add-on${rows.length === 1 ? "" : "s"}`;
+    count.textContent = q
+      ? `${rows.length} of ${pool.length}`
+      : `${rows.length} add-on${rows.length === 1 ? "" : "s"}`;
     clearDetail();
   }
+
+  filter.addEventListener("input", applyFilter);
+  filter.addEventListener("keydown", (e) => {
+    // Escape clears the field; consuming it keeps the panel open.
+    // isComposing: an IME-cancel Escape must not wipe the filter.
+    // Safari reports composition keydowns with isComposing false and
+    // keyCode 229 — the canonical IME guard checks both.
+    if (!(e.isComposing || e.keyCode === 229) &&
+        e.key === "Escape" && filter.value) {
+      filter.value = "";
+      applyFilter();
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
 
   // ---- detail ---------------------------------------------------------------
   // The preview on show, kept to re-place it when the well resizes.
@@ -815,7 +985,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         // Sound add-ons preview with a real player — the payload is
         // already-decoded WAV or a browser-decodable encoded stream.
         sndObjUrl = URL.createObjectURL(
-          new Blob([snds[0]!.wav], { type: audioType(snds[0]!.wav) }));
+          new Blob([ownBytes(snds[0]!.wav)],
+                   { type: audioType(snds[0]!.wav) }));
         audio.src = sndObjUrl;
         showPlay(true);
         setButtonTitle(play, "Play");
@@ -927,6 +1098,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   // name-only row.
   const thumbQueued = new Set<string>();
   const thumbQueue: Importable[] = [];
+  // URLs whose fetch already started: queued/queued-set only cover the
+  // wait, so without this a second wantThumb mid-fetch re-queues a
+  // duplicate that burns one of the THUMB_PAR slots.
+  const thumbFetching = new Set<string>();
   let thumbRunning = 0;
   const THUMB_PAR = 3;
 
@@ -986,7 +1161,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         pumpThumbs();
         return;
       }
-      const blob = new Blob([bytes], { type: "image/png" });
+      const blob = new Blob([ownBytes(bytes)], { type: "image/png" });
       const done = (bmp: CanvasImageSource, w: number, h: number) => {
         const cv = document.createElement("canvas");
         cv.width = w; cv.height = h;
@@ -1030,6 +1205,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     while (thumbRunning < THUMB_PAR && thumbQueue.length) {
       const it = thumbQueue.shift()!;
       thumbRunning++;
+      thumbFetching.add(it.url);
       void fetchPack(it.url).then((rs) => {
         const usable = rs.filter(
           (r) => r.sheets.size || r.images.size || r.sounds.length);
@@ -1042,12 +1218,17 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       }).catch((e) => {
         console.warn(`add-on thumb failed for ${it.inner}:`, e);
       })
-        .finally(() => { thumbRunning--; pumpThumbs(); });
+        .finally(() => {
+          thumbRunning--;
+          thumbFetching.delete(it.url);
+          pumpThumbs();
+        });
     }
   }
 
   function wantThumb(it: Importable): void {
-    if (thumbs.has(it.url) || thumbQueued.has(it.url)) return;
+    if (thumbs.has(it.url) || thumbQueued.has(it.url) ||
+        thumbFetching.has(it.url)) return;
     if (loadStoredThumb(it)) return;
     thumbQueued.add(it.url);
     thumbQueue.push(it);
@@ -1070,20 +1251,29 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   // Shared fetch→dispatch→mark-installed core for applyAddon (manual
   // install) and restore (re-import on launch); only the onInstall
   // side effect differs. `live` marks user installs vs restores.
-  function applyPack(it: Importable, rs: PackResult[], live: boolean): void {
+  function applyPack(it: Importable, rs: PackResult[],
+                     live: boolean): string[] {
     const usable = rs.filter(
       (r) => r.sheets.size || r.images.size || r.sounds.length);
     if (!usable.length) throw new Error("no pack inside");
+    const soundNames: string[] = [];
     for (const r of usable) {
       if (r.sheets.size)
         h.onSheets(r.sheets, it.inner, it.url, it.section, live);
-      if (r.images.size) h.onImages(r.images.values(), it.url, it.section);
-      if (r.sounds.length)
-        h.onSounds?.(qualifySoundItemName(r.sounds, it.inner), live);
+      if (r.images.size)
+        h.onImages(r.images.values(), it.url, it.section, live);
+      if (r.sounds.length) {
+        const recs = qualifySoundItemName(r.sounds, it.inner);
+        // The handler may rename colliding records in place — read the
+        // names after it ran so uninstall drops what was stored.
+        h.onSounds?.(recs, live);
+        for (const s of recs) soundNames.push(s.name);
+      }
     }
     markInstalled(it.url, true);
     const pv = h.preview(usable);
     if (pv) { thumbs.set(it.url, pv); storeThumb(it, pv); }
+    return soundNames;
   }
 
   function markInstalled(url: string, on: boolean): void {
@@ -1116,8 +1306,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     // A launch-time restore may have installed it while the detail fetch
     // was in flight — honor the label the user actually clicked.
     if (!again && installed.has(it.url)) return;
-    applyPack(it, rs, true);
-    h.onInstall?.(it);
+    const soundNames = applyPack(it, rs, true);
+    h.onInstall?.(it, soundNames);
   }
 
   function loadListing(): void {
@@ -1216,23 +1406,37 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     // gravel backdrop). Sequential so slot/backdrop assignment matches
     // the original install order; failures skip that add-on. Shares
     // applyPack's dispatch so the two install paths can't diverge;
-    // skips onInstall so restores don't re-record, and skips add-ons
-    // already installed while the chain was in flight.
-    restore(list: Importable[]): Promise<void> {
-      if (remote) return Promise.resolve(); // the tank page owns the sim
+    // fires onRestore to refresh sound provenance, which never re-adds.
+    // Skips add-ons already installed while the chain was in flight, or
+    // no longer `wanted` when their turn comes, and resolves with the
+    // ones that failed, so the caller can retry them.
+    restore(list: Importable[],
+            wanted: (it: Importable) => boolean): Promise<Importable[]> {
+      if (remote) return Promise.resolve([]); // the tank page owns the sim
+      const failed: Importable[] = [];
       let p: Promise<void> = Promise.resolve();
       for (const it of list) {
         p = p.then(() => {
-          if (installed.has(it.url)) return;
+          if (installed.has(it.url) || !wanted(it)) return;
           return fetchPack(it.url)
             .then((rs) => {
-              if (!installed.has(it.url)) applyPack(it, rs, false);
+              // Asked again: it may have been removed during the fetch.
+              if (installed.has(it.url) || !wanted(it)) return;
+              // Restores refresh the saved record's sound provenance —
+              // legacy installs recorded before it existed heal after
+              // one launch, so uninstall can drop their records too.
+              // applyPack must run unconditionally — inside the ?.()
+              // call a missing onRestore would skip the whole restore.
+              const names = applyPack(it, rs, false);
+              h.onRestore?.(it, names);
             })
-            .catch((e) =>
-              console.warn(`add-on restore failed for ${it.inner}:`, e));
+            .catch((e) => {
+              failed.push(it);
+              console.warn(`add-on restore failed for ${it.inner}:`, e);
+            });
         });
       }
-      return p;
+      return p.then(() => failed);
     },
   };
 }

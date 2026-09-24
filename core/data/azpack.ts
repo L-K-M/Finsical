@@ -5,6 +5,7 @@
  * under sprites/ and images/. This module is environment-agnostic: the
  * caller supplies file bytes (fs in node, fetch in the browser shell).
  */
+import { ownBytes } from "./bytes.js";
 
 export interface SpriteSheetMeta {
   image: string;
@@ -57,7 +58,7 @@ const MAX_PALETTE_ENTRIES = 256;
 
 async function inflate(data: Uint8Array, expected: number): Promise<Uint8Array> {
   const ds = new DecompressionStream("deflate");
-  const stream = new Blob([data]).stream().pipeThrough(ds);
+  const stream = new Blob([ownBytes(data)]).stream().pipeThrough(ds);
   const reader = stream.getReader();
   const out = new Uint8Array(expected);
   let offset = 0;
