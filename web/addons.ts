@@ -63,7 +63,7 @@ window.addEventListener("drop", (e) => {
     }
     // sndsMerge resolves null on a failed put rather than rejecting —
     // a dropped sound that never landed must not read as loaded.
-    if (stored == null) {
+    if (stored === null) {
       console.warn("snd persist failed for", recs.length, "records");
       return;
     }

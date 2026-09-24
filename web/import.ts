@@ -1106,7 +1106,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       if (detailRef !== ref) return;
       dblAdd = false;
       console.warn(`add-on ${it.inner} failed to load:`, e);
-      status.textContent = `Couldn't load it. ${loadProblem(e)}`;
+      // installProblem, not loadProblem: a deterministic failure keeps
+      // the tank's own message instead of "try again" beside a disabled
+      // Try Again button.
+      status.textContent = `Couldn't load it. ${installProblem(e)}`;
       // A decode or validation failure recurs identically — retrying
       // only repeats the same dead end, so the button stays off.
       setAdd("Try Again", transientFailure(e) ? () => showDetail(it)

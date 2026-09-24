@@ -69,7 +69,13 @@ function rw<T>(store: string, mode: IDBTransactionMode,
         const rq = run(tx.objectStore(store));
         // Settle on commit — a request "success" can still abort at
         // commit time (quota), which must not read as a stored value.
-        tx.oncomplete = () => res(rq.result ?? null); // get-miss → null
+        // A read that found something counts as stored data too —
+        // read-mostly sessions deserve the eviction grant the same as
+        // writers (the ask still never precedes a populated store).
+        tx.oncomplete = () => {
+          if (mode === "readonly" && rq.result != null) askPersist();
+          res(rq.result ?? null); // get-miss → null
+        };
         rq.onerror = () => res(null);
         tx.onerror = tx.onabort = () => res(null);
       } catch { res(null); }
@@ -181,7 +187,6 @@ export function packPut(url: string, data: Uint8Array): Promise<unknown> {
   return put;
 }
 export function packDelete(url: string): Promise<unknown> {
-  askPersist();
   // Drop the bytes and their trim stat together — a lone stat would
   // make trimPacks() count bytes that no longer exist.
   return openDb().catch(() => null).then((d) => {
