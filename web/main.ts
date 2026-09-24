@@ -542,9 +542,14 @@ function layoutInfo(): void {
 }
 
 // A knocking spree gets the public aquarium's sign (web/scold.ts).
+const SCOLD_KEY = "finsical:scoldSign";
 let glassTaps: number[] = [];
 let scoldedAt: number | null = null;
+let scoldOn = true;
+try { scoldOn = localStorage.getItem(SCOLD_KEY) !== "off"; }
+catch { /* storage unavailable */ }
 function noteGlassTap(): void {
+  if (!scoldOn) return;
   const now = performance.now();
   glassTaps = [...recentTaps(glassTaps, now), now];
   if (!shouldScold(glassTaps, now, scoldedAt)) return;
@@ -1889,9 +1894,18 @@ mountTankMenuBar({
   toggleMute,
   togglePause: () => { setPaused(!paused); },
   toggleZen: () => setZen(!zen),
+  toggleScold: () => {
+    scoldOn = !scoldOn;
+    // Drop the in-flight tally too, so a spree can't span the toggle:
+    // taps counted before "off" would otherwise complete the moment
+    // the sign comes back on inside the 8 s window.
+    if (!scoldOn) glassTaps = [];
+    try { localStorage.setItem(SCOLD_KEY, scoldOn ? "on" : "off"); }
+    catch { /* storage unavailable */ }
+  },
   state: () => ({ autoFeed, crtUsable: crt?.usable ?? false, crtOn,
                   lampOn: lighting.lamp, muted: soundCfg.muted, paused,
-                  zen }),
+                  zen, scoldOn }),
 });
 
 // web/pack/ is gitignored and no build ships one, so a missing
