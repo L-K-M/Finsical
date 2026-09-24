@@ -57,8 +57,7 @@ function bufferKey(name: string, buf: AudioBuffer): string {
   for (let c = 0; c < buf.numberOfChannels; c++) {
     const d = buf.getChannelData(c);
     for (let i = 0; i < d.length; i++)
-      h = Math.imul(h ^ (Math.round((d[i] ?? 0) * 32768) | 0),
-                    0x01000193);
+      h = Math.imul(h ^ (((d[i] ?? 0) * 32768) | 0), 0x01000193);
   }
   return `${name}:${buf.sampleRate}:${buf.duration}:${h >>> 0}`;
 }
@@ -467,7 +466,9 @@ export class TankAudio {
     // One lookup feeds both the key and the source — two independent
     // picks could disagree if tie-breaking ever diverged.
     const e = this.namedEntry(FILTER_BUBBLING);
-    this.ambientKey = this.ambientPick(e);
+    // Default params fire on explicit undefined too — guard so an
+    // empty bank doesn't trigger a second namedEntry lookup.
+    this.ambientKey = e ? this.ambientPick(e) : "";
     this.ambientGen++; // stale pending starts abort in play()
     this.ambientSrc = this.play(e?.buf ?? null, AMBIENT_GAIN, true);
   }
