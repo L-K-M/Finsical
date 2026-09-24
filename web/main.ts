@@ -245,11 +245,16 @@ document.addEventListener("visibilitychange", () => {
 });
 // Every mutation path already calls saveTank() directly, so the
 // interval's 10 s cadence only needs to keep client windows fed —
-// postState — while a slower tick persists clock/position drift.
+// postState — while every 6th tick persists clock/position drift.
 // localStorage writes drop from 6/min to 1/min of idle main-thread
-// serialization instead of hitching a frame on slow storage.
-setInterval(postState, 10_000);
-setInterval(saveTank, 60_000);
+// serialization instead of hitching a frame on slow storage. One
+// interval with a counter keeps the save cadence coupled to the post
+// cadence so the two can't drift apart.
+let saveTick = 0;
+setInterval(() => {
+  postState();
+  if (++saveTick % 6 === 0) saveTank();
+}, 10_000);
 
 /** CSS-pixel pointer coords → tank-space point; null in the
  * letterbox bars (object-fit: contain inside the element box). */
