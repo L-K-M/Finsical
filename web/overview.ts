@@ -37,9 +37,13 @@ let removeArmTimer = 0;
 let removeArmedAt = 0;
 /** The row key the armed Remove points at; disarm when it moves. */
 let removeArmedKey: string | undefined;
+/** Pending deferred live-region write from a drift re-arm. */
+let statusTimer = 0;
 function disarmRemove(msg?: string): void {
   const wasArmed = removeBtn.dataset.armed === "1";
   window.clearTimeout(removeArmTimer);
+  // A queued drift announcement mustn't land after a cancel message.
+  window.clearTimeout(statusTimer);
   delete removeBtn.dataset.armed;
   removeArmedKey = undefined;
   removeBtn.textContent = "Remove";
@@ -63,7 +67,8 @@ removeStatus.setAttribute("role", "status");
 removeStatus.setAttribute("aria-live", "polite");
 removeStatus.setAttribute("aria-atomic", "true");
 removeStatus.style.cssText = "position:absolute;width:1px;height:1px;" +
-  "overflow:hidden;clip-path:inset(50%);white-space:nowrap";
+  "overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);" +
+  "white-space:nowrap";
 removeBtn.after(removeStatus);
 
 let tankBoot: string | undefined;
@@ -162,9 +167,19 @@ const armOrRemove = (): void => {
     removeBtn.dataset.armed = "1";
     removeArmedKey = it.key;
     removeBtn.textContent = "Really remove?";
-    removeStatus.textContent = drifted
-      ? "Selection changed — press again to confirm."
-      : "Press again to confirm.";
+    if (drifted) {
+      // Live regions only announce *changes* — a second consecutive
+      // drift writing identical text would be silent, so clear first
+      // and set on the next task.
+      removeStatus.textContent = "";
+      window.clearTimeout(statusTimer);
+      statusTimer = window.setTimeout(() => {
+        removeStatus.textContent =
+          "Selection changed — press again to confirm.";
+      }, 0);
+    } else {
+      removeStatus.textContent = "Press again to confirm.";
+    }
     removeArmedAt = performance.now();
     removeArmTimer = window.setTimeout(
       () => disarmRemove("Removal cancelled."), 4000);
