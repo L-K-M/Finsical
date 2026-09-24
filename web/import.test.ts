@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { browserGeometry, DECOR_COPIES_MAX, fragDecode, fragEncode,
-         importAddon, installProblem, listAddons, loadProblem,
-         transientFailure, isListed, orphanedSounds,
+import { browserGeometry, DECOR_COPIES_MAX, decorCopyRoom, fragDecode,
+         fragEncode, importAddon, installProblem, listAddons,
+         loadProblem, transientFailure, isListed, orphanedSounds,
          qualifySoundItemName, recordAddon } from "./import.js";
 import type { Importable } from "./import.js";
 
@@ -251,6 +251,20 @@ describe("recordAddon", () => {
     list[0]!.copies = -7;
     recordAddon(list, plant("a.plt"), [], "install");
     expect(list[0]!.copies).toBe(2);
+  });
+});
+
+describe("decorCopyRoom", () => {
+  it("counts placed copies by pack and floors at zero", () => {
+    const decors = Array.from({ length: DECOR_COPIES_MAX },
+                              () => ({ pack: "p.plt" }));
+    expect(decorCopyRoom(decors, "p.plt")).toBe(0);
+    expect(decorCopyRoom(decors, "other.plt")).toBe(DECOR_COPIES_MAX);
+    expect(decorCopyRoom([{ pack: "p.plt" }], "p.plt"))
+      .toBe(DECOR_COPIES_MAX - 1);
+    // More placed than the cap can't go negative.
+    expect(decorCopyRoom([...decors, { pack: "p.plt" }], "p.plt"))
+      .toBe(0);
   });
 });
 

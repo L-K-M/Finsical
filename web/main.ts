@@ -20,10 +20,9 @@ import { alertOpen, showAlert } from "./alert.js";
 import { recentTaps, shouldScold } from "./scold.js";
 import { backfillStarterSounds, showWelcome, wantsWelcome }
   from "./welcome.js";
-import { clampDecorCopies, DECOR_COPIES_MAX, fetchAddon,
-         installProblem, mountImportPanel, orphanedSounds,
-         recordAddon, qualifySoundItemName, isListed, COLLECTIONS }
-  from "./import.js";
+import { clampDecorCopies, decorCopyRoom, fetchAddon, installProblem,
+         mountImportPanel, orphanedSounds, recordAddon,
+         qualifySoundItemName, isListed, COLLECTIONS } from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
          sndsMerge, sndsRemove } from "./store.js";
@@ -843,11 +842,8 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
     // count too, or a tank could grow past what the save can restore.
     const imgs = [...images];
     const n = clampDecorCopies(count);
-    const room = live
-      ? DECOR_COPIES_MAX - decors.filter((d) => d.pack === src).length
-      : n;
-    for (let i = 0; i < Math.min(n, Math.max(0, room)); i++)
-      addDecor(imgs, src);
+    const room = live ? decorCopyRoom(decors, src) : n;
+    for (let i = 0; i < Math.min(n, room); i++) addDecor(imgs, src);
   }
   else if (section === "backgrounds" || section === "tanks")
     pickBackdrop(images, src);

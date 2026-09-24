@@ -126,12 +126,22 @@ export interface Importable {
  * decor on relaunch. */
 export const DECOR_COPIES_MAX = 16;
 
-/** The single clamp for decor copy counts — persisted records and
- * live Add Again clicks both pass through it, so session state can
- * never grow past what a save can restore. */
+/** The single clamp for a decor copy *count* — persisted records and
+ * per-call live counts both pass through it. Bounding the live tank
+ * itself is decorCopyRoom's job below; this only bounds one number. */
 export function clampDecorCopies(n: unknown): number {
   return Number.isInteger(n)
     ? Math.min(DECOR_COPIES_MAX, Math.max(1, n as number)) : 1;
+}
+
+/** Live slots left for one decor pack before the tank holds more
+ * copies than a save could restore. addDecor() keys each copy by its
+ * `src` verbatim, so filtering placed copies by `pack === src` counts
+ * every earlier Add Again click. */
+export function decorCopyRoom(decors: ReadonlyArray<{ pack: string }>,
+                              src: string): number {
+  return Math.max(0, DECOR_COPIES_MAX -
+    decors.filter((d) => d.pack === src).length);
 }
 
 /** The persisted copy count, clamped to sanity (storage is untrusted). */
