@@ -74,7 +74,7 @@ class TestRsrc(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             rf = ResFile(_write(td, bytes(rf_bytes)))
             got = [rid for rid, _n, _a, _b in rf.resources(b"snd ")]
-        self.assertEqual(got[0], 1)
+        self.assertEqual(got, [1])
 
     def test_payloads_past_the_end_are_skipped(self):
         rf_bytes = bytearray(build_rsrc({b"snd ": [(1, "a", 0, b"one"),
