@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { BOOT_CAP_MS, BOOT_FADE_MS, BOOT_HOLD_MS, bootPhase,
-         fadeProgress, paradeSlot } from "./boot.js";
+import { BOOT_CAP_MS, BOOT_FADE_MS, BOOT_HOLD_MS, BOWL_ART, bootPhase,
+         fadeProgress, PALETTE, paradeSlot, SECTION_ART } from "./boot.js";
+
+describe("pixel art", () => {
+  it("gives every glyph a palette color", () => {
+    for (const [name, art] of Object.entries({ bowl: BOWL_ART,
+                                             ...SECTION_ART }))
+      for (const row of art)
+        for (const ch of row)
+          if (ch !== ".")
+            expect(PALETTE[ch], `${name} uses "${ch}"`).toBeDefined();
+  });
+});
 
 describe("bootPhase", () => {
   it("walks black, hello, parade, fade, done on a quick restore", () => {

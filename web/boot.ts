@@ -56,20 +56,22 @@ export function paradeSlot(i: number): { x: number; y: number } {
 // Each icon is 16 rows of 16 glyphs, drawn at 2x for a 32 px slot.
 // `.` transparent; other glyphs index PALETTE.
 
-const PALETTE: Record<string, string> = {
+export const PALETTE: Record<string, string> = {
   "#": "#1a1a1a", // outline
   "w": "#f4f4f4", // white
   "g": "#9d9d9d", // desktop grey
   "b": "#3d6c9e", // water blue
+  "~": "#3d6c9e", // water inside the bowl and tank icons
   "o": "#d08030", // fish orange
   "v": "#3f7a3f", // plant green
   "y": "#c8a838", // castle gold
+  "t": "#8a6a20", // castle window, darker gold
   "p": "#7a4a8c", // sound purple
 };
 
 /** The smiling fishbowl for the hello phase — this app's answer to
  * the Happy Mac, original art rather than Apple's trademark glyph. */
-const BOWL_ART = [
+export const BOWL_ART = [
   "......####......",
   "....##....##....",
   "...#........#...",
@@ -88,7 +90,7 @@ const BOWL_ART = [
   "......####......",
 ];
 
-const SECTION_ART: Record<string, string[]> = {
+export const SECTION_ART: Record<string, string[]> = {
   fish: [
     "................",
     "................",
@@ -284,6 +286,8 @@ export function drawBoot(ctx: CanvasRenderingContext2D, phase: BootPhase,
   ctx.fillText(label, bx + 6, by + 11);
   for (let i = 0; i < icons.length; i++) {
     const s = paradeSlot(i);
+    // Slots are laid out for a 320x200 tank; never paint outside.
+    if (s.x + 32 > w || s.y + 32 > h) break;
     blit(ctx, icons[i]!, s.x, s.y, 2);
   }
 }
