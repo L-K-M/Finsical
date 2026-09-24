@@ -12,6 +12,7 @@ import { hourLabel, LIGHTING_DEFAULTS, sanitizeLighting }
 import type { Lighting, LightMode } from "../core/light.js";
 import { SOUND_DEFAULTS, sanitizeSoundConfig } from "./audio.js";
 import type { SoundConfig } from "./audio.js";
+import { tubeCaption } from "./caption.js";
 
 // Preferences window: a Mac OS 8 control panel with five panes: the
 // machine case, the CRT tube effect, the monitor's picture controls,
@@ -263,12 +264,25 @@ function describe(spec: SliderSpec | LightSpec | SoundItem | null,
     descEl.textContent = !onBox.checked && p.offHint ? p.offHint : p.hint;
     return;
   }
-  const [label, blurb] = "key" in spec
-    ? [`${spec.label}: ${(spec.fmt ?? pct)(cfg[spec.key])}`, spec.blurb]
-    : "input" in spec
-      ? [spec.value ? `${spec.label}: ${spec.value()}` : spec.label,
-         spec.blurb]
-      : [`${spec.label}: ${spec.value()}`, spec.blurb()];
+  // A dimmed tube slider explains the switch instead of showing a
+  // value that cannot apply (tubeCaption pins the wording).
+  if ("key" in spec) {
+    const p = PANES.find((x) => x.id === pane)!;
+    const c = tubeCaption({
+      label: spec.label,
+      valueText: (spec.fmt ?? pct)(cfg[spec.key]),
+      blurb: spec.blurb,
+      offHint: p.offHint,
+      crtOn: onBox.checked,
+    });
+    if (c.label === "") descEl.textContent = c.tail;
+    else descEl.append(el("span", "osm-label", c.label), c.tail);
+    return;
+  }
+  const [label, blurb] = "input" in spec
+    ? [spec.value ? `${spec.label}: ${spec.value()}` : spec.label,
+       spec.blurb]
+    : [`${spec.label}: ${spec.value()}`, spec.blurb()];
   descEl.append(el("span", "osm-label", label), ` — ${blurb}`);
 }
 
