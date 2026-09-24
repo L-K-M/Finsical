@@ -87,7 +87,9 @@ beforeEach(() => {
   FakeContext.last = null;
   vi.stubGlobal("AudioContext", FakeContext);
 });
-afterEach(() => vi.unstubAllGlobals());
+// restoreAllMocks too: a spy (console.warn in the load test) would
+// otherwise stay mocked for every later test in the file.
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("TankAudio master gain", () => {
   it("routes every sound through the master and maps the volume", async () => {

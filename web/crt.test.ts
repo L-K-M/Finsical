@@ -81,6 +81,11 @@ describe("CRT_PRESETS", () => {
       for (const k of PICTURE_KEYS) expect(next[k]).toBe(mine[k]);
       expect(next.grain).toBe(p.config.grain);
     }
+    // Every key is one or the other: a picture trim added later but
+    // left out of PICTURE_KEYS would count as tube and be reset.
+    const tube = Object.keys(presetTube(CRT_PRESETS[0]!));
+    expect([...PICTURE_KEYS, ...tube].sort())
+      .toEqual(Object.keys(CRT_DEFAULTS).sort());
   });
 
   it("configs are frozen so a click cannot mutate the shared object", () => {

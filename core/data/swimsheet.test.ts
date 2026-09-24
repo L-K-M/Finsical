@@ -80,6 +80,11 @@ describe("bodySize", () => {
     expect(bodySize(sh, 1)).toEqual({ length: 1, height: 1 });
   });
 
+  it("rejects a pose group the sheet doesn't have", () => {
+    expect(() => bodySize(paintable(20, 30).sh, 2)).toThrow(RangeError);
+    expect(() => bodySize(paintable(20, 30).sh, -1)).toThrow(RangeError);
+  });
+
   it("falls back to the cell when nothing is painted", () => {
     expect(bodySize(paintable(20, 30).sh, 0))
       .toEqual({ length: 30, height: 20 });

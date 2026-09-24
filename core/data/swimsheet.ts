@@ -35,6 +35,10 @@ export interface BodySize { length: number; height: number }
  * back to the cell when no frame has an opaque pixel to measure.
  */
 export function bodySize(sheet: SpriteSheet, group: number): BodySize {
+  // Checked up front: a bad group would otherwise fail every frame and
+  // pass for a blank one, quietly measuring the padded cell.
+  if (!Number.isInteger(group) || group < 0 || group >= sheet.meta.groups)
+    throw new RangeError(`bodySize: no pose group ${group}`);
   let x0 = Infinity, x1 = -1, y0 = Infinity, y1 = -1;
   for (let f = 0; f < sheet.meta.framesPerGroup; f++) {
     let img: IndexedImage;

@@ -15,11 +15,13 @@ const FISH_KNEE = 1 / 8;
 const FISH_SQUASH = 0.4;
 
 /**
- * The scale a fish with this body (art pixels, see bodySize) draws at.
- * At ART_SCALE a discus or an angelfish stands 85 px, over two fifths
- * of a tank only 200 px high, and big species crowd out the rest, so
- * bodies past FISH_KNEE compress: the discus comes out 49 px tall and
- * a shark 68 px long, and bigger art still draws bigger.
+ * The scale a fish with this body (art pixels, see bodySize) draws at
+ * in a tankW x tankH tank (320 x 200: the canvas the scene is drawn on
+ * before it is scaled to the window). At ART_SCALE a discus or an
+ * angelfish stands 85 px, over two fifths of a tank only 200 px high,
+ * and big species crowd out the rest, so bodies past FISH_KNEE
+ * compress: the discus comes out 49 px tall and a shark 68 px long,
+ * and bigger art still draws bigger.
  */
 export function fishScale(body: { length: number; height: number },
                           tankW: number, tankH: number): number {
