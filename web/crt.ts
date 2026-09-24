@@ -23,11 +23,19 @@ void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
 `;
 
 const FRAG = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
 precision mediump float;
+#endif
 uniform sampler2D uTex;
 uniform vec2 uTank;   // logical resolution (320x200)
 uniform vec4 uRect;   // letterboxed tank rect in buffer px, y-up
-uniform float uTime;
+// Flicker, rolling-band and grain phases, each pre-wrapped on the CPU
+// (mod 2π for the sin() args, mod 1 for the hash). Wrapping the raw
+// clock instead made every sin(uTime*k) jump once per wrap — a visible
+// flicker blink — and an unwrapped clock loses mediump precision.
+uniform vec3 uPhase;
 uniform float uScan;  // gap darkness between rows (0 = off, 1 = black)
 uniform float uSoft;  // horizontal beam smear (0 = sharp pixels)
 uniform float uBloom; // bright bleed strength
@@ -198,9 +206,9 @@ void main() {
   // Glass vignette, faint flicker (plus a slow rolling brightness
   // band — the beam never sits perfectly in sync), and grain.
   c *= 1.0 - (0.40 * uVig) * dot(gc, gc);
-  c *= 1.0 + (0.05 * uFlick) * sin(uTime * 61.0)
-           + (0.03 * uFlick) * sin(uv.y * 3.0 - uTime * 4.0);
-  c += (hash(gl_FragCoord.xy + fract(uTime)) - 0.5) * (0.10 * uGrain);
+  c *= 1.0 + (0.05 * uFlick) * sin(uPhase.x)
+           + (0.03 * uFlick) * sin(uv.y * 3.0 - uPhase.y);
+  c += (hash(gl_FragCoord.xy + uPhase.z) - 0.5) * (0.10 * uGrain);
 
   // Front-panel picture controls, last: contrast pivots around the
   // picture's mid level, brightness is a master gain, and each channel
@@ -465,7 +473,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
 
   const uTank = gl.getUniformLocation(prog, "uTank");
   const uRect = gl.getUniformLocation(prog, "uRect");
-  const uTime = gl.getUniformLocation(prog, "uTime");
+  const uPhase = gl.getUniformLocation(prog, "uPhase");
   const uPower = gl.getUniformLocation(prog, "uPower");
   gl.uniform2f(uTank, src.width, src.height);
   gl.uniform1f(uPower, 1);
@@ -563,9 +571,16 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       resize(); // dirty-flagged — catches zoom/fullscreen/dpr changes
       gl.uniform4f(uRect, ...crtRasterRect(
         out.width, out.height, src.width, src.height, rasterBox));
-      // Bound the clock: mediump floats lose sin() precision fast once
-      // uTime*61 grows — wrap every 100s (flicker is noise-like anyway).
-      gl.uniform1f(uTime, (performance.now() / 1000) % 100);
+      // Each shader phase arrives pre-wrapped mod its period, so the
+      // sin() args are identical modulo 2π at every point in time —
+      // no wrap jump, no precision loss on a long-running clock.
+      const t = performance.now() / 1000, TAU = Math.PI * 2;
+      // Apparent flicker / rolling-band rates. x/y scale t (seconds)
+      // into sin() arguments, so they're radians/sec (Hz = value / TAU);
+      // z is a [0,1) hash seed (grain) and wraps by 1, not 2π.
+      const FLICKER_RATE = 61, BAND_RATE = 4; // ≈9.7 Hz, ≈0.64 Hz
+      gl.uniform3f(uPhase, (t * FLICKER_RATE) % TAU,
+                   (t * BAND_RATE) % TAU, t % 1);
       gl.uniform1f(uPower, reducedMotion.matches ? 1 :
         Math.min(1, (performance.now() - powerT0) / POWERON_MS));
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA,
