@@ -337,7 +337,8 @@ canvas.addEventListener("pointermove", (e) => {
   sim.notice = p;
   if (e.pointerType === "touch") return; // no hover on touch
   lastHover = p;
-  const best = p && fishToName(p);
+  // With Fish Names on every fish already wears its tag.
+  const best = p && !namesOn && fishToName(p);
   if (!best) { fishTip.style.display = "none"; return; }
   fishTip.textContent = fishTipLabel(best);
   fishTip.style.display = "";
@@ -1273,6 +1274,7 @@ function setNames(on: boolean): boolean {
   if (namesOn !== on) {
     namesOn = on;
     if (!on) nameTags.clear();
+    else fishTip.style.display = "none"; // the tags replace the tip
     requestPaint(); // tags follow the next render
     try { localStorage.setItem(NAMES_KEY, on ? "1" : "0"); }
     catch { /* storage unavailable — session-only */ }
