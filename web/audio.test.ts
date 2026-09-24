@@ -352,6 +352,57 @@ describe("TankAudio event sounds", () => {
   });
 });
 
+describe("TankAudio behind a locked context", () => {
+  it("drops stale one-shots instead of bursting them on the first click",
+     async () => {
+    const { audio, ac } = await tank({ bubble: 1, "center": 1 });
+    ac.state = "suspended"; // autoplay-gated, like a fresh browser tab
+    audio.bubble();         // sim-driven sounds while the user hasn't
+    audio.bubble();         // clicked yet must not queue
+    audio.tap(160, 100, 320, 200);
+    audio.unlock();         // first real gesture
+    await flush();
+    expect(ac.sources).toHaveLength(0);
+  });
+
+  it("still waits out the lock for a sound answering the gesture itself",
+     async () => {
+    const { audio, ac } = await tank({ "center": 1 });
+    ac.state = "suspended";
+    vi.stubGlobal("navigator", { userActivation: { isActive: true } });
+    audio.tap(160, 100, 320, 200); // the click that unlocks also taps
+    await flush();
+    expect(ac.sources).toHaveLength(1);
+  });
+
+  it("always waits for the ambient loop", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    ac.state = "suspended";
+    audio.startAmbient();
+    await flush();
+    expect(ac.sources).toHaveLength(1);
+    expect(ac.sources[0]!.loop).toBe(true);
+  });
+});
+
+describe("TankAudio event-sound name matching", () => {
+  it("a long recording that merely contains an event name is skipped",
+     async () => {
+    const { audio, ac } = await tank({
+      "Center stage (live at the Fillmore)": 240, "knock on the side": 1,
+    });
+    audio.tap(160, 100, 320, 200); // wants "center" — the song is no knock
+    expect(ac.sources.map((s) => s.buffer?.duration)).toEqual([1]);
+  });
+
+  it("a long record stays out even under an event's exact name",
+     async () => {
+    const { audio, ac } = await tank({ center: 240 });
+    audio.tap(160, 100, 320, 200);
+    expect(ac.sources).toHaveLength(0);
+  });
+});
+
 describe("TankAudio bubbles, as the original plays them", () => {
   const played = (ac: FakeContext) =>
     ac.sources.map((s) => [s.buffer?.duration, s.loop]);

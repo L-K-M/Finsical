@@ -41,6 +41,10 @@ export const FEEDBACK_MAX_S = 4;
 const FEEDBACK_FADE_S = 0.6;
 /** Time constant of a master level change (about 3 tau to settle). */
 const LEVEL_GLIDE_S = 0.01;
+/** Event sounds are short. A recording longer than this can only be an
+ * imported song, so find() never picks it for a knock or a splash, no
+ * matter what it is named. */
+export const EVENT_MAX_S = 20;
 
 // The original game's sounds, by the names its 'snd ' resources carry
 // (core/data/sndbank.ts), lowercased for lookup.
@@ -52,6 +56,13 @@ const OPENING = "aqua";
 /** The bubbling's own level is close to the effects', so it loops at
  * the gain single bubbles play at, under them. */
 const AMBIENT_GAIN = 0.4;
+
+/** True while a user activation is held, so a sound answering that
+ * gesture may wait out a locked AudioContext. Older WebKit and test
+ * fakes have no userActivation — treated as no gesture. */
+function gestureActive(): boolean {
+  return navigator.userActivation?.isActive === true;
+}
 
 export class TankAudio {
   private ctx: AudioContext | null = null;
@@ -309,7 +320,8 @@ export class TankAudio {
         for (const [name, buf] of map) {
           const n = name.toLowerCase();
           if (n === skip) continue;
-          if (subs.some((s) => exact ? n === s : n.includes(s)))
+          if (buf.duration <= EVENT_MAX_S
+              && subs.some((s) => exact ? n === s : n.includes(s)))
             return buf;
         }
     return null;
@@ -333,6 +345,11 @@ export class TankAudio {
     // wanted ambient loop starts from setHidden(false) instead.
     if (this.hidden) return null;
     if (this.ctx.state === "suspended" && retry) {
+      // Only the ambient loop and a sound answering the gesture in
+      // progress wait out the lock. Anything else (bubbles from a
+      // tick, a stale feed) drops here — queueing them all fired a
+      // burst of stale sounds on the first click.
+      if (!loop && !gestureActive()) return null;
       const ac = this.ctx;
       const gen = this.ambientGen;
       void ac.resume()
