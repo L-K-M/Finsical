@@ -321,6 +321,23 @@ describe("Sim", () => {
     expect(backwards).toBeLessThan(60);
   });
 
+  it("a small crowd gathers at the pointer, fanned out", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const a = sim.addFish({ x: 130, y: 100, hunger: 0 });
+    const b = sim.addFish({ x: 200, y: 110, hunger: 0 });
+    const c = sim.addFish({ x: 150, y: 150, hunger: 0 });
+    sim.notice = { x: 160, y: 100 };
+    for (let i = 0; i < 400; i++) sim.tick();
+    // All three calm fish converged on the pointer.
+    for (const f of [a, b, c])
+      expect(Math.hypot(f.x - 160, f.y - 100)).toBeLessThan(70);
+    // Rank-staggered standoff fans the crowd — the joiners stop
+    // measurably short of the nearest watcher's ring.
+    const da = Math.hypot(a.x - 160, a.y - 100);
+    const dc = Math.hypot(c.x - 160, c.y - 100);
+    expect(Math.abs(dc - da)).toBeGreaterThan(2);
+  });
+
   it("hunger outranks curiosity", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const f = sim.addFish({ x: 60, y: 60, hunger: 0.9 });
