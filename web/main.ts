@@ -21,7 +21,7 @@ import { recentTaps, shouldScold } from "./scold.js";
 import { backfillStarterSounds, showWelcome, wantsWelcome }
   from "./welcome.js";
 import { fetchAddon, mountImportPanel, orphanedSounds, recordAddon,
-         qualifySoundItemName, isListed, COLLECTIONS }
+         qualifySoundItemName, isListed, sceneryFix, COLLECTIONS }
   from "./import.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
@@ -96,7 +96,7 @@ function loadTank(): SavedTank | null {
   } catch { return null; }
 }
 const saved = loadTank();
-const installedAddons: Importable[] = [...(saved?.addons ?? [])];
+const installedAddons: Importable[] = (saved?.addons ?? []).map(sceneryFix);
 // The scenery the user chose: what their latest live install, "Use"
 // or Remove put on display. It is saved instead of what happens to be
 // showing, so a chosen pack that can't restore on one launch doesn't

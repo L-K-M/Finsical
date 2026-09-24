@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Mekasia's G_Debris gravel lists under Gravel and lays a gravel bed.
+  It used to list under Accessories, where adding it dropped a big
+  textured block into the tank; a tank that added it that way gets the
+  gravel instead on its next launch. The Mekasia plant and accessory
+  lists now hold only plants and accessories.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the
