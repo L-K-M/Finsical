@@ -724,7 +724,7 @@ function audioType(d: Uint8Array): string {
 // (swimCanvas, sheetScales) could never collect. Scrolling the whole
 // catalog would otherwise keep every decoded pack in memory; an
 // evicted URL re-derives from the zip cache/IndexedDB on revisit.
-const PACK_CACHE_CAP = 12;
+const PACK_CACHE_CAP = 16;
 const packCache = new Map<string, Promise<PackResult[]>>();
 /** Same in-flight pinning as zipPending: the map slot is the dedup
  * key, so an evicted pending fetch would double-download. */
