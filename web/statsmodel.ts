@@ -117,8 +117,8 @@ function advice(st: TankStats, water: number): string[] {
   }
   if (water >= QUALITY_SEEK) {
     if (st.avgHunger !== null && st.avgHunger >= HUNGER_FEED) {
-      out.push("Fish are hungry — drop food near the surface " +
-               "(press F or click high in the tank).");
+      out.push("Fish are hungry — press F, or click above the " +
+               "waterline to drop food.");
     } else if (st.hungriest && st.hungriest.hunger >= HUNGER_STARVING) {
       out.push(`${st.hungriest.name} is starving — feed soon.`);
     }

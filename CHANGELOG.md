@@ -84,8 +84,10 @@
   ring at the tap, and food (or a newly installed fish) breaks the
   surface with a small splash of droplets. Both effects tick on the
   sim clock and paint as whole pixels, matching the retro bubbles.
-- Pointing at the top of the tank, where a click drops food, shows a
-  crosshair and a faint line marking where feeding stops.
+- The waterline divides feeding from tapping: a click in the strip of
+  air above it drops food, and a click anywhere in the water knocks on
+  the glass (feeding used to take the top 15% of the tank). Over the
+  air the pointer becomes a crosshair and the waterline brightens.
 - The machine list in Preferences previews each case with a still of
   a running tank instead of a blank screen.
 - Preferences has a Sound pane, laid out like Monitors & Sound: a

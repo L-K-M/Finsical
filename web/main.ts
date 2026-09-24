@@ -1,4 +1,5 @@
-import { BOTTOM_PAD, DAY_TICKS, FOOD_ENTRY_Y, Sim } from "../core/sim.js";
+import { BOTTOM_PAD, DAY_TICKS, FOOD_ENTRY_Y, Sim, SURFACE }
+  from "../core/sim.js";
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
@@ -27,7 +28,7 @@ import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
 import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
          swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
-import { containPoint, feedZoneLineY, isFeedZoneY } from "./feedzone.js";
+import { containPoint, isFeedZoneY } from "./feedzone.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
@@ -245,12 +246,19 @@ function tankPoint(clientX: number, clientY: number):
                       TANK);
 }
 
-// Feed-zone affordance: while the pointer is over the tank, a faint
-// line marks where feeding stops, brightening with a crosshair cursor
-// over the strip itself (see render()). Hover is re-evaluated every
-// frame from the last client point (see frame()), so a resize under a
-// stationary pointer can't leave it stale, and getBoundingClientRect
-// runs once per frame instead of per move.
+/** The fish under a tank point. None in the air above the waterline:
+ * a fin reaching up there is hidden behind the air strip, and a click
+ * there feeds. */
+function fishAtPoint(p: { x: number; y: number }): Fish | null {
+  return isFeedZoneY(p.y) ? null : sim.fishAt(p.x, p.y);
+}
+
+// Feed-zone affordance: over the air above the waterline, where a
+// click drops food, the cursor becomes a crosshair and the waterline
+// brightens (see render()). Hover is re-evaluated every frame from the
+// last client point (see frame()), so a resize under a stationary
+// pointer can't leave it stale, and getBoundingClientRect runs once
+// per frame instead of per move.
 let overFeedZone = false;
 let lastClient: { x: number; y: number } | null = null;
 function setFeedHover(on: boolean): void {
@@ -263,7 +271,7 @@ function syncFeedHover(): void {
   if (!lastClient) { setFeedHover(false); return; }
   const p = containPoint(lastClient.x, lastClient.y,
                          canvas.getBoundingClientRect(), TANK);
-  setFeedHover(p !== null && isFeedZoneY(p.y, TANK.height));
+  setFeedHover(p !== null && isFeedZoneY(p.y));
 }
 
 canvas.addEventListener("pointerdown", (e) => {
@@ -275,11 +283,11 @@ canvas.addEventListener("pointerdown", (e) => {
   if (e.altKey) {
     // ⌥-click is "Get Info": open the card on the fish under the
     // pointer, or dismiss it when the water is empty.
-    const f = sim.fishAt(p.x, p.y);
+    const f = fishAtPoint(p);
     if (f) openInfo(f); else closeInfo();
     return;
   }
-  if (isFeedZoneY(p.y, TANK.height)) {
+  if (isFeedZoneY(p.y)) {
     const pellet = sim.dropFood(p.x);
     audio.feed();
     splashes.push(newSplash(pellet.x, pellet.y));
@@ -304,7 +312,7 @@ document.body.appendChild(fishTip);
  * tip would float over them). */
 const fishToName = (p: { x: number; y: number }): Fish | null =>
   infoCard || importPanel.isOpen || menuOpen() || docOpen() || alertOpen()
-    ? null : sim.fishAt(p.x, p.y);
+    ? null : fishAtPoint(p);
 const fishTipLabel = (f: Fish): string =>
   (f.species || "Fish") +
   (f.state === "drift" ? "" : ` — ${stateLabel(f.state)}`);
@@ -313,7 +321,6 @@ const fishTipLabel = (f: Fish): string =>
 let lastHover: { x: number; y: number } | null = null;
 
 canvas.addEventListener("pointermove", (e) => {
-  if (!lastClient) requestPaint(); // the zone line appears
   lastClient = { x: e.clientX, y: e.clientY };
   if (!e.isPrimary) return; // one pointer drives curiosity
   const p = tankPoint(e.clientX, e.clientY);
@@ -336,7 +343,6 @@ canvas.addEventListener("pointerleave", (e) => {
   lastHover = null;
   fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
-  requestPaint(); // and the zone line goes
   if (!e.isPrimary) return; // don't clear the primary's curiosity
   sim.notice = null;
 });
@@ -1944,14 +1950,12 @@ function render(): void {
   drawRipples(ctx, ripples);
   drawSplashes(ctx, splashes);
 
-  // Feed-zone boundary, only while the pointer is over the tank: a
-  // permanent line read as a second waterline. Under the murk and night
-  // overlays, so it dims with the water instead of glowing at night.
-  if (lastClient) {
-    ctx.fillStyle = overFeedZone
-      ? "rgba(255,255,255,0.45)"
-      : "rgba(255,255,255,0.14)";
-    ctx.fillRect(0, feedZoneLineY(TANK.height), TANK.width, 1);
+  // The waterline divides feeding from tapping, so it brightens while
+  // a click would feed. Under the murk and night overlays, so it dims
+  // with the water instead of glowing at night.
+  if (overFeedZone) {
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.fillRect(0, SURFACE, TANK.width, 1);
   }
 
   // Fouled water murks the whole scene.

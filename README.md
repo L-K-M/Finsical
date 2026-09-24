@@ -56,8 +56,8 @@ Add-ons.
 
 | Action | How |
 | --- | --- |
-| Feed the fish | Click near the water's surface (the top 15% of the tank, where the pointer becomes a crosshair) |
-| Tap the glass | Click lower in the tank; nearby fish startle |
+| Feed the fish | Click above the waterline, in the dark strip at the top of the tank (the pointer becomes a crosshair) |
+| Tap the glass | Click in the water; nearby fish startle |
 | See a fish's name | Point at it: a balloon names it and says what it is doing |
 | Get Info on a fish | Option-click it: a card follows it with its hunger and mood |
 | Move the window | In the app, drag the computer case around the tank, or the top edge of the window |
