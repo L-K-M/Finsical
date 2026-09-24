@@ -15,10 +15,16 @@ export interface FramePlan {
 
 /** Add one frame's elapsed time to the accumulator and split it into
  * whole sim steps. A negative dt (the first rAF timestamp can predate
- * the clock read at startup) counts as no time. */
+ * the clock read at startup) counts as no time, as does a NaN one; a
+ * non-positive or NaN step runs no ticks rather than looping forever. */
 export function planFrame(acc: number, dtMs: number,
                           stepMs: number): FramePlan {
-  let a = acc + Math.min(Math.max(0, dtMs), MAX_FRAME_MS);
+  const kept = Number.isFinite(acc) ? acc : 0;
+  if (!Number.isFinite(stepMs) || stepMs <= 0)
+    return { ticks: 0, acc: kept };
+  const dt = Number.isFinite(dtMs)
+    ? Math.min(Math.max(0, dtMs), MAX_FRAME_MS) : 0;
+  let a = kept + dt;
   let ticks = 0;
   // Repeated subtraction, not floor(): the same float steps the loop
   // has always taken, so tick timing doesn't drift at boundaries.

@@ -51,4 +51,17 @@ describe("planFrame", () => {
   it("ignores a timestamp that runs backwards", () => {
     expect(planFrame(5, -20, STEP)).toEqual({ ticks: 0, acc: 5 });
   });
+
+  it("never hangs on a non-positive or NaN step", () => {
+    for (const step of [0, -STEP, NaN]) {
+      expect(planFrame(5, 16.7, step)).toEqual({ ticks: 0, acc: 5 });
+    }
+  });
+
+  it("treats a NaN accumulator or dt as no time", () => {
+    // A poisoned accumulator restarts from zero; this frame's dt still
+    // counts. A NaN dt counts as no time and keeps the accumulator.
+    expect(planFrame(NaN, 16.7, STEP)).toEqual({ ticks: 0, acc: 16.7 });
+    expect(planFrame(5, NaN, STEP)).toEqual({ ticks: 0, acc: 5 });
+  });
 });
