@@ -469,6 +469,38 @@ export class TankAudio {
     this.play(this.find(["bubble"], FILTER_BUBBLING), 0.4);
   }
 
+  /** The degauss coil's BWONG — synthesized, not a bank sound: a 55 Hz
+   * thump under a whine that sweeps down through a lowpass as the
+   * field dies. Silent unless the context is already running — a
+   * degauss the user can't hear shouldn't spend a resume(). */
+  degauss(): void {
+    if (!this.ctx || !this.master || this.hidden ||
+        this.ctx.state !== "running") return;
+    const t = this.ctx.currentTime;
+    const thump = this.ctx.createOscillator();
+    thump.type = "sine";
+    thump.frequency.value = 55;
+    const tg = this.ctx.createGain();
+    tg.gain.setValueAtTime(0.5, t);
+    tg.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    thump.connect(tg).connect(this.master);
+    thump.start(t);
+    thump.stop(t + 0.3);
+    const whine = this.ctx.createOscillator();
+    whine.type = "sawtooth";
+    whine.frequency.setValueAtTime(900, t);
+    whine.frequency.exponentialRampToValueAtTime(300, t + 0.5);
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 300;
+    const wg = this.ctx.createGain();
+    wg.gain.setValueAtTime(0.12, t);
+    wg.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+    whine.connect(lp).connect(wg).connect(this.master);
+    whine.start(t);
+    whine.stop(t + 0.7);
+  }
+
   /** The tank has opened with its saved sounds loaded: start the
    * bubbling, and play the opening sound now if audio may start by
    * itself (the app), else on the first unlock (a browser). */
