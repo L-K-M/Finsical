@@ -406,13 +406,17 @@ describe("TankAudio bubbles, as the original plays them", () => {
   });
 
   it("stays quiet with bubble sounds off or the tank hidden", async () => {
-    const { audio, ac } = await tank({ [LOOP]: 30 });
-    audio.setOptions({ bubbles: false });
-    audio.pop();
-    audio.setOptions({ bubbles: true });
-    audio.setHidden(true);
-    audio.pop();
-    expect(ac.oscs).toHaveLength(0);
+    // Both paths: the synthesized plip and a sound of the user's own.
+    for (const set of [{ [LOOP]: 30 }, { [LOOP]: 30, "Pop!": 3 }]) {
+      const { audio, ac } = await tank(set);
+      audio.setOptions({ bubbles: false });
+      audio.pop();
+      audio.setOptions({ bubbles: true });
+      audio.setHidden(true);
+      audio.pop();
+      expect(ac.sources).toHaveLength(0);
+      expect(ac.oscs).toHaveLength(0);
+    }
   });
 
   it("makes no sound in a tank with no sounds at all", () => {

@@ -298,9 +298,10 @@ canvas.addEventListener("pointerdown", (e) => {
   // A click on a rising bubble pops it: something gentle to click that
   // neither knocks on the glass nor scares anyone. Only in the water,
   // so a feed click beside a bubble about to burst still drops food.
-  const bubble = isFeedZoneY(p.y) ? null
+  const feeding = isFeedZoneY(p.y);
+  const bubble = feeding ? null
     : sim.popBubble(bubbleAt(sim.bubbles, p.x, p.y));
-  if (isFeedZoneY(p.y)) {
+  if (feeding) {
     const pellet = sim.dropFood(p.x);
     audio.feed();
     splashAt(pellet.x, pellet.y, PUSH.pellet);
