@@ -1886,9 +1886,13 @@ window.addEventListener("drop", (e) => {
     // ~16MB, but .bin/.hqx wrappers inflate that (BinHex text is ~4/3),
     // so allow up to 32MB before skipping.
     const recs: { name: string; wav: Uint8Array }[] = [];
+    // A real 'snd ' bank is ~25 records; a folder drop of MP3s is
+    // bounded so it can't decode hundreds of files into the tank.
+    const DROP_SOUNDS_MAX = 64;
     // Pack files are collected here (their head is read once) and
     // decoded in the pass below, so no file is buffered twice.
     const packFiles: [string, File][] = [];
+    let sndSkipped = 0;
     for (const [name, file] of flat) {
       const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());
       if (isPack(head)) { packFiles.push([name, file]); continue; }
@@ -1896,12 +1900,16 @@ window.addEventListener("drop", (e) => {
         console.warn("snd skip (too large):", name);
         continue;
       }
+      if (recs.length >= DROP_SOUNDS_MAX) { sndSkipped++; continue; }
       const got = fileSoundRecords(
         name, new Uint8Array(await file.arrayBuffer()));
       if (!got.length) continue;
       recs.push(...got);
       console.info(`${name}: ${got.length} sounds imported`);
     }
+    if (sndSkipped)
+      console.warn(`drop: ${sndSkipped} files skipped — ` +
+                   `${DROP_SOUNDS_MAX} sounds per drop is plenty`);
     // A bad audio file mustn't abort the raw-pack pass below.
     if (recs.length)
       await handleSounds(recs)

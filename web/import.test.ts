@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { browserGeometry, importAddon, installProblem, listAddons,
-         loadProblem, transientFailure,
+import { browserGeometry, fragDecode, fragEncode, importAddon,
+         installProblem, listAddons, loadProblem, transientFailure,
          isListed, orphanedSounds, qualifySoundItemName, recordAddon }
   from "./import.js";
 import type { Importable } from "./import.js";
@@ -75,6 +75,9 @@ const innerZip = buildZip([
   { name: MP3_LEAF, data: MP3_BYTES },
   { name: "dup.mp3", data: MP3_BYTES },
   { name: "sub/dup.mp3", data: MP3_BYTES },
+  // A literal '#' in an entry name — must not break the URL's
+  // fragment chain.
+  { name: "hash#tag.mp3", data: MP3_BYTES },
 ]);
 const outerZip = buildZip([
   { name: "dir/", data: new Uint8Array(0) },
@@ -100,12 +103,12 @@ describe("archive.org nested collections", () => {
   it("lists sounds two zips deep and fish in subdirectories", async () => {
     const items = await listAddons();
     const sounds = items.filter((i) => i.section === "sounds");
-    expect(sounds).toHaveLength(3);
+    expect(sounds).toHaveLength(4);
     expect(sounds[0]!.inner).toBe("Macinfish");
     // Same-stem leaves in different subdirs must not alias — the
     // colliding one keeps its path-qualified name.
     expect(sounds.map((i) => i.inner).sort())
-      .toEqual(["Macinfish", "dup", "sub/dup"]);
+      .toEqual(["Macinfish", "dup", "hash#tag", "sub/dup"]);
     // zipUrl#innerMacZip#leaf — the entry chain is the identity.
     expect(sounds[0]!.url.split("#")).toHaveLength(3);
     expect(sounds[0]!.url).toContain(
@@ -120,7 +123,33 @@ describe("archive.org nested collections", () => {
     // dir/notreally.zip matches `inside` but can't parse — it must be
     // skipped, not sink the collection's whole listing.
     const items = await listAddons();
-    expect(items.filter((i) => i.section === "sounds")).toHaveLength(3);
+    expect(items.filter((i) => i.section === "sounds")).toHaveLength(4);
+  });
+
+  it("round-trips an entry name containing a '#'", async () => {
+    const items = await listAddons();
+    const snd = items.find((i) => i.inner === "hash#tag")!;
+    // The escaped name keeps the fragment chain at three parts.
+    expect(snd.url.split("#")).toHaveLength(3);
+    expect(snd.url).toContain("hash%23tag.mp3");
+    const rs = await importAddon(snd.url);
+    expect(rs[0]!.sounds).toEqual([{ name: "hash#tag", wav: MP3_BYTES }]);
+  });
+
+  it("keeps non-escaped names raw so stored URLs stay identical", () => {
+    // The URL is the add-on's persisted identity — names without # or
+    // % must mint the same string installs recorded before escaping.
+    for (const raw of ["マッキンフィッシュ（MAC専用）.zip", "a b.mp3",
+                       "dup.mp3"]) {
+      expect(fragEncode(raw)).toBe(raw);
+      expect(fragDecode(raw)).toBe(raw);
+    }
+    // Round-trips through the escape.
+    expect(fragEncode("a#b.mp3")).toBe("a%23b.mp3");
+    expect(fragDecode("a%23b.mp3")).toBe("a#b.mp3");
+    // A literal %23 encodes to %2523 and back — order matters.
+    expect(fragEncode("a%23b.mp3")).toBe("a%2523b.mp3");
+    expect(fragDecode("a%2523b.mp3")).toBe("a%23b.mp3");
   });
 
   it("imports the nested mp3 as a sound record", async () => {
