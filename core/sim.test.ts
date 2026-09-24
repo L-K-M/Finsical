@@ -331,10 +331,13 @@ describe("Sim", () => {
     // All three calm fish converged on the pointer.
     for (const f of [a, b, c])
       expect(Math.hypot(f.x - 160, f.y - 100)).toBeLessThan(70);
-    // Rank-staggered standoff fans the crowd — the joiners stop
-    // measurably short of the nearest watcher's ring.
+    // Rank-staggered standoff fans the crowd — each watcher holds its
+    // own ring, so no two sit on the same standoff distance.
     const da = Math.hypot(a.x - 160, a.y - 100);
+    const db = Math.hypot(b.x - 160, b.y - 100);
     const dc = Math.hypot(c.x - 160, c.y - 100);
+    expect(Math.abs(db - da)).toBeGreaterThan(2);
+    expect(Math.abs(dc - db)).toBeGreaterThan(2);
     expect(Math.abs(dc - da)).toBeGreaterThan(2);
   });
 

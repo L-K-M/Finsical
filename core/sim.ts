@@ -283,9 +283,9 @@ export class Sim {
    * nearest calm fish notices it and drifts over. null when it
    * leaves. */
   notice: { x: number; y: number } | null = null;
-  /** The calm fish currently watching the pointer — the drift-state
-   * fish closest to `notice`, picked once per tick in tick().
-   * Read-only view: tick() owns the pick. */
+  /** The senior calm fish watching the pointer — the first of up to
+   * NOTICE_CAP watchers to join, kept while it stays in range.
+   * Read-only view: tick() owns the picks. */
   get noticeFish(): Fish | null { return this._noticeFish[0] ?? null; }
   /** The watchers in join order — up to NOTICE_CAP calm fish gather
    * at the pointer, each holding its rank so the crowd fans out. */
@@ -643,9 +643,13 @@ export class Sim {
       const nd = n ? Math.hypot(n.x - f.x, n.y - f.y) : Infinity;
       // A big fish stops with its nose, not its middle, by the
       // pointer; later arrivals stop a step farther out so a gathered
-      // crowd reads as a loose arc, not a stack.
-      const standoff = NOTICE_STANDOFF + this.halfW(f) +
-        Math.max(0, rank) * NOTICE_STAGGER;
+      // crowd reads as a loose arc, not a stack. The clamp keeps a
+      // large fish's hold point inside the notice radius — outside it
+      // the watcher would drop out of range, drift back in, and
+      // flap between watching and wandering.
+      const standoff = Math.min(NOTICE_RADIUS - 4,
+        NOTICE_STANDOFF + this.halfW(f) +
+        Math.max(0, rank) * NOTICE_STAGGER);
       // A fish watching the pointer from inside the standoff holds
       // there instead of re-deciding.
       if (!food && !turning && nd > standoff &&
