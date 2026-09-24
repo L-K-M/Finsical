@@ -306,9 +306,7 @@ async function listCollection(col: Collection): Promise<Importable[]> {
     for (const e of zipEntries(z)) {
       if (e.name.endsWith("/")) continue; // directory entry
       if (exts.test(e.name) && (col.deep || !e.name.includes("/"))) {
-        // Fragment names are percent-encoded: a `#` inside an entry
-        // name must not split the fragment chain at fetch time.
-        push(e.name, `${zipUrl}#${encodeURIComponent(e.name)}`);
+        push(e.name, `${zipUrl}#${fragEncode(e.name)}`);
         continue;
       }
       if (!col.inside?.test(e.name)) continue;
@@ -321,8 +319,7 @@ async function listCollection(col: Collection): Promise<Importable[]> {
       for (const leaf of leaves) {
         if (leaf.name.endsWith("/") || !exts.test(leaf.name)) continue;
         push(leaf.name,
-             `${zipUrl}#${encodeURIComponent(e.name)}#` +
-               encodeURIComponent(leaf.name));
+             `${zipUrl}#${fragEncode(e.name)}#${fragEncode(leaf.name)}`);
       }
     }
     return out;
@@ -377,6 +374,17 @@ async function listCollection(col: Collection): Promise<Importable[]> {
 
 interface RawBlob { name: string; data: Uint8Array }
 
+/** Minimal encoding for a zip-entry name inside a URL fragment: only
+ * `#` and `%` are escaped, so a name without either keeps its raw
+ * spelling and stays identical to URLs stored before encoding was
+ * added (the URL doubles as the add-on's persisted identity). */
+export const fragEncode = (name: string): string =>
+  name.replace(/%/g, "%25").replace(/#/g, "%23");
+/** Inverse of fragEncode: %23 decodes first so an escaped %25
+ * can't decode into a fake %23 escape. */
+export const fragDecode = (frag: string): string =>
+  frag.replace(/%23/g, "#").replace(/%25/g, "%");
+
 /** Fetch an add-on's raw file bytes. URL fragments chain: "{zip}#{entry}"
  * addresses one entry inside a nested collection zip, and a fragment
  * that is itself a zip entry descends another level ("{zip}#{a.zip}
@@ -394,11 +402,11 @@ async function fetchInnerBlobs(url: string): Promise<RawBlob[]> {
   }
   let z = await fetchZip(zipUrl!);
   for (let i = 0; i < frags.length; i++) {
-    // Fragments are percent-encoded at listing time; raw match first
-    // keeps pre-encoding stored URLs (and a literal %20 name) working.
+    // Fragments are fragEncode'd at listing time; raw match first
+    // keeps URLs stored before encoding (and a literal %23 name)
+    // working.
     const frag = frags[i]!;
-    let decoded = frag;
-    try { decoded = decodeURIComponent(frag); } catch { /* raw */ }
+    const decoded = fragDecode(frag);
     const e = zipEntries(z)
       .find((x) => x.name === frag || x.name === decoded);
     if (!e) throw new Error(`${url}: entry missing`);

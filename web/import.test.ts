@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { browserGeometry, importAddon, installProblem, listAddons,
-         loadProblem, transientFailure,
+import { browserGeometry, fragDecode, fragEncode, importAddon,
+         installProblem, listAddons, loadProblem, transientFailure,
          isListed, orphanedSounds, qualifySoundItemName, recordAddon }
   from "./import.js";
 import type { Importable } from "./import.js";
@@ -129,10 +129,27 @@ describe("archive.org nested collections", () => {
   it("round-trips an entry name containing a '#'", async () => {
     const items = await listAddons();
     const snd = items.find((i) => i.inner === "hash#tag")!;
-    // The encoded name keeps the fragment chain at three parts.
+    // The escaped name keeps the fragment chain at three parts.
     expect(snd.url.split("#")).toHaveLength(3);
+    expect(snd.url).toContain("hash%23tag.mp3");
     const rs = await importAddon(snd.url);
     expect(rs[0]!.sounds).toEqual([{ name: "hash#tag", wav: MP3_BYTES }]);
+  });
+
+  it("keeps non-escaped names raw so stored URLs stay identical", () => {
+    // The URL is the add-on's persisted identity — names without # or
+    // % must mint the same string installs recorded before escaping.
+    for (const raw of ["マッキンフィッシュ（MAC専用）.zip", "a b.mp3",
+                       "dup.mp3"]) {
+      expect(fragEncode(raw)).toBe(raw);
+      expect(fragDecode(raw)).toBe(raw);
+    }
+    // Round-trips through the escape.
+    expect(fragEncode("a#b.mp3")).toBe("a%23b.mp3");
+    expect(fragDecode("a%23b.mp3")).toBe("a#b.mp3");
+    // A literal %23 encodes to %2523 and back — order matters.
+    expect(fragEncode("a%23b.mp3")).toBe("a%2523b.mp3");
+    expect(fragDecode("a%2523b.mp3")).toBe("a%23b.mp3");
   });
 
   it("imports the nested mp3 as a sound record", async () => {
