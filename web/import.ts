@@ -624,15 +624,18 @@ export async function listAddons(
 ): Promise<Importable[]> {
   const cols = COLLECTIONS.filter(only);
   const lists = await Promise.all(cols.map(async (col) => {
+    let items: Importable[] = [];
     try {
-      const items = await listCollection(col);
+      items = await listCollection(col);
       for (const it of items) it.section = col.section;
-      if (items.length) onItems?.(items);
-      return items;
     } catch (e) {
       console.warn(`archive.org listing failed for ${col.outer}:`, e);
-      return [];
+      items = [];
     }
+    // Outside the try: a throwing UI callback must not masquerade as
+    // a fetch failure or drop the collection's items.
+    if (items.length) onItems?.(items);
+    return items;
   }));
   return lists.flat().sort((a, b) =>
     (SECTION_RANK.get(a.section) ?? 0) - (SECTION_RANK.get(b.section) ?? 0));
@@ -1549,10 +1552,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     } else if (sections.includes(section)) {
       applyFilter(); // new rows may join the viewed section
     }
-    // A section whose collection is still in flight reads as fetching,
-    // not empty.
-    if (!rows.length) list.setEmpty("Fetching the archive.org listing…");
-    else list.setEmpty("");
+    // A section whose collection is still in flight reads as fetching;
+    // an empty *filtered* view of an arrived section is not fetching.
+    list.setEmpty(all.some((x) => x.section === section)
+      ? "" : "Fetching the archive.org listing…");
   }
 
   function loadListing(): void {
@@ -1573,9 +1576,11 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       .then((items) => {
       if (gen !== listingGen) return;
       if (!items.length) throw new Error("empty listing");
-      // mergeListing has kept the view current per collection; the
-      // resolved list is the same data in final order. A user's own
-      // pick outranks the saved section.
+      // Re-anchor `all` to the final COLLECTIONS-ordered list before
+      // re-rendering — mergeListing appended in network-arrival
+      // order, which made within-section row order timing-dependent.
+      all = items;
+      // A user's own pick outranks the saved section.
       if (!picked) {
         const sv = savedSection();
         const start = sv && sections.includes(sv) ? sv : sections[0]!;
@@ -1583,9 +1588,11 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
                        sections.indexOf(start));
         showSection(start);
       } else applyFilter();
-      // Rows still absent after the last collection resolved mean its
-      // fetch failed, not that the section is empty.
-      list.setEmpty(rows.length ? "" : "Couldn't load this section.");
+      // A viewable section always has items (sections are built from
+      // `all`); empty at this point means its collection failed —
+      // unless a filter hid the rows, which is not a fetch failure.
+      list.setEmpty(all.some((x) => x.section === section)
+        ? "" : "Couldn't load this section.");
     }).catch((e) => {
       console.warn("add-on listing failed:", e);
       list.setEmpty("Couldn't reach archive.org.");
