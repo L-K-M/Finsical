@@ -100,7 +100,9 @@ let items: Item[] = [];
 const list = mountList(listEl, {
   rowHeight: ROW_H,
   label: "Tank contents",
-  onSelect: () => syncRemove(),
+  // A selection move disarms Remove — the armed button pointed at the
+  // previous row, not the new one.
+  onSelect: () => { disarmRemove(); syncRemove(); },
 });
 // Until the first state push lands, blank is "not heard yet", not
 // "empty" — render() swaps in the empty-tank text once it knows.
@@ -113,10 +115,32 @@ function syncRemove(): void {
   removeBtn.disabled = !it;
   useBtn.disabled = !it?.use;
 }
-pushButton(removeBtn, () => {
+// Remove is a one-way door (a released fish is gone; an uninstalled
+// add-on must be re-downloaded), so it arms like Empty Tank: first
+// click labels the button, a second click inside 4s — but not within
+// a double-click's beat — actually removes. Selection changes disarm.
+let removeArmTimer = 0;
+let removeArmedAt = 0;
+const disarmRemove = (): void => {
+  window.clearTimeout(removeArmTimer);
+  delete removeBtn.dataset.armed;
+  removeBtn.textContent = "Remove";
+};
+const armOrRemove = (): void => {
   const it = items[list.selected];
-  if (it) bus.post(it.remove);
-});
+  if (!it) { disarmRemove(); return; }
+  if (removeBtn.dataset.armed !== "1") {
+    removeBtn.dataset.armed = "1";
+    removeBtn.textContent = "Really remove?";
+    removeArmedAt = performance.now();
+    removeArmTimer = window.setTimeout(disarmRemove, 4000);
+    return;
+  }
+  if (performance.now() - removeArmedAt < 350) return;
+  disarmRemove();
+  bus.post(it.remove);
+};
+pushButton(removeBtn, armOrRemove);
 // "Use" swaps a scenery pack into view (backdrop/gravel by aspect);
 // the next state push re-tags the rows "Showing"/"In tank".
 pushButton(useBtn, () => {
@@ -153,12 +177,13 @@ pushButton(emptyBtn, () => {
   bus.post({ op: "emptyTank" });
 });
 // Delete (or Command-Delete, the Finder's Move to Trash) removes the
-// selected line.
+// selected line — armed first, like the button: a stray keypress
+// shouldn't release a fish.
 listEl.addEventListener("keydown", (e) => {
   if ((e.key === "Backspace" || e.key === "Delete") && !e.altKey &&
       !e.ctrlKey && items[list.selected]) {
     e.preventDefault();
-    bus.post(items[list.selected]!.remove);
+    armOrRemove();
   }
 });
 
@@ -234,6 +259,9 @@ function render(scroll: ListScroll = "keep"): void {
   const need = new Set<string>();
   list.setRows(items.map((it) => row(it, need)),
                { keep: items.findIndex((i) => i.key === keep), scroll });
+  // Membership changed — the armed button may no longer point at the
+  // row it armed on (another window could have removed it).
+  disarmRemove();
   syncRemove();
   paintThumbs();
   // Rows were just rebuilt — drop thumb state for keys that died with
