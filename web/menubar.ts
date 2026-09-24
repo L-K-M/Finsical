@@ -59,18 +59,22 @@ export interface TankMenuActions {
   toggleAutoFeed(): void;
   importAddons(): void;
   takePicture(): void;
+  exportTank(): void;
+  importTank(): void;
   toggleCrt(): void;
   degauss(): void;
   toggleLamp(): void;
   toggleMute(): void;
   togglePause(): void;
   toggleZen(): void;
+  toggleScold(): void;
+  toggleBoot(): void;
   /** Live state, read each time a menu opens. Osmium's items have no
    * checkmark, so toggles name the action they would take instead,
    * like System 8's Show Balloons / Hide Balloons. */
   state(): { autoFeed: boolean; crtUsable: boolean; crtOn: boolean;
              lampOn: boolean; muted: boolean; paused: boolean;
-             zen: boolean };
+             zen: boolean; scoldOn: boolean; bootOn: boolean };
 }
 
 /** True while a pull-down menu is open — the tank page's bare-key
@@ -307,6 +311,11 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
             action: a.toggleLamp },
           { title: s.muted ? "Unmute Sound" : "Mute Sound",
             action: a.toggleMute },
+          { title: s.scoldOn ? "Turn Tap Sign Off" : "Turn Tap Sign On",
+            action: a.toggleScold },
+          { title: s.bootOn ? "Turn Startup Screen Off"
+                            : "Turn Startup Screen On",
+            action: a.toggleBoot },
           // Dimmed (no action) where the page has no usable WebGL.
           { title: s.crtOn ? "Turn CRT Effect Off" : "Turn CRT Effect On",
             ...(s.crtUsable ? { action: a.toggleCrt } : {}) },
@@ -318,6 +327,8 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
             action: a.toggleZen },
           MENU_SEPARATOR,
           { title: "Take a Picture", action: a.takePicture },
+          { title: "Export Tank…", action: a.exportTank },
+          { title: "Import Tank…", action: a.importTank },
           { title: "Import Add-ons…", action: a.importAddons },
         ];
       },
