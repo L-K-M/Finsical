@@ -29,7 +29,8 @@ import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
 import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
          swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
-import { containPoint, isFeedZoneY } from "./feedzone.js";
+import { containPoint, isFeedZoneY, tankMap } from "./feedzone.js";
+import { mountNameTags } from "./nametags.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
@@ -367,6 +368,7 @@ let infoCard: {
 function closeInfo(): void {
   infoCard?.root.remove();
   infoCard = null;
+  requestPaint(); // the fish's name tag comes back, even while paused
 }
 
 function openInfo(f: Fish): void {
@@ -405,13 +407,10 @@ function layoutInfo(): void {
   if (!card) return;
   const f = card.fish;
   if (!sim.fish.includes(f)) { closeInfo(); return; }
-  const r = canvas.getBoundingClientRect();
   const sr = screenEl.getBoundingClientRect();
-  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
   // Card space is screenEl-relative — rect deltas stay right under
   // scroll and regardless of which ancestor is positioned.
-  const ox = r.left - sr.left + (r.width - TANK.width * s) / 2;
-  const oy = r.top - sr.top + (r.height - TANK.height * s) / 2;
+  const { s, ox, oy } = tankMap(canvas.getBoundingClientRect(), sr, TANK);
   const cw = card.root.offsetWidth, ch = card.root.offsetHeight;
   let px = ox + f.x * s - cw / 2;
   let py = oy + f.y * s - ch - 8;
@@ -855,6 +854,7 @@ function postState(): void {
     op: "state",
     boot,
     paused,
+    names: namesOn,
     // The native shell retunes the window's aspect to the machine's
     // viewBox outline; prefs needs just the id.
     machine: { id: machine.id, w: machine.vbW, h: machine.vbH,
@@ -1259,6 +1259,28 @@ function setPaused(on: boolean): boolean {
 try { paused = localStorage.getItem(PAUSE_KEY) === "1"; }
 catch { /* storage unavailable */ }
 
+// ---- fish names -----------------------------------------------------------
+// AquaZone's Options > Names: a tag on every fish at once (the hover
+// balloon names one). Keyboard N / Tank > Fish Names; remembered.
+// Declared here for the TDZ reason above: postState() reads it.
+let namesOn = false;
+const NAMES_KEY = "finsical:names";
+try { namesOn = localStorage.getItem(NAMES_KEY) === "1"; }
+catch { /* storage unavailable */ }
+/** Turn the name tags on or off; returns the new flag for the native
+ * menu's checkmark. */
+function setNames(on: boolean): boolean {
+  if (namesOn !== on) {
+    namesOn = on;
+    if (!on) nameTags.clear();
+    requestPaint(); // tags follow the next render
+    try { localStorage.setItem(NAMES_KEY, on ? "1" : "0"); }
+    catch { /* storage unavailable — session-only */ }
+    postState();
+  }
+  return namesOn;
+}
+
 // ---- CRT effect ------------------------------------------------------------
 // Optional tube emulation (web/crt.ts): the 320×200 canvas becomes a
 // texture for a device-resolution shader. Off = untouched 2D path.
@@ -1360,6 +1382,22 @@ const machineEl = document.getElementById("machine")!;
 const shellEl = document.getElementById("shell")!;
 const screenEl = document.getElementById("screen")!;
 const crtEl = document.getElementById("crt")!;
+const nameTags = mountNameTags(screenEl);
+/** Half the drawn height of a stand-in fish, whose sheet reports none. */
+const PLACEHOLDER_HALF_H = 6;
+/** Put a tag on every fish but the one whose Get Info card is open
+ * (the card names it, right where its tag would go). */
+function syncNameTags(): void {
+  if (!namesOn) return;
+  const sr = screenEl.getBoundingClientRect();
+  const map = tankMap(canvas.getBoundingClientRect(), sr, TANK);
+  const carded = infoCard?.fish;
+  nameTags.sync(sim.fish.filter((f) => f !== carded).map((f) => {
+    const hh = (f.halfH ?? PLACEHOLDER_HALF_H) * f.scale;
+    return { id: f.id, label: f.species || "Fish", x: f.x,
+             top: f.y - hh, bottom: f.y + hh };
+  }), map, { w: sr.width, h: sr.height }, SURFACE + 1);
+}
 // Cosmetic layer — recreate #screenback and enforce sibling order when
 // stale markup is detected (#machine/#shell/#screen must still exist).
 let backEl = document.getElementById("screenback");
@@ -1508,8 +1546,9 @@ function changeWater(): void {
     // Menu clicks land here via evaluateJavaScript — not always a
     // user activation, but unlock() is harmless if resume is blocked.
     toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute,
-    // Returns the new flag, so the native menu retitles at once.
-    togglePause: () => setPaused(!paused) };
+    // Return the new flag, so the native menu updates at once.
+    togglePause: () => setPaused(!paused),
+    toggleNames: () => setNames(!namesOn) };
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
 // path. Touch fallback: hover-less devices have no keyboard or native menu.
@@ -1565,6 +1604,8 @@ window.addEventListener("keydown", (e) => {
     toggleMute(); // bare M: ⌘M is Minimize
   } else if (bare && k === "p") {
     setPaused(!paused); // bare P: ⌘P is Print; the app's menu owns it
+  } else if (bare && k === "n") {
+    setNames(!namesOn); // bare N: ⌘N is New
   } else if (bare && k === "s" && !inNativeShell()) {
     // Browser-only — the app opens stats.html via Tank ▸ Tank Stats.
     // Reuse without re-navigating: a reload would wipe the 90 s trend
@@ -1586,8 +1627,10 @@ mountTankMenuBar({
   toggleLamp: toggleLights,
   toggleMute,
   togglePause: () => { setPaused(!paused); },
+  toggleNames: () => { setNames(!namesOn); },
   state: () => ({ crtUsable: crt?.usable ?? false, crtOn,
-                  lampOn: lighting.lamp, muted: soundCfg.muted, paused }),
+                  lampOn: lighting.lamp, muted: soundCfg.muted, paused,
+                  names: namesOn }),
 });
 
 // web/pack/ is gitignored and no build ships one, so a missing
@@ -2177,6 +2220,7 @@ function frame(now: number): void {
   if (ticks === 0 && !frameDirty && !warming) return;
   frameDirty = false;
   render();
+  syncNameTags();
   // A parked cursor doesn't re-hit-test: hide the tip once the fish
   // under it has swum off, and refresh the label while it stays —
   // the state word would otherwise go stale between pointermoves.

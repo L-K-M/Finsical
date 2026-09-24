@@ -60,6 +60,7 @@ Add-ons.
 | Feed the fish | Click above the waterline, in the dark strip at the top of the tank (the pointer becomes a crosshair) |
 | Tap the glass | Click in the water; nearby fish startle |
 | See a fish's name | Point at it: a balloon names it and says what it is doing |
+| See every fish's name | Press N, or choose Fish Names from the Tank menu: each fish wears a name tag until you turn them off |
 | Get Info on a fish | Option-click it: a card follows it with its hunger and mood |
 | Move the window | In the app, drag the computer case around the tank, or the top edge of the window |
 
@@ -81,6 +82,7 @@ Menu commands in the app:
 | Change Water | Tank | |
 | CRT Effect (checked while on) | Tank | Cmd-R |
 | Lamp On (checked while on) | Tank | Cmd-L |
+| Fish Names (checked while on) | Tank | |
 | Mute Sound (checked while muted) | Tank | Option-Cmd-S |
 | Pause Simulation, Resume Simulation | Tank | Cmd-P |
 | Support the Internet Archive | Tank | (opens archive.org/donate in your browser) |
@@ -101,6 +103,7 @@ Keys on the tank page, in the app and the browser build (see
 | M | Mute or unmute the sound |
 | P | Pause or resume the tank |
 | C | Toggle the CRT effect |
+| N | Show or hide name tags on every fish |
 | S | Open Tank Stats in a tab (browser only) |
 | Ctrl-I or Cmd-I | Open the add-on browser over the tank (browser only; the app's Cmd-I opens the Import Add-ons window) |
 | Esc | Close the Get Info card or the front window |
@@ -183,7 +186,8 @@ Everything stays on your Mac:
   hides), the CRT switch and settings (`finsical:crt`,
   `finsical:crt-cfg`), the machine case (`finsical:machine`), lighting
   and sound settings (`finsical:lighting`, `finsical:sound`), whether
-  the tank is paused (`finsical:paused`), whether the first-run offer
+  the tank is paused (`finsical:paused`), whether fish wear name tags
+  (`finsical:names`), whether the first-run offer
   was answered (`finsical:welcomed`), and the last Preferences pane and
   add-on section (`finsical:prefsPane`, `finsical:addonSection`).
 - **IndexedDB** database `finsical`: downloaded add-on archives,

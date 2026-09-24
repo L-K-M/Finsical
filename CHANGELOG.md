@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fish Names, from AquaZone's Options menu: press N, or choose Fish
+  Names from the Tank menu, and every fish wears a name tag that swims
+  with it. Pointing names only one fish at a time, and never on a touch
+  screen. The setting is remembered.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the

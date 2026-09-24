@@ -283,6 +283,14 @@ body.crt canvas#tank { opacity: 0; }
   background: #ffc; border: 1px solid #000; border-radius: 4px;
   padding: 2px 6px; font: var(--osm-font-small); color: #000;
 }
+/* Name tags on every fish (N, Tank > Fish Names; web/nametags.ts): the
+   balloon's look, a size smaller and a little see-through. */
+.nametag {
+  position: absolute; z-index: 1; pointer-events: none;
+  background: #ffc; border: 1px solid #000; border-radius: 3px;
+  padding: 0 3px; font: var(--osm-font-small); color: #000;
+  white-space: nowrap; opacity: 0.85;
+}
 
 /* ---- the add-on browser (web/import.ts) ----------------------------------
    Laid out like the Chooser: Show: pop-up across the top, the section's
