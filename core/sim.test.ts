@@ -694,7 +694,8 @@ describe("Sim", () => {
           prev = f.state;
         }
         if (rolls > 1 || (!a.eaten && !b.eaten))
-          worst.push(`x ${x} facing ${facing}: ${rolls} rolls`);
+          worst.push(`x ${x} facing ${facing}: ${rolls} rolls, ` +
+                     `ate a=${a.eaten} b=${b.eaten}`);
       }
     }
     expect(worst).toEqual([]);

@@ -806,8 +806,9 @@ export class Sim {
     let bd = Infinity;
     for (const fd of this.food) {
       if (fd.eaten) continue;
-      const behind = (f.x - fd.x) * f.facing > TURN_SLACK;
-      const d = Math.hypot(fd.x - f.x, fd.y - f.y) + (behind ? rollCost : 0);
+      const dx = fd.x - f.x, dy = fd.y - f.y;
+      const behind = -dx * f.facing > TURN_SLACK;
+      const d = Math.sqrt(dx * dx + dy * dy) + (behind ? rollCost : 0);
       if (d < bd) { bd = d; best = fd; }
     }
     return best;
