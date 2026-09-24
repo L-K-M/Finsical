@@ -38,12 +38,48 @@ let greeted = false;
 const thumbStore = new Map<string, string>(); // key → dataURL
 const thumbRequested = new Set<string>();     // asked once per page
 
+// Remove is a one-way door (a released fish is gone; an uninstalled
+// add-on must be re-downloaded), so it arms like Empty Tank: first
+// activation labels the button, a second inside 4s — but not within a
+// double-click's beat — actually removes. Hoisted declarations: the
+// list's onSelect closure below references disarmRemove.
+let removeArmTimer = 0;
+let removeArmedAt = 0;
+/** The row key the armed Remove points at; disarm when it moves. */
+let removeArmedKey: string | undefined;
+/** Pending deferred live-region write from a drift re-arm. */
+let statusTimer = 0;
+function disarmRemove(msg?: string): void {
+  const wasArmed = removeBtn.dataset.armed === "1";
+  window.clearTimeout(removeArmTimer);
+  // A queued drift announcement mustn't land after a cancel message.
+  window.clearTimeout(statusTimer);
+  delete removeBtn.dataset.armed;
+  removeArmedKey = undefined;
+  removeBtn.textContent = "Remove";
+  if (wasArmed && msg !== undefined) removeStatus.textContent = msg;
+}
+
 const summaryEl = document.getElementById("osummary")!;
 const headsEl = document.getElementById("oheads")!;
 const listEl = document.getElementById("olist")!;
 const useBtn = document.getElementById("ouse") as HTMLButtonElement;
 const emptyBtn = document.getElementById("oempty") as HTMLButtonElement;
 const removeBtn = document.getElementById("oremove") as HTMLButtonElement;
+// A focused button already announces its own label change — aria-live
+// on it would double-speak, and the 4s revert to "Remove" would sound
+// like the deed done. A hidden live region says what actually
+// happened instead (visually hidden, not display:none — some screen
+// readers won't announce those).
+const removeStatus = document.createElement("span");
+removeStatus.setAttribute("role", "status");
+// Explicit too — some older AT doesn't map role=status to a live region.
+removeStatus.setAttribute("aria-live", "polite");
+removeStatus.setAttribute("aria-atomic", "true");
+removeStatus.style.cssText = "position:absolute;width:1px;height:1px;" +
+  "overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);" +
+  "white-space:nowrap";
+removeBtn.after(removeStatus);
 
 let tankBoot: string | undefined;
 const bus = openBus((m) => {
@@ -110,7 +146,9 @@ let items: Item[] = [];
 const list = mountList(listEl, {
   rowHeight: ROW_H,
   label: "Tank contents",
-  onSelect: () => syncRemove(),
+  // A selection move disarms Remove — the armed button pointed at the
+  // previous row, not the new one.
+  onSelect: () => { disarmRemove("Removal cancelled."); syncRemove(); },
 });
 // Until the first state push lands, blank is "not heard yet", not
 // "empty" — render() swaps in the empty-tank text once it knows.
@@ -123,10 +161,47 @@ function syncRemove(): void {
   removeBtn.disabled = !it;
   useBtn.disabled = !it?.use;
 }
-pushButton(removeBtn, () => {
+const armOrRemove = (): void => {
   const it = items[list.selected];
-  if (it) bus.post(it.remove);
-});
+  if (!it) { disarmRemove("Removal cancelled."); return; }
+  // If the arm and the selection ever drift apart (a future path that
+  // changed selection without disarming), re-arm on the row the user
+  // actually picked instead of removing an unconfirmed one. The
+  // re-target is announced distinctly — "Removal cancelled." followed
+  // by the same "Press again to confirm." it showed before would
+  // batch to no announcement at all in some screen readers.
+  const drifted = removeBtn.dataset.armed === "1" &&
+    it.key !== removeArmedKey;
+  if (drifted) disarmRemove();
+  if (removeBtn.dataset.armed !== "1") {
+    removeBtn.dataset.armed = "1";
+    removeArmedKey = it.key;
+    removeBtn.textContent = "Really remove?";
+    if (drifted) {
+      // Live regions only announce *changes* — a second consecutive
+      // drift writing identical text would be silent, so clear first
+      // and set on the next task.
+      removeStatus.textContent = "";
+      window.clearTimeout(statusTimer);
+      statusTimer = window.setTimeout(() => {
+        removeStatus.textContent =
+          "Selection changed — press again to confirm.";
+      }, 0);
+    } else {
+      window.clearTimeout(statusTimer); // a queued drift write can't clobber
+      removeStatus.textContent = "Press again to confirm.";
+    }
+    removeArmedAt = performance.now();
+    removeArmTimer = window.setTimeout(
+      () => disarmRemove("Removal cancelled."), 4000);
+    return;
+  }
+  if (performance.now() - removeArmedAt < 350) return;
+  disarmRemove();
+  removeStatus.textContent = "Removed.";
+  bus.post(it.remove);
+};
+pushButton(removeBtn, armOrRemove);
 // "Use" swaps a scenery pack into view (backdrop/gravel by aspect);
 // the next state push re-tags the rows "Showing"/"In tank".
 pushButton(useBtn, () => {
@@ -163,12 +238,14 @@ pushButton(emptyBtn, () => {
   bus.post({ op: "emptyTank" });
 });
 // Delete (or Command-Delete, the Finder's Move to Trash) removes the
-// selected line.
+// selected line — armed first, like the button: a stray keypress
+// shouldn't release a fish. Auto-repeat is ignored: a held key would
+// arm on the first event and confirm on the repeat, one gesture.
 listEl.addEventListener("keydown", (e) => {
   if ((e.key === "Backspace" || e.key === "Delete") && !e.altKey &&
-      !e.ctrlKey && items[list.selected]) {
+      !e.ctrlKey && !e.repeat && items[list.selected]) {
     e.preventDefault();
-    bus.post(items[list.selected]!.remove);
+    armOrRemove();
   }
 });
 
@@ -244,6 +321,11 @@ function render(scroll: ListScroll = "keep"): void {
   const need = new Set<string>();
   list.setRows(items.map((it) => row(it, need)),
                { keep: items.findIndex((i) => i.key === keep), scroll });
+  // Membership changed — disarm only when the armed row itself moved
+  // out from under the button (removed elsewhere, or the selection
+  // shifted). A re-tag push that keeps the selection keeps the arm.
+  if (items[list.selected]?.key !== removeArmedKey)
+    disarmRemove("Removal cancelled.");
   syncRemove();
   paintThumbs();
   // Rows were just rebuilt — drop thumb state for keys that died with
