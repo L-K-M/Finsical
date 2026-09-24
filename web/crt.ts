@@ -28,7 +28,7 @@ uniform vec2 uTank;   // logical resolution (320x200)
 uniform vec4 uRect;   // letterboxed tank rect in buffer px, y-up
 uniform float uTime;
 uniform float uScan;  // gap darkness between rows (0 = off, 1 = black)
-uniform float uBeam;  // horizontal smear blend (0 = sharp pixels)
+uniform float uSoft;  // horizontal beam smear (0 = sharp pixels)
 uniform float uBloom; // bright bleed strength
 uniform float uOver;  // bright-color overdrive
 uniform float uConv;  // R/B misconvergence, edge-weighted
@@ -47,9 +47,31 @@ uniform float uGreen;
 uniform float uBlue;
 uniform float uPower; // 1 = settled; <1 = power-on warm-up in progress
 
+// Device px per game px, set at the top of main().
+vec2 pxScale;
+
+// Sharp-bilinear: the texel center nearest to x, except within one
+// device px of a texel boundary, where it fades to the neighbor. Pure
+// nearest would leave uneven texel widths and moire at fractional
+// scales and under curvature.
+float sharpCoord(float x, float size, float scale) {
+  float p = clamp(x, 0.5, size - 0.5) - 0.5;
+  float i = floor(p);
+  return i + 0.5 + clamp((p - i - 0.5) * scale + 0.5, 0.0, 1.0);
+}
+
+// Game pixel color at lp. Rows sample sharp, so the linear texture
+// filter interpolates along the scan but never between rows: every
+// horizontal effect stays within its own scanline.
 vec3 gamePx(vec2 lp) {
+  lp.y = sharpCoord(lp.y, uTank.y, pxScale.y);
   vec2 t = clamp(lp, vec2(0.5), uTank - 0.5) / uTank;
   return texture2D(uTex, t).rgb;
+}
+
+// The game pixel under lp, sharp in both directions.
+vec3 texelAt(vec2 lp) {
+  return gamePx(vec2(sharpCoord(lp.x, uTank.x, pxScale.x), lp.y));
 }
 
 float hash(vec2 p) {
@@ -58,6 +80,10 @@ float hash(vec2 p) {
 
 void main() {
   vec2 uv = (gl_FragCoord.xy - uRect.xy) / uRect.zw;
+  // Overscan and the size pots below scale the raster up; curvature
+  // and the warm-up squeeze are left out of this estimate.
+  pxScale = uRect.zw / uTank * (1.0 + 0.12 * uZoom) *
+            vec2(0.75 + 0.5 * uHSize, 0.75 + 0.5 * uVSize);
 
   // gc is the position on the glass — vignette and misconvergence
   // follow the tube, not the raster.
@@ -93,12 +119,24 @@ void main() {
   // Logical game pixel under this output pixel (post-warp).
   vec2 lp = uv * uTank;
 
-  // Horizontal beam smear — gaussian over ~2 game px along the scan.
-  vec3 sharp = gamePx(lp);
-  vec3 c = sharp * 0.40;
-  c += (gamePx(lp - vec2(0.7, 0.0)) + gamePx(lp + vec2(0.7, 0.0))) * 0.19;
-  c += (gamePx(lp - vec2(1.6, 0.0)) + gamePx(lp + vec2(1.6, 0.0))) * 0.11;
-  c = mix(sharp, c, uBeam);
+  // Horizontal beam smear: a 9-tap gaussian along the scan. The first
+  // 40% of the slider fades in a beam about one game px wide (sigma
+  // ~0.9 px); beyond that the beam itself widens, to 2.5x at the top.
+  vec3 sharp = texelAt(lp);
+  vec3 c = sharp;
+  float soft = 2.5 * uSoft;
+  if (soft > 0.0) {
+    float pitch = 0.55 * max(soft, 1.0); // tap spacing in game px
+    vec3 sum = gamePx(lp);
+    float total = 1.0;
+    for (int i = 1; i <= 4; i++) {
+      float w = exp(-0.18 * float(i * i));
+      vec2 o = vec2(pitch * float(i), 0.0);
+      sum += (gamePx(lp - o) + gamePx(lp + o)) * w;
+      total += 2.0 * w;
+    }
+    c = mix(sharp, sum / total, min(soft, 1.0));
+  }
 
   // Misconvergence: the outer electron guns never land perfectly —
   // red drifts left and blue right, growing from zero at the center
@@ -165,8 +203,9 @@ void main() {
 export interface CrtConfig {
   /** Darkness of the gaps between game-pixel rows. */
   scanlines: number;
-  /** How much the beam smears color sideways along each scan. */
-  beam: number;
+  /** How much the beam smears color sideways along each scan. Up to
+   * 0.4 the smear fades in at a fixed width; above, it widens. */
+  softening: number;
   /** Bright colors bleeding into their neighbors. */
   bloom: number;
   /** Extra punch on already-bright colors. */
@@ -200,7 +239,7 @@ export interface CrtConfig {
 }
 
 export const CRT_DEFAULTS: Readonly<CrtConfig> = Object.freeze<CrtConfig>({
-  scanlines: 0.40, beam: 1.0, bloom: 0.50, overdrive: 0.50,
+  scanlines: 0.40, softening: 0.40, bloom: 0.50, overdrive: 0.50,
   misconvergence: 0.35, grille: 1.0, curvature: 0.45, vignette: 0.35,
   flicker: 0.30, grain: 0.30,
   brightness: 0.50, contrast: 0.50, zoom: 0.0,
@@ -208,10 +247,21 @@ export const CRT_DEFAULTS: Readonly<CrtConfig> = Object.freeze<CrtConfig>({
   red: 0.50, green: 0.50, blue: 0.50,
 });
 
+/** The retired `beam` key spanned only today's lower 40% of
+ * `softening`; stored configs convert so their look is unchanged. */
+const LEGACY_BEAM_SCALE = 0.4;
+
 /** Merge an untrusted source (localStorage, bus message) onto the
- * defaults: unknown keys drop, each value clamps into 0–1. */
+ * defaults: unknown keys drop, each value clamps into 0–1. A legacy
+ * `beam` value converts to `softening` when that key is absent. */
 export function sanitizeCrtConfig(raw: unknown): CrtConfig {
   const c = { ...CRT_DEFAULTS };
+  if (raw && typeof raw === "object" && !("softening" in raw) &&
+      "beam" in raw) {
+    const beam = (raw as Record<string, unknown>).beam;
+    if (typeof beam === "number")
+      raw = { ...raw, softening: beam * LEGACY_BEAM_SCALE };
+  }
   if (raw && typeof raw === "object")
     for (const k of Object.keys(c) as (keyof CrtConfig)[]) {
       const v = (raw as Record<string, unknown>)[k];
@@ -261,7 +311,7 @@ export const CRT_PRESETS: readonly CrtPreset[] = Object.freeze([
     blurb: "Crisp beam and firm scanlines with grain turned down — " +
       "reads clean on a modern LCD without losing the tube.",
     config: withDefaults({
-      beam: 0.25, scanlines: 0.55, misconvergence: 0.15,
+      softening: 0.10, scanlines: 0.55, misconvergence: 0.15,
       bloom: 0.40, overdrive: 0.55, grille: 0.85,
       curvature: 0.30, vignette: 0.25, flicker: 0.15, grain: 0.10,
     }),
@@ -272,7 +322,7 @@ export const CRT_PRESETS: readonly CrtPreset[] = Object.freeze([
     blurb: "Lower flicker, grain, and scanlines for all-day desktop use — " +
       "the tube, without the noise.",
     config: withDefaults({
-      scanlines: 0.20, beam: 0.70, bloom: 0.35, overdrive: 0.40,
+      scanlines: 0.20, softening: 0.28, bloom: 0.35, overdrive: 0.40,
       misconvergence: 0.20, grille: 0.50, curvature: 0.30,
       vignette: 0.25, flicker: 0.08, grain: 0.10,
     }),
@@ -283,7 +333,7 @@ export const CRT_PRESETS: readonly CrtPreset[] = Object.freeze([
     blurb: "Every tube trait off — a flat-panel look while the " +
       "effect stays on.",
     config: withDefaults({
-      scanlines: 0, beam: 0, bloom: 0, overdrive: 0,
+      scanlines: 0, softening: 0, bloom: 0, overdrive: 0,
       misconvergence: 0, grille: 0, curvature: 0, vignette: 0,
       flicker: 0, grain: 0,
     }),
@@ -373,8 +423,9 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   gl.enableVertexAttribArray(aPos);
   gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
 
-  // Linear filtering: the shader's horizontal taps get smooth beam
-  // smear; the scanline mask re-establishes crisp row boundaries.
+  // Linear filtering gives the shader's horizontal taps a smooth beam
+  // smear; gamePx() samples rows sharp, so they never blend into each
+  // other.
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -395,7 +446,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
 
   // Trait uniforms — config keys pair with shader names.
   const TRAIT_UNIFORMS: Record<keyof CrtConfig, string> = {
-    scanlines: "uScan", beam: "uBeam", bloom: "uBloom", overdrive: "uOver",
+    scanlines: "uScan", softening: "uSoft", bloom: "uBloom", overdrive: "uOver",
     misconvergence: "uConv", grille: "uGrill", curvature: "uCurve",
     vignette: "uVig", flicker: "uFlick", grain: "uGrain",
     brightness: "uBright", contrast: "uContr", zoom: "uZoom",
@@ -419,7 +470,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   // devicePixelRatio read stays per-frame (a cheap number, no
   // layout) so browser-zoom DPR changes still resize the buffer.
   // DPR caps at 2: the grille mask is sub-game-pixel already there,
-  // and the ~15-tap shader scales with buffer pixels.
+  // and the ~18-tap shader scales with buffer pixels.
   // Lifetime: initCrt runs once per page load (module scope in
   // web/main.ts) and CrtFilter has no dispose path, so the observer
   // and window listener below live exactly as long as the page.

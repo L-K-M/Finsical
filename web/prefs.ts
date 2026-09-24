@@ -41,7 +41,7 @@ const SPECS: SliderSpec[] = [
     blurb: "Dark gaps between the picture's rows — the most " +
       "recognizable CRT trait. The lines stay locked to the game's " +
       "own pixel rows at any window size." },
-  { key: "beam", label: "Softening", ends: ["Sharp", "Soft"],
+  { key: "softening", label: "Softening", ends: ["Sharp", "Soft"],
     blurb: "A tube's beam smears color along each scan, never between " +
       "rows — horizontal edges soften while the scanlines stay crisp." },
   { key: "misconvergence", label: "Misconvergence",
@@ -106,7 +106,7 @@ const specOf = (k: keyof CrtConfig): SliderSpec =>
 interface Group { title: string; rows: (keyof CrtConfig)[][] }
 const MONITOR_GROUPS: Group[] = [
   { title: "Beam & Phosphor",
-    rows: [["scanlines", "beam", "misconvergence"],
+    rows: [["scanlines", "softening", "misconvergence"],
            ["bloom", "overdrive", "grille"]] },
   { title: "Glass & Signal",
     rows: [["curvature", "vignette"], ["flicker", "grain"]] },

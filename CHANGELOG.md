@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The CRT Softening control now smears only along each scanline, as
+  its description says. The rows used to blend into each other at
+  every setting, so the whole picture turned soft, and even Sharp and
+  Pixel Perfect were slightly blurred. Softening also reaches further:
+  the old maximum now sits at 40%, and the rest of the slider widens
+  the smear. Your saved setting converts, so the picture looks the
+  same as before apart from the sharper rows.
 - The tank reopens exactly where you left it, even when part of it was
   off the edge of the screen. It used to be pushed back onto the
   screen at launch.
