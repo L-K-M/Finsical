@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { inflateCap, inflateFflate, inflateNative } from "./inflate.js";
+import { inflateCap, inflateFflate, inflateNative,
+         InflateTooLargeError } from "./inflate.js";
 import { ownBytes } from "./bytes.js";
 
 const SRC = new Uint8Array(4096).map((_, i) => i & 0xff);
@@ -42,7 +43,8 @@ describe.each(IMPLS)("%s inflate", (_name, impl) => {
 
   it("rejects output past the byte cap", async () => {
     const z = await compress(SRC, "deflate-raw");
-    await expect(impl(z, "deflate-raw", 1024)).rejects.toThrow(/exceeded/);
+    await expect(impl(z, "deflate-raw", 1024))
+      .rejects.toBeInstanceOf(InflateTooLargeError);
   });
 
   it("rejects corrupt input", async () => {
@@ -66,6 +68,29 @@ describe("inflateCap", () => {
     try {
       expect(await inflateCap(await compress(SRC, "deflate-raw"),
                               "deflate-raw", 1 << 20)).toEqual(SRC);
+      expect(await inflateCap(await compress(SRC, "deflate"),
+                              "deflate", 1 << 20)).toEqual(SRC);
+    } finally {
+      globalThis.DecompressionStream = real;
+    }
+  });
+
+  it("falls back when the format itself is unsupported", async () => {
+    // Chromium 80–102 ships DecompressionStream but not "deflate-raw":
+    // the constructor throws TypeError. The probe must route to fflate.
+    const real = globalThis.DecompressionStream;
+    class NoRaw extends real {
+      constructor(format: CompressionFormat) {
+        if (format === "deflate-raw")
+          throw new TypeError("unsupported format");
+        super(format);
+      }
+    }
+    (globalThis as Record<string, unknown>).DecompressionStream = NoRaw;
+    try {
+      expect(await inflateCap(await compress(SRC, "deflate-raw"),
+                              "deflate-raw", 1 << 20)).toEqual(SRC);
+      // deflate still takes the native path.
       expect(await inflateCap(await compress(SRC, "deflate"),
                               "deflate", 1 << 20)).toEqual(SRC);
     } finally {

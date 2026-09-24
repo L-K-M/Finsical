@@ -101,7 +101,8 @@ export async function zipRead(d: Uint8Array, e: ZipEntry, maxBytes = MAX_ENTRY):
   try { out = await inflateCap(data, "deflate-raw", maxBytes); }
   catch (err) {
     throw new Error(`zip ${e.name}: ` +
-      (err instanceof Error ? err.message : String(err)));
+      (err instanceof Error ? err.message : String(err)),
+      { cause: err });
   }
   if (out.length !== e.usize)
     throw new Error(`zip ${e.name}: expected ${e.usize} bytes, got ${out.length}`);

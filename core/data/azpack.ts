@@ -5,7 +5,7 @@
  * under sprites/ and images/. This module is environment-agnostic: the
  * caller supplies file bytes (fs in node, fetch in the browser shell).
  */
-import { inflateCap } from "./inflate.js";
+import { inflateCap, InflateTooLargeError } from "./inflate.js";
 
 export interface SpriteSheetMeta {
   image: string;
@@ -61,7 +61,7 @@ async function inflate(data: Uint8Array, expected: number): Promise<Uint8Array> 
   try { out = await inflateCap(data, "deflate", expected); }
   catch (e) {
     // The byte cap doubles as the excess-pixels check.
-    if (e instanceof Error && /exceeded/.test(e.message))
+    if (e instanceof InflateTooLargeError)
       throw new Error("png: excess pixel data");
     throw e;
   }
