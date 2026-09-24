@@ -181,10 +181,13 @@ describe("Sim", () => {
     sim.bubbles.length = 0; // ambient spawns would muddy the position check
     let puff: { x: number; y: number } | undefined;
     for (let i = 0; i < 2000 && !fd.eaten; i++) {
+      const spawned = sim.bubbles.length;
       sim.tick();
+      // Only bubbles born on the eat tick count — an ambient drifter
+      // passing the pellet mustn't satisfy the check.
       if (fd.eaten)
-        puff = sim.bubbles.find((b) => Math.abs(b.x - fd.x) < 2 &&
-                                      Math.abs(b.y - fd.y) < 2);
+        puff = sim.bubbles.slice(spawned).find(
+          (b) => Math.abs(b.x - fd.x) < 2 && Math.abs(b.y - fd.y) < 2);
     }
     expect(puff).toBeDefined();
   });
