@@ -43,6 +43,12 @@ one entry per idea, and each merge is recorded in that entry's
   state, none merged). Eleventh-pass entries name that revision;
   verify against `origin/main` before re-scoping, since those PRs may
   have landed.
+- Thirteenth pass (`origin/main` `e9360a8`): an implementation pass —
+  44 focused PRs (#188 through #252, minus the maintainer's claude/
+  branches) are open for review, each named in the entries it
+  addresses. None are merged; verify against `origin/main` before
+  re-scoping. The GLM reviewer hit Z.ai rate limits on a few branches
+  (#233, #235, #237) — those reviews are gaps, not clean rounds.
 
 ## Baselines
 
@@ -112,7 +118,8 @@ and D; Testing & tooling and Docs/packaging to T.
 Ninth-pass IDs keep their numbers. Earlier-pass ideas with no
 ninth-pass match took the next free number (B-52+, P-19+, V-19+,
 U-25+, F-31+, D-22+, T-30+); later passes continue each prefix
-(eleventh: B-56+, P-24, V-26+; twelfth: B-62+, P-25+, U-30+). Items
+(eleventh: B-56+, P-24, V-26+; twelfth: B-62+, P-25+, U-30+;
+thirteenth: P-27, V-28, D-32+). Items
 with a "remainder" in their title keep their ID and list only what
 is still open.
 
@@ -1025,6 +1032,158 @@ S-07 schema boundary, F-01 resource map, B-14/B-15 binding
 (unchanged from the eleventh pass), plus new entries B-62 through
 B-64, P-25, P-26, U-30 and U-31 below.
 
+### Completed (thirteenth pass, PRs open for review)
+
+Thirteenth-pass baseline `e9360a8` on `origin/main`. A continuation
+of the twelfth-pass review: the tmp.md findings were implemented in
+one focused branch per idea, each left open for the maintainer.
+Round outcomes are summarized per PR; GLM review rounds are in the
+PR threads. Reviewer-integration failures (Z.ai HTTP 429) hit #233,
+#235 and #237 — those gaps are noted, not counted as clean rounds.
+
+- **PR #188** (`fix/audio-queue-burst`, B-17 remainder, B-19 part):
+  `find()` iterates needles outermost so caller-specified priority is
+  honored — the enumeration test caught splash playing `Drop` because
+  it was inserted first; suspended-context one-shots dropped on top
+  of #185's guard.
+- **PR #190** (`fix/feeding-polish`): feeding polish round.
+- **PR #191** (`fix/per-launch-seed`, B-51): per-launch sim seed —
+  reconcile with #197's identical change before merging either.
+- **PR #193** (`fix/fish-identity`, B-14/B-15/B-46, B-04 partial):
+  fish bind to their pack's entry, not a pack-level slot; launch
+  restores record the binding so remap can't orphan it.
+- **PR #194** (`fix/housekeeping`): small cleanups.
+- **PR #195** (`fix/client-windows`, B-55, U-11, U-12): stats history
+  keyed to boot, overview re-sort only on key-set change, persistent
+  "waiting for the tank" state.
+- **PR #196** (`perf/import-cache-lru`, P-01 part): bounded the
+  import-side caches; superseded in spirit by #205 — merge one.
+- **PR #198** (`ux/overview-delete-confirm`, U-04 part): remove
+  asks for confirmation.
+- **PR #199** (`fix/import-ux`, U-07, U-08, U-09/N-06, B-44 part,
+  U-22): double-click installs, alphabetical sections, friendly
+  `loadProblem` errors over the bus, no Try Again on deterministic
+  decode failures, `storage.persist()` deferred to first write.
+- **PR #200** (`perf/parallel-restore`, P-07): restore downloads run
+  with bounded concurrency before ordered apply.
+- **PR #202** (`fix/decompression-fallback`, B-29): fflate inflate
+  when `DecompressionStream` is missing (WebKit < 16.4).
+- **PR #203** (`fix/import-honesty`, B-11, B-12): per-section
+  `usablePacks` — a pack that can put nothing in the tank fails the
+  install instead of reporting success; gravel strips count as
+  backdrops where `pickBackdrop` consumes them.
+- **PR #204** (`feat/cat-paw`, N-18): the cat paw bats at the glass.
+- **PR #205** (`perf/state-and-cache`, P-01, P-06, P-12, P-16):
+  16-entry LRU for decoded packs, coalesced `postState` with a
+  rate-limited hello response, `indexedPixels` Uint32 palette LUT,
+  numeric swim-cache keys.
+- **PR #206** (`feat/lifecycle`, F-16 part): sick, dead and born
+  states.
+- **PR #207** (`fix/crt-shader`, V-14): phase-continuous uniforms
+  replace the 100 s `uTime` wrap; `highp` with a
+  `GL_FRAGMENT_PRECISION_HIGH` fallback.
+- **PR #209** (`fix/tank-polish`, U-01, V-21, V-04, U-15): food cap
+  with a shared refusal blip, a gulp bubble at the eat point, drawn
+  gravel capped near the sim floor, `contextmenu` suppressed on all
+  five borderless pages.
+- **PR #216** (`feat/dinner-bell`): a bell rings when fish start
+  begging.
+- **PR #217** (`feat/zen-mode`): every chrome piece hidden.
+- **PR #219** (`feat/stats-copy`): Copy Summary button.
+- **PR #221** (`fix/sound-manifest`, N-05, B-40): pack manifests merge
+  instead of wiping the sound table; the ambient loop restarts only
+  when the winning pick's name+duration+content probe changes, not on
+  identical re-decodes.
+- **PR #222** (`fix/import-guards`, N-07, N-08): zip entry names are
+  minimally percent-encoded (`%`/`#` only — full encodeURIComponent
+  would change identity for the JPN names and duplicate installs);
+  dropped-folder audio is capped.
+- **PR #224** (`fix/decor-copies`, B-21): decor copy counts persist on
+  the Importable record and replay on restore.
+- **PR #227** (`feat/crt-degauss`): degauss wobble + power-off
+  collapse.
+- **PR #228** (`feat/auto-feeder`, F-22 part): the original's timed
+  feeder.
+- **PR #230** (`perf/save-cadence`, P-21): state pushes stay frequent,
+  localStorage writes drop to a slower cadence.
+- **PR #231** (`ux/quota-message`): one warning when a dropped pack
+  can't persist.
+- **PR #232** (`feat/snail`): a rare snail creeps the gravel.
+- **PR #233** (`fix/multi-tab-guard`, B-34): a localStorage lease
+  picks one tank owner; a tab that loses the race — or loses the
+  lease mid-session — goes read-only with an alert; bfcache restores
+  re-claim.
+- **PR #234** (`fix/shell-polish`, B-28, B-49, B-50, V-16, U-18/N-09):
+  per-webview crash throttling with a delayed reload, resized frames
+  clamped onto the visible screen, a minimum-visible-area restore,
+  `invalidateShadow` on mask changes, and a narrower DragStrip on the
+  bare tank. P-22 investigated and declined: `UserDefaults.set` is
+  in-memory — there is no synchronous plist write to debounce.
+- **PR #235** (`fix/interaction-guards`, N-10, N-03): the menu's Feed
+  checks the modal alert; a queued Add-Again identity-checks the
+  in-flight slot so it can't clobber a newer install's registration.
+- **PR #236** (`fix/case-drag-cursor`, B-48): the grabbing cursor is a
+  JS-tracked class cleared on pointerup/cancel, blur, focus and
+  buttonless motion — the page never sees the native drag's mouseup.
+- **PR #237** (`fix/integer-scale`, V-03): device-pixel-snapped
+  integer upscales, pixelated above 1x and smooth below, raster
+  centered on the device grid; `#screen` takes `touch-action: none`
+  so letterbox-margin gestures stay covered.
+- **PR #238** (`feat/plant-sway`, V-20 part): plants sway.
+- **PR #240** (`feat/progressive-listing`, P-05): `listAddons` takes
+  an `onItems` callback per landed collection; the panel merges
+  incrementally under a generation token while the final list keeps
+  canonical collection order. Callback throws are isolated from both
+  the fetch catch and `Promise.all`.
+- **PR #243** (`feat/pointer-crowd`, D-02): up to `NOTICE_CAP` = 4
+  calm fish gather at the pointer on rank-staggered rings; the clamp
+  is per-rank so capped watchers can't stack; `noticeFish` stays as
+  the senior-watcher getter.
+- **PR #244** (`feat/drag-affordance`, U-10): a depth-counted
+  `body.dragging` class draws a dashed "Drop to add" frame over
+  `#screen`; the reset runs on the capture phase so a descendant's
+  `stopPropagation` can't strand it. Review refuted: `#screen` is a
+  plain div, `::after` renders.
+- **PR #245** (`feat/overview-focus`, U-25 part): the Overview's
+  selection posts `focusFish`, the tank draws a marching-ants marquee
+  that freezes under reduced motion, clears on a missing fish, and
+  lapses after ~40 s of sim silence — BroadcastChannel has no
+  disconnect and bfcache eviction fires no pagehide, so the overview
+  re-asserts on a heartbeat.
+- **PR #246** (`fix/favicon`, V-19 part): favicon on every window
+  page — overlaps #197's favicon half; merge one.
+- **PR #247** (`feat/plant-bubbles`, N-14): plants leak a thin bubble
+  stream in daylight through `Sim.spawnBubble`; a shared
+  `decorAnchor` + `DECOR_FLOOR` keep emitter geometry in lockstep
+  with the renderer.
+- **PR #248** (`feat/bubble-pop`, N-13): a tap pops the nearest rising
+  bubble inside its drawn radius (`tapBubble` lives in water.ts with
+  the footprint) and leaves the same ring the waterline draws.
+  Overlaps claude/#211 — pick one.
+- **PR #249** (`feat/standin-label`, U-02 part): starter placeholders
+  carry `standIn: true` and read "Species (stand-in)".
+- **PR #250** (`ux/sound-drop-hint`): the sounds pane hint mentions
+  plain audio drops.
+- **PR #251** (`feat/scold-pref`): Tank-menu toggle for the
+  don't-tap sign.
+- **PR #252** (`ux/feed-hint`): feeding affordance cue.
+
+Declined this pass and recorded: P-22 (no synchronous plist write
+exists), the #209 edit-menu concern (no editable field exists on any
+of the five pages — the range slider has no edit menu), the #199
+`transientFailure` regex change (the suggested alternation would
+break real abort detection; no tank-raised message matches today),
+the #224 decor-frame non-uniformity worry (frames in one pick are
+same-size by construction; comment strengthened instead), and
+palette `& 255` masking in #205 (every palette producer is
+byte-sourced — unreachable). The #245 bfcache-eviction gap was fixed
+with the heartbeat lease rather than bus disconnect tracking.
+
+New open entries this pass: P-27, V-28, D-32, D-33, D-34. N-11 and
+N-12 became P-27 and V-28; N-15, N-17 and N-19 became D-32, D-33 and
+D-34; N-16 folded into D-10 and N-20 into V-23; the rest of the N-*
+list was implemented above. N-09 was a duplicate of U-18.
+
 ## Bugs and reliability (open)
 
 Done and removed from this list: B-01, B-02, B-03, B-05,
@@ -1056,6 +1215,8 @@ Playwright: install angels.zip; saved roster sheetIdx [4:0, 5:1]; after reload a
 
 - Related: B-14 and B-15 share the pure `web/tankmodel.ts`; B-23 (tank presets feed the same pool).
 - PR #149 (open) replaced usePack's comparator with `pickSwimSheet`; key each part's slot to the sheet it picks.
+
+Thirteenth-pass update: PR #193 (open) binds launch restores per pack entry; claude/#218 implements the full part split. Reconcile before merging either.
 
 ### B-06 The release binary is arm64-only although Info.plist promises macOS 12 (which runs on Intel)
 
@@ -1089,6 +1250,8 @@ Size S · Severity medium · Value 4/5 · Risk 1/5
 
 - Related: U-06 ('No fish' status), F-23 (`.dna` only with a duplicate-art check). Refuted: adding `.dna` to PACK_EXT (see "Declined, refuted and corrected").
 
+Thirteenth-pass update: PR #203 (open): a fish pack with no drawable frame now fails the install instead of reporting success.
+
 ### B-12 Six gravel add-ons install as a silent no-op
 
 Size S · Severity medium · Value 3/5 · Risk 1/5
@@ -1104,6 +1267,8 @@ Size S · Severity medium · Value 3/5 · Risk 1/5
 **Merged and related.**
 
 - Related: V-04 (gravel prescale and `floorFor`); land together or B-12 first.
+
+Thirteenth-pass update: PR #203 (open): per-section usablePacks reports 'nothing usable inside'; gravel strips count where pickBackdrop consumes them.
 
 ### B-13 Dropping raw packs: only the first imports, scenery is ignored, fish portraits replace the backdrop
 
@@ -1150,6 +1315,8 @@ Playwright: goldfish (sheet 0) + blackmoor (sheet 1), clear IDB, goldfish.zip re
 - Design constraint: `usePack` intentionally keeps sheets on removal to preserve `sheetIdx` bindings; do not "fix" that apparent leak separately.
 - The local-bytes follow-up overlaps open PR #124 (`local:` keys, `LOCAL_PREFIX`/`isLocalPack`).
 
+Thirteenth-pass update: PR #193 (open): entry-bound restore fixes the stale-index case.
+
 ### B-15 Starter fish adopt every installed species, change as more install, and keep removed art
 
 Size S · Severity medium · Value 4/5 · Risk 2/5
@@ -1166,6 +1333,8 @@ Size S · Severity medium · Value 4/5 · Risk 2/5
 
 - Related: B-23(a) (keep tank-preset sheets out of the pool), B-14.
 - PR #160 (open) removes the stand-ins once Stock the Tank installs a real fish, which narrows this; a user who declines the offer still sees starters adopt every species.
+
+Thirteenth-pass update: PR #193 (open): the same binding stops starter stand-ins adopting installed species.
 
 ### B-17 While audio is locked every sound is queued; the first click plays them all at once
 
@@ -1192,6 +1361,8 @@ while suspended unless a gesture is active, a single
 coverage. Still open: WebKit's `interrupted` state (only `suspended`
 is handled), a `visibilitychange` resume hook, and the native
 `mediaTypesRequiringUserActionForPlayback` flag (needs a Mac).
+
+Thirteenth-pass update: PR #188 (open) stacks the remaining queue-burst guards on #185's suspended-drop core.
 
 ### B-18 Sound add-ons cannot be removed; their sounds persist and replay every launch
 
@@ -1241,6 +1412,8 @@ Still open: the `kind: 'effect' | 'music'` split — a short song
 called "drop" can still answer a splash; music should live in a
 separate map that event lookup never searches.
 
+Thirteenth-pass update: PR #188 (open): find() iterates needles outermost, so caller-specified priority wins over insertion order.
+
 ### B-20 A background, gravel or tank preset re-chosen with 'Add Again' reverts after relaunch
 
 Size S · Severity medium · Value 4/5 · Risk 2/5
@@ -1276,6 +1449,8 @@ Size S · Severity medium · Value 3/5 · Risk 2/5
 - Conflicts with open PR #99 (and #139): there "Add Again" on a plants/accessories pack replaces that pack's frames instead of stacking a copy. Decide the intended behavior first. If copies are wanted, this entry (or F-04's placement array) applies and #99 must be revised; if not, #99 already fixes the visible stacking and this entry reduces to nothing.
 - Merged from passes 1-7 ("Decor count"): an optional Overview quantity control.
 
+Thirteenth-pass update: PR #224 (open): the copy count persists on the Importable record and replays on restore.
+
 ### B-23 Tank presets (.azn) apply only a stretched backdrop and one strip; their sheets hijack the starter fish
 
 Size M · Severity medium · Value 3/5 · Risk 3/5
@@ -1310,6 +1485,8 @@ show `dropEffect: 'none'` for file drags. Still open: the native
 `decidePolicyFor` cancel for main-frame non-http(s) loads (the real
 fix; needs a Mac to verify).
 
+Thirteenth-pass update: #186 covers the web half; the native decidePolicyFor half remains open.
+
 ### B-27 Zoom and window tiling break the aspect ratio, so the silhouette mask no longer matches the art
 
 Size S · Severity medium · Value 3/5 · Risk 2/5
@@ -1342,6 +1519,8 @@ Size S · Severity medium · Value 3/5 · Risk 1/5
 
 - Part of the "native shell politeness" checklist (T-32).
 
+Thirteenth-pass update: PR #234 (open): per-webview crash throttling, 0.5 s delayed reload, three retries per minute per view.
+
 ### B-29 Add-on import needs WebKit 16.4 (DecompressionStream) while the app promises macOS 12.0
 
 Size M · Severity medium · Value 3/5 · Risk 2/5
@@ -1353,6 +1532,8 @@ Size M · Severity medium · Value 3/5 · Risk 2/5
 **Change.** Either (a) add `core/data/inflate.ts` (a small pure-JS raw inflate, or fflate's inflateSync, ~8 KB) used when `typeof DecompressionStream === 'undefined'`, tested by deleting `globalThis.DecompressionStream` in a vitest and re-running the zip and azpack suites; or (b) raise MACOS_MIN and LSMinimumSystemVersion to 13.3 and document it. Either way add `--target=safari15` to every esbuild call (builds cleanly today), fix the zip.ts comment, and show an alert naming the missing API at startup instead of failing silently.
 
 **Acceptance.** (derived) Option (a): a vitest that deletes `globalThis.DecompressionStream` re-runs the zip and azpack suites green; option (b): Info.plist and the Makefile say 13.3 and README documents it. Either way every esbuild call has `--target=safari15` and a startup alert names the missing API.
+
+Thirteenth-pass update: PR #202 (open): fflate inflate fallback when DecompressionStream is missing.
 
 ### B-30 Browsing add-ons evicts installed add-ons from the offline cache
 
@@ -1403,6 +1584,8 @@ Size S · Severity low · Value 2/5 · Risk 2/5
 
 - Merged from pass 8 ("Bus messages and multiple browser tanks lack an authority boundary", old ID B14): choose one active browser tank or scope sessions and companion windows by tank ID; test malformed messages, two tanks, reconnect and companion-before-tank; the native relay stays unchanged. The envelope-validation half is T-18.
 - F-26 (save slots) should build on this rather than on competing global save keys.
+
+Thirteenth-pass update: PR #233 (open): a localStorage lease elects one owner; losers go read-only with an alert and bfcache restores re-claim.
 
 ### B-35 With the CRT effect on, clicks do not land where the curved, overscanned picture shows
 
@@ -1493,6 +1676,8 @@ cross-instance serialization (tank and Add-ons pages can still
 clobber each other's merges) and the legacy-thumbnail migration
 ordering.
 
+Thirteenth-pass update: #201 covers the main case; #199 (open) tightened the merge and error paths further.
+
 ### B-40 Each sound dropped on Import Add-ons re-decodes all stored sounds and restarts the ambient loop
 
 Size S · Severity low · Value 2/5 · Risk 1/5
@@ -1508,6 +1693,8 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 **Merged and related.**
 
 - Merged from passes 1-7: verify `startAmbient()` never overlaps loops audibly during rapid load or restart (T-17 has the test).
+
+Thirteenth-pass update: PR #221 (open): manifests merge and the ambient restarts only when the winning pick's content probe changes.
 
 ### B-41 Quitting the Mac app can lose the last 10 seconds of tank state
 
@@ -1574,6 +1761,8 @@ entries. Still open: the decoder follow-up (u16-LE length-prefixed
 records; sample FOSSIL1.ACC) — the verdicts are in-session only, so
 a future decoder needs no cache-bust key.
 
+Thirteenth-pass update: #197 added the legacy signature; #199 (open) drops Try Again on deterministic decode failures.
+
 ### B-46 Offline or cache-miss restores quietly turn fish into orange blocks and never retry
 
 Size M · Severity low · Value 2/5 · Risk 2/5
@@ -1590,6 +1779,8 @@ Size M · Severity low · Value 2/5 · Risk 2/5
 
 - Overlaps open PR #122 (failed restores retry at 15 s and 60 s; one deduped `online` listener arms a fresh round). With #122 merged, what remains is `missing` in the state push and the Overview and Stats wording.
 - Related: U-28 (visible failure states), B-30.
+
+Thirteenth-pass update: Folded into PR #193 (open).
 
 ### B-47 Dropping a folder imports every audio file inside it, reading each up to 32 MB
 
@@ -1619,6 +1810,8 @@ Size S · Severity low · Value 2/5 · Risk 2/5
 
 **Acceptance.** Manual test: drag the case, release, hover: open-hand cursor, and the next click registers normally.
 
+Thirteenth-pass update: PR #236 (open): the grabbing state is a JS class cleared on every release signal.
+
 ### B-49 Case swaps resize from the pinned top edge and can push the window off screen
 
 Size S · Severity low · Value 2/5 · Risk 1/5
@@ -1635,6 +1828,8 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 
 - Related: V-03 (integer scale), B-27.
 
+Thirteenth-pass update: PR #234 (open): resized frames clamp into the visible screen.
+
 ### B-50 Saved window frames are restored when they overlap any screen by a single point
 
 Size S · Severity low · Value 2/5 · Risk 1/5
@@ -1650,6 +1845,8 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 **Merged and related.**
 
 - Part of the "native shell politeness" checklist (restore to a removed monitor, T-32).
+
+Thirteenth-pass update: PR #234 (open): restore requires a minimum visible area, else centers.
 
 ### B-52 Loose-mode add-on listings don't dedupe colliding basenames
 
@@ -1753,6 +1950,8 @@ heartbeats and threshold boundaries (quality exactly 0.3).
 
 - U-12 (disconnected state), F-30 (persisted history), open PR #140
   (sparklines from the same history).
+
+Thirteenth-pass update: PR #195 (open): stats history is keyed to the tank's boot.
 
 ### B-56 Sim spawn contract gaps: no cap, unused hunger constant
 
@@ -1969,6 +2168,8 @@ performance.memory after gc: empty tank 1.8 MB; 7 fish installs 170.3 MB (packCa
 - Merged from pass 8 ("Bound live memory, not just IndexedDB bytes"): `zipCache`/`packCache`, sheet arrays and per-sheet raster canvases live for the session and `usePack` appends a sheet again on reinstall, so the disk LRU does not bound live objects. Use stable pack-owned sheet slots and measured, byte-aware eviction for rebuildable previews; never evict the only copy of locally imported user data. Test repeated install/remove and a long catalogue-browse session.
 - Merged from passes 1-7: confirm `thumbMemo` stays within budget over long sessions, and add a temporary eviction counter for `swimCache`/`thumbMemo` to verify near-zero evictions in normal use (the other-pass branch caps `swimCache` at 1024 with LRU and `thumbMemo` at 512).
 
+Thirteenth-pass update: #196 bounded the import caches; #205 (open) adds the 16-entry pack LRU — merge one.
+
 ### P-02 fshToSheets decodes every sheet in a pack on the main thread; the tank uses one
 
 Size M · Severity high · Value 5/5 · Risk 2/5
@@ -2022,6 +2223,8 @@ Size M · Severity medium · Value 3/5 · Risk 3/5
 - Merged from passes 1-7: `listCollection`'s nested-zip mode downloads `AQUAZONE (JPN) SET.zip`, the whole item library (tens to hundreds of MB), into memory and IndexedDB (150 MB LRU budget) just to list it; the first JPN section open stalls, and swallowed `packPut` failures degrade to no persistence. archive.org offers no central-directory-only fetch, so keep the budget trim, warn in docs and monitor quota.
 - PR #160 (open) lets `listAddons` list a subset of collections; reuse that for per-section loading.
 
+Thirteenth-pass update: PR #240 (open): collections render as they land; final order stays canonical and stale retries are generation-guarded.
+
 ### P-06 Every hello and every slider step broadcasts full state to every window
 
 Size S · Severity low · Value 2/5 · Risk 2/5
@@ -2038,6 +2241,8 @@ Size S · Severity low · Value 2/5 · Risk 2/5
 
 - Merged from passes 1-7: Overview and Stats heartbeat every 2 s with the full fish list and add-ons JSON, and four client windows each hello-poll every 2-10 s, each answered by a full push; acceptable at today's roster sizes, so push-on-change plus a slow heartbeat is the direction if rosters grow past dozens of fish.
 
+Thirteenth-pass update: PR #205 (open): postState coalesces and hello responses are rate-limited.
+
 ### P-07 Launch restore downloads add-ons strictly one after another
 
 Size S · Severity low · Value 2/5 · Risk 1/5
@@ -2053,6 +2258,8 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 **Merged and related.**
 
 - Related: B-38, B-14 (the wrong-species phase lasts as long as the restore), U-24.
+
+Thirteenth-pass update: PR #200 (open): downloads prefetch with bounded concurrency, apply stays ordered.
 
 ### P-08 Move archive decoding into a Web Worker (after P-02)
 
@@ -2144,6 +2351,8 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 
 **Acceptance.** Test against the current algorithm on random images with and without a mask.
 
+Thirteenth-pass update: PR #205 (open): indexedPixels uses a Uint32 palette LUT.
+
 ### P-14 The native mask is re-baked with a full-image flood fill on every case switch
 
 Size S · Severity low · Value 2/5 · Risk 1/5
@@ -2184,6 +2393,8 @@ Size S · Severity nit · Value 1/5 · Risk 1/5
 
 - Merged from passes 1-7: the `swimCanvas` cache is unbounded per sheet x frame x facing (bounded by small sheet metadata; large imported sheets still allocate every combination on first use); an LRU is optional (the other-pass branch has one for `swimCache`). A fish's first turn hitches through about 16 cells of `putImageData`; prewarm the pose ring via `requestIdleCallback` after a pack installs, under the profiler condition above.
 - PR #149 (open) prescales per cached frame, so the key now includes the scale; keep that in the numeric key.
+
+Thirteenth-pass update: PR #205 (open): swim-cache keys are numeric composites.
 
 ### P-17 The CRT drawing buffer is reallocated on every size change during live resize
 
@@ -2273,6 +2484,8 @@ the sim runs. The check only saves work for a paused or empty tank.
 Still worth doing (one string compare) but expect no measurable win
 while the tank is live.
 
+Thirteenth-pass update: PR #230 (open): pushes stay frequent while persists slow down.
+
 ### P-22 Native `frames.save` runs on every resize tick
 
 Size S · Severity nit · Value 1/5 · Risk 1/5 (from passes 1-7)
@@ -2286,6 +2499,8 @@ Size S · Severity nit · Value 1/5 · Risk 1/5 (from passes 1-7)
 
 **Acceptance.** (derived) Logging shows one write per resize gesture;
 the frame restores after relaunch.
+
+Thirteenth-pass update: Declined in #234: UserDefaults.set is in-memory; CFPreferences syncs asynchronously — nothing synchronous to debounce.
 
 ### P-23 Energy: Low Power Mode hook and background-sound preference
 
@@ -2373,6 +2588,25 @@ feedback anyway.
 a count in the drop feedback when U-10 lands. Low priority: correct
 today, just slow on pathological drops.
 
+### P-27 Fish-card layout reads run every frame while a card is open
+
+Size S · Severity nit · Value 1/5 · Risk 1/5 (thirteenth pass, N-11)
+
+**Problem.** `layoutInfo`/`syncCard` call `getBoundingClientRect` on
+every frame while a Get-Info card is open — cheap per call, but a
+layout read in the render loop is the kind that batches badly if the
+DOM around it changes.
+
+**Evidence.** `web/main.ts` (`layoutInfo`, `syncCard`).
+
+**Change.** Gate the reads behind a ResizeObserver dirty flag — the
+card's anchor only moves when the tank resizes or the fish's box
+rebinds, not per frame.
+
+**Acceptance.** (derived) Open a fish card, pin the browser to a
+fixed size, confirm no layout reads run between resize events; move
+the fish and the card still tracks it.
+
 ## Visual and layout (open)
 
 Done this pass and removed from this list: V-01 (PR #87/#125), V-02,
@@ -2399,6 +2633,8 @@ Size M · Severity medium · Value 4/5 · Risk 3/5
 
 - Related: B-27 (aspect-correct zoom), B-49 (case swaps), P-09 (Smooth mode also changes the internal canvas scale).
 
+Thirteenth-pass update: PR #237 (open): integer-snapped device-pixel scaling, pixelated upscale, smooth downscale.
+
 ### V-04 Gravel strips are squeezed with nearest-neighbor, floor height is accidental, and the sim floor ignores it
 
 Size S · Severity medium · Value 3/5 · Risk 2/5
@@ -2415,6 +2651,8 @@ Size S · Severity medium · Value 3/5 · Risk 2/5
 
 - Merged from passes 1-7 ("Gravel finish"): feather the strip's top edge 1-2 px into the water, seat decor roots in it (open PR #139 anchors roots a quarter-strip deep) and consider a subtle noise texture over the flat `#8a6d3b` floor.
 - `ART_SCALE` now exists in `web/artscale.ts` (PRs #149/#157, open).
+
+Thirteenth-pass update: PR #209 (open): drawn gravel is capped near the sim floor.
 
 ### V-05 A 16:10 tank inside roughly 4:3 glass leaves 13-24% dead black bands
 
@@ -2540,6 +2778,8 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 
 - Corrected claim from pass 8: `uTime` already wraps every 100 s and grain uses `fract(uTime)`, so "wrap more often" alone is not a fix; this entry's 32·π wrap (continuous flicker and band) and the mediump-safe hash are the verified versions.
 
+Thirteenth-pass update: PR #207 (open): phase-continuous uniforms and highp with a precision fallback.
+
 ### V-15 Mask layer changes animate implicitly, so case edges lag during live resize
 
 Size S · Severity low · Value 3/5 · Risk 1/5
@@ -2571,6 +2811,8 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 **Merged and related.**
 
 - Needs a macOS check (T-32).
+
+Thirteenth-pass update: PR #234 (open): applyMask now calls invalidateShadow.
 
 ### V-18 The add-on detail line uses a middle dot that the Geneva 10 bitmap font lacks
 
@@ -2609,6 +2851,8 @@ each fish at the floor line, alpha by depth.
 **Acceptance.** (derived) Screenshot checks; reduced motion holds the
 sway still; no change for decor that has frames.
 
+Thirteenth-pass update: PR #238 (open) adds the plant sway.
+
 ### V-21 Pellet eaten animation
 
 Size S · Severity idea · Value 2/5 · Risk 1/5 (from passes 1-7)
@@ -2623,6 +2867,8 @@ splash, keyed on the eat tick.
 
 **Acceptance.** (derived) A pure frame-envelope test; screenshot of a
 pellet mid-shrink.
+
+Thirteenth-pass update: PR #209 (open): eating a pellet spawns a gulp bubble at the fish's mouth.
 
 ### V-22 Adaptive murk tint and shimmer
 
@@ -2677,6 +2923,8 @@ units) rather than the window corner.
 
 **Acceptance.** (derived) Screenshots for all 11 machines at a phone
 size show the trigger fully on the bezel.
+
+Thirteenth-pass variant (N-20): a starfield plus an occasional shooting star on the black #screenback letterbox at night — the matte is already black, so the canvas is ~50 lines.
 
 ### V-25 Bright fish over bright backdrops wash out
 
@@ -2733,6 +2981,21 @@ same DOM-presence check PR #120 used for the Add-ons trigger.
 **Acceptance.** (derived) With the bar mounted, no machine pixels hide
 under it at 800x600 and 1440x900; native layout unchanged.
 
+### V-28 The Get-Info card can clip under the machine art edge
+
+Size S · Severity nit · Value 1/5 · Risk 1/5 (thirteenth pass, N-12)
+
+**Problem.** `#fishtip`/`.finfo` sit at z-index 5/2 — under the
+menubar (6) and overlays (10) as intended — but `.finfo` shares the
+machine layer, so on cases whose art edge overlaps the tank the card
+can slide under the bezel.
+
+**Evidence.** `web/app.css` (`#fishtip`, `.finfo` z-index),
+`web/machines.ts` (case art edge).
+
+**Change.** Raise `.finfo` above the machine layer but below the
+overlays, or clamp the card inside the glass rect.
+
 ## UX and convenience (open)
 
 Done this pass and removed from this list: U-05, U-16, U-17, U-19,
@@ -2762,6 +3025,8 @@ pellets skipped while paused (fixes N-1). Still open: point 3's
 hunger-based pinch count and a pending queue drained on the frame
 clock (today's pinch still runs on `setTimeout`s — paused pellets
 are skipped, but the scatter is PR #158's fixed random one).
+
+Thirteenth-pass update: PR #209 (open): MAX_UNEATEN caps uneaten pellets with a shared refusal blip; #252 (open) adds the feed affordance.
 
 ### U-02 (remainder) Placeholder fish, first-run guidance and placeholder thumbs
 
@@ -2802,6 +3067,8 @@ disappears after the first install and never returns once dismissed.
   load instead of console-only feedback. A-05's first-run balloons
   would subsume the tour.
 
+Thirteenth-pass update: PR #249 (open): stand-ins are labeled in the Overview; the placeholder-thumb half stays open.
+
 ### U-03 Feeding and tapping give almost no feedback: no cursor hint, a 3-px pellet, silence by default
 
 Size M · Severity medium · Value 4/5 · Risk 2/5
@@ -2840,6 +3107,8 @@ Size M · Severity medium · Value 4/5 · Risk 3/5
 
 - Merged from pass 8: prefer one-level Undo with a named action and shortcut; keep selection stable after removal and announce the result; test repeated keydown, focused text fields, pack-wide removal and delayed state echo. Open PR #127's two-click arm ("Really empty?") is the in-page confirm pattern, because `confirm()` silently returns false in WKWebView. PR #160's `web/alert.ts` (open) provides point (4)'s alert.
 
+Thirteenth-pass update: PR #198 (open): removal asks for confirmation; Undo remains open.
+
 ### U-06 Overview statuses mislead: hidden scenery says 'In tank', a fish add-on with no fish stays listed, the header miscounts
 
 Size S · Severity low · Value 3/5 · Risk 2/5
@@ -2872,6 +3141,8 @@ Size M · Severity low · Value 4/5 · Risk 2/5
 
 - Point (2) overlaps open PR #136 (substring filter in the add-on browser header, case-insensitive, per section, "N of M" count, Escape clears the field). With #136 merged, what remains is double-click to add, remembered scroll and selection per section, and section counts.
 
+Thirteenth-pass update: PR #199 (open): double-click installs; search field and section counts remain open.
+
 ### U-08 Add-on lists are unsorted, split by case, and duplicates across archives look identical
 
 Size S · Severity low · Value 3/5 · Risk 1/5
@@ -2883,6 +3154,8 @@ Size S · Severity low · Value 3/5 · Risk 1/5
 **Change.** Add `source: string` to Collection ('AquaZone add-ons', 'Meka Asia pack', 'AquaZone (JPN) set', 'JPN non-retail bonus') and copy it onto each Importable (identity stays the url). Sort each section by `(rank) || a.inner.localeCompare(b.inner, 'ja', { sensitivity: 'base', numeric: true })`. Show `${KIND}, ${it.source}` in dmeta (see V-18, T-03).
 
 **Acceptance.** Test: vitest listAddons with stubbed collections returns case-insensitively sorted names per section with source set.
+
+Thirteenth-pass update: PR #199 (open): sections sort alphabetically.
 
 ### U-09 Failed installs from Import Add-ons show raw JavaScript errors with full URLs
 
@@ -2900,6 +3173,8 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 
 - Related: U-28.
 
+Thirteenth-pass update: PR #199 (open): the bus posts loadProblem's friendly line instead of the raw error.
+
 ### U-10 Dropped files get no highlight and no result message on the tank or the Import window
 
 Size S · Severity low · Value 3/5 · Risk 1/5
@@ -2916,6 +3191,8 @@ Size S · Severity low · Value 3/5 · Risk 1/5
 
 - Related: U-28, B-13, B-47.
 
+Thirteenth-pass update: PR #244 (open): a dashed 'Drop to add' frame shows while files hover; the result toast remains open.
+
 ### U-11 Overview rows reshuffle under the pointer when sorted by Status
 
 Size S · Severity low · Value 2/5 · Risk 1/5
@@ -2927,6 +3204,8 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 **Change.** Map `turn` to 'Swimming'. Sort Status by `hungerRank*10 + stateRank` (hungry 0, peckish 1, full 2), then name, instead of text. Optionally defer structure-changing re-sorts while `listEl.matches(':hover')` and flush on pointerleave.
 
 **Acceptance.** Test (overviewmodel.test.ts): fish differing only in turn/drift keep their order; hungry sort before full.
+
+Thirteenth-pass update: PR #195 (open): re-sort only when the key set or column changes.
 
 ### U-12 Client windows never say when the tank is not connected
 
@@ -2944,6 +3223,8 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 
 - Merged from passes 1-7: grey client-window numbers until the first fresh push after wake ("stale badges").
 - Open PR #90 added Overview's "Waiting for the tank…" empty text at mount. Related: B-53, B-55.
+
+Thirteenth-pass update: PR #195 (open): clients keep a persistent waiting-for-tank state.
 
 ### U-13 Preferences: CRT controls stay clickable when WebGL is unavailable
 
@@ -2990,6 +3271,8 @@ Size M · Severity low · Value 3/5 · Risk 2/5
 
 - Merged from passes 1-7 (right-click menu idea: Feed, Clean tank, Import Add-ons…, Snapshot, Mute; the pointerdown handler already reserves non-left buttons). PR #151 (open) adds the `TankWebView` subclass this builds on; PR #159 adds Mute.
 
+Thirteenth-pass update: PR #209 (open): contextmenu is suppressed on all five pages; a real OS 8 menu remains open.
+
 ### U-18 On the Bare tank the invisible 22-pt drag strip covers the feeding zone
 
 Size S · Severity low · Value 3/5 · Risk 2/5
@@ -3005,6 +3288,8 @@ Size S · Severity low · Value 3/5 · Risk 2/5
 **Merged and related.**
 
 - Merged from passes 1-7: the Swift DragStrip is 22 pt while the overlay's `TOP_CLEAR` is 24 with a comment saying 22; pick one number while touching this.
+
+Thirteenth-pass update: PR #234 (open): the DragStrip narrows on the bare tank. (N-09 was this same finding.)
 
 ### U-20 (remainder) Accessibility: live label, announcements and reduced motion
 
@@ -3050,6 +3335,8 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 **Change.** Export `requestPersistence()` from store.ts, called from recordInstall on the first user-initiated (live) install; skip when `await navigator.storage.persisted()` is true or inNativeShell().
 
 **Acceptance.** Test: stub navigator.storage in vitest and assert persist() is not called during openDb.
+
+Thirteenth-pass update: PR #199 (open): persist() defers to the first write.
 
 ### U-23 Tank Stats wording and bounds nits
 
@@ -3107,6 +3394,8 @@ Rename lives in F-02.
 
 **Acceptance.** (derived) Playwright: clicking a row rings the matching
 fish; clicking a fish selects its row; the sort survives a reload.
+
+Thirteenth-pass update: PR #245 (open): selection spotlights the fish with a leased marquee; state icons and remembered sort remain open.
 
 ### U-26 Machine case thumbnails in the Preferences list
 
@@ -3575,6 +3864,7 @@ Size L · Severity idea · Value 2/5 · Risk 4/5
 
 ### F-17 Breeding: mating, eggs, livebearer births, fry and family trees
 
+Thirteenth-pass update: PR #206 (open) adds sick/dead/born states.
 Size L · Severity idea · Value 3/5 · Risk 4/5
 
 **Problem.** Breeding was AquaZone's heart ('they will live long and BREED for limitless generations'). Data: F-02's sexes; FsTI u16@0x02/0x04 is 1/2 for egg-layers and 2/1 for livebearers; FsTI u32@0x0a looks like incubation/gestation minutes (neon and cardinal 1440, goldfish 5040, guppy and molly 43200; tentative); EGPC (5x5 egg sprite), EGPP clutch pictures, EggI/EggH egg records with parent names; blackmolly has 'Pregnant 01-05' individuals and bred records naming parents; banggai has 'Banggai eggs'; 13 JPN egg packs (F-23). Events exist for mating, laying, hatching, pregnancy, birth and miscarriage; the original had a Family Tree window.
@@ -3655,6 +3945,7 @@ Size M · Severity low · Value 4/5 · Risk 2/5
 
 ### F-23 List the JPN egg packs (13 species) and the 26 'Power Updater' zips
 
+Thirteenth-pass update: PR #228 (open) adds the timed auto-feeder half.
 Size S · Severity idea · Value 3/5 · Risk 1/5
 
 **Problem.** AQUAZONE 魚/魚単体/魚卵.zip (2.2 MB) holds egg packs for 13 species (カージナルテトラの卵.fsh …; full fish packs plus 20 EggI/EggH/EGPP individuals each), but it is a zip inside the collection zip and is never listed. The same folder has 26 'Power Updater' zips (Angel fish, クラウンローチ, ゼブラ・ダニオ, ハーレークインフィシュ, ブラックエンゼル, Discus, Arowana, guppy breeding sets…); 'AQUAZONE Option ゼブラ・ダニオ.zip' holds ITEMS/ZEBRA.DNA (a full fish pack: tag 'XXXX', ELRA/ELRB x4, FsTI/FsTH) plus C_WENTY.PLT and WORM.FD.
@@ -3868,6 +4159,8 @@ Size S · Severity idea · Value 3/5 · Risk 2/5
 - D-07 follow-up (not in PR #160): `sim.fearAt = {x, y, until}` makes `decide()` reroll targets within 40 px of a knocking spot for a minute; the same target-biasing hook as the lure.
 - Overlaps open PR #138 (the nearest calm fish within `NOTICE_RADIUS` of a hovering pointer drifts to a `NOTICE_STANDOFF` ring; hunger above about 0.75 biases the band toward the surface to beg; hunger and panic outrank curiosity). Merge the ideas rather than adding a second lure system.
 
+Thirteenth-pass update: PR #243 (open): up to four calm fish gather on rank-staggered rings.
+
 ### D-03 Schooling for small same-species fish, and separation so fish don't stack on a pellet
 
 Size M · Severity idea · Value 3/5 · Risk 2/5
@@ -3957,6 +4250,8 @@ Size M · Severity idea · Value 3/5 · Risk 2/5
 **Change.** New `web/tips.ts`: ~25 tip strings plus dynamic ones from F-02 ('Your angelfish Scott hatched at Franks Fish Farms in 1997'), and a pure scheduler `nextBottleAt(now, lastShown, rng)` (first after 10 min, then every 30-90 min, never while the display sleeps or at night). A render-only bottle in main.ts (original 8x14 sprite with cork and note) sinks with a slight sway and rests on the gravel; pointerdown hit-tests it before the feed/tap branch and opens a small overlay window (.ov + mountWindow); seen tips go to localStorage `finsical:tips-seen` (try/catch) so none repeats until all are shown. Prefs toggle 'Messages in bottles'.
 
 **Acceptance.** Tests: scheduler bounds and no-repeat order.
+
+Thirteenth-pass variant (N-16): the bottle drifts across the tank surface rarely; click it for a help tip.
 
 ### D-11 Seasonal surprises and fish birthdays (party hats on hatch day)
 
@@ -4262,6 +4557,53 @@ touching the live tank; one click back to the aquarium preview.
 
 **Acceptance.** (derived) Screenshot of the card at `CRT_DEFAULTS`; the
 tank is unaffected while it shows.
+
+### D-32 Golden pellet: a rare food drop triggers a barrel-roll
+
+Size S · Severity idea · Value 2/5 · Risk 1/5 (thirteenth pass, N-15)
+
+**Problem.** (delight) Feeding is uniform — every pellet identical.
+A rare golden pellet (roughly 1 in 50) gives the fish that eats it a
+happy barrel-roll (reuse the turn state).
+
+**Evidence.** `core/sim.ts` (`dropFood`, eat handling), `web/water.ts`
+(`drawFood` — tint one pellet gold).
+
+**Change.** Flag a pellet `golden` on spawn; the eater plays a roll
+and the pellet draws gold. Keep it purely cosmetic — no stat effect,
+or it teaches overfeeding.
+
+**Acceptance.** (derived) Sim test: a golden flag survives to the
+eater and sets a roll; rate stays ~1/50 over a seeded run.
+
+### D-33 'Don't feed the fish' sign for overfeeding
+
+Size S · Severity idea · Value 2/5 · Risk 1/5 (thirteenth pass, N-17)
+
+**Problem.** (delight) The glass-tap scold sign exists; the same gag
+fits overfeeding once U-01's cap lands — a 'Please don't feed the
+fish' placard flips up after the refusal blip.
+
+**Evidence.** the tap-scold infrastructure (PR #251 adds its menu
+toggle); `web/main.ts` feed-refusal path from #209.
+
+**Change.** Reuse the scold-sign widget with a second caption, shown
+when the food cap refuses a drop. Depends on #209 merging.
+
+### D-34 CRT channel buttons: number keys jump between presets
+
+Size S · Severity idea · Value 2/5 · Risk 1/5 (thirteenth pass, N-19)
+
+**Problem.** (delight) The Monitor pane's CRT controls are a TV with
+no channel buttons. Number keys 1-4 could jump between named picture
+presets like channels — U-29's 'lower all-day baseline' preset slots
+in naturally.
+
+**Evidence.** `web/crt.ts` (`sanitizeCrtConfig`, presets),
+`web/prefs.ts` Monitor pane, U-29.
+
+**Change.** Bind 1-4 on the tank page to CRT presets (off, sharp,
+broadcast, all-day) and name them in the Monitor pane.
 
 ## Security and robustness (open)
 
@@ -5487,11 +5829,23 @@ running on its latest commit — marked "running"):
 ## Implementation Order (suggested)
 
 Highest value per risk first. Phase 0 is a merge backlog, not new
-code: about 60 review PRs are open and several implement the same
-idea.
+code: about 90 review PRs are open — the thirteenth pass alone added
+44 — and several implement the same idea.
 
-**Phase 0: reconcile and merge open PRs.** Pick one of each
-overlapping set, then merge: tap ripple (#106/#107/#129), backdrop
+**Phase 0: reconcile and merge open PRs.** The thirteenth-pass set
+(#188-#252, non-claude branches) already covers most of Phases 1-3
+below: B-11/B-12 (#203), B-14/B-15/B-46 (#193), B-21 (#224), B-28/
+B-49/B-50/V-16/U-18 (#234), B-29 (#202), B-34 (#233), B-39/B-40
+remainders (#199/#221), B-48 (#236), B-55 (#195), P-01/P-06/P-12/
+P-16 (#205), P-05 (#240), P-07 (#200), P-21 (#230), V-03 (#237),
+V-04/V-21/U-01/U-15 (#209), V-14 (#207), U-04 (#198), U-07/U-08/
+U-09/U-22 (#199), U-10 (#244), U-11/U-12 (#195), U-25 (#245),
+D-02 (#243) — plus delights (#204, #206, #216, #217, #219, #227,
+#228, #231, #232, #238, #246-#252) and internal overlaps to pick
+between: #196 vs #205 (cache bound), #191 vs #197 (per-launch seed),
+#246 vs #197 (favicon), #248 vs claude/#211 (bubble pop), #193 vs
+claude/#218 (pack parts). Older overlapping sets still need the same
+triage: tap ripple (#106/#107/#129), backdrop
 cover-fit (#87/#125), multi-pack drop (#93/#94), Sound pane
 (#101/#133/#159), browser menu bar and shortcuts (#102/#103/#126),
 placeholder fish (other-pass branch, #131, U-02 remainder), render on
@@ -5608,8 +5962,11 @@ new entries (B-56 through B-61, P-24, V-26, V-27) are folded into the
 eleventh-pass sections in the same way; the twelfth pass's `tmp.md`
 review, its seven PRs (#185, #186, #187, #189, #192, #197, #201), its
 seven new entries (B-62 through B-64, P-25, P-26, U-30, U-31) and its
-refutations are folded into the twelfth-pass sections in the same way.
-No open idea
+refutations are folded into the twelfth-pass sections in the same way;
+the thirteenth pass's `tmp.md` review, its 44 PRs (#188-#252, minus
+the maintainer's claude/ branches), its new entries (P-27, V-28,
+D-32 through D-34) and its declines are folded into the
+thirteenth-pass sections in the same way. No open idea
 was removed: duplicates were consolidated into one entry each (see the
 ID map and each entry's "Merged and related" notes), and unsupported
 claims are kept under "Declined, refuted and corrected".*
