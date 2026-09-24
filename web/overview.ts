@@ -37,11 +37,13 @@ let removeArmTimer = 0;
 let removeArmedAt = 0;
 /** The row key the armed Remove points at; disarm when it moves. */
 let removeArmedKey: string | undefined;
-function disarmRemove(): void {
+function disarmRemove(msg?: string): void {
+  const wasArmed = removeBtn.dataset.armed === "1";
   window.clearTimeout(removeArmTimer);
   delete removeBtn.dataset.armed;
   removeArmedKey = undefined;
   removeBtn.textContent = "Remove";
+  if (wasArmed && msg !== undefined) removeStatus.textContent = msg;
 }
 
 const summaryEl = document.getElementById("osummary")!;
@@ -50,9 +52,16 @@ const listEl = document.getElementById("olist")!;
 const useBtn = document.getElementById("ouse") as HTMLButtonElement;
 const emptyBtn = document.getElementById("oempty") as HTMLButtonElement;
 const removeBtn = document.getElementById("oremove") as HTMLButtonElement;
-// The armed state only changes the label — announce it so a screen
-// reader hears "Really remove?" instead of silence on the first press.
-removeBtn.setAttribute("aria-live", "polite");
+// A focused button already announces its own label change — aria-live
+// on it would double-speak, and the 4s revert to "Remove" would sound
+// like the deed done. A hidden live region says what actually
+// happened instead (visually hidden, not display:none — some screen
+// readers won't announce those).
+const removeStatus = document.createElement("span");
+removeStatus.setAttribute("role", "status");
+removeStatus.style.cssText = "position:absolute;width:1px;height:1px;" +
+  "overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap";
+removeBtn.after(removeStatus);
 
 let tankBoot: string | undefined;
 const bus = openBus((m) => {
@@ -121,7 +130,7 @@ const list = mountList(listEl, {
   label: "Tank contents",
   // A selection move disarms Remove — the armed button pointed at the
   // previous row, not the new one.
-  onSelect: () => { disarmRemove(); syncRemove(); },
+  onSelect: () => { disarmRemove("Removal cancelled."); syncRemove(); },
 });
 // Until the first state push lands, blank is "not heard yet", not
 // "empty" — render() swaps in the empty-tank text once it knows.
@@ -136,17 +145,25 @@ function syncRemove(): void {
 }
 const armOrRemove = (): void => {
   const it = items[list.selected];
-  if (!it) { disarmRemove(); return; }
+  if (!it) { disarmRemove("Removal cancelled."); return; }
+  // If the arm and the selection ever drift apart (a future path that
+  // changed selection without disarming), re-arm on the row the user
+  // actually picked instead of removing an unconfirmed one.
+  if (removeBtn.dataset.armed === "1" && it.key !== removeArmedKey)
+    disarmRemove("Removal cancelled.");
   if (removeBtn.dataset.armed !== "1") {
     removeBtn.dataset.armed = "1";
     removeArmedKey = it.key;
     removeBtn.textContent = "Really remove?";
+    removeStatus.textContent = "Press again to confirm.";
     removeArmedAt = performance.now();
-    removeArmTimer = window.setTimeout(disarmRemove, 4000);
+    removeArmTimer = window.setTimeout(
+      () => disarmRemove("Removal cancelled."), 4000);
     return;
   }
   if (performance.now() - removeArmedAt < 350) return;
   disarmRemove();
+  removeStatus.textContent = "Removed.";
   bus.post(it.remove);
 };
 pushButton(removeBtn, armOrRemove);
@@ -272,7 +289,8 @@ function render(scroll: ListScroll = "keep"): void {
   // Membership changed — disarm only when the armed row itself moved
   // out from under the button (removed elsewhere, or the selection
   // shifted). A re-tag push that keeps the selection keeps the arm.
-  if (items[list.selected]?.key !== removeArmedKey) disarmRemove();
+  if (items[list.selected]?.key !== removeArmedKey)
+    disarmRemove("Removal cancelled.");
   syncRemove();
   paintThumbs();
   // Rows were just rebuilt — drop thumb state for keys that died with
