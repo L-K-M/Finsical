@@ -878,7 +878,35 @@ const bus = openBus(onBusMessage);
 // in-flight wants died with the old page) and re-ask once.
 const boot = Math.random().toString(36).slice(2);
 
-function postState(): void {
+/** Mutation pushes merge inside this window — a burst of edits costs
+ * one serialization and broadcast instead of one per call site. */
+const STATE_MIN_MS = 250;
+/** Client windows poll with hello every ~2s; each visible window's
+ * hello used to trigger a full state push to every window (~1.5/s with
+ * three windows). Answering at this cadence instead keeps a client's
+ * worst-case wait under a second while merging coincident hellos. */
+const HELLO_MIN_MS = 750;
+let stateTimer = 0, stateDue = 0, lastStatePost = 0;
+
+/** Push tank state to client windows, coalesced: calls inside minWait
+ * of the last push fold into one trailing push carrying the latest
+ * state. A queued push reschedules earlier when a caller asks for a
+ * shorter wait, never later. */
+function postState(minWait = STATE_MIN_MS): void {
+  const now = Date.now();
+  const due = Math.max(now, lastStatePost + minWait);
+  if (stateTimer && due >= stateDue) return;
+  if (!stateTimer && due <= now) { lastStatePost = now; sendState(); return; }
+  if (stateTimer) clearTimeout(stateTimer);
+  stateDue = due;
+  stateTimer = setTimeout(() => {
+    stateTimer = 0;
+    lastStatePost = Date.now();
+    sendState();
+  }, due - now);
+}
+
+function sendState(): void {
   bus.post({
     op: "state",
     boot,
@@ -1031,7 +1059,7 @@ function fishOutAfter(remove: () => void): void {
 }
 
 function onBusMessage(m: BusMsg): void {
-  if (m.op === "hello") postState();
+  if (m.op === "hello") postState(HELLO_MIN_MS);
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
   else if (m.op === "removeFish" && typeof m.id === "number") {

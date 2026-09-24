@@ -125,6 +125,11 @@ export interface Importable {
  * uploader replacing a file serves stale bytes until LRU trims it —
  * accepted, since the worst case is dated sprite art. */
 const zipCache = new Map<string, Promise<Uint8Array>>();
+/** Zips bigger than this aren't memoized — a collection zip (the JPN
+ * set is >100MB) pinned in RAM dwarfs every other cache, and IDB
+ * already persists the bytes for archive.org hosts, so re-reads are
+ * still local. */
+const ZIP_MEMO_MAX = 32 * 1024 * 1024;
 /** Per-URL bytes on archive.org never change — safe to persist
  * forever. Other hosts (a dev server, a mutable mirror) keep only
  * their in-session memo so stale bytes can't wedge a dev loop. */
@@ -193,6 +198,13 @@ function fetchZip(url: string): Promise<Uint8Array> {
       return d;
     })();
     zipCache.set(url, p);
+    // A big collection zip memoizes for this session's callers, then
+    // leaves once it lands — it resolves, everyone holding `p` still
+    // gets the bytes, but the entry stops pinning them after that.
+    p.then((d) => {
+      if (d.byteLength > ZIP_MEMO_MAX && zipCache.get(url) === p)
+        zipCache.delete(url);
+    }, () => {}); // rejections are the catch below's job
     // Delete only if still ours — a same-tick caller may have swapped in
     // a replacement promise before this one rejected.
     p.catch(() => { if (zipCache.get(url) === p) zipCache.delete(url); });
@@ -587,19 +599,48 @@ function audioType(d: Uint8Array): string {
 
 // Packs are immutable per URL — memoize so re-visits skip the download.
 // Module-level so the tank page's remote-install path shares the cache.
+// Bounded: a PackResult holds decoded sheets and images — browsing the
+// whole catalog without a cap would pin hundreds of MB of Uint8Arrays.
 const packCache = new Map<string, Promise<PackResult[]>>();
+// URLs whose import promise has resolved — eviction victims are chosen
+// only among these, so a burst can't evict an in-flight import and
+// immediately duplicate its download.
+const packSettled = new Set<string>();
+const PACK_CACHE_MAX = 16;
 /** The sound preview's live Blob URL — one at a time, revoked when the
  * detail pane rebuilds. */
 let sndObjUrl: string | null = null;
 export function fetchAddon(url: string): Promise<PackResult[]> {
   let p = packCache.get(url);
-  if (!p) {
-    p = importAddon(url);
+  if (p) {
+    // Refresh recency: Map keeps insertion order, so a hit moves the
+    // entry youngest-first-evicted-last.
+    packCache.delete(url);
     packCache.set(url, p);
-    // Failed fetches stay retryable; only evict if the entry is still
-    // this promise (a rider may have replaced it already).
-    p.catch(() => { if (packCache.get(url) === p) packCache.delete(url); });
+    return p;
   }
+  p = importAddon(url);
+  packCache.set(url, p);
+  // Least-recently-used eviction — insertion order is LRU order —
+  // skipping in-flight entries: a burst may exceed the cap by its
+  // pending count rather than evict work that's still downloading.
+  // Keep evicting settled entries until back at the cap, so a burst
+  // drains instead of ratcheting the steady-state size upward.
+  if (packCache.size > PACK_CACHE_MAX)
+    for (const k of packCache.keys()) {
+      if (packCache.size <= PACK_CACHE_MAX) break;
+      if (packSettled.has(k)) {
+        packCache.delete(k);
+        packSettled.delete(k);
+      }
+    }
+  // Failed fetches stay retryable; only evict if the entry is still
+  // this promise (a rider may have replaced it already).
+  p.then(() => { if (packCache.get(url) === p) packSettled.add(url); },
+         () => { if (packCache.get(url) === p) {
+           packCache.delete(url);
+           packSettled.delete(url);
+         } });
   return p;
 }
 
