@@ -100,6 +100,15 @@ describe("sceneryFix", () => {
     const saved = { section: "accessories", inner: "G_Debris", url,
                     sounds: [] };
     expect(sceneryFix(saved)).toEqual({ ...saved, section: "gravel" });
+    const caps = { ...saved, url: url.replace(".grv", ".GRV") };
+    expect(sceneryFix(caps)).toEqual({ ...caps, section: "gravel" });
+  });
+
+  it("moves an accessory saved as a plant to the accessories", () => {
+    const stray = { section: "plants", inner: "Stray", sounds: [],
+                    url: url.replace("mekaccs.zip#G_Debris.grv",
+                                     "mekplants.zip#Stray.acc") };
+    expect(sceneryFix(stray)).toEqual({ ...stray, section: "accessories" });
   });
 
   it("leaves records that already match their pack alone", () => {
