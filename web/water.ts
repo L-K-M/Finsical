@@ -203,6 +203,9 @@ export function pelletShape(x: number, y: number, settled: boolean):
 
 const PELLET = "#c9a227";
 const PELLET_SHADE = "#8a6a14";
+// The rare golden pellet reads brighter than the everyday flake.
+const PELLET_GOLD = "#ffe066";
+const PELLET_GOLD_SHADE = "#e0a800";
 
 export function drawFood(ctx: CanvasRenderingContext2D,
                          food: readonly Food[]): void {
@@ -213,14 +216,15 @@ export function drawFood(ctx: CanvasRenderingContext2D,
     const x = Math.round(fd.x + pelletDrift(fd.x, fd.y));
     const y = Math.round(fd.y);
     const shape = pelletShape(fd.x, fd.y, fd.settled > 0);
-    ctx.fillStyle = PELLET;
+    const shade = fd.golden ? PELLET_GOLD_SHADE : PELLET_SHADE;
+    ctx.fillStyle = fd.golden ? PELLET_GOLD : PELLET;
     if (shape === "nugget") {
       ctx.fillRect(x - 1, y - 1, 2, 2);
-      ctx.fillStyle = PELLET_SHADE;
+      ctx.fillStyle = shade;
       ctx.fillRect(x, y, 1, 1);
     } else if (shape === "flakeFlat") {
       ctx.fillRect(x - 1, y, 1, 1);
-      ctx.fillStyle = PELLET_SHADE;
+      ctx.fillStyle = shade;
       ctx.fillRect(x, y, 1, 1);
     } else {
       ctx.fillRect(x, y - 1, 1, 2);
