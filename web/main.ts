@@ -121,7 +121,21 @@ for (const kind of ["backdrop", "gravel"] as const) {
 // before its fish packs could restore.
 let rosterComplete = saved?.v !== 1;
 
-const sim = new Sim(TANK, 0x9003);
+// A random seed, so each launch plays a fresh tape rather than the
+// same one — tests keep determinism by passing a seed to Sim().
+// ?seed=<uint32> pins the tape so a reported oddity can be replayed.
+const seedParam = new URLSearchParams(location.search).get("seed");
+const seedPinned = seedParam !== null && /^\d{1,10}$/.test(seedParam)
+  && Number(seedParam) <= 0xFFFFFFFF;
+if (seedParam !== null && !seedPinned)
+  console.warn("tank sim: ignoring invalid ?seed= (expected uint32):",
+               seedParam);
+const simSeed = seedPinned
+  ? Number(seedParam) >>> 0
+  : (Math.random() * 0x100000000) >>> 0;
+// console.log, not debug — Chrome's default filter hides Verbose.
+console.log("tank sim seed:", simSeed);
+const sim = new Sim(TANK, simSeed);
 const audio = new TankAudio();
 // Hidden (Cmd-H, minimized, background tab): rAF stops and the sim
 // freezes, so the ambient loop and the audio device pause with it.
