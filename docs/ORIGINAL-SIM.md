@@ -92,10 +92,11 @@ truncates to zero.
   threshold: each such hit has a 1 in 5 chance of a disease from the
   species' `SuS#` list (the five common ones for every stock species).
   There is no background infection chance.
-- A disease starts at its severity and grows `trunc(growth × minutes ÷
-  12960)` every six hours or more; each time it grows it may infect the
-  weakest healthy fish (`contagion` in 500). It deals `minutes × amount
-  ÷ 1440` damage. Nothing cures it but medicine.
+- A disease starts at its severity and grows `growth` points every 12960
+  minutes (nine days); each time it grows it may infect the weakest
+  healthy fish (`contagion` in 500). Once six hours have built up it
+  deals `minutes × amount ÷ 1440` damage. Nothing cures it but
+  medicine.
 
 | Disease | Growth | Severity | Contagion |
 | --- | --- | --- | --- |
@@ -128,6 +129,18 @@ truncates to zero.
   never accumulated enough time to hurt unless it was far past
   survivable. Finsical restarts the clock only when damage lands, the
   rate the formula describes.
+- **Sickness grows at its stated rate.** The original re-applied the
+  growth for the whole six-hour clock on every visit until a health
+  point fell, so past six hours a disease grew, and rolled contagion,
+  every minute: a tank could go from one sick fish to all sick within
+  the half hour. Finsical grows it by `growth` per nine days.
+- **Old age builds up.** The original applied old age in 11-minute
+  steps that each truncated to no damage, so outside catch-up an old
+  fish never died of it. Finsical accumulates it, killing within about
+  ten days of the life span as the formula describes.
+- **A dose banks at most an hour.** A dose too weak for the tank waits,
+  as in the original, but a top-up no longer releases the whole backlog
+  at once as an overdose.
 - **Waste breaks down linearly.** The original measured its waste from
   when it first appeared, so release sped up with age; Finsical uses the
   intended rate of a unit per six minutes.

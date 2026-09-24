@@ -58,6 +58,9 @@ const FLAKE: Partial<Record<Element, number>> = {
 };
 /** Ammonia per unit of eaten food, released over time as waste. */
 const WASTE_NH3 = 0.05;
+/** Most minutes a dose banks toward a release (an hour: 72 ml of a
+ * medicine). */
+const MAX_DOSE_CLOCK = 60;
 /** Catch-up chunk, simulated minutes (the original's 21600 s ÷ speed). */
 const CATCH_UP_CHUNK = 360;
 /** Live running visits every routine once per simulated minute; a gap
@@ -192,7 +195,10 @@ export class Aquarium {
 
   /** Sim_Food: uneaten food dissolves, a unit per 10 minutes. */
   private stepFood(m: number): Step {
-    const n = Math.min(Math.round(m * 0.1), Math.floor(this.food));
+    // Nothing to dissolve: don't bank the time, or the next spoiled
+    // pellet would dissolve all at once.
+    if (this.food < 1) return "applied";
+    const n = Math.min(Math.trunc(m / 10), Math.floor(this.food));
     if (n < 1) return "wait";
     for (const [e, v] of Object.entries(FLAKE) as [Element, number][])
       addElement(this.water, e, n * v);
@@ -219,7 +225,8 @@ export class Aquarium {
     this.breathe(r, m, ctx);
     if (l.dead) return;
     const c = l.clock;
-    const run = (k: keyof FishLife["clock"], s: (e: number) => Step): void => {
+    const run = (k: "hunger" | "age" | "health" | "sick",
+                 s: (e: number) => Step): void => {
       if (l.dead) return;
       c[k] += m;
       if (s(c[k]) !== "wait") c[k] = 0;
@@ -227,7 +234,7 @@ export class Aquarium {
     run("hunger", (e) => stepHunger(l, e, catchUp, ctx));
     run("age", (e) => stepAge(l, e, catchUp, ctx));
     run("health", (e) => stepWaterHealth(l, e, this.water, catchUp, ctx));
-    run("sick", (e) => stepSickness(l, e, catchUp, ctx,
+    run("sick", (e) => stepSickness(l, m, e, catchUp, ctx,
                                     (idx) => this.spread(idx, all)));
   }
 
@@ -267,6 +274,9 @@ export class Aquarium {
       this.doses.splice(this.doses.indexOf(d), 1);
       return "applied";
     }
+    // A dose too weak for the tank waits to act; cap what it banks so a
+    // top-up can't release the backlog at once as an overdose.
+    d.clock = Math.min(d.clock, MAX_DOSE_CLOCK);
     const n = Math.min(Math.floor(d.clock * dissolveRate(med.kind)), d.ml);
     if (n < 1) return "wait";
     // Medicines don't act on fish during catch-up; the original kept
@@ -339,7 +349,7 @@ export class Aquarium {
   addMedicine(id: number, ml: number): boolean {
     if (!medicineById(id) || !(ml > 0)) return false;
     const d = this.doses.find((x) => x.medicine === id);
-    if (d) d.ml += ml;
+    if (d) { d.ml += ml; d.clock = 0; }
     else this.doses.push({ medicine: id, ml, clock: 0 });
     return true;
   }

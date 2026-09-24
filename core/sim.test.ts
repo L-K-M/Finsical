@@ -990,3 +990,16 @@ describe("Sim", () => {
     expect(b.state).not.toBe("seek");
   });
 });
+
+describe("deaths out of sight", () => {
+  it("a fish that died during catch-up sinks rather than rising", () => {
+    const sim = new Sim({ width: 300, height: 200 }, 6);
+    const f = sim.addFish({ x: 150, y: 100 });
+    sim.advanceLife(1);
+    f.life!.ate = 0;
+    f.life!.health = 1;
+    sim.advanceLife(40 * 24 * 3600); // starves while the app is closed
+    expect(f.state).toBe("dead");
+    expect(f.corpse).toBe("sink");
+  });
+});

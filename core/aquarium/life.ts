@@ -39,11 +39,14 @@ export interface FishLife {
   /** Food units in the stomach, and its size. */
   ate: number;
   stomach: number;
-  sick: { disease: number; amount: number } | null;
+  /** `progress` is growth not yet a whole point of sickness. */
+  sick: { disease: number; amount: number; progress?: number } | null;
   dead: { cause: number; at: number } | null;
   /** Simulated minutes each routine has accumulated toward its next
    * whole step. */
-  clock: { hunger: number; age: number; health: number; sick: number };
+  clock: { hunger: number; age: number; health: number; sick: number;
+           /** Minutes of old age not yet a whole health point. */
+           old?: number };
 }
 
 /** What happened: applied (reset the clock), wait (keep accumulating),
@@ -90,11 +93,11 @@ export function newLife(rand: () => number, care: SpeciesCare,
  * plus up to 30 by the prime of life (0.8 × span), then minus 40 by
  * the end of it. */
 export function vitalityAt(base: number, age: number, care: SpeciesCare): number {
-  const prime = trunc(care.lifeSpan * 0.8);
+  const prime = Math.max(1, trunc(care.lifeSpan * 0.8));
   if (age <= prime)
     return Math.min(99, base + trunc(age / prime * 30));
   return Math.max(1, base + 30 -
-    trunc((age - prime) / (care.lifeSpan - prime) * 40));
+    trunc((age - prime) / Math.max(1, care.lifeSpan - prime) * 40));
 }
 
 /** Lower_Fish_Health: `amount` is the original's damage scale (20 per
@@ -275,34 +278,49 @@ export function stepAge(l: FishLife, minutes: number, catchUp: boolean,
                         ctx: LifeCtx): Step {
   if (minutes < 11 && !catchUp) return "wait";
   l.age += minutes;
-  if (l.age > ctx.care.lifeSpan &&
-      lowerHealth(l, trunc(minutes * 100 / 600), Cause.oldAge, ctx) === "died")
-    return "died";
+  if (l.age > ctx.care.lifeSpan) {
+    // The original applied each 11-minute step on its own, which
+    // truncates to nothing live; old age builds up here until it costs
+    // a whole point (about ten days to die, as its formula describes).
+    const old = (l.clock.old ?? 0) + minutes;
+    const s = lowerHealth(l, trunc(old * 100 / 600), Cause.oldAge, ctx);
+    if (s === "died") return s;
+    l.clock.old = s === "applied" ? 0 : old;
+  }
   if (!l.dead) l.vitality = vitalityAt(l.vitalityBase, l.age, ctx.care);
   l.stomach = stomachSize(ctx.weight);
   l.ate = Math.min(l.ate, l.stomach);
   return "applied";
 }
 
-/** Sim_Fish_Sick (once six hours have built up): the sickness grows,
- * may spread, and wears the fish's health down. Only medicine cures. */
-export function stepSickness(l: FishLife, minutes: number, catchUp: boolean,
-                             ctx: LifeCtx, spread: (idx: number) => void): Step {
+/** Sim_Fish_Sick: the sickness grows by `growth` points every 12960
+ * minutes (9 days), and each point it gains may infect the weakest
+ * healthy fish. Once six hours have built up it wears the fish's
+ * health down by `minutes × amount ÷ 1440`. Only medicine cures it.
+ *
+ * `visit` is the minutes since the last call, `minutes` what the damage
+ * clock holds. (The original re-applied growth for the whole damage
+ * clock on every visit until a health point fell, so past six hours a
+ * sickness grew and rolled contagion every minute; here it grows at the
+ * rate its formula describes.) */
+export function stepSickness(l: FishLife, visit: number, minutes: number,
+                             catchUp: boolean, ctx: LifeCtx,
+                             spread: (idx: number) => void): Step {
   if (!l.sick || l.dead) return "applied";
-  if (minutes < 360 && !catchUp) return "wait";
   if (l.sick.amount < 1) {
     cure(l, ctx);
     return "applied";
   }
   const d = DISEASES[l.sick.disease]!;
-  const grow = trunc(d.growth * minutes / 12960);
-  if (grow !== 0) {
-    const before = l.sick.amount;
-    l.sick.amount = Math.min(100, Math.max(0, l.sick.amount + grow));
-    if (l.sick.amount > before && d.contagion > 0 &&
-        randInt(ctx.rand, 1, 500) <= d.contagion)
+  const progress = (l.sick.progress ?? 0) + d.growth * visit / 12960;
+  const grow = trunc(progress);
+  l.sick.progress = progress - grow;
+  if (grow > 0 && l.sick.amount < 100) {
+    l.sick.amount = Math.min(100, l.sick.amount + grow);
+    if (d.contagion > 0 && randInt(ctx.rand, 1, 500) <= d.contagion)
       spread(l.sick.disease);
   }
+  if (minutes < 360 && !catchUp) return "wait";
   return lowerHealth(l, minutes * l.sick.amount / 1440, Cause.disease, ctx);
 }
 
@@ -340,12 +358,14 @@ export function sanitizeLife(raw: unknown): FishLife | undefined {
     resilience: num(o.resilience, 1, 99) ?? 50,
     stomach, ate: num(o.ate, 0, stomach) ?? 0,
     sick: disease === null ? null
-      : { disease, amount: num(sick?.amount, 0, 100) ?? 1 },
+      : { disease, amount: num(sick?.amount, 0, 100) ?? 1,
+          progress: num(sick?.progress, 0, 1) ?? 0 },
     dead: cause === null ? null
       : { cause, at: num(dead?.at, 0, Number.MAX_SAFE_INTEGER) ?? 0 },
     clock: {
       hunger: num(c.hunger, 0, 1e6) ?? 0, age: num(c.age, 0, 1e6) ?? 0,
       health: num(c.health, 0, 1e6) ?? 0, sick: num(c.sick, 0, 1e6) ?? 0,
+      old: num(c.old, 0, 1e6) ?? 0,
     },
   };
 }

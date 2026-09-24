@@ -207,7 +207,8 @@ export function sanitizeWater(raw: unknown, base: Water): Water {
     const v = o[k];
     if (typeof v === "number" && Number.isFinite(v) && v >= 0) w[k] = v;
   }
-  if (w.litres <= 0) w.litres = base.litres;
+  // The tank's size isn't the save's to choose.
+  w.litres = base.litres;
   for (const e of ELEMENTS) setElement(w, e, w[e]);
   setTemp(w, clamp(w.temp, 0, 45));
   w.gH = hardness(w.calcium, w.magnesium, w.litres);

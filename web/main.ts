@@ -1321,7 +1321,7 @@ async function downloadAddon(it: Importable): Promise<void> {
   if (!usable.length) throw new Error("no pack inside");
   for (const r of usable) {
     if (r.sheets.size)
-      handleSheets(r.sheets, it.inner, it.url, it.section, true);
+      handleSheets(r.sheets, it.inner, it.url, it.section, true, r.care);
     if (r.images.size)
       handleImages(r.images.values(), it.url, it.section, true);
   }
@@ -1552,7 +1552,8 @@ function feedFish(): void {
   // context stays suspended until the first tank click.
   audio.unlock();
   const x = 30 + Math.random() * (TANK.width - 60);
-  const hungry = sim.fish.filter((f) => f.hunger > HUNGER_SEEK).length;
+  const hungry = sim.fish.filter(
+    (f) => f.state !== "dead" && f.hunger > HUNGER_SEEK).length;
   for (const p of feedPinch(Math.random, hungry)) {
     setTimeout(() => {
       const pellet = sim.dropFood(x + p.dx);

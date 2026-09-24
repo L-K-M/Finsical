@@ -334,9 +334,10 @@ export class Sim {
       if (l.dead) {
         if (f.state !== "dead") {
           this.setState(f, "dead");
-          // A fish that died while the tank was out of sight is found
-          // on the gravel, like the original's catch-up deaths.
-          f.corpse ??= "rise";
+          // A fish that died while the tank was out of sight (over an
+          // hour of tank time ago) is found sinking to the gravel, like
+          // the original's catch-up deaths; one dying now rises first.
+          f.corpse ??= this.aquarium.minutes - l.dead.at > 60 ? "sink" : "rise";
         }
       } else f.hunger = hungerOf(l);
     }

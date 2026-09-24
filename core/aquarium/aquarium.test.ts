@@ -176,6 +176,53 @@ describe("fish", () => {
   });
 });
 
+describe("pacing (review regressions)", () => {
+  it("a sickness grows a few points a day, not a point a minute", () => {
+    const rand = makeRng(21);
+    const a = new Aquarium(rand);
+    const sick = resident(1, rand);
+    sick.life.sick = { disease: 0, amount: 18 }; // White Spot: 35 per 9 days
+    const others = [2, 3, 4, 5].map((i) => resident(i, rand));
+    live(a, DAY, [sick, ...others]);
+    expect(sick.life.sick?.amount).toBeGreaterThanOrEqual(21);
+    expect(sick.life.sick?.amount).toBeLessThanOrEqual(22);
+    // Four or so growth steps, each a 13% chance to spread.
+    expect(others.filter((r) => r.life.sick).length).toBeLessThan(4);
+  });
+
+  it("old age kills in live running too", () => {
+    const a = new Aquarium(makeRng(22));
+    const r = resident(1, makeRng(22));
+    r.life.age = DEFAULT_CARE.lifeSpan;
+    for (let d = 0; d < 60 && !r.life.dead; d++) {
+      r.life.ate = r.life.stomach; // well fed: only age can kill it
+      live(a, DAY / 2, [r]);
+    }
+    expect(r.life.dead?.cause).toBe(Cause.oldAge);
+  });
+
+  it("food spoiled after a quiet spell dissolves a unit per 10 minutes", () => {
+    const a = new Aquarium(makeRng(23));
+    live(a, DAY, []);
+    a.spoil(3);
+    a.advanceMinutes(10, []);
+    expect(a.food).toBe(2);
+  });
+
+  it("a topped-up dose doesn't come out as an overdose", () => {
+    const rand = makeRng(24);
+    const a = new Aquarium(rand);
+    const r = resident(1, rand);
+    a.addMedicine(1100, 10);  // too weak for 100 L: it waits
+    live(a, 4 * 60, [r]);
+    const before = r.life.health;
+    a.addMedicine(1100, 300);
+    live(a, 60, [r]);
+    expect(r.life.health).toBe(before);
+    expect(r.life.dead).toBeNull();
+  });
+});
+
 describe("water change", () => {
   it("dilutes what builds up and brings in chlorine", () => {
     const a = new Aquarium(makeRng(10));
@@ -215,9 +262,10 @@ describe("time", () => {
     const r = resident(1, makeRng(13));
     a.advanceMinutes(30 * DAY, [r]);
     expect(a.minutes).toBe(30 * DAY);
-    // It aged the whole time, however far it got before starving.
-    expect(r.life.age - DEFAULT_CARE.adultAge)
-      .toBe(r.life.dead ? r.life.dead.at : 30 * DAY);
+    // It aged the whole time, up to the six-hour step it starved in.
+    const lived = r.life.dead ? r.life.dead.at : 30 * DAY;
+    expect(r.life.age - DEFAULT_CARE.adultAge).toBeGreaterThanOrEqual(lived - 360);
+    expect(r.life.age - DEFAULT_CARE.adultAge).toBeLessThanOrEqual(lived);
   });
 
   it("survives a save and restore", () => {
