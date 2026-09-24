@@ -187,6 +187,7 @@ pushButton(copyBtn, () => {
   const fallback = (): void => {
     const ta = document.createElement("textarea");
     ta.value = text;
+    ta.readOnly = true; // stops iOS raising the soft keyboard on focus
     ta.style.cssText = "position:fixed;opacity:0";
     document.body.appendChild(ta);
     try {
