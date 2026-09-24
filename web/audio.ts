@@ -70,7 +70,10 @@ export class TankAudio {
   // only swaps manifest sounds, never user-supplied ones.
   private imported = new Map<string, AudioBuffer>();
   private ambientSrc: AudioBufferSourceNode | null = null;
-  private ambientBuf: AudioBuffer | null = null;
+  // Name:duration of the buffer the ambient loop plays — content
+  // identity, so re-decoding the same file doesn't restart it (each
+  // decode mints a fresh AudioBuffer object for identical bytes).
+  private ambientKey = "";
   private ambientWanted = false;
   // Bumped by each startAmbient so a stale pending resume() retry can
   // tell it lost the race instead of starting a second loop.
@@ -109,8 +112,8 @@ export class TankAudio {
       }));
       for (const d of decoded) if (d) this.buffers.set(d.name, d.data);
     }
-    const now = this.named(FILTER_BUBBLING);
-    if (this.ambientWanted && now !== null && now !== this.ambientBuf) {
+    const now = this.ambientPick();
+    if (this.ambientWanted && now !== "" && now !== this.ambientKey) {
       if (this.ambientSrc) {
         try { this.ambientSrc.stop(); } catch { /* already ended */ }
         this.ambientSrc = null;
@@ -140,8 +143,8 @@ export class TankAudio {
     // A dropped bubbling sound can replace what's looping (or supply the
     // loop an earlier startAmbient found missing) — restart when the
     // buffer that would play now differs from the one currently selected.
-    const now = this.named(FILTER_BUBBLING);
-    if (this.ambientWanted && now !== null && now !== this.ambientBuf) {
+    const now = this.ambientPick();
+    if (this.ambientWanted && now !== "" && now !== this.ambientKey) {
       if (this.ambientSrc) {
         try { this.ambientSrc.stop(); } catch { /* already ended */ }
         this.ambientSrc = null;
@@ -262,8 +265,8 @@ export class TankAudio {
    * rule as addWavs. */
   removeWavs(names: Iterable<string>): void {
     for (const n of names) this.imported.delete(n);
-    const now = this.named(FILTER_BUBBLING);
-    if (this.ambientWanted && now !== this.ambientBuf) {
+    // No non-empty guard here: deleting the loop's own sound must stop it.
+    if (this.ambientWanted && this.ambientPick() !== this.ambientKey) {
       if (this.ambientSrc) {
         try { this.ambientSrc.stop(); } catch { /* already ended */ }
         this.ambientSrc = null;
@@ -325,12 +328,24 @@ export class TankAudio {
   /** Exact-name lookup (case-insensitive) for the original game's event
    * sounds. find()'s substring pass would let an unrelated import, a
    * song called "Switchfoot" say, stand in for the lamp's click. */
-  private named(name: string): AudioBuffer | null {
+  private namedEntry(name: string): { name: string; buf: AudioBuffer } |
+      null {
     const want = name.toLowerCase();
     for (const map of [this.imported, this.buffers])
       for (const [n, buf] of map)
-        if (n.toLowerCase() === want) return buf;
+        if (n.toLowerCase() === want) return { name: n, buf };
     return null;
+  }
+
+  private named(name: string): AudioBuffer | null {
+    return this.namedEntry(name)?.buf ?? null;
+  }
+
+  /** Content key of whichever buffer would loop as ambience now, or
+   * "" when the bank has no bubbling at all. */
+  private ambientPick(): string {
+    const e = this.namedEntry(FILTER_BUBBLING);
+    return e ? `${e.name}:${e.buf.duration}` : "";
   }
 
   private play(buf: AudioBuffer | null, gain = 0.8, loop = false,
@@ -435,8 +450,9 @@ export class TankAudio {
   startAmbient(): void {
     if (!this.ambientOn || this.ambientSrc) return; // off, or already live
     this.ambientWanted = true;
-    this.ambientBuf = this.named(FILTER_BUBBLING);
+    const pick = this.namedEntry(FILTER_BUBBLING);
+    this.ambientKey = pick ? `${pick.name}:${pick.buf.duration}` : "";
     this.ambientGen++; // stale pending starts abort in play()
-    this.ambientSrc = this.play(this.ambientBuf, AMBIENT_GAIN, true);
+    this.ambientSrc = this.play(pick?.buf ?? null, AMBIENT_GAIN, true);
   }
 }

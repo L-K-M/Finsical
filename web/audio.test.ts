@@ -160,21 +160,25 @@ describe("TankAudio.load", () => {
     expect(sinkOf(ac.sources[0]!)).toBe(master);
   });
 
-  const manifestOf = (...sounds: [string, number][]): AzpackManifest => ({
+  const manifestOf = (...names: string[]): AzpackManifest => ({
     format: "azpack/1", tag: "T", version: 1, chunks: [], names: [],
-    sounds: sounds.map(([name]) => ({ name, file: `s/${name}.wav` })),
+    sounds: names.map((name) => ({ name, file: `s/${name}.wav` })),
   });
   const wavs = new Map<string, Uint8Array>();
-  const readWav = async (path: string): Promise<Uint8Array> =>
-    wavs.get(path)!;
+  beforeEach(() => wavs.clear());
+  const readWav = async (path: string): Promise<Uint8Array> => {
+    const w = wavs.get(path);
+    if (!w) throw new Error(`no fixture for ${path}`); // loud, not a decode-skip
+    return w;
+  };
 
   it("a second pack's load keeps the first pack's other sounds", async () => {
     // Manifests merge: pack B replaces its same-named entries, not the
     // whole table — dropping two .azpacks must not mute pack A.
     const audio = new TankAudio();
     wavs.set("s/drop.wav", wav(1)); wavs.set("s/bubble.wav", wav(1));
-    await audio.load(readWav, manifestOf(["drop", 1]));
-    await audio.load(readWav, manifestOf(["bubble", 1]));
+    await audio.load(readWav, manifestOf("drop"));
+    await audio.load(readWav, manifestOf("bubble"));
     const ac = FakeContext.last!;
     audio.bubble();
     audio.feed(); // plays pack A's "drop" — wiped before the fix
@@ -185,12 +189,12 @@ describe("TankAudio.load", () => {
      async () => {
     const audio = new TankAudio();
     wavs.set(`s/${LOOP}.wav`, wav(30));
-    await audio.load(readWav, manifestOf([LOOP, 30]));
+    await audio.load(readWav, manifestOf(LOOP));
     audio.startAmbient();
     const ac = FakeContext.last!;
     expect(ac.loops()).toBe(1);
     wavs.set(`s/${LOOP}.wav`, wav(60)); // same name, new take
-    await audio.load(readWav, manifestOf([LOOP, 60]));
+    await audio.load(readWav, manifestOf(LOOP));
     const loops = ac.sources.filter((s) => s.loop);
     expect(loops[0]!.stops).toHaveLength(1); // old loop stopped
     expect(loops[1]!.starts).toBe(1);        // replacement running
@@ -201,10 +205,23 @@ describe("TankAudio.load", () => {
      async () => {
     const audio = new TankAudio();
     wavs.set(`s/${LOOP}.wav`, wav(30)); wavs.set("s/bubble.wav", wav(1));
-    await audio.load(readWav, manifestOf([LOOP, 30]));
+    await audio.load(readWav, manifestOf(LOOP));
     audio.startAmbient();
     const ac = FakeContext.last!;
-    await audio.load(readWav, manifestOf(["bubble", 1]));
+    await audio.load(readWav, manifestOf("bubble"));
+    const loop = ac.sources.filter((s) => s.loop)[0]!;
+    expect(loop.stops).toHaveLength(0);
+  });
+
+  it("re-loading the same pack leaves the loop running", async () => {
+    // A re-drop decodes to a fresh AudioBuffer for identical bytes —
+    // object identity would restart the loop on a semantic no-op.
+    const audio = new TankAudio();
+    wavs.set(`s/${LOOP}.wav`, wav(30));
+    await audio.load(readWav, manifestOf(LOOP));
+    audio.startAmbient();
+    const ac = FakeContext.last!;
+    await audio.load(readWav, manifestOf(LOOP)); // same take again
     const loop = ac.sources.filter((s) => s.loop)[0]!;
     expect(loop.stops).toHaveLength(0);
   });
