@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- The CRT's Geometry group gains two pots. Skew leans the whole
+  picture into a parallelogram, and Perspective swings it like the
+  tube turning on its stand — one edge looming large while the
+  other shrinks back.
+- The CRT Softening control now smears only along each scanline, as
+  its description says. The rows used to blend into each other at
+  every setting, so the whole picture turned soft, and even Sharp and
+  Pixel Perfect were slightly blurred. Softening also reaches further:
+  the old maximum now sits at 40%, and the rest of the slider widens
+  the smear. Your saved setting converts, so the picture looks the
+  same as before apart from the sharper rows.
+- The tank reopens exactly where you left it, even when part of it was
+  off the edge of the screen. It used to be pushed back onto the
+  screen at launch.
+- The tank window can shrink much smaller: its minimum size is now a
+  quarter of the machine case instead of just under half.
+- With the CRT effect on, the Height control can now stretch the
+  picture to fill the whole screen glass. On machines whose glass is
+  taller than the tank, such as the Performa 450, the stretched
+  picture used to be cut off by black bars above and below it.
 - The tank now lives the way the original AquaZone's did, reimplemented
   from its Mac and Windows engines. Water has a temperature, pH,
   hardness, oxygen, CO2, nitrate, ammonia, chlorine and dissolved food,
@@ -26,7 +46,9 @@
   switch each have their own sound. Dropping your copy of AZ_WAVES.REZ
   on the tank works too. Water ambience now switches the bubbling;
   Bubble sounds only plays a short bubble sound you add, since the game
-  has none for single bubbles.
+  has none for single bubbles. A tank set up before this gets the
+  game's sounds once on its next launch; removing them afterwards
+  sticks.
 - Until your first pack lands, the stand-in fish are a pixel-art guppy
   with a wagging tail instead of a few rectangles.
 - Fish swim more calmly: they stroke and glide toward where they are

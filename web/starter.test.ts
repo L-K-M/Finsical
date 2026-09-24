@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { COLLECTIONS } from "./import.js";
 import type { Importable } from "./import.js";
-import { resolveStarter, STARTER_SET, starterCollection } from "./starter.js";
+import { resolveStarter, STARTER_SET, starterCollection, wantsStarterSounds }
+  from "./starter.js";
 
 const item = (section: string, inner: string): Importable =>
   ({ section, inner,
@@ -60,5 +61,28 @@ describe("STARTER_SET", () => {
       STARTER_SET.some((s) => s.section === c.section));
     expect(nested).toBeDefined();
     expect(starterCollection(nested!)).toBe(false);
+  });
+});
+
+describe("wantsStarterSounds", () => {
+  const tank = { welcomePending: false, soundsHandled: false,
+                 hasSounds: false };
+
+  it("gives a silent tank from before the sounds its sounds", () => {
+    expect(wantsStarterSounds(tank)).toBe(true);
+  });
+
+  it("leaves a first launch to the welcome", () => {
+    expect(wantsStarterSounds({ ...tank, welcomePending: true }))
+      .toBe(false);
+  });
+
+  it("keeps sounds the user already has", () => {
+    expect(wantsStarterSounds({ ...tank, hasSounds: true })).toBe(false);
+  });
+
+  it("does not bring back sounds once handled", () => {
+    expect(wantsStarterSounds({ ...tank, soundsHandled: true }))
+      .toBe(false);
   });
 });

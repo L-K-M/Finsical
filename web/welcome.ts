@@ -6,9 +6,13 @@ import { showAlert } from "./alert.js";
 import type { Alert, AlertButton } from "./alert.js";
 import { listAddons, loadProblem } from "./import.js";
 import type { Importable } from "./import.js";
-import { resolveStarter, starterCollection } from "./starter.js";
+import { resolveStarter, starterCollection, wantsStarterSounds }
+  from "./starter.js";
 
 const WELCOMED_KEY = "finsical:welcomed";
+/** Set once the tank has had its chance at the starter set's sounds:
+ * from the welcome, or from backfillStarterSounds for an older tank. */
+const SOUNDS_KEY = "finsical:starterSounds";
 
 const WELCOME_TEXT = "Welcome to Finsical. Your tank has four stand-in " +
   "fish. Finsical can stock it with the original Aquazone fish, plants, " +
@@ -34,6 +38,35 @@ export function wantsWelcome(hasSavedTank: boolean): boolean {
 function markWelcomed(): void {
   try { localStorage.setItem(WELCOMED_KEY, "1"); }
   catch { /* storage unavailable: the offer comes back next launch */ }
+  // The welcome offers the sounds with the rest; either answer counts.
+  markSoundsHandled();
+}
+
+function markSoundsHandled(): void {
+  try { localStorage.setItem(SOUNDS_KEY, "1"); }
+  catch { /* storage unavailable: nothing is remembered anyway */ }
+}
+
+/** A tank set up before the starter set had sounds (AZ_WAVES) plays
+ * nothing: the Sound pane has no sounds to control. Install them once,
+ * without asking, as the welcome would have. Offline, or with the item
+ * gone from the archive, the next launch tries again. A tank that has
+ * sounds of its own only records that it was handled. */
+export async function backfillStarterSounds(
+    hooks: { welcomePending: boolean; hasSounds: boolean;
+             install(it: Importable): Promise<void> }): Promise<void> {
+  let soundsHandled: boolean;
+  try { soundsHandled = localStorage.getItem(SOUNDS_KEY) !== null; }
+  catch { return; } // storage off: this can't be done just once
+  if (!wantsStarterSounds({ ...hooks, soundsHandled })) {
+    if (!hooks.welcomePending && !soundsHandled) markSoundsHandled();
+    return;
+  }
+  const items = resolveStarter(await listAddons((c) =>
+    c.section === "sounds" && starterCollection(c)));
+  if (!items.length) return;
+  for (const it of items) await hooks.install(it);
+  markSoundsHandled();
 }
 
 /** Offer the starter set; either answer is remembered. */

@@ -41,7 +41,7 @@ const SPECS: SliderSpec[] = [
     blurb: "Dark gaps between the picture's rows — the most " +
       "recognizable CRT trait. The lines stay locked to the game's " +
       "own pixel rows at any window size." },
-  { key: "beam", label: "Softening", ends: ["Sharp", "Soft"],
+  { key: "softening", label: "Softening", ends: ["Sharp", "Soft"],
     blurb: "A tube's beam smears color along each scan, never between " +
       "rows — horizontal edges soften while the scanlines stay crisp." },
   { key: "misconvergence", label: "Misconvergence",
@@ -88,6 +88,15 @@ const PIC_SPECS: SliderSpec[] = [
   { key: "vsize", label: "Height", ends: ["Short", "Tall"], fmt: offset,
     blurb: "The height pot — tubes drifted tall or squat as they " +
       "warmed up, and owners dialed it back by hand." },
+  { key: "skew", label: "Skew", ends: ["Leans left", "Leans right"],
+    fmt: offset,
+    blurb: "The parallelogram pot — the raster's top edge slides " +
+      "sideways, leaning the whole picture." },
+  { key: "perspective", label: "Perspective",
+    ends: ["Faces left", "Faces right"], fmt: offset,
+    blurb: "The keystone pot — swings the raster like the tube " +
+      "turning on its stand, so one edge looms large while the " +
+      "other shrinks back." },
   { key: "red", label: "Red gain", ends: ["Less", "More"], fmt: offset,
     blurb: "Trims the red gun, like a service-menu adjustment. " +
       "Lower it to cool the picture, raise it to warm." },
@@ -106,14 +115,15 @@ const specOf = (k: keyof CrtConfig): SliderSpec =>
 interface Group { title: string; rows: (keyof CrtConfig)[][] }
 const MONITOR_GROUPS: Group[] = [
   { title: "Beam & Phosphor",
-    rows: [["scanlines", "beam", "misconvergence"],
+    rows: [["scanlines", "softening", "misconvergence"],
            ["bloom", "overdrive", "grille"]] },
   { title: "Glass & Signal",
     rows: [["curvature", "vignette"], ["flicker", "grain"]] },
 ];
 const PICTURE_GROUPS: Group[] = [
   { title: "Picture", rows: [["brightness", "contrast", "zoom"]] },
-  { title: "Geometry", rows: [["hsize", "vsize"]] },
+  { title: "Geometry", rows: [["hsize", "vsize"],
+                             ["skew", "perspective"]] },
   { title: "Color", rows: [["red", "green", "blue"]] },
 ];
 
