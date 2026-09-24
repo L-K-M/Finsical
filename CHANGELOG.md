@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- In a browser, Preferences, Tank Overview and Tank Stats open in
+  small windows beside the tank, at the size the app gives them. They
+  used to open as full-size tabs that stretched their panes and sent
+  the tank's tab to the background, where the fish stop and the sound
+  pauses, so a change made in Preferences couldn't be seen.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the
