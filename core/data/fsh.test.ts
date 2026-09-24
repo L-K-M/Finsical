@@ -248,8 +248,10 @@ describe("decodePixels", () => {
       const len = 1 + Math.floor(rand() * 40);
       if (kind < 0.1) { b.push(0, 0); continue; }
       if (kind < 0.55) {
-        const v = 0x10000 - len;
-        b.push(v & 0xff, v >> 8, Math.floor(rand() * 256));
+        // Some runs at the format's longest, and many of colour 0,
+        // whose writes the decoder skips.
+        const v = 0x10000 - (rand() < 0.03 ? 0x8000 : len);
+        b.push(v & 0xff, v >> 8, rand() < 0.3 ? 0 : Math.floor(rand() * 256));
       } else {
         b.push(len & 0xff, len >> 8);
         for (let k = 0; k < len; k++) b.push(Math.floor(rand() * 256));
@@ -275,6 +277,16 @@ describe("decodePixels", () => {
     // a copy of 5 fills the rest and drops what is left over.
     const s = Uint8Array.from([0xfc, 0xff, 7, 5, 0, 1, 2, 3, 4, 5]);
     expect([...decodePixels(s, 2, 3)]).toEqual([7, 7, 7, 1, 7, 2]);
+  });
+
+  it("clips a maximum-length run to the frame", () => {
+    // 0x8000 is -32768 as s16: the run fills the whole 2x2 frame and
+    // its other 32764 pixels are dropped.
+    expect([...decodePixels(Uint8Array.of(0x00, 0x80, 9), 2, 2)])
+      .toEqual([9, 9, 9, 9]);
+    // 0x7fff copies up to 32767 bytes; only the frame's 4 are read.
+    const copy = Uint8Array.of(0xff, 0x7f, 1, 2, 3, 4, 5, 6);
+    expect([...decodePixels(copy, 2, 2)]).toEqual([1, 3, 2, 4]);
   });
 
   it("reads zeros past the end of a cut stream", () => {

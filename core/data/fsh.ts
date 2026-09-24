@@ -88,19 +88,29 @@ export function decodePixels(s: Uint8Array, w: number, h: number): Uint8Array {
     if (v < 0) {
       const c = i + 2 < n ? s[i + 2]! : 0;
       const run = Math.min(-v, total - o);
-      for (let k = 0; k < run; k++) {
-        out[y * w + x] = c;
-        if (++y === h) { y = 0; x++; }
+      // `out` starts zeroed, so a run of 0 (the transparent margins)
+      // only moves the counters.
+      if (c !== 0) {
+        for (let k = 0; k < run; k++) {
+          out[y * w + x] = c;
+          if (++y === h) { y = 0; x++; }
+        }
       }
       o += run;
+      y = o % h;
+      x = (o / h) | 0;
       i += 3;
     } else if (v > 0) {
       const run = Math.min(v, total - o);
-      for (let k = 0, j = i + 2; k < run; k++, j++) {
-        out[y * w + x] = j < n ? s[j]! : 0;
+      // Copy what the stream holds; a tail cut off by its end stays 0.
+      const avail = Math.min(run, n - (i + 2));
+      for (let k = 0, j = i + 2; k < avail; k++, j++) {
+        out[y * w + x] = s[j]!;
         if (++y === h) { y = 0; x++; }
       }
       o += run;
+      y = o % h;
+      x = (o / h) | 0;
       i += 2 + v;
     } else {
       i += 2;
