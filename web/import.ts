@@ -442,9 +442,11 @@ export function recordAddon(list: Importable[], it: Importable,
   return true;
 }
 
-/** Scenery sections by pack extension. */
-const SCENERY_BY_EXT: Readonly<Record<string, string>> =
-  { grv: "gravel", plt: "plants", acc: "accessories" };
+/** Scenery sections by pack extension. A Map, not an object literal:
+ * an extension such as "constructor" must not find Object.prototype. */
+const SCENERY_BY_EXT: ReadonlyMap<string, string> = new Map([
+  ["grv", "gravel"], ["plt", "plants"], ["acc", "accessories"],
+]);
 
 /** A saved scenery add-on under the section its pack's extension names.
  * Before each Mekasia collection took only its own kind of pack,
@@ -452,9 +454,9 @@ const SCENERY_BY_EXT: Readonly<Record<string, string>> =
  * big textured block in the tank; its record restores as the gravel it
  * is. Fish, sounds and non-scenery records pass through unchanged. */
 export function sceneryFix(it: Importable): Importable {
-  if (!Object.values(SCENERY_BY_EXT).includes(it.section)) return it;
+  if (![...SCENERY_BY_EXT.values()].includes(it.section)) return it;
   const ext = /\.([a-z]+)$/i.exec(it.url)?.[1]?.toLowerCase();
-  const section = ext ? SCENERY_BY_EXT[ext] : undefined;
+  const section = ext ? SCENERY_BY_EXT.get(ext) : undefined;
   return section && section !== it.section ? { ...it, section } : it;
 }
 

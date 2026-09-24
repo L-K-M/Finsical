@@ -130,5 +130,10 @@ describe("sceneryFix", () => {
     const it = { section: "plants", inner: "x",
                  url: "https://archive.org/download/x/y.zip#weed" };
     expect(sceneryFix(it)).toBe(it);
+    // An extension that names an Object.prototype member, not a section.
+    for (const ext of ["constructor", "Constructor"]) {
+      const odd = { ...it, url: `https://archive.org/download/x/y.${ext}` };
+      expect(sceneryFix(odd)).toBe(odd);
+    }
   });
 });
