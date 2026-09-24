@@ -117,11 +117,52 @@
 - On first launch, a Mac OS 8 alert welcomes you and offers to stock
   the tank: Stock the Tank downloads three fish, a gravel, a plant and
   a background (about 1 MB) from the Internet Archive, shows its
-  progress, and replaces the four stand-in fish. If the download
-  fails, the alert says so and offers Try Again. Knock on the glass
-  too often and you get the aquarium's sign: "Please don't tap on the
-  glass. It frightens the fish." The console no longer warns about the
-  missing bundled pack on every launch.
+  progress (Stop ends it), and replaces the four stand-in fish. If the
+  download fails, the alert says so and offers Try Again. Knock on the
+  glass too often and you get the aquarium's sign: "Please don't tap
+  on the glass. It frightens the fish." The console no longer warns
+  about the missing bundled pack on every launch.
+- Pause the tank with the P key, Tank > Pause Simulation (Cmd-P) or
+  the browser's menu bar: hunger, rot, filtration and the day cycle
+  stop, a PAUSED banner shows, and resuming doesn't fast-forward. The
+  pause is remembered across launches.
+- Change Water, in Tank Stats and the Tank menu, recovers most of the
+  water quality at once and siphons settled food off the gravel.
+- Tank Overview can put another installed gravel or background on
+  display with Use; the rows say which one is showing, and your choice
+  sticks even through a launch where its pack can't download. Empty
+  Tank… removes every fish and add-on after a second click, and an
+  emptied tank stays empty after relaunch.
+- Point at a fish and a balloon names it and says what it is doing;
+  Option-click it for a Get Info card with its hunger and mood that
+  follows it around.
+- Import Add-ons has a Filter field for the current section. A
+  stalled archive.org download gives up after 30 seconds instead of
+  hanging, and an add-on that fails to restore at launch is retried in
+  the background, and again when the Mac is back online, instead of
+  staying missing for the session.
+- Aquazone pack files dropped on the tank land in their own section:
+  gravel (.grv), plants (.plt), accessories (.acc) and tanks (.azn)
+  instead of all as fish. Several files can be dropped at once, an
+  unreadable one is skipped instead of stopping the rest, and dropped
+  packs are kept, so they come back at every launch until you remove
+  them in Tank Overview. Dropping works in browsers without folder
+  drops too.
+- Removing a sound add-on also removes the sounds it added, including
+  ones installed before Finsical kept track.
+- Turning the CRT effect on warms the tube up the way a real one does,
+  a bright line opening into the picture (skipped with reduced
+  motion). The Monitor pane has presets for the tube (Authentic,
+  Sharp, Soft and Pixel Perfect) that leave the Picture pane's
+  settings alone.
+- Tank Stats draws a small history line beside water quality and
+  average hunger.
+- In the macOS app, sound starts at launch instead of waiting for your
+  first click; in a browser, your first click or key starts it.
+- Screen readers get a description of the tank, the Overview says it
+  is waiting for the tank instead of showing an empty list, and phones
+  lay the tank page out at their own width. Standalone web builds now
+  include the machine case art.
 - Preferences' pane buttons are now the size of Desktop Pictures' own,
   54 x 40, instead of Monitors & Sound's 40 x 40.
 - Sound add-ons show a speaker icon in the add-on browser, its preview
