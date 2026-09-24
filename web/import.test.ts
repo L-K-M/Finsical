@@ -183,7 +183,11 @@ describe("archive.org nested collections", () => {
     // void every collection's items and masquerade as a fetch failure.
     let calls = 0;
     const items = await listAddons(undefined, () => {
-      if (calls++ === 0) throw new Error("ui bug");
+      // Throw on every call: a regression that swallows the callback
+      // inside the fetch try must void every collection, not just the
+      // first — a single throw could miss that.
+      calls++;
+      throw new Error("ui bug");
     });
     expect(calls).toBeGreaterThan(0);
     expect(items.length).toBeGreaterThan(0);

@@ -637,10 +637,15 @@ export async function listAddons(
     // But it still needs its own guard — an escape here would reject
     // Promise.all and void every other collection's results.
     if (items.length) {
-      try {
-        onItems?.(items);
-      } catch (cbErr) {
+      const warn = (cbErr: unknown) =>
         console.warn(`onItems callback failed for ${col.outer}:`, cbErr);
+      try {
+        const r: unknown = onItems?.(items);
+        // A thenable return isn't awaited, but a rejection must still
+        // not escape as an unhandled promise failure.
+        if (r instanceof Promise) r.catch(warn);
+      } catch (cbErr) {
+        warn(cbErr);
       }
     }
     return items;
