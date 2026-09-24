@@ -159,6 +159,56 @@ describe("archive.org nested collections", () => {
     expect(rs).toHaveLength(1);
     expect(rs[0]!.sounds).toEqual([{ name: "Macinfish", wav: MP3_BYTES }]);
   });
+
+  it("delivers each collection's items before the whole list resolves",
+     async () => {
+    // Progressive listing: the panel shows rows per landed collection
+    // rather than waiting on the slowest one.
+    const batches: Importable[][] = [];
+    let resolved = false;
+    const p = listAddons(undefined, (items) => {
+      expect(resolved).toBe(false); // fires before the promise settles
+      batches.push(items);
+    }).then((items) => { resolved = true; return items; });
+    const items = await p;
+    expect(batches.length).toBeGreaterThan(0);
+    expect(batches.flat().map((i) => i.url).sort())
+      .toEqual(items.map((i) => i.url).sort());
+    // Every delivered item carries its collection's section.
+    expect(batches.flat().every((i) => i.section !== "")).toBe(true);
+  });
+
+  it("keeps the listing when the progressive callback throws", async () => {
+    // A throwing UI callback must not reject Promise.all — that would
+    // void every collection's items and masquerade as a fetch failure.
+    let calls = 0;
+    const items = await listAddons(undefined, () => {
+      // Throw on every call: a regression that swallows the callback
+      // inside the fetch try must void every collection, not just the
+      // first — a single throw could miss that.
+      calls++;
+      throw new Error("ui bug");
+    });
+    expect(calls).toBeGreaterThan(0);
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.some((i) => i.section === "sounds")).toBe(true);
+  });
+
+  it("keeps the listing when the callback returns a rejecting thenable",
+     async () => {
+    // A void-typed callback can still hand back a rejected promise at
+    // runtime; a custom thenable covers the non-native-Promise case.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const items = await listAddons(undefined, () => ({
+      then: (_ok: unknown, err: (e: unknown) => void) =>
+        err(new Error("async ui bug")),
+    }) as unknown as void);
+    // Flush so a genuine unhandled rejection would have fired.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(items.length).toBeGreaterThan(0);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
 });
 
 describe("qualifySoundItemName", () => {
