@@ -2316,8 +2316,11 @@ function drawPaw(cx: number, top: number): void {
 
 // Dinner bell: one soft chime when somebody first starts begging —
 // edge-triggered, so a tank that stays hungry doesn't nag, and a fed
-// tank re-arms the bell for next time.
+// tank re-arms the bell for next time. The re-arm debounces: hunger
+// and water quality can both flicker across their thresholds inside
+// one episode, so the latch only clears after a sustained lull.
 let bellHungry = false;
+let bellCalmTicks = 0;
 
 function tickSim(): void {
   const bubbles = sim.bubbles.length;
@@ -2345,8 +2348,12 @@ function tickSim(): void {
   // suspended dinnerBell() returns false and we keep waiting, so a
   // hungry tank still rings once audio is unlocked.
   const anyBegging = sim.anyBegging;
-  if (anyBegging && !bellHungry) bellHungry = audio.dinnerBell();
-  else if (!anyBegging) bellHungry = false;
+  if (anyBegging) {
+    bellCalmTicks = 0;
+    if (!bellHungry) bellHungry = audio.dinnerBell();
+  } else if (bellHungry && ++bellCalmTicks > TICKS_PER_SECOND * 10) {
+    bellHungry = false;
+  }
   tickRipples(ripples);
   tickSplashes(splashes);
   // Sparse bloops: only some spawns make a sound. Checked per tick so

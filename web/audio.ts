@@ -402,12 +402,16 @@ export class TankAudio {
   }
 
   /** Fish are begging — the original's timer chime as a dinner bell.
-   * Returns whether the chime sounded; a suspended context answers
-   * false without spending a resume() the caller would re-try next
-   * tick anyway once audio is running. */
+   * Returns false only while audio can't sound, so the caller keeps
+   * waiting through a suspended context; a running context latches
+   * even if the sample is absent, since a missing buffer isn't worth
+   * a per-frame lookup for the whole episode. */
   dinnerBell(): boolean {
     if (!this.ctx || this.ctx.state !== "running") return false;
-    return this.play(this.named("timeronoff"), 0.45) !== null;
+    // A missing sample is not worth a per-frame retry: buffers don't
+    // appear mid-episode, so latch as rung once audio is running.
+    this.play(this.named("timeronoff"), 0.45);
+    return true;
   }
 
   /** Tap sounds are positional in the original app. */
