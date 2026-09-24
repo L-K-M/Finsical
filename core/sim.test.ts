@@ -348,6 +348,42 @@ describe("Sim", () => {
       }
   });
 
+  it("a watcher covered by the pointer at the glass clears off it", () => {
+    // Hovering by a pointer near the glass, then the pointer moves onto
+    // its body: the glide ahead ends at the glass, where it used to fin
+    // on at a third of cruise, pressed there with the pointer still on
+    // it, for as long as the pointer stayed. It turns and clears off
+    // the other way instead. A fish too big to clear it either way
+    // holds still, without rolling back and forth.
+    for (const [facing, halfW] of [[1, 16], [-1, 16], [1, 150]] as const) {
+      const sim = new Sim({ width: 320, height: 200 }, 7);
+      sim.setLight(1);
+      const f = sim.addFish({ x: facing > 0 ? 250 : 70, y: 100, facing,
+                              heading: facing > 0 ? 0 : Math.PI, hunger: 0,
+                              halfW, halfH: 10 });
+      sim.notice = { x: facing > 0 ? 312 : 8, y: 100 };
+      for (let t = 0; t < 300; t++) { f.hunger = 0; sim.tick(); }
+      const p = { x: f.x, y: f.y };
+      sim.notice = p;
+      // The sim's own test for a covering pointer (NOSE_GAP is 6).
+      let covered = 0, rolls = 0, prev = f.state;
+      for (let t = 0; t < 600; t++) {
+        f.hunger = 0;
+        sim.tick();
+        if (Math.abs(p.x - f.x) < halfW * f.scale + 6 &&
+            Math.abs(p.y - f.y) < 10 * f.scale + 6) covered++;
+        if (f.state === "turn" && prev !== "turn") rolls++;
+        prev = f.state;
+      }
+      const at = `facing ${facing}, halfW ${halfW}`;
+      expect(sim.noticeFish, at).toBe(f);
+      // Away from the glass, then back round to look.
+      expect(rolls, at).toBeLessThanOrEqual(2);
+      if (halfW < 100) expect(covered, at).toBeLessThan(120);
+      else expect(f.speed, at).toBeLessThan(0.05);
+    }
+  });
+
   it("a watcher that finds food doesn't roll back toward the pointer", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     // Facing right, a pellet ahead and the pointer behind it: the tick

@@ -538,13 +538,32 @@ export class Sim {
         (this.hovering.has(f) && nd <= standoff + HOVER_SLACK));
       if (hover) this.hovering.add(f); else this.hovering.delete(f);
       // A pointer resting on the fish's body: it glides on, clear of it,
-      // then turns round to look.
-      const covered = hover &&
+      // then turns round to look. Without room ahead to clear it, where
+      // it would fin against the glass under the pointer, it turns and
+      // clears off the other way. A fish too big to clear it either way
+      // just holds, facing it. Gliding doesn't change which way has room
+      // (both the room and the distance needed shrink alike), so it
+      // never rolls back and forth.
+      let covered = hover &&
         Math.abs(n!.x - f.x) < this.halfW(f) + NOSE_GAP &&
         Math.abs(n!.y - f.y) < this.halfH(f) + NOSE_GAP;
+      let back = false;
+      if (covered) {
+        const { x0, x1 } = this.room(f);
+        const ahead = f.facing > 0 ? x1 - f.x : f.x - x0;
+        const behind = f.facing > 0 ? f.x - x0 : x1 - f.x;
+        const off = (n!.x - f.x) * f.facing;
+        const clearance = this.halfW(f) + NOSE_GAP;
+        if (ahead < off + clearance) {
+          if (behind >= clearance - off) back = true;
+          else covered = false;
+        }
+      }
       if (hover && !turning) {
-        if (covered) { f.tx = f.x + f.facing * standoff; f.ty = f.y; }
-        else {
+        if (covered) {
+          f.tx = f.x + (back ? -1 : 1) * f.facing * standoff; f.ty = f.y;
+          if (back) turning = this.maybeTurn(f);
+        } else {
           // Face the pointer: one roll if it is behind, never a wobble
           // at the pitch limit.
           f.tx = n!.x; f.ty = n!.y;
