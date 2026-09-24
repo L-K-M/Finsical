@@ -259,6 +259,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     /// (1 pt per viewBox unit). A quarter lets the tank shrink to a
     /// desk-corner ornament (Plus: 205x265 pt; Bare: 80x50 pt).
     private static let tankMinScale: CGFloat = 0.25
+    /// Full-height drag strip, and the slimmer one for the Bare case —
+    /// 22 pt would cover most of its feed zone.
+    private static let stripHeightFull: CGFloat = 22
+    private static let stripHeightBare: CGFloat = 8
     /// The swap resize pins to the top edge, so a taller machine can
     /// push the bottom under the Dock or off the display — keep the
     /// whole window inside the screen's visible frame.
@@ -280,7 +284,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         machineId = id
         // On the Bare tank a 22 pt strip is most of the feed zone —
         // the case edges still drag, so a thin strip is enough.
-        stripHeight?.constant = id == "bare" ? 8 : 22
+        stripHeight?.constant = id == "bare"
+            ? Self.stripHeightBare : Self.stripHeightFull
         machineVbW = w
         machineVbH = h
         machineShape = shape
@@ -753,12 +758,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         decisionHandler(.allow)
     }
 
+    /// WebContent crash times within the last minute — a page that
+    /// deterministically kills its renderer would otherwise loop
+    /// spawn-crash-reload forever in an always-on-top window.
+    private var recentWebCrashes: [Date] = []
+
     /// A WebContent crash leaves a floating, always-on-top window that
     /// paints nothing and answers nothing. Reload the affected webview —
-    /// the tank page restores its save; a client window reloads its page.
+    /// the tank page restores its save; a client window reloads its
+    /// page — but cap the retries: past a few crashes a minute the page
+    /// is a deterministic crasher and the window stays blank rather
+    /// than burning CPU on process spawns.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        NSLog("Finsical: WebContent process terminated — reloading")
-        webView.reload()
+        let now = Date()
+        recentWebCrashes.removeAll { now.timeIntervalSince($0) > 60 }
+        recentWebCrashes.append(now)
+        NSLog("Finsical: WebContent process terminated "
+              + "(\(recentWebCrashes.count) in the last minute)")
+        guard recentWebCrashes.count <= 3 else { return }
+        // A beat of delay — reloading synchronously inside the
+        // termination callback can wedge the fresh process.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            [weak webView] in webView?.reload()
+        }
     }
 
     /// target=_blank links (the donate link) have no host view; open them
@@ -826,7 +848,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         let strip = DragStrip()
         strip.translatesAutoresizingMaskIntoConstraints = false
         webView.addSubview(strip)
-        let stripH = strip.heightAnchor.constraint(equalToConstant: 22)
+        let stripH = strip.heightAnchor.constraint(
+            equalToConstant: Self.stripHeightFull)
         NSLayoutConstraint.activate([
             strip.topAnchor.constraint(equalTo: webView.topAnchor),
             strip.leadingAnchor.constraint(equalTo: webView.leadingAnchor),
