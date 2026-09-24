@@ -40,12 +40,16 @@ export function lruSet<K, V>(m: Map<K, V>, k: K, v: V, cap: number,
   }
   // A throwing callback mid-trim must not abandon the loop with the
   // map still over cap — finish evicting, then rethrow the first error.
+  // The flag, not the value, marks an error: `throw undefined` must
+  // still propagate.
   let trimErr: unknown;
+  let haveTrimErr = false;
   while (m.size > cap) {
     const [k0, v0] = m.entries().next().value!;
     if (canEvict && !canEvict(v0)) break;
     m.delete(k0);
-    try { onEvict?.(k0, v0); } catch (e) { trimErr ??= e; }
+    try { onEvict?.(k0, v0); }
+    catch (e) { if (!haveTrimErr) { trimErr = e; haveTrimErr = true; } }
   }
-  if (trimErr !== undefined) throw trimErr;
+  if (haveTrimErr) throw trimErr;
 }
