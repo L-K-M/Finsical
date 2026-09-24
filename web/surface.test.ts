@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SURFACE } from "../core/sim.js";
-import { ambientSwell, disturbSurface, newSurface, surfaceLine, SURFACE_MAX,
-         SURFACE_W, tickSurface } from "./surface.js";
+import { ambientSwell, disturbSurface, newSurface, surfaceAtRest, surfaceLine,
+         SURFACE_MAX, SURFACE_W, tickSurface } from "./surface.js";
 
 function energy(s: ReturnType<typeof newSurface>): number {
   let e = 0;
@@ -91,5 +91,19 @@ describe("surfaceLine", () => {
     for (let t = 0; t < 40; t++) { tickSurface(a); tickSurface(b); }
     expect([...surfaceLine(a, 40, new Int16Array(SURFACE_W))])
       .toEqual([...surfaceLine(b, 40, new Int16Array(SURFACE_W))]);
+  });
+});
+
+describe("surfaceAtRest", () => {
+  it("is at rest until pushed, and again once the waves die away", () => {
+    const s = newSurface();
+    expect(surfaceAtRest(s)).toBe(true);
+    disturbSurface(s, 100, 0.6, 8); // a glass knock
+    expect(surfaceAtRest(s)).toBe(false);
+    let t = 0;
+    while (!surfaceAtRest(s) && t < 3000) { tickSurface(s); t++; }
+    // Settles in seconds (about 280 ticks), not never.
+    expect(surfaceAtRest(s)).toBe(true);
+    expect(t).toBeLessThan(600);
   });
 });

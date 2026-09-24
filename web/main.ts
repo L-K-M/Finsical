@@ -29,7 +29,7 @@ import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
 import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
          swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
-import { containPoint, isFeedZoneY } from "./feedzone.js";
+import { clickAction, containPoint, isFeedZoneY } from "./feedzone.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
@@ -37,8 +37,8 @@ import { stateLabel } from "./overviewmodel.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { bubblePops, drawAir, drawBubbles, drawFood, drawLight, drawMurk,
          drawRefraction, drawSurface, feedPinch, sunFactor } from "./water.js";
-import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
-  from "./surface.js";
+import { disturbSurface, newSurface, surfaceAtRest, surfaceLine, SURFACE_W,
+         tickSurface } from "./surface.js";
 import {
   DEFAULT_MACHINE, glassRect, machineById, rasterInGlass, SCREENBACK_HOLE_PAD,
   shellMarkup,
@@ -294,16 +294,19 @@ canvas.addEventListener("pointerdown", (e) => {
     if (f) openInfo(f); else closeInfo();
     return;
   }
-  if (isFeedZoneY(p.y)) {
+  const act = clickAction(p.y, paused);
+  if (act === "feed") {
     const pellet = sim.dropFood(p.x);
     audio.feed();
     splashAt(pellet.x, pellet.y, PUSH.pellet);
   } else {
-    sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
+    // A paused tank still answers the knock, but its fish are frozen:
+    // a startle would only flip them round and fire on resume.
+    if (act === "tap") { sim.tap(p.x, p.y); noteGlassTap(); }
+    audio.tap(p.x, p.y, TANK.width, TANK.height);
     ripples.push({ x: p.x, y: p.y, age: 0 });
     // The glass knock slops the water a little, on the tapped side.
     disturbSurface(surface, p.x, PUSH.tap, 8);
-    noteGlassTap();
   }
   requestPaint();
 });
@@ -2128,13 +2131,22 @@ function drawNight(now: Date): void {
   ctx.restore();
 }
 
+/** Advance the water's own feedback one tick: tap rings, splash
+ * droplets and the surface's waves. */
+function tickFx(): void {
+  tickSurface(surface);
+  tickRipples(ripples);
+  tickSplashes(splashes);
+}
+/** Whether any of that feedback is still playing out. */
+const fxAlive = (): boolean =>
+  ripples.length > 0 || splashes.length > 0 || !surfaceAtRest(surface);
+
 function tickSim(): void {
   const bubbles = sim.bubbles.length;
   stirSurface();
   sim.tick();
-  tickSurface(surface);
-  tickRipples(ripples);
-  tickSplashes(splashes);
+  tickFx();
   // Sparse bloops: only some spawns make a sound. Checked per tick so
   // the odds don't depend on how often the tank is drawn.
   if (sim.bubbles.length > bubbles && Math.random() < 0.25)
@@ -2164,11 +2176,17 @@ function frame(now: number): void {
   syncFeedHover();
   // Pause freezes the sim clock (hunger, rot, filtration, the demo
   // day) but not the page: hover, the light timer and repaints still
-  // run. Dropping the accumulator keeps a long pause from
-  // fast-forwarding on resume.
-  if (paused) acc = 0;
+  // run. Its ticks are dropped, not saved up: planFrame never carries
+  // more than one step, so resuming doesn't fast-forward.
   const ticks = paused ? 0 : plan.ticks;
   for (let i = 0; i < ticks; i++) tickSim();
+  // A knock or a feed on a paused tank still plays out its rings,
+  // droplets and waves, on the same clock, instead of freezing on
+  // screen until the tank resumes.
+  if (paused && plan.ticks && fxAlive()) {
+    for (let i = 0; i < plan.ticks; i++) tickFx();
+    frameDirty = true;
+  }
   // An open Get-Info card follows its fish, and moves with the window
   // on a resize, whether or not a tick runs.
   if (infoCard) layoutInfo();

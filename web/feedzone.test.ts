@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SURFACE } from "../core/sim.js";
-import { containPoint, isFeedZoneY } from "./feedzone.js";
+import { clickAction, containPoint, isFeedZoneY } from "./feedzone.js";
 
 const TANK = { width: 320, height: 200 };
 
@@ -60,5 +60,20 @@ describe("containPoint", () => {
     // Hidden canvas → 0×0 rect → scale 0 → non-finite coordinates.
     expect(containPoint(160, 100, { left: 0, top: 0, width: 0, height: 0 },
                         TANK)).toBeNull();
+  });
+});
+
+describe("clickAction", () => {
+  it("feeds above the waterline, paused or not", () => {
+    expect(clickAction(SURFACE - 1, false)).toBe("feed");
+    expect(clickAction(SURFACE - 1, true)).toBe("feed");
+  });
+
+  it("taps the glass in the water", () => {
+    expect(clickAction(100, false)).toBe("tap");
+  });
+
+  it("only knocks on a paused tank, whose fish can't react", () => {
+    expect(clickAction(100, true)).toBe("knock");
   });
 });

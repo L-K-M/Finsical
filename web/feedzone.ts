@@ -12,6 +12,18 @@ export function isFeedZoneY(y: number): boolean {
   return y < SURFACE + 1;
 }
 
+/** What a plain click at tank row `y` does. "feed" drops food above
+ * the waterline. In the water a click "tap"s the glass, startling the
+ * fish; on a paused tank it only "knock"s: the knock is heard and seen,
+ * but the frozen fish can't react, so none is startled (and the
+ * don't-tap sign stays away). Food dropped while paused waits at the
+ * surface until the tank resumes. */
+export type ClickAction = "feed" | "tap" | "knock";
+export function clickAction(y: number, paused: boolean): ClickAction {
+  if (isFeedZoneY(y)) return "feed";
+  return paused ? "knock" : "tap";
+}
+
 /**
  * Map a client point through an object-fit: contain letterbox back to
  * tank space. Returns null when the point is in the letterbox bar or

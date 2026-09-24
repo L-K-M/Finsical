@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Knocking on a paused tank no longer startles its frozen fish. Each
+  tapped fish used to flip round on the spot, show as startled and
+  dart off when the tank resumed, and six knocks brought up the
+  "don't tap on the glass" sign. The knock is still heard, and its
+  rings, a feed's splash and the waves now play out and fade instead
+  of freezing on screen until you resume.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the

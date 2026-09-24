@@ -93,6 +93,18 @@ export function tickSurface(s: Surface): void {
   }
 }
 
+/** Below this height and speed everywhere, px and px/tick, the springs
+ * are still: nothing left to draw. */
+const REST_EPS = 0.02;
+
+/** True once every column has come to rest: no wave left to play out. */
+export function surfaceAtRest(s: Surface): boolean {
+  for (let i = 0; i < SURFACE_W; i++)
+    if (Math.abs(s.h[i]!) > REST_EPS || Math.abs(s.v[i]!) > REST_EPS)
+      return false;
+  return true;
+}
+
 /** Filter current and air movement: a small travelling swell that
  * keeps the line from lying ruler-flat. Peaks under a pixel, so it only
  * nudges the line where both waves crest together. */
