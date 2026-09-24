@@ -247,11 +247,16 @@ setInterval(saveTank, 10_000);
 
 // The canvas box only moves when the machine layout is recomputed —
 // cache the bounding rect so per-frame hover work doesn't force a
-// layout read every rAF. layoutMachine() drops it.
+// layout read every rAF. layoutMachine() drops it; the scroll/resize
+// listeners below cover paths that can move the box without a layout
+// pass (the page is position:fixed, so this is belt-and-suspenders).
 let canvasRect: DOMRect | null = null;
 function tankRect(): DOMRect {
   return canvasRect ??= canvas.getBoundingClientRect();
 }
+window.addEventListener("resize", () => { canvasRect = null; });
+document.addEventListener("scroll", () => { canvasRect = null; },
+                          { capture: true });
 
 /** CSS-pixel pointer coords → tank-space point; null in the
  * letterbox bars (object-fit: contain inside the element box). */
@@ -1182,7 +1187,7 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   if (!it?.url || typeof it.url !== "string" ||
       !it.url.startsWith("https://archive.org/") ||
       !KNOWN_SECTIONS.has(it.section) ||
-      typeof it.inner !== "string") {
+      typeof it.inner !== "string" || !it.inner.trim()) {
     bus.post({ op: "installFailed", url: it?.url ?? "",
                error: "invalid add-on item" });
     return;
