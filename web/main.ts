@@ -245,12 +245,24 @@ document.addEventListener("visibilitychange", () => {
 });
 setInterval(saveTank, 10_000);
 
+// The canvas box only moves when the machine layout is recomputed —
+// cache the bounding rect so per-frame hover work doesn't force a
+// layout read every rAF. layoutMachine() drops it; the scroll/resize
+// listeners below cover paths that can move the box without a layout
+// pass (the page is position:fixed, so this is belt-and-suspenders).
+let canvasRect: DOMRect | null = null;
+function tankRect(): DOMRect {
+  return canvasRect ??= canvas.getBoundingClientRect();
+}
+window.addEventListener("resize", () => { canvasRect = null; });
+document.addEventListener("scroll", () => { canvasRect = null; },
+                          { capture: true });
+
 /** CSS-pixel pointer coords → tank-space point; null in the
  * letterbox bars (object-fit: contain inside the element box). */
 function tankPoint(clientX: number, clientY: number):
     { x: number; y: number } | null {
-  return containPoint(clientX, clientY, canvas.getBoundingClientRect(),
-                      TANK);
+  return containPoint(clientX, clientY, tankRect(), TANK);
 }
 
 /** The fish under a tank point. None in the air above the waterline:
@@ -1076,7 +1088,8 @@ function useScenery(url: string): void {
  * next launch) and clears this session's contributions — its fish, its
  * decor, and gravel/backdrop it supplied. Sprite sheets stay loaded so
  * other fish's sheetIdx bindings don't shift. */
-function removeAddon(url: string): void {
+function removeAddon(url: string, opts: { persist?: boolean } = {}): void {
+  const persist = opts.persist !== false;
   const gone = installedAddons.filter((a) => a.url === url);
   // Unknown add-on — no teardown or persist, but push fresh state so a
   // stale panel resyncs now instead of waiting for the heartbeat.
@@ -1138,7 +1151,7 @@ function removeAddon(url: string): void {
   thumbMemo.delete(`a:${url}`);
   pendingThumbs.delete(`a:${url}`);
   sweepThumbs();
-  saveTank(); // persists and pushes fresh state to the panel
+  if (persist) saveTank(); // persists and pushes fresh state to the panel
   bus.post({ op: "uninstalled", url });
   requestPaint(); // removed fish and decor vanish at once
 }
@@ -1157,7 +1170,10 @@ function emptyTank(): void {
   // Nothing is left to reconcile: the empty roster is final (saves as
   // v=2), so a relaunch keeps the tank empty.
   rosterComplete = true;
-  for (const a of [...installedAddons]) removeAddon(a.url);
+  // Each removal tears down its own contributions; persist once at
+  // the end instead of serializing the whole tank per add-on.
+  for (const a of [...installedAddons])
+    removeAddon(a.url, { persist: false });
   for (const f of [...sim.fish]) sim.removeFish(f.id);
   sweepThumbs();
   requestPaint();
@@ -1170,7 +1186,8 @@ const installsInFlight = new Map<string, Promise<void>>();
 async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   if (!it?.url || typeof it.url !== "string" ||
       !it.url.startsWith("https://archive.org/") ||
-      !KNOWN_SECTIONS.has(it.section)) {
+      !KNOWN_SECTIONS.has(it.section) ||
+      typeof it.inner !== "string" || !it.inner.trim()) {
     bus.post({ op: "installFailed", url: it?.url ?? "",
                error: "invalid add-on item" });
     return;
@@ -1398,6 +1415,7 @@ if (!backEl.isConnected ||
   machineEl.before(backEl, screenEl);
 
 function layoutMachine(): void {
+  canvasRect = null; // the tank may have moved with the aperture
   const w = machineEl.clientWidth, h = machineEl.clientHeight;
   if (!w || !h) return;
   // preserveAspectRatio=meet letterboxes the shell — land the screen
