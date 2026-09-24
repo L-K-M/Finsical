@@ -35,6 +35,8 @@ export interface Item {
   remove: BusMsg;
   /** "Use" intent for scenery packs not currently on display. */
   use?: BusMsg | undefined;
+  /** Fish rows carry the sim id so a selection can spotlight it. */
+  fishId?: number;
 }
 
 export type Column = "name" | "kind" | "status";
@@ -89,6 +91,7 @@ export function itemsOf(s: TankState): Item[] {
       hungerLabel(f.hunger),
     rank: 0,
     remove: { op: "removeFish", id: f.id },
+    fishId: f.id,
   }));
   const showing = new Set(
     [s.scenery?.backdrop, s.scenery?.gravel].filter(

@@ -77,6 +77,20 @@ ctx.imageSmoothingEnabled = false;
 let frameDirty = true;
 function requestPaint(): void { frameDirty = true; }
 
+/** Sim id the Overview's selection spotlights; null = none. */
+let focusId: number | null = null;
+// The Overview re-asserts its selection on a heartbeat — the focus is
+// a lease, not a toggle. BroadcastChannel has no disconnect event and
+// a bfcache eviction fires no pagehide, so without an expiry a
+// vanished overview would leave its spotlight on the fish forever.
+// Wall-clock, not ticks: a paused sim never advances tickCount, which
+// would freeze the lease mid-flight.
+let focusAt = -Infinity;
+let focusOwner = "";
+/** Wall-clock ms a focus stays live without a re-assert. Sized past
+ * the ~60 s clamp browsers put on hidden-tab timers. */
+const FOCUS_TTL = 180_000;
+
 // ---- persistence ---------------------------------------------------------
 // Tank state (fish, water, installed add-ons) survives restarts via
 // localStorage. Add-ons are re-imported on launch — archives are
@@ -1138,6 +1152,26 @@ function fishOutAfter(remove: () => void): void {
 
 function onBusMessage(m: BusMsg): void {
   if (m.op === "hello") postState(HELLO_MIN_MS);
+  else if (m.op === "focusFish") {
+    // The Overview's selection spotlights a fish — null lifts it.
+    // Selection posts carry the sender's page id and claim the lease;
+    // keepAlive beats only renew it. Two Overviews then can't
+    // ping-pong the spotlight, and a non-owner's unload can't lift it.
+    const from = typeof m.from === "string" ? m.from : "";
+    const keepAlive = m.keepAlive === true;
+    const fid = typeof m.id === "number" ? m.id : null;
+    // An unowned lease (fresh tank load, or a lapse cleared the owner)
+    // is claimable by any beat — the first live Overview to ping wins,
+    // and the others' beats stay rejected, so still no ping-pong.
+    if (keepAlive ? fid !== null &&
+                    (from === focusOwner || focusOwner === "")
+                  : fid !== null || from === focusOwner) {
+      focusId = fid;
+      focusOwner = fid === null ? "" : from;
+      focusAt = Date.now();
+    }
+    requestPaint();
+  }
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
   else if (m.op === "removeFish" && typeof m.id === "number") {
@@ -2386,6 +2420,47 @@ function render(): void {
     if (p) drawSnail(p.x, p.paused, snail.dir);
   }
   for (const f of sim.fish) drawFish(f);
+
+  // The Overview's pick spotlights its fish with a marching-ants
+  // marquee — the Finder's own selection cue. Ants march on the sim
+  // clock so a paused tank doesn't freeze them mid-stroke.
+  if (focusId !== null) {
+    // The lease lapsed — the overview is gone and can't lift it.
+    // Clearing the owner too lets any live Overview's next beat
+    // reclaim the spotlight after the holder dies silently.
+    if (Date.now() - focusAt > FOCUS_TTL) {
+      focusId = null;
+      focusOwner = "";
+    }
+    const f = focusId === null ? null
+      : sim.fish.find((x) => x.id === focusId);
+    // The fish left the tank — lift the spotlight so a recycled id
+    // can't quietly reattach it to a new fish.
+    if (focusId !== null && !f) focusId = null;
+    if (f) {
+      // halfW/halfH are the fish's unscaled sprite extents; a
+      // juvenile's box shrinks with its growth scale. The fallbacks
+      // box a fish whose sheet hasn't bound yet.
+      const hw = (f.halfW ?? 10) * f.scale + 3;
+      const hh = (f.halfH ?? 7) * f.scale + 3;
+      const x0 = Math.max(1, Math.round(f.x - hw));
+      const y0 = Math.max(1, Math.round(f.y - hh));
+      const x1 = Math.min(TANK.width - 1, Math.round(f.x + hw));
+      const y1 = Math.min(TANK.height - 1, Math.round(f.y + hh));
+      ctx.save();
+      ctx.setLineDash([2, 2]);
+      ctx.lineWidth = 1;
+      // The ants hold still under reduced motion, like the water.
+      ctx.lineDashOffset = waterMotion === "animated"
+        ? -(sim.tickCount % 8) / 2 : 0;
+      ctx.strokeStyle = "rgba(0,0,0,.8)";
+      ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
+      ctx.lineDashOffset += 1;
+      ctx.strokeStyle = "rgba(255,255,255,.8)";
+      ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
+      ctx.restore();
+    }
+  }
 
   // Ambient motion (swell, glint, shimmer) holds still under reduced
   // motion; waves from splashes and taps still play out, like ripples.
