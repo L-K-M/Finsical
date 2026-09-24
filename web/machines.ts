@@ -134,6 +134,17 @@ const performa: Machine = {
   svg: "",
 };
 
+const performa2: Machine = {
+  id: "performa-2", name: "Macintosh Performa 450 (II)",
+  blurb: "Another take on the pizza box — angled, vents showing.",
+  vbW: 1132, vbH: 1010,
+  hole: { x: 294, y: 113, w: 688, h: 538, r: 0 },
+  sx: 294, sy: 167, sw: 688, sh: 430,
+  image: "assets/performa-450-2.png",
+  shape: [{ x: 0, y: 0, w: 1132, h: 1010, r: 0 }],
+  svg: "",
+};
+
 const tam: Machine = {
   id: "tam", name: "20th Anniversary Mac",
   blurb: "The Bose stereo with a screen in it.",
@@ -253,7 +264,7 @@ const bare: Machine = {
 };
 
 export const MACHINES: readonly Machine[] =
-  [plus, performa, tam, bondi, bondi2, strawberry, strawberry2,
+  [plus, performa, performa2, tam, bondi, bondi2, strawberry, strawberry2,
    flowerPower, flowerPower2, powerbookG3, ibook, imacg4, bare];
 export const DEFAULT_MACHINE = "plus";
 export function machineById(id: string): Machine | undefined {
