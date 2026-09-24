@@ -8,19 +8,29 @@
  * refetch costs a decode, not a download).
  */
 
-/** Read `k`, marking it most-recently-used. */
+/** Read `k`, marking it most-recently-used. A key stored with the
+ * value `undefined` still counts as a hit. */
 export function lruGet<K, V>(m: Map<K, V>, k: K): V | undefined {
-  const v = m.get(k);
-  if (v !== undefined && m.size > 1) {
+  if (!m.has(k)) return undefined;
+  const v = m.get(k) as V;
+  if (m.size > 1) {
     m.delete(k);
     m.set(k, v);
   }
   return v;
 }
 
-/** Store `k → v`, evicting the oldest entries past `cap`. */
-export function lruSet<K, V>(m: Map<K, V>, k: K, v: V, cap: number): void {
+/** Store `k → v`, evicting the oldest entries past `cap`. `canEvict`
+ * vetoes trimming at the entry it rejects — pinned entries (e.g. a
+ * download still in flight, whose map slot is the dedup key) simply
+ * overshoot the cap until they settle. */
+export function lruSet<K, V>(m: Map<K, V>, k: K, v: V, cap: number,
+                             canEvict?: (v: V) => boolean): void {
   m.delete(k);
   m.set(k, v);
-  while (m.size > cap) m.delete(m.keys().next().value!);
+  while (m.size > cap) {
+    const [k0, v0] = m.entries().next().value!;
+    if (canEvict && !canEvict(v0)) break;
+    m.delete(k0);
+  }
 }
