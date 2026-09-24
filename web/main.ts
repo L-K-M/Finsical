@@ -79,6 +79,13 @@ function requestPaint(): void { frameDirty = true; }
 
 /** Sim id the Overview's selection spotlights; null = none. */
 let focusId: number | null = null;
+// The Overview re-asserts its selection on a heartbeat — the focus is
+// a lease, not a toggle. BroadcastChannel has no disconnect event and
+// a bfcache eviction fires no pagehide, so without an expiry a
+// vanished overview would leave its spotlight on the fish forever.
+let focusAt = -Infinity;
+/** Ticks a focus stays live without a re-assert (~40 s at 30 tps). */
+const FOCUS_TTL = 40 * 30;
 
 // ---- persistence ---------------------------------------------------------
 // Tank state (fish, water, installed add-ons) survives restarts via
@@ -1144,6 +1151,7 @@ function onBusMessage(m: BusMsg): void {
   else if (m.op === "focusFish") {
     // The Overview's selection spotlights a fish — null lifts it.
     focusId = typeof m.id === "number" ? m.id : null;
+    focusAt = sim.tickCount;
     requestPaint();
   }
   else if (m.op === "install")
@@ -2399,10 +2407,13 @@ function render(): void {
   // marquee — the Finder's own selection cue. Ants march on the sim
   // clock so a paused tank doesn't freeze them mid-stroke.
   if (focusId !== null) {
-    const f = sim.fish.find((x) => x.id === focusId);
+    // The lease lapsed — the overview is gone and can't lift it.
+    if (sim.tickCount - focusAt > FOCUS_TTL) focusId = null;
+    const f = focusId === null ? null
+      : sim.fish.find((x) => x.id === focusId);
     // The fish left the tank — lift the spotlight so a recycled id
     // can't quietly reattach it to a new fish.
-    if (!f) focusId = null;
+    if (focusId !== null && !f) focusId = null;
     if (f) {
       // halfW/halfH are the fish's unscaled sprite extents; a
       // juvenile's box shrinks with its growth scale. The fallbacks

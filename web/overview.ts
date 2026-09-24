@@ -363,3 +363,11 @@ window.addEventListener("pageshow", (e) => {
   if (e.persisted)
     bus.post({ op: "focusFish", id: items[list.selected]?.fishId ?? null });
 });
+// A bfcache eviction fires no event and BroadcastChannel has no
+// disconnect — the spotlight is a lease: keep re-asserting it and the
+// tank lets a silent overview's focus lapse.
+setInterval(() => {
+  const it = items[list.selected];
+  if (it?.fishId != null)
+    bus.post({ op: "focusFish", id: it.fishId });
+}, 10_000);
