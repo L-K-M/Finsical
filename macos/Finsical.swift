@@ -94,10 +94,31 @@ final class TankWebView: WKWebView {
     }
 }
 
+/// The tank's window. AppKit constrains a titled window's frame as it
+/// is ordered on screen, pushing the top edge back under the menu bar
+/// or onto the display the window mostly covers. At launch that moved
+/// a tank the user had parked partly offscreen, so the restore turns
+/// the constraint off until the window is up. Drags stay constrained.
+final class TankWindow: NSWindow {
+    private var keepsFrame = false
+
+    /// Runs `body` with the constraint off, so frames it sets stay put.
+    func keepingFrame(_ body: () -> Void) {
+        keepsFrame = true
+        defer { keepsFrame = false }
+        body()
+    }
+
+    override func constrainFrameRect(_ frameRect: NSRect,
+                                     to screen: NSScreen?) -> NSRect {
+        keepsFrame ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                          WKNavigationDelegate, WKScriptMessageHandler,
                          NSWindowDelegate, NSMenuItemValidation {
-    private var window: NSWindow!
+    private var window: TankWindow!
     private var webView: WKWebView!
     /// Saved window frames, under the keys Finsical has always used.
     private let frames = OsmiumFrameStore(prefix: "FinsicalFrame.")
@@ -215,6 +236,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         pauseMenuItem?.title = paused ? "Resume Simulation" : "Pause Simulation"
     }
     private var machineMaskImage: CGImage?
+    /// Smallest tank window, as a fraction of the machine's viewBox
+    /// (1 pt per viewBox unit). A quarter lets the tank shrink to a
+    /// desk-corner ornament (Plus: 205x265 pt; Bare: 80x50 pt).
+    private static let tankMinScale: CGFloat = 0.25
     private func applyMachine(id: String, w: CGFloat, h: CGFloat,
                               shape: [(CGRect, CGFloat)],
                               maskPath: String?, hole: CGRect?) {
@@ -230,7 +255,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         webView.layer?.mask = nil  // drop a stale mask's layer type
         syncMask()
         window.contentAspectRatio = NSSize(width: w, height: h)
-        window.contentMinSize = NSSize(width: w * 0.45, height: h * 0.45)
+        window.contentMinSize = NSSize(width: w * Self.tankMinScale,
+                                       height: h * Self.tankMinScale)
         if old <= 0 {
             // First apply: the launch frame is 320×200-aspect but the
             // machine's isn't — snap the frame to the case outline so
@@ -720,7 +746,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         // Layer-backed so syncCornerRadius can clip the case silhouette.
         webView.wantsLayer = true
 
-        window = NSWindow(
+        window = TankWindow(
             contentRect: webView.frame,
             // Not .closable: Cmd-W on the tank would quit the app.
             styleMask: [.titled, .miniaturizable, .resizable,
@@ -760,8 +786,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             strip.heightAnchor.constraint(equalToConstant: 22),
         ])
 
-        frames.restore(window, key: "FinsicalTank")
-        window.makeKeyAndOrderFront(nil)
+        // Exactly where the user left it, even partly offscreen. A
+        // frame on no attached screen still comes back centered.
+        window.keepingFrame {
+            frames.restore(window, key: "FinsicalTank")
+            window.makeKeyAndOrderFront(nil)
+        }
 
         webView.load(URLRequest(url: page("index.html")))
     }

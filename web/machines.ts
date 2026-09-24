@@ -166,6 +166,28 @@ const performa2: Machine = {
   svg: "",
 };
 
+const performa5200: Machine = {
+  id: "performa-5200", name: "Macintosh Performa 5200",
+  blurb: "The PowerPC all-in-one — drives and speakers under the tube.",
+  vbW: 1002, vbH: 918,
+  hole: { x: 111, y: 105, w: 614, h: 482, r: 0 },
+  sx: 111, sy: 154, sw: 614, sh: 384,
+  image: "assets/performa-5200.png",
+  shape: [{ x: 0, y: 0, w: 1002, h: 918, r: 0 }],
+  svg: "",
+};
+
+const performa5200Black: Machine = {
+  id: "performa-5200-black", name: "Macintosh Performa 5200 (Black)",
+  blurb: "The same all-in-one, in black.",
+  vbW: 1005, vbH: 920,
+  hole: { x: 113, y: 107, w: 611, h: 480, r: 0 },
+  sx: 113, sy: 156, sw: 611, sh: 382,
+  image: "assets/performa-5200-black.png",
+  shape: [{ x: 0, y: 0, w: 1005, h: 920, r: 0 }],
+  svg: "",
+};
+
 const tam: Machine = {
   id: "tam", name: "20th Anniversary Mac",
   blurb: "The Bose stereo with a screen in it.",
@@ -285,8 +307,9 @@ const bare: Machine = {
 };
 
 export const MACHINES: readonly Machine[] =
-  [plus, performa, performa2, tam, bondi, bondi2, strawberry, strawberry2,
-   flowerPower, flowerPower2, powerbookG3, ibook, imacg4, bare];
+  [plus, performa, performa2, performa5200, performa5200Black, tam,
+   bondi, bondi2, strawberry, strawberry2, flowerPower, flowerPower2,
+   powerbookG3, ibook, imacg4, bare];
 export const DEFAULT_MACHINE = "plus";
 export function machineById(id: string): Machine | undefined {
   return MACHINES.find((m) => m.id === id);
