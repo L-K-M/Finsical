@@ -1753,6 +1753,20 @@ function layoutMachine(): void {
   // The CRT canvas spans the whole glass, not just the tank, so the
   // height/width pots can grow the raster into the aperture's black
   // margins. Offsets are relative to #screen, its parent.
+  // Pixel-art scaling: upscales snap to integer multiples of the
+  // 320x200 raster — a fractional contain shimmers. The margin reads
+  // as the glass's inner bezel; containPoint() maps clicks off the
+  // canvas's own rect, so the wider letterbox needs no pointer change.
+  const aw = machine.sw * s, ah = machine.sh * s;
+  const k = Math.min(aw / TANK.width, ah / TANK.height);
+  const ik = k >= 1 ? Math.floor(k) : k;
+  // Sub-1x can't be pixel-crisp anyway — a smooth downscale beats a
+  // ragged pixelated one in a tiny window.
+  canvas.style.imageRendering = ik >= 1 ? "pixelated" : "auto";
+  canvas.style.width = `${TANK.width * ik}px`;
+  canvas.style.height = `${TANK.height * ik}px`;
+  canvas.style.left = `${(aw - TANK.width * ik) / 2}px`;
+  canvas.style.top = `${(ah - TANK.height * ik) / 2}px`;
   const glass = glassRect(machine);
   crtEl.style.left = `${(glass.x - machine.sx) * s}px`;
   crtEl.style.top = `${(glass.y - machine.sy) * s}px`;
