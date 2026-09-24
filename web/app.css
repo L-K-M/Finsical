@@ -276,8 +276,10 @@ body.crt canvas#tank { opacity: 0; }
 #oempty[data-armed] { font-weight: bold; }
 
 /* Hover a fish: its species in a System 7 Balloon-Help-style tip. */
+/* Above the machine art (z 2), below the menu bar (6) and overlay
+   windows (10) — it hides while any of those is up anyway. */
 #fishtip {
-  position: fixed; z-index: 60; pointer-events: none;
+  position: fixed; z-index: 5; pointer-events: none;
   background: #ffc; border: 1px solid #000; border-radius: 4px;
   padding: 2px 6px; font: var(--osm-font-small); color: #000;
 }

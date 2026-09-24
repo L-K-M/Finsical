@@ -187,6 +187,8 @@ const SCHOOL_RADIUS = 42;
 const BEG_HUNGER = 0.75;
 /** The hovered pointer is noticed inside this radius. */
 const NOTICE_RADIUS = 80;
+/** Smallest half-size of a fish's pick box, in tank px (fishAt). */
+const HIT_MIN = 8;
 /** This close to the pointer a noticed fish just hovers nearby. */
 const NOTICE_STANDOFF = 16;
 /**
@@ -326,6 +328,21 @@ export class Sim {
         this.startle(f, dx, dy, d, k, 0);
       }
     }
+  }
+
+  /** The fish whose body covers tank point (x, y): its drawn box at
+   * its growth, at least HIT_MIN px each way (a small fish, or one
+   * whose sheet isn't bound yet), the nearest centre where bodies
+   * overlap. The hover tip and Get Info both pick with it. */
+  fishAt(x: number, y: number): Fish | null {
+    let best: Fish | null = null, bd = 1;
+    for (const f of this.fish) {
+      const d = Math.max(
+        Math.abs(x - f.x) / Math.max(HIT_MIN, this.halfW(f)),
+        Math.abs(y - f.y) / Math.max(HIT_MIN, this.halfH(f)));
+      if (d <= bd) { bd = d; best = f; }
+    }
+    return best;
   }
 
   /** Light set from outside (the clock timer), or null for the sim's

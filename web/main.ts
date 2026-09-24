@@ -267,7 +267,7 @@ canvas.addEventListener("pointerdown", (e) => {
   if (e.altKey) {
     // ⌥-click is "Get Info": open the card on the fish under the
     // pointer, or dismiss it when the water is empty.
-    const f = fishAt(p.x, p.y);
+    const f = sim.fishAt(p.x, p.y);
     if (f) openInfo(f); else closeInfo();
     return;
   }
@@ -290,14 +290,12 @@ const fishTip = document.createElement("div");
 fishTip.id = "fishtip";
 fishTip.style.display = "none";
 document.body.appendChild(fishTip);
-const fishNear = (p: { x: number; y: number }): Fish | null => {
-  let best: Fish | null = null, bd = 18 * 18;
-  for (const f of sim.fish) {
-    const d = (f.x - p.x) ** 2 + (f.y - p.y) ** 2;
-    if (d < bd) { bd = d; best = f; }
-  }
-  return best;
-};
+/** The fish to name under a hovered point — none while Get Info, a
+ * menu, the add-on window or a document window is up (the tip would
+ * float over them). */
+const fishToName = (p: { x: number; y: number }): Fish | null =>
+  infoCard || importPanel.isOpen || menuOpen() || docOpen()
+    ? null : sim.fishAt(p.x, p.y);
 const fishTipLabel = (f: Fish): string =>
   (f.species || "Fish") +
   (f.state === "drift" ? "" : ` — ${stateLabel(f.state)}`);
@@ -313,7 +311,7 @@ canvas.addEventListener("pointermove", (e) => {
   sim.notice = p;
   if (e.pointerType === "touch") return; // no hover on touch
   lastHover = p;
-  const best = p && fishNear(p);
+  const best = p && fishToName(p);
   if (!best) { fishTip.style.display = "none"; return; }
   fishTip.textContent = fishTipLabel(best);
   fishTip.style.display = "";
@@ -338,25 +336,9 @@ canvas.addEventListener("pointerleave", (e) => {
 // A tiny Mac window that follows the ⌥-clicked fish — its name, hunger
 // and mood. Closed by its close box, Escape, an ⌥-click on empty water,
 // or the fish leaving the tank.
-const INFO_MOODS: Record<Fish["state"], string> = {
-  drift: "wandering", seek: "looking for food",
-  startle: "startled!", turn: "turning", sleep: "sleeping",
-};
-/** Pick radius in tank px — big cells render large, so a fixed radius
- * under the body center is the honest "near the fish" test. */
-const INFO_PICK_R = 22;
 let infoCard: {
   root: HTMLElement; hunger: HTMLElement; mood: HTMLElement; fish: Fish;
 } | null = null;
-
-function fishAt(x: number, y: number): Fish | null {
-  let best: Fish | null = null, bd = INFO_PICK_R * INFO_PICK_R;
-  for (const f of sim.fish) {
-    const d = (f.x - x) ** 2 + (f.y - y) ** 2;
-    if (d < bd) { bd = d; best = f; }
-  }
-  return best;
-}
 
 function closeInfo(): void {
   infoCard?.root.remove();
@@ -365,6 +347,7 @@ function closeInfo(): void {
 
 function openInfo(f: Fish): void {
   closeInfo();
+  fishTip.style.display = "none"; // the card says more
   const root = document.createElement("div");
   root.className = "finfo";
   const title = document.createElement("div");
@@ -391,7 +374,8 @@ function openInfo(f: Fish): void {
 }
 
 /** Reposition the card over its fish and refresh the two live lines.
- * Runs per frame from render(); the fish's removal closes it. */
+ * Runs every frame from frame() while a card is open; the fish's
+ * removal closes it. */
 function layoutInfo(): void {
   const card = infoCard;
   if (!card) return;
@@ -415,7 +399,7 @@ function layoutInfo(): void {
   card.root.style.top =
     `${Math.max(0, Math.min(py, sr.height - ch))}px`;
   const hunger = `Hunger  ${Math.round(f.hunger * 100)}%`;
-  const mood = INFO_MOODS[f.state];
+  const mood = stateLabel(f.state);
   if (card.hunger.textContent !== hunger)
     card.hunger.textContent = hunger;
   if (card.mood.textContent !== mood) card.mood.textContent = mood;
@@ -1474,7 +1458,13 @@ window.addEventListener("keydown", (e) => {
   // handlers so the first keyboard action also starts ambient sound.
   audio.unlock();
   const k = e.key.toLowerCase();
-  if (k === "escape" && infoCard) { closeInfo(); return; }
+  // One Escape closes one thing: the card claims it first, and a key
+  // another window already handled leaves the card alone.
+  if (k === "escape" && infoCard && !e.defaultPrevented) {
+    closeInfo();
+    e.preventDefault();
+    return;
+  }
   // Bare keys stand down while a menu or the add-on window owns them.
   const bare = !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat &&
     !importPanel.isOpen && !menuOpen() && !docOpen();
@@ -1902,8 +1892,6 @@ function render(): void {
     ctx.fillText("PAUSED", TANK.width / 2, TANK.height / 2);
     ctx.restore();
   }
-
-  layoutInfo();
 }
 
 /** Night's blue, multiplied over the scene at the darkest demo night:
@@ -2001,6 +1989,9 @@ function frame(now: number): void {
   if (paused) acc = 0;
   const ticks = paused ? 0 : plan.ticks;
   for (let i = 0; i < ticks; i++) tickSim();
+  // An open Get-Info card follows its fish, and moves with the window
+  // on a resize, whether or not a tick runs.
+  if (infoCard) layoutInfo();
   // The CRT's power-on warm-up animates on its own clock.
   const warming = crtOn && (crt?.animating ?? false);
   if (ticks === 0 && !frameDirty && !warming) return;
@@ -2010,7 +2001,7 @@ function frame(now: number): void {
   // under it has swum off, and refresh the label while it stays —
   // the state word would otherwise go stale between pointermoves.
   if (lastHover && fishTip.style.display !== "none") {
-    const best = fishNear(lastHover);
+    const best = fishToName(lastHover);
     if (!best) fishTip.style.display = "none";
     else {
       const label = fishTipLabel(best);

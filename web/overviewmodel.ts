@@ -3,6 +3,7 @@
 import { fishThumbKey } from "./bus.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
+import type { FishState } from "../core/sim.js";
 import { hungerLabel, uptime } from "./statsmodel.js";
 
 export interface FishSnap {
@@ -45,7 +46,9 @@ const KINDS: Record<string, string> = {
   accessories: "Accessory", backgrounds: "Background", tanks: "Tank",
   sounds: "Sound",
 };
-const STATES: Record<string, string> = {
+// Exhaustive: a new sim state fails the build until it has a label
+// (the Overview, the hover tip and Get Info all read it).
+const STATES: Record<FishState, string> = {
   drift: "Swimming", seek: "Looking for food", startle: "Startled",
   turn: "Turning", sleep: "Sleeping",
 };
@@ -55,7 +58,7 @@ const STATES: Record<string, string> = {
 const USABLE = new Set(["gravel", "backgrounds", "tanks"]);
 /** Display label for a fish's sim state — the hover tip shares it. */
 export function stateLabel(state: string): string {
-  return STATES[state] ?? state;
+  return STATES[state as FishState] ?? state;
 }
 
 /** The Finder-style header line: "8 fish, 3 add-ons, water 96%, up
@@ -77,7 +80,9 @@ export function itemsOf(s: TankState): Item[] {
     thumb: fishThumbKey(f),
     name: f.species || "Fish",
     kind: "Fish",
-    status: `${STATES[f.state] ?? "Swimming"}, ${hungerLabel(f.hunger)}`,
+    // Bus data is untrusted: an unknown state reads as swimming.
+    status: `${STATES[f.state as FishState] ?? "Swimming"}, ` +
+      hungerLabel(f.hunger),
     rank: 0,
     remove: { op: "removeFish", id: f.id },
   }));
