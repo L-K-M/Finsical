@@ -70,24 +70,37 @@ function bmpPalette(d: Uint8Array): [number, number, number][] {
 
 interface RawFrame { w: number; h: number; idx: Uint8Array }
 
-function decodePixels(s: Uint8Array, w: number, h: number): Uint8Array {
+/** Decode one frame's RLE stream into palette indices. Records are an
+ * s16 count then data: -n repeats the next byte n times, +n copies n
+ * bytes, 0 is empty. Pixels run down each column (the art is stored on
+ * its side), so pixel o lands at row o % h, column o / h; x and y track
+ * that as counters, since this loop runs once per pixel of every frame
+ * of a pack on the main thread. A run past w*h is clipped, and bytes
+ * past the end of the stream read as 0. Exported for its tests. */
+export function decodePixels(s: Uint8Array, w: number, h: number): Uint8Array {
   const total = w * h;
   const out = new Uint8Array(total); // zero-filled — padding comes free
   const n = s.length;
-  let o = 0, i = 0;
-  const emit = (c: number) => {
-    if (o < total) out[(o % h) * w + (o / h | 0)] = c;
-    o++;
-  };
+  let o = 0, x = 0, y = 0, i = 0;
   while (i + 1 < n && o < total) {
-    let v = (s[i] ?? 0) | ((s[i + 1] ?? 0) << 8);
+    let v = s[i]! | (s[i + 1]! << 8);
     if (v >= 0x8000) v -= 0x10000;
     if (v < 0) {
-      const c = s[i + 2] ?? 0;
-      for (let k = 0; k < -v; k++) emit(c);
+      const c = i + 2 < n ? s[i + 2]! : 0;
+      const run = Math.min(-v, total - o);
+      for (let k = 0; k < run; k++) {
+        out[y * w + x] = c;
+        if (++y === h) { y = 0; x++; }
+      }
+      o += run;
       i += 3;
     } else if (v > 0) {
-      for (let k = 0; k < v; k++) emit(s[i + 2 + k] ?? 0);
+      const run = Math.min(v, total - o);
+      for (let k = 0, j = i + 2; k < run; k++, j++) {
+        out[y * w + x] = j < n ? s[j]! : 0;
+        if (++y === h) { y = 0; x++; }
+      }
+      o += run;
       i += 2 + v;
     } else {
       i += 2;

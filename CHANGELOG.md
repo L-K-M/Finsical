@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Adding a big fish add-on stalls the tank for less time: decoding
+  the gup, discus and angel packs' sprites takes about half as long,
+  and the pause while one goes in is about a third shorter.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the
