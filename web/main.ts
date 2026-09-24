@@ -1401,6 +1401,9 @@ function layoutMachine(): void {
   crtEl.style.width = `${glass.w * s}px`;
   crtEl.style.height = `${glass.h * s}px`;
   crt?.setRasterBox(rasterInGlass(machine));
+  // The shader only re-reads the box on a render — repaint so a
+  // machine switch while paused doesn't keep the old placement.
+  requestPaint();
   if (backEl) {
     const hole = machine.hole;
     backEl.style.display = hole ? "block" : "none";
