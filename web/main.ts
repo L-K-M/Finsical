@@ -1503,13 +1503,27 @@ function changeWater(): void {
   requestPaint(); // the murk clears at once, even while paused
   saveTank(); // persists + pushes fresh state to open panels
 }
+// Zen mode: the tank alone — menu bar, fish tips and the add-ons
+// trigger all hide. The sim, the lamp and the bubbler keep running;
+// it's the relaxation toy with every piece of chrome gone.
+let zen = false;
+function setZen(on: boolean): void {
+  zen = on;
+  document.body.classList.toggle("zen", on);
+  if (on) {
+    closeInfo(); // the card is chrome too
+    fishTip.style.display = "none";
+  }
+  requestPaint();
+}
 (window as unknown as { finsical?: unknown }).finsical =
   { openImport: () => importPanel.open(), feedFish, changeWater, toggleLights,
     // Menu clicks land here via evaluateJavaScript — not always a
     // user activation, but unlock() is harmless if resume is blocked.
     toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute,
     // Returns the new flag, so the native menu retitles at once.
-    togglePause: () => setPaused(!paused) };
+    togglePause: () => setPaused(!paused),
+    toggleZen: () => setZen(!zen) };
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
 // path. Touch fallback: hover-less devices have no keyboard or native menu.
@@ -1539,10 +1553,15 @@ window.addEventListener("keydown", (e) => {
   // handlers so the first keyboard action also starts ambient sound.
   audio.unlock();
   const k = e.key.toLowerCase();
-  // One Escape closes one thing: the card claims it first, and a key
-  // another window already handled leaves the card alone.
+  // One Escape closes one thing: the card claims it first, then Zen
+  // mode, and a key another window already handled leaves both alone.
   if (k === "escape" && infoCard && !e.defaultPrevented && !alertOpen()) {
     closeInfo();
+    e.preventDefault();
+    return;
+  }
+  if (k === "escape" && zen && !e.defaultPrevented && !alertOpen()) {
+    setZen(false);
     e.preventDefault();
     return;
   }
@@ -1565,6 +1584,8 @@ window.addEventListener("keydown", (e) => {
     toggleMute(); // bare M: ⌘M is Minimize
   } else if (bare && k === "p") {
     setPaused(!paused); // bare P: ⌘P is Print; the app's menu owns it
+  } else if (bare && k === "z") {
+    setZen(!zen); // bare Z: ⌘Z is Undo via the Edit menu
   } else if (bare && k === "s" && !inNativeShell()) {
     // Browser-only — the app opens stats.html via Tank ▸ Tank Stats.
     // Reuse without re-navigating: a reload would wipe the 90 s trend
@@ -1586,8 +1607,10 @@ mountTankMenuBar({
   toggleLamp: toggleLights,
   toggleMute,
   togglePause: () => { setPaused(!paused); },
+  toggleZen: () => setZen(!zen),
   state: () => ({ crtUsable: crt?.usable ?? false, crtOn,
-                  lampOn: lighting.lamp, muted: soundCfg.muted, paused }),
+                  lampOn: lighting.lamp, muted: soundCfg.muted, paused,
+                  zen }),
 });
 
 // web/pack/ is gitignored and no build ships one, so a missing
