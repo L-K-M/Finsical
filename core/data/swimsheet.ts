@@ -38,13 +38,13 @@ export function hasDrawableFrame(sheet: SpriteSheet): boolean {
   return false;
 }
 
-/** pickSwimSheet, but only when the winner can draw anything — a pack
- * whose frames are all empty or truncated must not register a sheet
- * its fish can only render as the stand-in. */
+/** pickSwimSheet, but only among sheets that can draw anything — a
+ * pack whose frames are all empty or truncated must not register a
+ * sheet its fish can only render as the stand-in, and a blank top
+ * pick mustn't sink a pack whose other sheet is fine. */
 export function pickDrawableSheet(
     sheets: Iterable<SpriteSheet>): SpriteSheet | null {
-  const s = pickSwimSheet(sheets);
-  return s && hasDrawableFrame(s) ? s : null;
+  return pickSwimSheet([...sheets].filter(hasDrawableFrame));
 }
 
 /** How long and tall a fish looks in profile, in art pixels. */

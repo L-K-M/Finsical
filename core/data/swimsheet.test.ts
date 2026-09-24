@@ -122,4 +122,14 @@ describe("pickDrawableSheet", () => {
     paint(0, 0, 5, 5);
     expect(pickDrawableSheet([sh])).toBe(sh);
   });
+
+  it("falls past a blank top pick to a drawable sheet", () => {
+    // The bigger sheet wins pickSwimSheet but paints nothing; the
+    // smaller drawable one must take the slot, not sink the pack.
+    const blank = paintable(50, 100).sh;
+    const { sh, paint } = paintable(20, 30);
+    paint(0, 0, 1, 1);
+    expect(pickSwimSheet([blank, sh])).toBe(blank);
+    expect(pickDrawableSheet([blank, sh])).toBe(sh);
+  });
 });

@@ -136,6 +136,16 @@ export function pickDecorFrames(images: Iterable<IndexedImage>):
   return { frames: [img], ...rest };
 }
 
+/** Whether any of `images` would render as decor — the same acceptance
+ * rule decorCanvases applies (a pickable frame with nonzero area), so
+ * install validation can tell a decor pack from one that draws
+ * nothing. */
+export function hasDecorFrames(images: Iterable<IndexedImage>): boolean {
+  const pick = pickDecorFrames(images);
+  const first = pick?.frames[0];
+  return !!first && first.w > 0 && first.h > 0;
+}
+
 /** The frame an item shows at sim tick `tick`: `n` frames looped, each
  * held DECOR_TICKS_PER_FRAME ticks, starting `phase` frames in. */
 export function decorFrame(tick: number, n: number, phase: number): number {

@@ -122,6 +122,18 @@ export function isGravelImage(img: { w: number; h: number },
   return img.w >= img.h * 3 && img.w >= tankW / 2;
 }
 
+/** The backdrop rule: a gravel strip never serves as one, and a scene
+ * must cover a quarter of the tank's area with each dim at least half
+ * the tank's — anything smaller is an icon or decor art. Shared so
+ * install validation applies the same rule pickBackdrop renders with. */
+export function isBackdropImage(
+    img: { w: number; h: number },
+    tank: { width: number; height: number }): boolean {
+  return !isGravelImage(img, tank.width) &&
+         img.w * img.h >= (tank.width * tank.height) / 4 &&
+         img.w >= tank.width / 2 && img.h >= tank.height / 2;
+}
+
 export function swimCanvas(sheet: SpriteSheet, f: number,
                            facing: 1 | -1, group = 0,
                            scale = 1): HTMLCanvasElement {

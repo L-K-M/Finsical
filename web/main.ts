@@ -32,7 +32,8 @@ import { SWAY_BANDS, swayOffset } from "./sway.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
          sndsMerge, sndsRemove } from "./store.js";
-import { coverCrop, decorCanvases, imageCanvas, isGravelImage,
+import { coverCrop, decorCanvases, imageCanvas, isBackdropImage,
+         isGravelImage,
          previewOf, soundIcon, swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
 import { containPoint, isFeedZone } from "./feedzone.js";
@@ -809,8 +810,7 @@ function pickBackdrop(images: Iterable<IndexedImage>, src = ""): void {
   let gravel: IndexedImage | null = null;
   for (const img of images) {
     if (isGravelImage(img, TANK.width)) { if (!gravel || img.w > gravel.w) gravel = img; continue; }
-    if (img.w * img.h < (TANK.width * TANK.height) / 4) continue;
-    if (img.w < TANK.width / 2 || img.h < TANK.height / 2) continue;
+    if (!isBackdropImage(img, TANK)) continue;
     if (!best || img.w * img.h > best.w * best.h) best = img;
   }
   // delete-then-set: Map keeps an existing key's insertion position, so

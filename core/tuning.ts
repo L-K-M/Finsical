@@ -18,4 +18,4 @@ export const FISH_CAP = 24;
 /** The tank's logical resolution — art is fitted to it once at import
  * and blitted 1:1 after. Shared so import validation can apply the
  * same size rules the tank renders with. */
-export const TANK_SIZE = { width: 320, height: 200 };
+export const TANK_SIZE = Object.freeze({ width: 320, height: 200 });

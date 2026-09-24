@@ -384,7 +384,8 @@ const fakeSheet = (opaque: boolean): SpriteSheet => ({
                                        0, 0, 0, 0, 0, 0, 0, 0, 0]) }),
 } as unknown as SpriteSheet);
 const fakeImage = (w: number, h: number): IndexedImage =>
-  ({ w, h, palette: [] as [number, number, number][], idx: new Uint8Array(0) });
+  ({ w, h, palette: [] as [number, number, number][],
+     idx: new Uint8Array(w * h) });
 const res = (over: Partial<PackResult>): PackResult =>
   ({ sheets: new Map(), images: new Map(), sounds: [], ...over });
 
@@ -410,6 +411,29 @@ describe("usablePacks", () => {
   it("doesn't count a fish pack's portraits as usable art", () => {
     const rs = [res({ images: new Map([["i", fakeImage(320, 200)]]) })];
     expect(usablePacks(rs, "fish")).toEqual([]);
+  });
+  it("rejects a backdrop too small to read as a scene", () => {
+    // An icon-sized image in a "backgrounds" pack would install
+    // successfully and change nothing — same dead end as blank fish.
+    const rs = [res({ images: new Map([["i", fakeImage(100, 50)]]) })];
+    expect(usablePacks(rs, "backgrounds")).toEqual([]);
+    expect(usablePacks(rs, "tanks")).toEqual([]);
+  });
+  it("keeps a scene-sized backdrop", () => {
+    const rs = [res({ images: new Map([["i", fakeImage(320, 200)]]) })];
+    expect(usablePacks(rs, "backgrounds")).toEqual(rs);
+  });
+  it("counts decor art for plants and accessories", () => {
+    const rs = [res({ images: new Map([["i", fakeImage(40, 30)]]) })];
+    expect(usablePacks(rs, "plants")).toEqual(rs);
+    expect(usablePacks(rs, "accessories")).toEqual(rs);
+  });
+  it("doesn't count sheets a non-fish section can't render", () => {
+    // handleSheets only registers art for fish — sheets in a decor or
+    // backdrop pack install nothing, so they must not pass validation.
+    const rs = [res({ sheets: new Map([["s", fakeSheet(true)]]) })];
+    expect(usablePacks(rs, "plants")).toEqual([]);
+    expect(usablePacks(rs, "backgrounds")).toEqual([]);
   });
   it("counts sounds for any section", () => {
     const rs = [res({ sounds: [{ name: "a", wav: new Uint8Array(1) }] })];

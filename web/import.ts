@@ -24,7 +24,8 @@ import { TANK_SIZE } from "../core/tuning.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
-import { isGravelImage, soundIcon } from "./render.js";
+import { isBackdropImage, isGravelImage, soundIcon } from "./render.js";
+import { hasDecorFrames } from "../core/data/decor.js";
 import { bindDialogKeys, mountList, mountPopup, mountWindow, pushButton,
          setButtonTitle } from "osmium-ui";
 
@@ -504,22 +505,27 @@ export interface PackResult {
 }
 
 /** Which decoded packs would actually put something in the tank.
- * A fish add-on only counts when one of its sheets can draw — a pack
- * whose frames are all empty or truncated renders the stand-in while
- * claiming success. Gravel only counts with a strip-shaped image;
- * other scenery needs any image, and any section can carry sounds.
- * Fish-pack portraits aren't scenery — they count for nothing here. */
+ * Each section counts only the art its renderer accepts: fish needs a
+ * drawable sheet, gravel a strip-shaped image, backgrounds and tanks a
+ * scene-sized image, plants and accessories decor art. Sheets only
+ * render for fish, fish-pack portraits aren't scenery, and sections
+ * with no image consumer count nothing visual — sounds still count
+ * everywhere. */
 export function usablePacks(rs: PackResult[], section: string):
     PackResult[] {
   return rs.filter((r) => {
-    const sheets = section === "fish"
-      ? pickDrawableSheet(r.sheets.values()) !== null
-      : r.sheets.size > 0;
-    const images = section === "gravel"
-      ? [...r.images.values()]
-          .some((i) => isGravelImage(i, TANK_SIZE.width))
-      : section !== "fish" && r.images.size > 0;
-    return sheets || images || r.sounds.length > 0;
+    const images = [...r.images.values()];
+    const usable =
+        section === "fish"
+          ? pickDrawableSheet(r.sheets.values()) !== null
+        : section === "gravel"
+          ? images.some((i) => isGravelImage(i, TANK_SIZE.width))
+        : section === "backgrounds" || section === "tanks"
+          ? images.some((i) => isBackdropImage(i, TANK_SIZE))
+        : section === "plants" || section === "accessories"
+          ? hasDecorFrames(images)
+        : false;
+    return usable || r.sounds.length > 0;
   });
 }
 
@@ -1208,9 +1214,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     detailRef = ref;
 
     void fetchPack(it.url).then((rs) => {
-      const usable = rs.filter(
-        (r) => r.sheets.size || r.images.size || r.sounds.length);
-      if (!usable.length) throw new Error("no pack inside");
+      const usable = usablePacks(rs, it.section);
+      if (!usable.length) throw new Error(usableProblem(it.section));
       const pv = h.preview(usable);
       // Cache the thumb even if the selection moved on while the fetch
       // was in flight; only the pane waits on it being current.
@@ -1460,8 +1465,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       thumbRunning++;
       thumbFetching.add(it.url);
       void fetchPack(it.url).then((rs) => {
-        const usable = rs.filter(
-          (r) => r.sheets.size || r.images.size || r.sounds.length);
+        const usable = usablePacks(rs, it.section);
         const pv = usable.length ? h.preview(usable) : null;
         if (!pv) return;
         thumbs.set(it.url, pv);
