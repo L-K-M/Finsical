@@ -175,7 +175,8 @@ class ResFile:
         Like core/data/snd.ts: only the first entry for the type is
         read, each payload yields once however many references share
         it, and at most MAX_RESOURCES resources come back, so a
-        crafted map can't multiply one blob into millions."""
+        crafted map can't multiply one blob into millions. A reference
+        or payload that runs past the end is skipped, as there."""
         for t, cnt, rbase in self.types():
             if t != rtype:
                 continue
@@ -184,6 +185,8 @@ class ResFile:
                 if len(seen) >= MAX_RESOURCES:
                     break
                 r = rbase + j * 12
+                if r + 12 > len(self.data):
+                    break
                 rid = struct.unpack_from('>h', self.data, r)[0]
                 noff = struct.unpack_from('>h', self.data, r + 2)[0]
                 attr = self.data[r + 4]
@@ -191,8 +194,13 @@ class ResFile:
                 if dd in seen:
                     continue
                 seen.add(dd)
-                sz = struct.unpack_from('>I', self.data, self.do + dd)[0]
-                blob = self.data[self.do + dd + 4:self.do + dd + 4 + sz]
+                at = self.do + dd
+                if at + 4 > len(self.data):
+                    continue
+                sz = struct.unpack_from('>I', self.data, at)[0]
+                if at + 4 + sz > len(self.data):
+                    continue
+                blob = self.data[at + 4:at + 4 + sz]
                 name = None
                 # Only -1 is the nameless sentinel; other negatives would
                 # index backwards into the name list (or worse).

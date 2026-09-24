@@ -65,6 +65,31 @@ class TestRsrc(unittest.TestCase):
             got = [rid for rid, _n, _a, _b in rf.resources(b"snd ")]
         self.assertEqual(got, [1])
 
+    def test_ref_list_past_the_end_stops_cleanly(self):
+        rf_bytes = bytearray(build_rsrc({b"snd ": [(1, "a", 0, b"one")]}))
+        mo = struct.unpack_from(">I", rf_bytes, 4)[0]
+        tbase = mo + struct.unpack_from(">H", rf_bytes, mo + 24)[0]
+        # Claim 1000 references where the map holds one.
+        struct.pack_into(">H", rf_bytes, tbase + 2 + 4, 999)
+        with tempfile.TemporaryDirectory() as td:
+            rf = ResFile(_write(td, bytes(rf_bytes)))
+            got = [rid for rid, _n, _a, _b in rf.resources(b"snd ")]
+        self.assertEqual(got[0], 1)
+
+    def test_payloads_past_the_end_are_skipped(self):
+        rf_bytes = bytearray(build_rsrc({b"snd ": [(1, "a", 0, b"one"),
+                                                   (2, "b", 0, b"two")]}))
+        do, mo = struct.unpack_from(">2I", rf_bytes, 0)
+        refs = mo + 28 + 2 + 8
+        # The first payload's length runs past the end of the file.
+        struct.pack_into(">I", rf_bytes, do, len(rf_bytes))
+        # The second reference points past the end of the file.
+        rf_bytes[refs + 12 + 5:refs + 12 + 8] = (0xFFFFFF).to_bytes(3, "big")
+        with tempfile.TemporaryDirectory() as td:
+            rf = ResFile(_write(td, bytes(rf_bytes)))
+            got = list(rf.resources(b"snd "))
+        self.assertEqual(got, [])
+
     def test_appledouble_unwrap(self):
         inner = build_rsrc({b"DATA": [(100, None, 0, b"xyz")]})
         with tempfile.TemporaryDirectory() as td:

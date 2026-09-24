@@ -558,11 +558,12 @@ describe("qualifySoundNames", () => {
   });
 
   it("names many copies of one name in linear time", () => {
-    // Quadratic retries took seconds here, on the main thread.
+    // Quadratic retries took 18 s here, on the main thread; linear
+    // takes milliseconds, so the bound leaves room for a busy runner.
     const recs = Array.from({ length: 20_000 }, () => rec("x"));
     const t0 = performance.now();
     qualifySoundNames(recs);
-    expect(performance.now() - t0).toBeLessThan(1000);
+    expect(performance.now() - t0).toBeLessThan(3000);
     expect(recs.at(-1)!.name).toBe("x (20000)");
     expect(new Set(recs.map((r) => r.name)).size).toBe(20_000);
   });
