@@ -1,14 +1,15 @@
 // The starter aquarium a first launch offers: a few fish, a gravel, a
-// plant and a background from the archive.org collections, about 1 MB
-// in all, picked by name and resolved against the live listing so an
-// item the archive drops is skipped instead of breaking the offer.
+// plant, a background and the game's sound effects from the archive.org
+// collections, about 2 MB in all, picked by name and resolved against
+// the live listing so an item the archive drops is skipped instead of
+// breaking the offer.
 import type { Collection, Importable } from "./import.js";
 
 export interface StarterItem { section: string; inner: string }
 
 /** In install order: scenery after the fish, so the fish arrive first
- * and the placeholders can go as early as possible. Sizes are the
- * archive's download sizes. */
+ * and the placeholders can go as early as possible, and the sounds,
+ * the slowest download, last. Sizes are the archive's download sizes. */
 export const STARTER_SET: readonly StarterItem[] = [
   { section: "fish", inner: "banggai" },       // 321 KB
   { section: "fish", inner: "clownfish" },     //  94 KB
@@ -16,6 +17,7 @@ export const STARTER_SET: readonly StarterItem[] = [
   { section: "gravel", inner: "brownsand" },   // 126 KB
   { section: "plants", inner: "Amazon_L" },    // 134 KB
   { section: "backgrounds", inner: "Back03" }, // 308 KB
+  { section: "sounds", inner: "AZ_WAVES" },    // 1155 KB
 ];
 
 /** The collections worth listing for the starter set: its sections'

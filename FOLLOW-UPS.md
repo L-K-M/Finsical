@@ -112,8 +112,27 @@ descriptions of #161 and #162.
   cuts that sound off, which can click. Fade it out instead.
 - Not ported from #133: an ambient volume slider, and a Defaults
   button that leaves Mute alone.
+- The game's sound bank (ANALYSIS.md F-22) is in: `AZ_WAVES.REZ` from
+  the main item's 7z, named by the Mac build's ids in
+  `core/data/sndbank.ts`. These original sounds have no Finsical
+  feature to play them yet: EventBirth, EventEgg, EventCouple,
+  EventPreg, EventDead, EventSick, EventTiyu (recovery), WashFilter,
+  TimerOnOff, TimerSet, add, set and pipopa.
+- The 7z's archive view lists its entries under the wrong top folder.
+  `Collection.rename` corrects that for the sound bank; F-21 (the 7z's
+  English ITEMS library) can reuse it.
+- At launch the restored sound records decode again, and addWavs'
+  restart rule (it compares buffer objects) restarts the bubbling loop
+  once, a few milliseconds in. Harmless, but the rule could compare
+  names instead.
 
 ### Tooling and tests
+
+- `tools/az/pack.py` reads a pack's trailer as (id, sub, offset, pad)
+  records, which misses the sound bank's entries. The trailer is a
+  little-endian Mac resource map (see `core/data/sndbank.ts`); F-01
+  can build on that. `tools/fetch.py` doesn't open 7z archives either,
+  so the CLI can't fetch the bank.
 
 - In `web/audio.test.ts`, "ambient off aborts a loop waiting on a
   locked context" waits exactly two microtasks. The file's `flush`

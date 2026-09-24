@@ -39,10 +39,10 @@ describe("resolveStarter", () => {
 });
 
 describe("STARTER_SET", () => {
-  it("has fish, a gravel, a plant and a background", () => {
+  it("has fish, a gravel, a plant, a background and the sounds", () => {
     const sections = STARTER_SET.map((s) => s.section);
     expect(sections.filter((s) => s === "fish").length).toBeGreaterThan(1);
-    for (const s of ["gravel", "plants", "backgrounds"])
+    for (const s of ["gravel", "plants", "backgrounds", "sounds"])
       expect(sections.filter((x) => x === s)).toHaveLength(1);
   });
 

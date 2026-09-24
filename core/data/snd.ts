@@ -8,7 +8,9 @@
  * emits the same bytes wrapped in WAV.
  */
 
+import { isPack } from "./fsh.js";
 import { mace3Decode } from "./mace.js";
+import { bankSounds } from "./sndbank.js";
 
 export { mace3Decode };
 
@@ -328,8 +330,9 @@ export function hasSounds(data: Uint8Array): boolean {
 export const AUDIO_FILE_EXT = /\.(wav|mp3|aiff?|m4a|ogg|flac)$/i;
 
 /** Sound records for one file: audio files pass their bytes through
- * for decodeAudioData; anything else is tried as a (possibly wrapped)
- * resource fork. [] when the file carries neither. */
+ * for decodeAudioData, a 9003 sound bank (the Windows game's
+ * AZ_WAVES.REZ) gives its WAVs, and anything else is tried as a
+ * (possibly wrapped) resource fork. [] when the file carries none. */
 export function fileSoundRecords(name: string, data: Uint8Array):
     { name: string; wav: Uint8Array }[] {
   const base = name.split("/").pop()!;
@@ -337,6 +340,10 @@ export function fileSoundRecords(name: string, data: Uint8Array):
   // fall through to the fork path (or [] when it holds no 'snd ').
   if (!base.startsWith("._") && AUDIO_FILE_EXT.test(base))
     return [{ name: base.replace(/\.[^.]+$/, ""), wav: data }];
+  // A fork whose data starts at 64 KB opens with the bytes a pack
+  // does, so an empty bank falls through to the fork path.
+  const bank = isPack(data) ? bankSounds(data) : [];
+  if (bank.length) return bank;
   try {
     return soundsFromRsrc(data)
       .map((s) => ({ name: s.name, wav: wavBytes(s) }));
