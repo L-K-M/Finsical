@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BAND_HALF, BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, MARGIN, Sim,
+import { BAND_HALF, BEDTIME_MIN, BEDTIME_SPREAD, BOTTOM_PAD, DAY_TICKS,
+         FOOD_ROT_TICKS, LIE_IN_MIN, LIE_IN_SPREAD, MARGIN, Sim,
          SLEEP_LIGHT, SURFACE, TURN_TICKS, WAKE_LIGHT } from "./sim.js";
 import { QUALITY_SEEK } from "./tuning.js";
 import { CLOCK_NIGHT_LIGHT } from "./light.js";
@@ -321,7 +322,7 @@ describe("Sim", () => {
   it("a water change recovers quality and siphons settled food", () => {
     const sim = new Sim({ width: 200, height: 100 }, 1);
     sim.dropFood(50);
-    for (let i = 0; i < 400; i++) sim.tick(); // pellet settles, fouls the water
+    for (let i = 0; i < LIE_IN_MIN + LIE_IN_SPREAD + 80; i++) sim.tick(); // pellet settles, fouls the water
     expect(sim.food[0]!.settled).toBeGreaterThan(0);
     sim.waterQuality = 0.2;
     sim.changeWater();
@@ -513,7 +514,7 @@ describe("Sim", () => {
       sim.tick();
       // Never knocked out on the first tick…
       expect(fish.some((f) => f.state === "sleep")).toBe(false);
-      for (let i = 0; i < 700; i++) sim.tick();
+      for (let i = 0; i < BEDTIME_MIN + BEDTIME_SPREAD + 40; i++) sim.tick();
       // …but asleep before long, not awake until the next dawn.
       expect(fish.map((f) => f.state)).toEqual(Array(6).fill("sleep"));
     }

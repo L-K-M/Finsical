@@ -220,8 +220,8 @@ export const WAKE_LIGHT = 0.6;
 /** Each fish beds down this many ticks into the dark (2 to 22 s) and
  * lies in this many into the light (under 11 s), by its id: the tank
  * settles and stirs one fish at a time rather than all on one tick. */
-const BEDTIME_MIN = 60, BEDTIME_SPREAD = 600;
-const LIE_IN_MIN = 20, LIE_IN_SPREAD = 300;
+export const BEDTIME_MIN = 60, BEDTIME_SPREAD = 600;
+export const LIE_IN_MIN = 20, LIE_IN_SPREAD = 300;
 
 /** A well-spread 32-bit hash of an integer (murmur3's finalizer), so
  * neighbouring ids get unrelated bedtimes. */
@@ -457,7 +457,8 @@ export class Sim {
     const peckish = f.hunger > HUNGER_SEEK &&
       this.waterQuality > QUALITY_SEEK && this.nearestFood(f) !== null;
     // Its own bedtime and lie-in, fixed by its id: no rand() draw, so
-    // seeded runs elsewhere don't shift.
+    // seeded runs elsewhere don't shift. The +1 matters: mix32(0) is 0,
+    // which would make fish 0 first to bed and first up every night.
     const h = mix32(f.id + 1);
     if (f.state === "sleep") {
       if (this.brightTicks > LIE_IN_MIN + (h >>> 16) % LIE_IN_SPREAD ||
