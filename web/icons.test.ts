@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { spriteSvg } from "osmium-ui";
-import { ICON_PALETTE, ICON_SPRITES, MENU_GLYPH, SOUND_ICON }
+import { ALERT_ICONS, ALERT_PALETTE, ICON_PALETTE, ICON_SPRITES, MENU_GLYPH,
+         SOUND_ICON }
   from "./icons.js";
 
 describe("pane icons", () => {
@@ -22,6 +23,18 @@ describe("menu-bar glyph", () => {
     expect(MENU_GLYPH.length).toBe(16);
     for (const r of MENU_GLYPH) expect(r.length).toBe(16);
     expect(() => spriteSvg(MENU_GLYPH, ICON_PALETTE)).not.toThrow();
+  });
+});
+
+describe("alert icons", () => {
+  // alert.ts registers them the first time an alert opens; a bad grid
+  // would throw there and leave the alert without its frame.
+  it("are 32 x 32 grids of known palette keys", () => {
+    for (const [name, rows] of Object.entries(ALERT_ICONS)) {
+      expect(rows.length, name).toBe(32);
+      for (const r of rows) expect(r.length, name).toBe(32);
+      expect(() => spriteSvg(rows, ALERT_PALETTE), name).not.toThrow();
+    }
   });
 });
 

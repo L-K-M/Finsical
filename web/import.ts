@@ -470,16 +470,19 @@ export async function importAddon(url: string): Promise<PackResult[]> {
   return out;
 }
 
-/** Fetch the listing pages of all collections, grouped by section in
- * COLLECTIONS order. Never rejects: a failed section just comes back
- * empty. */
-export async function listAddons(): Promise<Importable[]> {
+/** Fetch the listing pages of all collections (or those `only`
+ * accepts), grouped by section in COLLECTIONS order. Never rejects: a
+ * failed section just comes back empty. */
+export async function listAddons(
+    only: (c: Collection) => boolean = () => true,
+): Promise<Importable[]> {
   // First collection index per section — items group under it.
   const rank = new Map<string, number>();
   COLLECTIONS.forEach((c, i) => {
     if (!rank.has(c.section)) rank.set(c.section, i);
   });
-  const lists = await Promise.all(COLLECTIONS.map(async (col) => {
+  const cols = COLLECTIONS.filter(only);
+  const lists = await Promise.all(cols.map(async (col) => {
     try {
       const items = await listCollection(col);
       for (const it of items) it.section = col.section;
