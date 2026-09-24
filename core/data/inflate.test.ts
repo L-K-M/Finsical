@@ -80,9 +80,11 @@ describe("inflateCap", () => {
     // the constructor throws TypeError. The probe must route to fflate.
     const real = globalThis.DecompressionStream;
     class NoRaw extends real {
+      static count = 0;
       constructor(format: CompressionFormat) {
         if (format === "deflate-raw")
           throw new TypeError("unsupported format");
+        NoRaw.count++;
         super(format);
       }
     }
@@ -90,9 +92,14 @@ describe("inflateCap", () => {
     try {
       expect(await inflateCap(await compress(SRC, "deflate-raw"),
                               "deflate-raw", 1 << 20)).toEqual(SRC);
-      // deflate still takes the native path.
+      // deflate still takes the native path — a deflate-raw failure
+      // must not flip the whole helper to fflate. Counting native
+      // constructions keeps the assertion routing-sensitive: a
+      // fall-everything-back regression would still round-trip.
+      const built = NoRaw.count;
       expect(await inflateCap(await compress(SRC, "deflate"),
                               "deflate", 1 << 20)).toEqual(SRC);
+      expect(NoRaw.count).toBeGreaterThan(built); // native, not fflate
     } finally {
       globalThis.DecompressionStream = real;
     }

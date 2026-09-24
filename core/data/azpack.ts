@@ -62,7 +62,7 @@ async function inflate(data: Uint8Array, expected: number): Promise<Uint8Array> 
   catch (e) {
     // The byte cap doubles as the excess-pixels check.
     if (e instanceof InflateTooLargeError)
-      throw new Error("png: excess pixel data");
+      throw new Error("png: excess pixel data", { cause: e });
     throw e;
   }
   if (out.length !== expected) throw new Error("png: short pixel data");
