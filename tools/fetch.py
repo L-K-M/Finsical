@@ -143,10 +143,13 @@ def _entry_name(zi: zipfile.ZipInfo) -> str:
     if zi.flag_bits & 0x800:
         return zi.filename
     raw = zi.orig_filename.encode("cp437")
-    # zipfile truncates member names at a NUL; match it.
+    # zipfile truncates member names at a NUL; match it — on the raw
+    # bytes, so bytes after the NUL can't fail the decode of the part
+    # that survives.
+    raw = raw.partition(b"\0")[0]
     for codec in ("utf-8", "shift_jis"):
         try:
-            return raw.decode(codec).partition("\0")[0]
+            return raw.decode(codec)
         except UnicodeDecodeError:
             pass
     return zi.filename
