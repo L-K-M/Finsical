@@ -72,11 +72,16 @@
   on, whatever the Lighting setting: Tank > Lamp On (Cmd-L) in the
   app, the L key, or Lamp on in the Lighting pane. It is kept with the
   lighting settings, and Tank Stats says when the lamp is off.
-- The water comes alive. It ends at a surface line that catches the
-  light, with a strip of dark air above it instead of more background.
-  Bubbles wobble, grow as they rise and pop at the surface, and by day
-  sunlight slants through the water and ripples over the gravel (held
-  still if you prefer reduced motion). Feed Fish scatters a pinch of pellets, one per
+- The water comes alive. It ends at a surface that moves: food, new
+  fish, bubbles popping, knocks on the glass and fish cruising along
+  the top send waves along it that spread, bounce off the glass and
+  settle. Above it, under the tank's hood, a lamp tube shines as
+  brightly as the light in the tank, with beads of condensation on the
+  glass, instead of more background. Just under the surface the view
+  wavers, bubbles wobble, grow as they rise and pop where the surface
+  is, and by day sunlight slants through the water and shimmering
+  caustics ripple over the lower tank and the gravel (the swell and
+  shimmer hold still if you prefer reduced motion). Feed Fish scatters a pinch of pellets, one per
   hungry fish, around a spot on the surface; they drift as they sink
   instead of stacking in one column in the middle. Fouled water now
   turns visibly green-brown and murky, with debris drifting in it.

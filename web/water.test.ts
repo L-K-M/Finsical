@@ -3,9 +3,11 @@ import { SURFACE } from "../core/sim.js";
 import { makeRng } from "../core/rng.js";
 import {
   bubbleOffset, bubblePops, bubbleSize, CAUSTIC_TILE_H, CAUSTIC_TILE_W, drawAir,
-  causticTile, causticValue, feedPinch, murkParams, MURK_BOTTOM, MURK_TOP,
-  pelletDrift, PINCH_MAX, PINCH_SPREAD, sunFactor,
+  causticShimmer, causticTile, causticValue, feedPinch, murkParams,
+  MURK_BOTTOM, MURK_TOP, pelletDrift, PINCH_MAX, PINCH_SPREAD, REFRACT_ROWS,
+  refractShift, sunFactor,
 } from "./water.js";
+import { SURFACE_MAX, SURFACE_W } from "./surface.js";
 
 describe("bubbles", () => {
   it("grow from 1 px at depth to 4 px near the surface", () => {
@@ -154,14 +156,69 @@ describe("murkParams", () => {
 });
 
 describe("drawAir", () => {
-  it("covers the whole tank above the surface line, and only that", () => {
+  function recorder(): { ctx: CanvasRenderingContext2D; rects: number[][] } {
     const rects: number[][] = [];
     const ctx = {
-      fillStyle: "",
+      fillStyle: "", globalAlpha: 1, globalCompositeOperation: "",
       createLinearGradient: () => ({ addColorStop: () => {} }),
       fillRect: (...r: number[]) => { rects.push(r); },
     } as unknown as CanvasRenderingContext2D;
-    drawAir(ctx);
-    expect(rects).toEqual([[0, 0, 320, SURFACE]]);
+    return { ctx, rects };
+  }
+
+  it("covers the whole tank above the surface line, and only that", () => {
+    const { ctx, rects } = recorder();
+    drawAir(ctx, 1);
+    expect(rects[0]).toEqual([0, 0, SURFACE_W, SURFACE]);
+    // The hood and its lamp stay in the air, clear of the water.
+    for (const [, y, , h] of rects) expect(y! + h!).toBeLessThanOrEqual(SURFACE);
+  });
+
+  it("follows a moving waterline column by column", () => {
+    const line = new Int16Array(SURFACE_W).fill(SURFACE);
+    line.fill(SURFACE + 2, 100, 110);
+    line.fill(SURFACE - 3, 200, 204);
+    const { ctx, rects } = recorder();
+    drawAir(ctx, 0, line);
+    const cover = new Array<number>(SURFACE_W).fill(-1);
+    for (const [x, y, w, h] of rects) {
+      if (y !== 0 || h! < SURFACE - 3) continue; // hood details
+      for (let i = x!; i < x! + w!; i++) cover[i] = h!;
+    }
+    expect(cover).toEqual([...line]);
+  });
+
+  it("keeps every hood detail above the highest wave", () => {
+    const { ctx, rects } = recorder();
+    drawAir(ctx, 0.5, new Int16Array(SURFACE_W).fill(SURFACE));
+    const details = rects.filter(([, y, , h]) => !(y === 0 && h! >= SURFACE));
+    expect(details.length).toBeGreaterThan(0);
+    for (const [, y, , h] of details)
+      expect(y! + h!).toBeLessThanOrEqual(SURFACE - SURFACE_MAX);
+  });
+});
+
+describe("refraction", () => {
+  it("wavers only a band under the surface, fading with depth", () => {
+    let top = 0, deep = 0;
+    for (let t = 0; t < 600; t += 7) {
+      expect(refractShift(SURFACE, t)).toBe(0);
+      expect(refractShift(SURFACE + REFRACT_ROWS + 1, t)).toBe(0);
+      top = Math.max(top, Math.abs(refractShift(SURFACE + 1, t)));
+      deep = Math.max(deep, Math.abs(refractShift(SURFACE + REFRACT_ROWS - 1, t)));
+      for (let y = SURFACE; y < SURFACE + REFRACT_ROWS + 2; y++)
+        expect(Math.abs(refractShift(y, t))).toBeLessThanOrEqual(2);
+    }
+    expect(top).toBe(2);
+    expect(deep).toBeLessThan(top);
+  });
+
+  it("caustic shimmer stays within a couple of pixels", () => {
+    const seen = new Set<number>();
+    for (let t = 0; t < 900; t += 3)
+      for (let b = 0; b < 30; b++) seen.add(causticShimmer(b, t));
+    expect(Math.max(...seen)).toBeLessThanOrEqual(3);
+    expect(Math.min(...seen)).toBeGreaterThanOrEqual(-3);
+    expect(seen.size).toBeGreaterThan(3);
   });
 });
