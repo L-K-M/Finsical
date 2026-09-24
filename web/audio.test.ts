@@ -18,8 +18,16 @@ class FakeNode {
   connect<T extends FakeNode>(n: T): T { this.out.push(n); return n; }
 }
 class FakeGain extends FakeNode { gain = new FakeParam(); }
+class FakeBuffer {
+  constructor(readonly duration: number,
+              readonly sampleRate: number,
+              private readonly bytes: Uint8Array) {}
+  getChannelData(_ch: number): Float32Array {
+    return Float32Array.from(this.bytes);
+  }
+}
 class FakeSource extends FakeNode {
-  buffer: { duration: number } | null = null;
+  buffer: FakeBuffer | null = null;
   loop = false;
   onended: (() => void) | null = null;
   starts = 0;
@@ -46,8 +54,9 @@ class FakeContext {
     return s;
   }
   // The "WAV" byte count doubles as the clip's length in seconds.
-  decodeAudioData(buf: ArrayBuffer): Promise<{ duration: number }> {
-    return Promise.resolve({ duration: buf.byteLength });
+  decodeAudioData(buf: ArrayBuffer): Promise<FakeBuffer> {
+    return Promise.resolve(
+      new FakeBuffer(buf.byteLength, 8000, new Uint8Array(buf)));
   }
   // State changes settle on a microtask, like the real ones.
   resume(): Promise<void> {
@@ -224,6 +233,22 @@ describe("TankAudio.load", () => {
     await audio.load(readWav, manifestOf(LOOP)); // same take again
     const loop = ac.sources.filter((s) => s.loop)[0]!;
     expect(loop.stops).toHaveLength(0);
+  });
+
+  it("restarts the loop on a same-length re-encode", async () => {
+    // Same name and duration, different bytes — duration alone can't
+    // tell a remaster from the original; the content probe can.
+    const audio = new TankAudio();
+    wavs.set(`s/${LOOP}.wav`, wav(30));
+    await audio.load(readWav, manifestOf(LOOP));
+    audio.startAmbient();
+    const ac = FakeContext.last!;
+    wavs.set(`s/${LOOP}.wav`, new Uint8Array(30).fill(9));
+    await audio.load(readWav, manifestOf(LOOP));
+    const loops = ac.sources.filter((s) => s.loop);
+    expect(loops[0]!.stops).toHaveLength(1); // old loop stopped
+    expect(loops[1]!.starts).toBe(1);        // replacement running
+    expect(ac.loops()).toBe(1);
   });
 });
 

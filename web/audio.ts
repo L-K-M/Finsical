@@ -342,10 +342,15 @@ export class TankAudio {
   }
 
   /** Content key of whichever buffer would loop as ambience now, or
-   * "" when the bank has no bubbling at all. */
+   * "" when the bank has no bubbling at all. name+duration alone can't
+   * tell a same-length re-encode from the original, so the key also
+   * probes the ends of channel 0. */
   private ambientPick(): string {
     const e = this.namedEntry(FILTER_BUBBLING);
-    return e ? `${e.name}:${e.buf.duration}` : "";
+    if (!e) return "";
+    const d = e.buf.getChannelData(0);
+    return `${e.name}:${e.buf.sampleRate}:${e.buf.duration}:` +
+           `${d[0] ?? 0}:${d[d.length - 1] ?? 0}`;
   }
 
   private play(buf: AudioBuffer | null, gain = 0.8, loop = false,
@@ -450,9 +455,9 @@ export class TankAudio {
   startAmbient(): void {
     if (!this.ambientOn || this.ambientSrc) return; // off, or already live
     this.ambientWanted = true;
-    const pick = this.namedEntry(FILTER_BUBBLING);
-    this.ambientKey = pick ? `${pick.name}:${pick.buf.duration}` : "";
+    this.ambientKey = this.ambientPick();
     this.ambientGen++; // stale pending starts abort in play()
-    this.ambientSrc = this.play(pick?.buf ?? null, AMBIENT_GAIN, true);
+    this.ambientSrc =
+      this.play(this.named(FILTER_BUBBLING), AMBIENT_GAIN, true);
   }
 }
