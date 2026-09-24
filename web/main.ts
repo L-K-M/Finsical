@@ -449,7 +449,7 @@ function noteGlassTap(): void {
 
 // A refused feed (the tank already holds MAX_UNEATEN pellets) says so
 // once — a silent no-op would read as a broken click.
-let foodRefusedAt = 0;
+let foodRefusedAt = -Infinity; // first refusal always shows
 function noteFoodRefused(): void {
   const now = performance.now();
   if (now - foodRefusedAt < 60_000) return;
