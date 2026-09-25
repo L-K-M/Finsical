@@ -1,0 +1,29 @@
+#!/usr/bin/python3
+"""Start Finsical, the retro virtual aquarium.
+
+Installed as /usr/games/finsical, the shell and the web app live in
+/usr/share/finsical (Debian Python Policy: private modules go under
+/usr/share/<package>). Run from a checkout as linux/finsical, the shell
+sits beside it and the web app is the repository's dist/.
+"""
+
+import os
+import sys
+
+
+def _find_shell():
+    here = os.path.dirname(os.path.realpath(__file__))
+    installed = os.path.normpath(
+        os.path.join(here, os.pardir, "share", "finsical")
+    )
+    if os.path.isdir(os.path.join(installed, "finsical_shell")):
+        return installed, "installed"
+    return here, "source-tree"
+
+
+share_dir, layout = _find_shell()
+sys.path.insert(0, share_dir)
+
+from finsical_shell import app, logic  # noqa: E402
+
+sys.exit(app.main(sys.argv, share_dir, logic.Layout(layout)))

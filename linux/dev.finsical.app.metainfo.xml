@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 Finsical contributors -->
+<!-- Template: linux/build-deb.sh fills in @VERSION@ and @DATE@. -->
+<component type="desktop-application">
+  <id>dev.finsical.app</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Unlicense AND LGPL-2.1-or-later</project_license>
+  <name>Finsical</name>
+  <summary>Watch a retro virtual aquarium on your desktop</summary>
+  <description>
+    <p>
+      Finsical is a lightweight retro virtual aquarium: little pixel fish
+      in a floating window, in the spirit of the 90s Mac classic AquaZone.
+    </p>
+    <p>
+      It ships no copyrighted assets. Fish, plants, scenery and sounds
+      from the original game's add-ons can be imported from the Internet
+      Archive or from your own copy.
+    </p>
+  </description>
+  <developer id="dev.finsical">
+    <name>Finsical contributors</name>
+  </developer>
+  <launchable type="desktop-id">dev.finsical.app.desktop</launchable>
+  <url type="homepage">https://github.com/L-K-M/Finsical</url>
+  <url type="bugtracker">https://github.com/L-K-M/Finsical/issues</url>
+  <categories>
+    <category>Game</category>
+    <category>Simulation</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <provides>
+    <binary>finsical</binary>
+  </provides>
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+</component>

@@ -1,0 +1,117 @@
+.\" Template: linux/build-deb.sh fills in @VERSION@ and @DATE@.
+.TH FINSICAL 6 "@DATE@" "Finsical @VERSION@" "Games Manual"
+.SH NAME
+finsical \- retro virtual aquarium
+.SH SYNOPSIS
+.B finsical
+.RB [ \-\-smoke\-test ]
+.br
+.B finsical
+.BR \-\-version " | " \-\-help
+.SH DESCRIPTION
+.B finsical
+shows little pixel fish in a floating window shaped like a vintage
+computer, in the spirit of the 90s Mac classic AquaZone.
+Click above the waterline to feed the fish, or in the water to tap the
+glass.
+Drag the computer case, or the top edge of the window, to move it.
+.PP
+Right-click the tank, or any Finsical window, for the app menu.
+Starting
+.B finsical
+again while it runs brings the tank to the front.
+.SH OPTIONS
+.TP
+.B \-\-smoke\-test
+Start on a throwaway profile, check that the tank, its windows, the
+messages between them and a menu action work, then quit.
+The exit status is 0 when every check passes.
+.TP
+.B \-\-version
+Print the version and exit.
+.TP
+.BR \-h ", " \-\-help
+Print a usage summary and exit.
+.SH KEYS
+.TP
+.B Ctrl+O
+Tank Overview
+.TP
+.B Ctrl+Shift+S
+Tank Stats
+.TP
+.B Ctrl+I
+Import Add-ons
+.TP
+.B Ctrl+,
+Preferences
+.TP
+.B Ctrl+F
+Feed Fish
+.TP
+.B Ctrl+R
+CRT Effect
+.TP
+.B Ctrl+L
+Lamp On
+.TP
+.B Ctrl+Alt+S
+Mute Sound
+.TP
+.B Ctrl+P
+Pause or resume the simulation
+.TP
+.BR Ctrl+= ", " Ctrl++
+Make the tank larger
+.TP
+.B Ctrl+\-
+Make the tank smaller
+.TP
+.B Ctrl+W
+Close the focused Finsical window (not the tank)
+.TP
+.B F1
+Finsical Help
+.TP
+.B Ctrl+Q
+Quit Finsical
+.PP
+With the tank focused, the bare keys F, C, L, M and P feed the fish and
+toggle the CRT effect, the lamp, the sound and the simulation.
+.SH ENVIRONMENT
+.TP
+.B FINSICAL_WEB_ROOT
+Serve the web app from this directory (the output of
+.BR "npm run build" )
+instead of
+.IR /usr/share/finsical/web .
+.TP
+.B GDK_BACKEND
+Finsical prefers X11 (XWayland on a Wayland desktop), where it can keep
+the tank above other windows, on every desktop and where you left it.
+Set
+.B GDK_BACKEND=wayland
+to run as a native Wayland client without those features.
+.SH FILES
+The directories follow the XDG base directory variables; the defaults
+are shown.
+.TP
+.I ~/.local/share/finsical/
+The tank, its fish, settings and imported add-ons (web storage).
+.TP
+.I ~/.cache/finsical/
+Web caches.
+.TP
+.I ~/.config/finsical/windows.json
+Window sizes and positions.
+.TP
+.I ~/.config/finsical/settings.json
+Float Above Other Windows and Show on All Desktops.
+.SH EXIT STATUS
+0 on a normal quit or a passing smoke test; 1 when Finsical cannot
+start (no display, missing libraries or web app) or a smoke test check
+fails.
+.SH BUGS
+Report bugs at https://github.com/L\-K\-M/Finsical/issues
+.SH SEE ALSO
+https://github.com/L\-K\-M/Finsical
