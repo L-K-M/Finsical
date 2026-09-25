@@ -17,6 +17,7 @@ import { isPack } from "../core/data/fsh.js";
 import { decodeDroppedPacks } from "./drop.js";
 import { decorFrame, decorPhase, decorPhaseFrac }
   from "../core/data/decor.js";
+import { decorDepth, drawOrder } from "../core/depth.js";
 import { bodySize, pickDrawableSheet }
   from "../core/data/swimsheet.js";
 import { fishScale } from "./artscale.js";
@@ -63,7 +64,8 @@ import { stateLabel } from "./overviewmodel.js";
 import { initCrt, sanitizeCrtConfig } from "./crt.js";
 import { bubbleOffset, bubblePops, drawAir, drawBubblePop,
          drawBubbles, drawFood, drawLight, drawMurk, drawRefraction,
-         drawSurface, feedPinch, sunFactor, tapBubble } from "./water.js";
+         drawSurface, drawTorch, feedPinch, keepTorch, sunFactor,
+         tapBubble, torchShows } from "./water.js";
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
   from "./surface.js";
 import {
@@ -352,6 +354,8 @@ function sanitizeSavedFish(f: Partial<Fish> & { x: number; y: number }):
   if (Number.isInteger(f.sheetIdx) && f.sheetIdx! >= 0)
     out.sheetIdx = f.sheetIdx!;
   if (typeof f.pack === "string") out.pack = f.pack;
+  if (typeof f.z === "number" && Number.isFinite(f.z))
+    out.z = Math.min(1, Math.max(0, f.z));
   const life = sanitizeLife(f.life);
   if (life) {
     out.life = life;
@@ -429,7 +433,7 @@ function tankSnapshot(): SavedTank {
     fish: sim.fish.filter((f) => f.state !== "dead").map((f) => ({
       id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
       heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
-      bandY: f.bandY, hunger: f.hunger, scale: f.scale,
+      bandY: f.bandY, z: f.z, hunger: f.hunger, scale: f.scale,
       ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
       ...(f.pack !== undefined ? { pack: f.pack } : {}),
       ...(f.life ? { life: f.life } : {}),
@@ -697,6 +701,12 @@ function conditionOf(f: Fish): { health?: number; sick?: number | null;
 // Tank coords of the last hover — the frame loop re-checks it so the
 // tip doesn't linger when the fish swims away from a parked cursor.
 let lastHover: { x: number; y: number } | null = null;
+/** Whether it is dark enough for a hovering pointer to light the
+ * torch (see render()). */
+const torchOn = (): boolean => torchShows(sim.light, nightFloor(lighting));
+/** Whether the last frame painted the torch, so leaving the tank
+ * repaints to put it out even if the light has changed since. */
+let torchLit = false;
 
 /** The hover tip for a tank point: the fish's name, or in the air
  * strip a hint that a click drops food there. fishToName already
@@ -731,6 +741,8 @@ canvas.addEventListener("pointermove", (e) => {
   if (e.pointerType === "touch") return; // no hover on touch
   mouseClient = lastClient;
   lastHover = p;
+  // The torch follows the pointer even while no tick runs (paused).
+  if (torchOn()) requestPaint();
   const tip = p && tipForPoint(p);
   if (!tip) { fishTip.style.display = "none"; return; }
   fishTip.textContent = tip;
@@ -752,6 +764,7 @@ canvas.addEventListener("pointerleave", (e) => {
   mouseClient = null;
   lastClient = null;
   lastHover = null;
+  if (torchLit) requestPaint(); // put the torch out, even while paused
   fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
   seePointer(null);
@@ -1051,12 +1064,13 @@ function applySceneryChoice(): void {
   }
   requestPaint();
 }
-// Decorations (plants/accessories) sit on the gravel between the backdrop
-// and the fish, all at the fish's art scale; the set is re-spaced across
-// the tank floor whenever one is added. Animated packs loop their frames
-// on the sim clock, each item from its own phase.
+// Decorations (plants/accessories) sit on the gravel at the fish's art
+// scale, each at a depth the fish sort among; the set is re-spaced
+// across the tank floor whenever one is added. Animated packs loop
+// their frames on the sim clock, each item from its own phase.
 const decors: { frames: HTMLCanvasElement[]; phase: number;
-                sway: number; pack: string; plant: boolean }[] = [];
+                sway: number; pack: string; plant: boolean;
+                depth: number }[] = [];
 function addDecor(images: Iterable<IndexedImage>, src: string,
                   plant: boolean): void {
   const frames = decorCanvases(images, TANK.height);
@@ -1065,8 +1079,29 @@ function addDecor(images: Iterable<IndexedImage>, src: string,
   // phase is an integer frame index — useless for sway, where a whole
   // cycle of phase looks identical on every plant. sway keeps the
   // fraction so each copy drifts on its own rhythm.
+  // Standalone packs carry no depth: seed one by the art's height, on
+  // its own hash so depth doesn't follow the sway phase.
+  const depth = decorDepth(frames[0]!.height, TANK.height,
+                           decorPhaseFrac(`${src}#depth`, copy));
   decors.push({ frames, phase: decorPhase(src, copy, frames.length),
-                sway: decorPhaseFrac(src, copy), pack: src, plant });
+                sway: decorPhaseFrac(src, copy), pack: src, plant, depth });
+  syncCover();
+}
+/** Where decor item `i` of `dn` draws a `w`-wide frame: centred on its
+ * anchor, pulled inside the glass. */
+function decorX(i: number, dn: number, w: number): number {
+  return Math.min(Math.max(Math.round(decorAnchor(i, dn) - w / 2), 0),
+                  Math.max(0, TANK.width - w));
+}
+/** Tell the fish where the decor stands, after any add or removal. */
+function syncCover(): void {
+  const dn = decors.length;
+  sim.cover = decors.map((d, i) => {
+    const f = d.frames[0]!;
+    const x0 = decorX(i, dn, f.width);
+    return { x0, x1: x0 + f.width,
+             top: TANK.height - DECOR_FLOOR - f.height, depth: d.depth };
+  });
 }
 /** The floor anchor a decor piece centers on — shared by the renderer
  * and the plant-bubble emitter so the two can't drift apart. */
@@ -1728,6 +1763,7 @@ function removeAddon(url: string, opts: { persist?: boolean } = {}): void {
       sim.removeFish(f.id);
   for (let i = decors.length - 1; i >= 0; i--)
     if (decors[i]!.pack === url) decors.splice(i, 1);
+  syncCover();
   gravelByPack.delete(url);
   backdropByPack.delete(url);
   // Fall back to the most recent remaining pack's art — Map order is
@@ -2274,13 +2310,15 @@ function takePicture(): void {
   out.height = TANK.height * 2;
   const c = out.getContext("2d")!;
   c.imageSmoothingEnabled = false;
-  // A paused canvas carries the scrim and the PAUSED label — repaint
-  // without them for the shot, then put the overlay back. Both
-  // renders run inside this task, so nothing flickers.
+  // A paused canvas carries the scrim and the PAUSED label, and a
+  // hovering pointer may light the torch — repaint without them for
+  // the shot, then put them back. Both renders run inside this task,
+  // so nothing flickers.
   const d = new Date();
-  if (paused) render(d, true);
+  const clean = paused || torchLit;
+  if (clean) render(d, "picture");
   c.drawImage(canvas, 0, 0, out.width, out.height);
-  if (paused) render(d);
+  if (clean) render(d);
   const pad = (n: number): string => String(n).padStart(2, "0");
   const name = `finsical-${d.getFullYear()}${pad(d.getMonth() + 1)}` +
     `${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}` +
@@ -3100,7 +3138,54 @@ function stirSurface(): void {
     disturbSurface(surface, f.x, sign * f.speed * WAKE_PUSH, 2);
   }
 }
-function render(now: Date, hidePauseOverlay = false): void {
+/** Depth of the mid-water layer: the light shafts, sinking food and
+ * the snail on the gravel. Tall back-row decor sits behind it and
+ * catches the light; the front rows cover the food. */
+const MID_DEPTH = 0.3;
+/** Decor item `i`: spread evenly across the floor, bottom planted in
+ * the gravel. Art keeps its authored width (no 160 px cap), so a wide
+ * piece is pulled inside the glass rather than hanging past it. */
+function drawDecor(i: number): void {
+  const dn = decors.length;
+  const { frames, phase, sway: swayPh } = decors[i]!;
+  const d = frames[decorFrame(sim.tickCount, frames.length, phase)]!;
+  const x = decorX(i, dn, d.width);
+  const y = TANK.height - DECOR_FLOOR - d.height;
+  if (waterMotion !== "animated") { ctx.drawImage(d, x, y); return; }
+  // Sway per horizontal band — offsets grow toward the tip, so the
+  // planted root stays glued while the top drifts. Runs on the sim
+  // clock like decor frames: a paused tank holds still. Each band
+  // clamps around the planted x, so in-glass pieces never overhang.
+  // Anchor the window at x: an oversized or out-of-bounds piece keeps
+  // its planted position instead of snapping to a glass edge.
+  const xmin = Math.min(x, 0);
+  const xmax = Math.max(x, TANK.width - d.width);
+  for (let b = 0; b < SWAY_BANDS; b++) {
+    const y0 = Math.floor(b * d.height / SWAY_BANDS);
+    const y1 = Math.floor((b + 1) * d.height / SWAY_BANDS);
+    if (y1 <= y0) continue;
+    const dx = swayOffset(sim.tickCount, swayPh,
+                          (y0 + y1) / 2 / d.height);
+    const bx = Math.min(Math.max(x + dx, xmin), xmax);
+    ctx.drawImage(d, 0, y0, d.width, y1 - y0,
+                  bx, y + y0, d.width, y1 - y0);
+  }
+}
+function drawMidWater(floor: number): void {
+  drawLight(ctx, sim.light, sim.tickCount, waterMotion, floor);
+
+  drawFood(ctx, sim.food);
+  // The snail crawls the gravel at mid depth, not over the water.
+  if (snail) {
+    const p = snailPose(snail, sim.tickCount, TANK.width);
+    if (p) drawSnail(p.x, p.paused, snail.dir);
+  }
+}
+/** Who a frame is for: the live screen, or a Take a Picture souvenir,
+ * which leaves out what only the viewer's pointer and the pause put
+ * there (the torch, the scrim). */
+type RenderTarget = "screen" | "picture";
+function render(now: Date, target: RenderTarget = "screen"): void {
   // The startup parade owns the canvas until it fades: black, desktop,
   // marching icons — then the tank draws normally under a fading boot
   // screen, so the crossfade needs no compositing machinery.
@@ -3125,50 +3210,16 @@ function render(now: Date, hidePauseOverlay = false): void {
     ctx.fillStyle = "#8a6d3b"; // gravel
     ctx.fillRect(0, TANK.height - BOTTOM_PAD, TANK.width, BOTTOM_PAD);
   }
-  // Decorations spread evenly across the floor, bottoms planted in gravel.
-  // Art keeps its authored width now (no 160 px cap), so a wide piece
-  // is pulled inside the glass rather than hanging past it.
-  const dn = decors.length;
-  const sway = waterMotion === "animated";
-  for (let i = 0; i < dn; i++) {
-    const { frames, phase, sway: swayPh } = decors[i]!;
-    const d = frames[decorFrame(sim.tickCount, frames.length, phase)]!;
-    const x = Math.min(Math.max(
-        Math.round(decorAnchor(i, dn) - d.width / 2), 0),
-      Math.max(0, TANK.width - d.width));
-    const y = TANK.height - DECOR_FLOOR - d.height;
-    if (!sway) { ctx.drawImage(d, x, y); continue; }
-    // Sway per horizontal band — offsets grow toward the tip, so the
-    // planted root stays glued while the top drifts. Runs on the sim
-    // clock like decor frames: a paused tank holds still. Each band
-    // clamps around the planted x, so in-glass pieces never overhang.
-    // Anchor the window at x: an oversized or out-of-bounds piece keeps
-    // its planted position instead of snapping to a glass edge.
-    const xmin = Math.min(x, 0);
-    const xmax = Math.max(x, TANK.width - d.width);
-    for (let b = 0; b < SWAY_BANDS; b++) {
-      const y0 = Math.floor(b * d.height / SWAY_BANDS);
-      const y1 = Math.floor((b + 1) * d.height / SWAY_BANDS);
-      if (y1 <= y0) continue;
-      const dx = swayOffset(sim.tickCount, swayPh,
-                            (y0 + y1) / 2 / d.height);
-      const bx = Math.min(Math.max(x + dx, xmin), xmax);
-      ctx.drawImage(d, 0, y0, d.width, y1 - y0,
-                    bx, y + y0, d.width, y1 - y0);
-    }
-  }
-
+  // Decor, fish and the mid-water layer (light, food, snail) draw back
+  // to front by depth, so fish pass behind and between the decor.
   const floor = nightFloor(lighting);
-  drawLight(ctx, sim.light, sim.tickCount, waterMotion, floor);
-
-  drawFood(ctx, sim.food);
-  // The snail crawls the gravel behind the fish — under them like the
-  // decor, not floating over the water.
-  if (snail) {
-    const p = snailPose(snail, sim.tickCount, TANK.width);
-    if (p) drawSnail(p.x, p.paused, snail.dir);
+  const order = drawOrder(decors.map((d) => d.depth),
+                          sim.fish.map((f) => f.z), MID_DEPTH);
+  for (const l of order) {
+    if (l.kind === "decor") drawDecor(l.i);
+    else if (l.kind === "fish") drawFish(sim.fish[l.i]!);
+    else drawMidWater(floor);
   }
-  for (const f of sim.fish) drawFish(f);
 
   // The Overview's pick spotlights its fish with a marching-ants
   // marquee — the Finder's own selection cue. Ants march on the sim
@@ -3243,7 +3294,14 @@ function render(now: Date, hidePauseOverlay = false): void {
   // Fouled water murks the whole scene.
   drawMurk(ctx, sim.waterQuality, t);
 
+  // A mouse or pen hovering the dark tank lights it like a torch, in
+  // the colors the scene has before the night veil goes on.
+  const torch = target === "screen" && lastHover && torchOn()
+    ? lastHover : null;
+  torchLit = torch !== null;
+  if (torch) keepTorch(ctx, torch.x, torch.y, 1 - sun);
   drawNight(now);
+  if (torch) drawTorch(ctx);
 
   // The cat presses its paw to the outside of the glass — painted after
   // the murk and night tints, which can't dim what's on the viewer's
@@ -3253,7 +3311,7 @@ function render(now: Date, hidePauseOverlay = false): void {
     if (pose) drawPaw(pose.x, pose.y);
   }
 
-  if (paused && !hidePauseOverlay) {
+  if (paused && target === "screen") {
     ctx.save();
     ctx.fillStyle = "rgba(4,8,24,0.35)";
     ctx.fillRect(0, 0, TANK.width, TANK.height);
