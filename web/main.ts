@@ -2503,7 +2503,10 @@ function dropSay(text: string): void {
   dropMsg.textContent = text;
   dropMsg.hidden = false;
   clearTimeout(dropMsgTimer);
-  dropMsgTimer = setTimeout(() => { dropMsg.hidden = true; }, 4000);
+  dropMsgTimer = setTimeout(() => {
+    dropMsg.hidden = true;
+    dropMsg.textContent = ""; // invisible, so stale text leaves the tree
+  }, 4000);
 }
 window.addEventListener("drop", (e) => {
   e.preventDefault();
@@ -2706,7 +2709,7 @@ window.addEventListener("drop", (e) => {
       console.warn("drop: no manifest.json, pack file, or 'snd ' found");
   })().catch((e) => {
     console.warn("drop failed:", e);
-    dropSay("Couldn't finish the drop — check the console for details.");
+    dropSay("Couldn't finish the drop — the file may be damaged or unsupported.");
   });
 });
 
