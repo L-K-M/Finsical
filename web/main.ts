@@ -1971,6 +1971,9 @@ catch { /* storage unavailable — default off */ }
 // #screenback paints unlit-glass black into the aperture behind the
 // tank; the native mask refills the same aperture so the window keeps
 // a screen-shaped silhouette instead of a see-through hole.
+// Last --glare value written to the shell — setProperty every frame
+// would re-style the masked image for nothing.
+let lastGlare = -1;
 const machineEl = document.getElementById("machine")!;
 const shellEl = document.getElementById("shell")!;
 const screenEl = document.getElementById("screen")!;
@@ -3113,6 +3116,16 @@ function render(): void {
   drawRefraction(ctx, t);
   // The lamp lights the air as brightly as the daylight in the water.
   const sun = sunFactor(sim.light, floor);
+  // The glare baked into the iMac renders rides over the tank — dim
+  // it with the room light so fish stay readable at night. Only on
+  // machines that ask (glassR); others' reflections stay put.
+  if (machine.glassR !== undefined) {
+    const glare = 0.25 + 0.35 * sun;
+    if (Math.abs(glare - lastGlare) >= 0.02) {
+      lastGlare = glare;
+      shellEl.style.setProperty("--glare", String(glare));
+    }
+  }
   drawAir(ctx, sun, waterline);
   // The waterline divides feeding from tapping, so it brightens while
   // a click would feed. Under the murk and night overlays, so it dims
