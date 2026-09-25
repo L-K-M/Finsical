@@ -8,6 +8,10 @@
   tank fails or you stop it, the next launch offers the rest, and each
   launch after that does too until the rest arrives or you choose Not
   Now or Stop.
+- A tank with any add-on installed comes back on launch again. 0.4.0
+  read such a save as damaged and started a fresh default tank in its
+  place, which then saved over it. A save that can't be fully read is
+  also kept aside as `finsical:tank.unreadable` rather than lost.
 - Tank Stats puts its readings on three Mac OS 8 tabs, General, Water
   and Keeping, so the window is little more than half as tall. It
   reopens on the tab you used last. The first time it opens after this
@@ -38,6 +42,11 @@
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.
+- At night, the pointer works as a torch. When you hover over the dark
+  tank with a mouse or pen, a warm, soft circle of light shows the
+  fish and plants under it in their daytime colors while the rest of
+  the tank stays moonlit. The beam widens as the night deepens and
+  follows the pointer even while the tank is paused.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the
