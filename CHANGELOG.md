@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- If you close Finsical before answering the offer to stock your tank,
+  the next launch asks again. The offer used to be lost for good, and
+  the game's sounds then downloaded without asking. If stocking the
+  tank fails or you stop it, the next launch offers the rest, and each
+  launch after that does too until the rest arrives or you choose Not
+  Now or Stop.
 - With the CRT effect on, clicks, hovering and feeding land where the
   curved, shifted picture shows the tank. They used to follow the flat
   tank underneath, so a click could miss by several pixels, and with a

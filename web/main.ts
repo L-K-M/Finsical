@@ -30,7 +30,7 @@ import type { Ripple, Splash } from "./fx.js";
 import { pushButton } from "osmium-ui";
 import { alertOpen, showAlert } from "./alert.js";
 import { recentTaps, shouldScold } from "./scold.js";
-import { backfillStarterSounds, showWelcome, wantsWelcome }
+import { backfillStarterSounds, launchOffer, showWelcome }
   from "./welcome.js";
 import { clampDecorCopies, decorCopyRoom, fetchAddon, installProblem,
          mountImportPanel, orphanedSounds, recordAddon,
@@ -377,10 +377,20 @@ const roster = (saved?.fish ?? [])
 // every fish removed); only a missing or pre-roster save gets starters.
 const keepEmpty = saved?.v === 2 && saved.fish.length === 0;
 // A fresh tank's stand-ins, which the starter set replaces when the
-// user accepts it on first launch (web/welcome.ts).
+// user accepts it on first launch (web/welcome.ts). A saved tank still
+// has them when its first session ended before the welcome was
+// answered: fish with no species and no pack.
 const placeholderIds = new Set<number>();
-if (roster.length || keepEmpty) for (const f of roster) sim.addFish(f);
-else for (const f of DEFAULT_FISH) placeholderIds.add(sim.addFish(f).id);
+if (roster.length || keepEmpty) {
+  for (const f of roster) {
+    const id = sim.addFish(f).id;
+    if (!f.species && f.pack === undefined) placeholderIds.add(id);
+  }
+} else for (const f of DEFAULT_FISH) placeholderIds.add(sim.addFish(f).id);
+// Nothing but stand-ins, and at least one (an emptied tank isn't new):
+// the welcome is due unless it was answered.
+const pristine = placeholderIds.size > 0 &&
+  placeholderIds.size === sim.fish.length && installedAddons.length === 0;
 
 // ---- life clock and notices --------------------------------------------
 // Fish that die, fall sick or recover are announced like the original's
@@ -2626,8 +2636,8 @@ let restoreFailed: Importable[] = [];
 // Sound records the launch restored from storage (dropped files and
 // installed sound add-ons alike).
 let storedSounds = 0;
-// Decided before the restore chain can save a tank.
-const welcomePending = wantsWelcome(saved !== null);
+// The welcome or its retry, decided from the tank as loaded.
+const offer = launchOffer(pristine);
 void (async () => {
   const pack = await loadAzpack(packFetch);
   const idx = usePack(pack, packFetch);
@@ -2673,8 +2683,9 @@ void (async () => {
     // to restore leaves whatever the chain picked, until a retry.
     applySceneryChoice();
     remapSheetIdx(); reconcileFish();
+    // An offer still due brings the sounds with the rest.
     backfillStarterSounds({
-      welcomePending,
+      welcomePending: offer !== null,
       hasSounds: storedSounds > 0 ||
         installedAddons.some((a) => a.section === "sounds"),
       install: (it) => installAddon(it, false),
@@ -2696,9 +2707,10 @@ void (async () => {
 // First launch: offer to stock the tank (web/welcome.ts). Accepting
 // installs through the same path as the Import Add-ons window, and the
 // stand-ins leave once a real fish is in; declining keeps them.
-if (welcomePending) {
-  showWelcome({
+if (offer) {
+  showWelcome(offer, {
     install: (it) => installAddon(it, false),
+    installed: stillListed,
     fishArrived: removePlaceholders,
   });
 }

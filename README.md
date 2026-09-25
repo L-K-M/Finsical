@@ -51,7 +51,9 @@ stock it with a starter set of Aquazone fish, a gravel, a plant, a
 background and the game's sound effects from the Internet Archive
 (about 2 MB). Choose **Not Now**
 to keep the stand-ins; you can add the same things later from Import
-Add-ons.
+Add-ons. If you close Finsical before answering, it asks again next
+time. If stocking the tank doesn't finish, later launches offer the
+rest until it arrives or you choose **Not Now** or **Stop**.
 
 ## Using Finsical
 
@@ -215,8 +217,8 @@ Everything stays on your Mac:
   (`finsical:waterChange`), which tab owns the sim
   (`finsical:tank-owner`), the Auto Feed, tap-the-glass sign and
   startup-parade switches (`finsical:autofeed`, `finsical:scoldSign`,
-  `finsical:boot`), whether the first-run offer and its sound-effects
-  download were answered (`finsical:welcomed`,
+  `finsical:boot`), how far the first-run offer got and
+  whether its sound effects were handled (`finsical:welcomed`,
   `finsical:starterSounds`), and the last Preferences pane and
   add-on section (`finsical:prefsPane`, `finsical:addonSection`).
 - **IndexedDB** database `finsical`: downloaded add-on archives,
