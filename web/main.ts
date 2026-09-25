@@ -2494,6 +2494,8 @@ window.addEventListener("contextmenu", (e) => e.preventDefault());
 // itself, the way the "Drop to add" cue speaks from the same place.
 const dropMsg = document.createElement("div");
 dropMsg.id = "dropmsg";
+// A polite live region — the result reaches screen readers too.
+dropMsg.setAttribute("role", "status");
 dropMsg.hidden = true;
 document.getElementById("screen")!.appendChild(dropMsg);
 let dropMsgTimer: ReturnType<typeof setTimeout> | undefined;
@@ -2694,13 +2696,18 @@ window.addEventListener("drop", (e) => {
       notes.push(imported === 1 ? `Added ${packName}.`
                                 : `Added ${imported} add-ons.`);
     if (notes.length) dropSay(notes.join(" "));
-    else if (!recs.length)
+    // Sounds push a note on either outcome, so nothing said yet means
+    // the drop had nothing usable at all.
+    else
       dropSay(`Finsical can't use ${flat.size === 1 ? "that file" :
         "those files"} — drop an AquaZone .fsh or .azpack, ` +
         "or a sound file.");
     if (!imported && !recs.length)
       console.warn("drop: no manifest.json, pack file, or 'snd ' found");
-  })().catch((e) => console.warn("azpack import failed:", e));
+  })().catch((e) => {
+    console.warn("drop failed:", e);
+    dropSay("Couldn't finish the drop — check the console for details.");
+  });
 });
 
 // Aquazone fish art is stored vertical (profiles in groups 0 and
