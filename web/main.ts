@@ -1070,6 +1070,9 @@ const entryKey = (url: string, entry: string): string =>
 // Reverse of sheetByPack — which pack owns a slot, for migrating
 // species-bound fish onto the URL binding of the sheet they render.
 const packBySheet = new Map<number, string>();
+// URLs installed whole — their slots hold every entry's art, the only
+// pack-level slots an entry-scoped re-add may reuse.
+const wholePackUrls = new Set<string>();
 function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
                       url: string, section: string, live: boolean,
                       care?: SpeciesCare | null, entry?: string): void {
@@ -1078,7 +1081,18 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
   // nobody chose.
   if (section !== "fish") return;
   if (care) careByPack.set(url, care);
-  const idx = usePack({ sheets });
+  // A restore retry or an Add Again re-registers the same art — reuse
+  // the pack's existing slot instead of leaking a fishSheets entry
+  // (slots are kept forever to preserve sheetIdx bindings). An entry
+  // may also reuse the URL's whole-pack slot, which holds every
+  // entry's art — but never another entry's slot, and a whole-pack
+  // install must not collapse onto an entry's partial art either.
+  const wholeSlot = wholePackUrls.has(url) ? sheetByPack.get(url)
+                                           : undefined;
+  const known = (entry !== undefined
+                   ? sheetByEntry.get(entryKey(url, entry))
+                   : undefined) ?? wholeSlot;
+  const idx = known ?? usePack({ sheets });
   if (idx < 0) {
     // A sheet that can't draw is not an install — usePack refused it.
     console.info(`archive.org: ${section} ${name} has no usable art`);
@@ -1087,11 +1101,18 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
   sheetBySpecies.set(name, idx);
   if (entry !== undefined) sheetByEntry.set(entryKey(url, entry), idx);
   // A reinstall can rebind the url to a new slot — drop the old
-  // reverse entry so the two maps stay exact inverses.
-  const prior = sheetByPack.get(url);
-  if (prior !== undefined && prior !== idx) packBySheet.delete(prior);
-  sheetByPack.set(url, idx);
+  // reverse entry so each slot names at most one pack. Once a
+  // whole-pack slot exists it owns the URL binding: an entry retry
+  // must not repoint it at partial art. packBySheet may then hold
+  // several slots for the URL — every slot rendering the pack's art
+  // should map back to it so species-bound fish can migrate.
+  if (entry === undefined || !wholePackUrls.has(url)) {
+    const prior = sheetByPack.get(url);
+    if (prior !== undefined && prior !== idx) packBySheet.delete(prior);
+    sheetByPack.set(url, idx);
+  }
   packBySheet.set(idx, url);
+  if (entry === undefined) wholePackUrls.add(url);
   // A live fish-pack install adds a real fish; restores replay sheets
   // only — the saved roster already carries those fish.
   if (live) {
@@ -1464,11 +1485,14 @@ function addonThumb(url: string): string | null {
 const pendingThumbs = new Set<string>();
 function serveThumbs(keys: Iterable<unknown>): void {
   const thumbs: Record<string, string> = {};
+  // One key→fish map per call — each f: lookup used to scan the roster
+  // and rebuild the key string, O(keys × fish) per wantThumbs push.
+  const fishByKey = new Map(sim.fish.map((f) => [fishThumbKey(f), f]));
   for (const k of keys) {
     if (typeof k !== "string") continue;
     const data = k.startsWith("f:")
       ? (() => {
-          const f = sim.fish.find((x) => fishThumbKey(x) === k);
+          const f = fishByKey.get(k);
           return f ? fishThumb(f) : null;
         })()
       : k.startsWith("a:") ? addonThumb(k.slice(2)) : null;
@@ -1479,7 +1503,7 @@ function serveThumbs(keys: Iterable<unknown>): void {
       // with no sheet yet (placeholders) stay pending on purpose:
       // a reinstall re-serves them on the next asset import.
       const alive = k.startsWith("f:")
-        ? sim.fish.some((x) => fishThumbKey(x) === k)
+        ? fishByKey.has(k)
         : k.startsWith("a:") &&
           installedAddons.some((a) => a.url === k.slice(2));
       if (alive) pendingThumbs.add(k); else pendingThumbs.delete(k);
@@ -1649,12 +1673,13 @@ function removeAddon(url: string, opts: { persist?: boolean } = {}): void {
   for (const s of orphaned) sheetBySpecies.delete(s);
   for (const k of [...sheetByEntry.keys()])
     if (k.startsWith(`${url}\n`)) sheetByEntry.delete(k);
-  const slot = sheetByPack.get(url);
-  // Only delete the reverse entry it still owns — a rebind may have
-  // handed the slot to a different pack since.
-  if (slot !== undefined && packBySheet.get(slot) === url)
-    packBySheet.delete(slot);
+  // Drop every reverse entry still naming this pack — whole-pack and
+  // entry slots alike. A slot a rebind handed to another pack maps to
+  // that URL instead and is left alone.
+  for (const [k, v] of packBySheet)
+    if (v === url) packBySheet.delete(k);
   sheetByPack.delete(url);
+  wholePackUrls.delete(url);
   // A dropped pack's stored bytes are the only copy — uninstall
   // deletes them (archive packs keep their cache entries).
   if (isLocalPack(url)) void packDelete(url)
