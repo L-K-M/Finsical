@@ -54,8 +54,9 @@ describe("feedPinch", () => {
     }
   });
 
-  it("spreads a full pinch over at most three centers", () => {
+  it("spreads a full pinch over two or three centers", () => {
     const rand = makeRng(7);
+    let wide = false;
     for (let i = 0; i < 500; i++) {
       const dxs = feedPinch(rand, PINCH_MAX)
         .map((q) => q.dx).sort((a, b) => a - b);
@@ -65,7 +66,21 @@ describe("feedPinch", () => {
       for (let j = 1; j < dxs.length; j++)
         if (dxs[j]! - dxs[j - 1]! > PINCH_SPREAD * 2) gaps++;
       expect(gaps).toBeLessThanOrEqual(2);
+      if (gaps > 0) wide = true;
     }
+    // A single-center pinch can never split — this fails if the
+    // centers stop being spread (the behavior this PR adds).
+    expect(wide).toBe(true);
+  });
+
+  it("drops a small pinch where it was fed", () => {
+    const rand = makeRng(7);
+    // One or two pellets share a single center: the drop x itself —
+    // they must not wander to a center offset meant for big pinches.
+    for (const n of [1, 2])
+      for (let i = 0; i < 200; i++)
+        for (const q of feedPinch(rand, n))
+          expect(Math.abs(q.dx)).toBeLessThanOrEqual(PINCH_SPREAD);
   });
 
   it("drops one pellet per hungry fish, at least one, at most a few", () => {
