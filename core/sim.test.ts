@@ -1104,6 +1104,22 @@ describe("Sim", () => {
     expect(f.state).not.toBe("seek");
   });
 
+  it("refuses food at exactly QUALITY_SEEK, not one step above", () => {
+    // statsmodel.ts's advice gates mirror this edge — at the boundary
+    // the fish won't take a pellet, so the advice can't invite one.
+    const sim = new Sim({ width: 300, height: 100 }, 11);
+    const f = sim.addFish({ x: 50, y: 50, facing: 1, heading: 0,
+                          hunger: 0.9 });
+    sim.dropFood(200);
+    sim.waterQuality = QUALITY_SEEK;
+    sim.tick();
+    expect(f.state).not.toBe("seek");
+    expect(sim.isBegging(f)).toBe(false);
+    sim.waterQuality = QUALITY_SEEK + 0.01;
+    sim.tick();
+    expect(f.state).toBe("seek");
+  });
+
   it("stops seeking once another fish ate the pellet", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     // b ticks first, so it sets off for the pellet before a eats it.

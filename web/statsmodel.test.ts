@@ -78,11 +78,13 @@ describe("deriveStats", () => {
                             fish: [{ hunger: 0.9, state: "seek" }] });
     expect(s.advice.join(" ")).toMatch(/Stop feeding/);
     expect(s.advice.join(" ")).not.toMatch(/hungry|rotting/);
-    // One step above the boundary the feeding advice comes back.
+    // One step above the boundary the feeding and portion hints both
+    // come back — the shared gate re-enables every check at once.
     const ok = deriveStats({ ...base,
-      waterQuality: QUALITY_SEEK + 0.01,
+      waterQuality: QUALITY_SEEK + 0.01, foodSettled: 2,
       fish: [{ hunger: 0.9, state: "seek" }] });
     expect(ok.advice.join(" ")).toMatch(/hungry/);
+    expect(ok.advice.join(" ")).toMatch(/rotting/);
   });
 
   it("advises feeding when the tank is hungry", () => {

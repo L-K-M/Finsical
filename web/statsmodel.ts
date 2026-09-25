@@ -201,21 +201,22 @@ function advice(st: TankStats, water: number): string[] {
     if (w.filterDirt > 80)
       out.push("The filter is clogging — clean it, a little at a time.");
   }
-  // The sim refuses food at waterQuality <= QUALITY_SEEK — the advice
-  // gates match exactly, so the boundary can't say "feed" where the
-  // fish won't eat.
-  if (water <= QUALITY_SEEK) {
+  // The sim refuses food at waterQuality <= QUALITY_SEEK — one shared
+  // gate keeps the boundary from drifting between the three checks,
+  // so the advice can't say "feed" where the fish won't eat.
+  const canFeed = water > QUALITY_SEEK;
+  if (!canFeed) {
     out.push("Water is foul — fish won't eat until it clears. " +
              "Stop feeding and change some water, or let the filter " +
              "catch up.");
   }
   // Foul water already says "stop feeding" — the portion-size hint
   // would contradict it, so it only runs once water is recovering.
-  if (st.foodSettled > 0 && water > QUALITY_SEEK && water < 0.7) {
+  if (st.foodSettled > 0 && canFeed && water < 0.7) {
     out.push("Uneaten food is rotting on the gravel — " +
              "feed a little less at a time.");
   }
-  if (water > QUALITY_SEEK) {
+  if (canFeed) {
     if (st.avgHunger !== null && st.avgHunger >= HUNGER_FEED) {
       out.push("Fish are hungry — press F, or click above the " +
                "waterline to drop food.");
