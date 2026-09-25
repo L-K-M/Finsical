@@ -627,6 +627,7 @@ canvas.addEventListener("pointerdown", (e) => {
       // The same pop ring the waterline path draws — a tap-pop reads
       // as a pop, not a vanish.
       pops.push({ x: b!.x + bubbleOffset(b!.x, b!.y), y: b!.y, age: 0 });
+      audio.pop(panFor(b!.x, TANK.width));
     }
     ripples.push({ x: p.x, y: p.y, age: 0 });
     // The glass knock slops the water a little, on the tapped side.

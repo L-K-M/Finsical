@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A bubble you pop by tapping it now bursts with a soft plip from its
+  side of the tank, or with a sound of your own that has "pop" in its
+  name. The Bubble sounds switch in Preferences turns it off.
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.
