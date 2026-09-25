@@ -4,7 +4,7 @@ import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
 import { demoLight, DUSK_LIGHT } from "./light.js";
 import { Aquarium } from "./aquarium/aquarium.js";
 import type { Resident } from "./aquarium/aquarium.js";
-import { hungerOf, newLife, stomachSize, vigorOf }
+import { hungerOf, newLife, randInt, stomachSize, vigorOf }
   from "./aquarium/life.js";
 import type { FishLife } from "./aquarium/life.js";
 import { DEFAULT_CARE } from "./data/species.js";
@@ -301,13 +301,18 @@ export const DAY_TICKS = 24000;
  * fluttering between states. Exported for the sleep test. */
 export const SLEEP_LIGHT = DUSK_LIGHT;
 export const WAKE_LIGHT = 0.6;
-/** Two healthy, well-fed, grown fish of a species occasionally have a
- * fry — ~one birth per 10 min in a thriving tank. FRY_SCALE is the
- * juvenile minimum addFish clamps to, so a newborn reads visibly
- * smaller than its parents and grows up on its meals. */
-const BIRTH_HUNGER = 0.3;
-const BIRTH_SCALE = 0.9;
-const BIRTH_CHANCE = 1 / 18000;
+/** Breeding on tank time, as the original's Start_Coupling paces it:
+ * once a tank day each species with a pair of breeding age rolls
+ * BREED_ODDS in 100 to couple, and a coupling takes 50% of the time,
+ * so a thriving pair has young about every 13 tank days. Breeding age
+ * is the species' FsTI breedAge; the pair must be healthy (the
+ * original: health at least 0.75 of its maximum) and not sick.
+ * FRY_SCALE is the juvenile minimum addFish clamps to, so a newborn
+ * reads visibly smaller than its parents and grows up on its meals. */
+const MINUTES_PER_DAY = 24 * 60;
+const BREED_ODDS = 15;
+const CONCEIVE_ODDS = 50;
+const BREED_HEALTH = 75;
 const FRY_SCALE = SPAWN_SCALE_MIN;
 
 /** Pitch off the facing axis, limited to MAX_PITCH either way. */
@@ -387,8 +392,12 @@ export class Sim {
   advanceLife(realSeconds: number): void {
     const a = this.aquarium;
     a.lightOn = this.light > SLEEP_LIGHT;
+    const day = Math.floor(a.minutes / MINUTES_PER_DAY);
     a.advance(realSeconds, this.residents());
     this.syncLife();
+    // A tank day turned over (once, however many passed while the tank
+    // was closed: a catch-up brings at most one litter).
+    if (Math.floor(a.minutes / MINUTES_PER_DAY) > day) this.maybeBirth();
   }
 
   /** The fish as the aquarium model sees them. */
@@ -609,7 +618,6 @@ export class Sim {
       }
     }
     for (const f of this.fish) this.tickFish(f);
-    this.maybeBirth();
     // Panic propagates: a freshly darting fish startles close
     // neighbors — fish-on-fish reaction on the same distance falloff.
     for (const a of this.fish) {
@@ -1172,22 +1180,23 @@ export class Sim {
              y1: Math.max(y0, h - Math.max(BOTTOM_PAD, ky)) };
   }
 
-  /** A thriving pair occasionally produces a fry — the original's
-   * quiet reward for a well-kept tank. One roll per eligible species
-   * per tick keeps a crowded healthy tank from baby-booming. */
+  /** A new tank day: each species with a healthy pair of breeding age
+   * may have a fry (Start_Coupling, End_Coupling). */
   private maybeBirth(): void {
-    if (this.fish.length >= FISH_CAP) return;
     const seen = new Set<string>();
     const parents = new Map<string, Fish>();
     for (const f of this.fish) {
-      if (!f.species || f.state === "dead" || f.life?.sick != null ||
-          f.hunger > BIRTH_HUNGER ||
-          f.scale < BIRTH_SCALE) continue;
+      const l = f.life;
+      if (!f.species || f.state === "dead" || !l || l.sick != null ||
+          l.health < BREED_HEALTH ||
+          l.age < this.careOf(f).breedAge * MINUTES_PER_DAY) continue;
       if (seen.has(f.species)) parents.set(f.species, f);
       seen.add(f.species);
     }
     for (const [species, parent] of parents) {
-      if (this.rand() >= BIRTH_CHANCE) continue;
+      if (this.fish.length >= FISH_CAP) return;
+      if (randInt(this.rand, 1, 100) > BREED_ODDS ||
+          randInt(this.rand, 1, 100) > CONCEIVE_ODDS) continue;
       const fry = this.addFish({
         species, x: parent.x,
         y: Math.min(parent.y + 10, this.tank.height - BOTTOM_PAD - 4),
@@ -1197,8 +1206,14 @@ export class Sim {
         ...(parent.sheetIdx !== undefined ? { sheetIdx: parent.sheetIdx } : {}),
         ...(parent.pack !== undefined ? { pack: parent.pack } : {}),
       });
+      // Born today: a fry starts its life at age 0, not as the young
+      // adult a newly bought fish arrives as.
+      const care = this.careOf(fry);
+      const life = newLife(this.rand, care, 0);
+      life.stomach = stomachSize(this.weightOf(fry));
+      life.ate = Math.round(life.stomach * 0.7);
+      fry.life = life;
       this.events.push({ type: "birth", fish: fry });
-      return; // at most one birth per tick
     }
   }
 

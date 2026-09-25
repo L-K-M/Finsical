@@ -7,6 +7,7 @@ import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
   from "./tuning.js";
 import { CLOCK_NIGHT_LIGHT } from "./light.js";
 import { pitch } from "./pose.js";
+import { DEFAULT_CARE } from "./data/species.js";
 
 // States a fish may be in when it's not seeking food.
 const IDLE_STATES = ["drift", "turn"];
@@ -1196,19 +1197,26 @@ describe("lifecycle", () => {
     expect(f.state).not.toBe("startle");
   });
 
-  it("a thriving pair occasionally has a fry", () => {
+  /** Two guppies of breeding age and full health. */
+  function breedingPair(sim: Sim): void {
+    for (const x of [100, 120]) {
+      const f = sim.addFish({ x, y: 100, species: "guppy", hunger: 0.1,
+                              scale: 1, pack: "p" });
+      sim.residents(); // creates the fish's life
+      f.life!.age = DEFAULT_CARE.breedAge * 1440;
+      f.life!.health = 100;
+    }
+  }
+
+  it("a thriving pair has a fry every couple of weeks of tank time", () => {
     const sim = new Sim({ width: 320, height: 200 }, 42);
-    sim.addFish({ x: 100, y: 100, species: "guppy", hunger: 0.1,
-                  scale: 1, pack: "p" });
-    sim.addFish({ x: 120, y: 110, species: "guppy", hunger: 0.1,
-                  scale: 1, pack: "p" });
-    // The window is 10x the mean roll period: a shifted rand() stream
-    // (any feature change consuming draws) can't flake this test.
-    let fry = 0;
-    for (let i = 0; i < 180000 && !fry; i++) {
-      // Keep the parents thriving: birth rolls are per-tick.
-      for (const f of sim.fish) f.hunger = 0.1;
-      sim.tick();
+    breedingPair(sim);
+    let days = 0, fry = 0;
+    // One tank day at a time; food keeps the parents thriving.
+    for (; days < 200 && !fry; days++) {
+      for (const f of sim.fish) f.life!.ate = f.life!.stomach;
+      sim.advanceLife(24 * 3600);
+      for (const f of sim.fish.slice(0, 2)) f.life!.health = 100;
       fry = sim.events.filter((e) => e.type === "birth").length;
       sim.events.length = 0;
     }
@@ -1218,16 +1226,38 @@ describe("lifecycle", () => {
     expect(baby.species).toBe("guppy");
     expect(baby.scale).toBeLessThan(1); // visibly a juvenile
     expect(baby.pack).toBe("p");
+    expect(baby.life!.age).toBe(0);
+  });
+
+  it("never breeds on the swim clock, however long the tank is watched",
+     () => {
+    const sim = new Sim({ width: 320, height: 200 }, 42);
+    breedingPair(sim);
+    // An hour of ticks within one tank day.
+    for (let i = 0; i < 30 * 3600; i++) sim.tick();
+    sim.advanceLife(3600);
+    expect(sim.events.some((e) => e.type === "birth")).toBe(false);
+  });
+
+  it("fish below breeding age don't breed", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 42);
+    breedingPair(sim);
+    for (const f of sim.fish) f.life!.age = 0;
+    for (let d = 0; d < 60; d++) sim.advanceLife(24 * 3600);
+    expect(sim.events.some((e) => e.type === "birth")).toBe(false);
   });
 
   it("no births in a full tank", () => {
     const sim = new Sim({ width: 320, height: 200 }, 42);
-    for (let i = 0; i < 24; i++)
-      sim.addFish({ x: 50 + i, y: 100, species: "guppy", hunger: 0.1,
-                    scale: 1 });
-    for (let i = 0; i < 2000; i++) {
-      for (const f of sim.fish) f.hunger = 0.1;
-      sim.tick();
+    for (let i = 0; i < 24; i++) {
+      const f = sim.addFish({ x: 50 + i, y: 100, species: "guppy",
+                              hunger: 0.1, scale: 1 });
+      sim.residents();
+      f.life!.age = DEFAULT_CARE.breedAge * 1440;
+    }
+    for (let d = 0; d < 60; d++) {
+      for (const f of sim.fish) f.life!.ate = f.life!.stomach;
+      sim.advanceLife(24 * 3600);
     }
     expect(sim.fish.length).toBe(24);
     expect(sim.events.every((e) => e.type !== "birth")).toBe(true);

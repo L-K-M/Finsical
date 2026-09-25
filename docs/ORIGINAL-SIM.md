@@ -152,6 +152,13 @@ truncates to zero.
 - **New tanks start with aged water** (no chlorine), so a first tank
   doesn't poison its fish; water changes bring fresh chlorine as in the
   original.
-- **Not yet reimplemented:** breeding (courtship, eggs, pregnancy,
-  fry, genetics), fighting, the auto feeder, sickness pictures and the
-  Mekasia story mail.
+- **Breeding is paced, not modelled.** The original's Start_Coupling
+  gives each female one try a tank day once she is breedAge days old:
+  15 in 100 to couple, then 50% to conceive, so a healthy pair has
+  young about every 13 tank days, after a gestation or egg time.
+  Finsical rolls the same odds once a tank day for each species with a
+  healthy pair of breeding age, and the fry arrives at once: fish have
+  no sex, and there are no couplings, eggs or pregnancies yet.
+- **Not yet reimplemented:** the rest of breeding (courtship, eggs,
+  pregnancy, genetics), fighting, the auto feeder, sickness pictures
+  and the Mekasia story mail.
