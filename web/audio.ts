@@ -46,6 +46,9 @@ export function sanitizeSoundConfig(raw: unknown): SoundConfig {
   // a second time or reinterpreted on a guess.
   if ((r.v === undefined || r.v === 1) && hadVolume)
     c.volume = Math.sqrt(c.volume);
+  // A newer marker than we know survives the round-trip, so a config
+  // written by a future build keeps its schema stamp.
+  if (typeof r.v === "number" && r.v > SOUND_DEFAULTS.v) c.v = r.v;
   for (const k of ["muted", "bubbles", "ambient"] as const) {
     const v = r[k];
     if (typeof v === "boolean") c[k] = v;

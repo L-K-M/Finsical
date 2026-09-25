@@ -908,6 +908,10 @@ describe("sanitizeSoundConfig", () => {
     for (const v of [2, 3, "2", null])
       expect(sanitizeSoundConfig({ volume: 0.49, v }).volume)
         .toBe(0.49);
+    // A numeric marker newer than this build survives the round-trip;
+    // string/null markers normalize to the current schema.
+    expect(sanitizeSoundConfig({ volume: 0.49, v: 3 }).v).toBe(3);
+    expect(sanitizeSoundConfig({ volume: 0.49, v: "2" }).v).toBe(2);
   });
 
   it("round-trips a full config as a copy", () => {
