@@ -302,7 +302,7 @@ function describe(spec: SliderSpec | LightSpec | SoundItem | null,
       valueText: (spec.fmt ?? pct)(cfg[spec.key]),
       blurb: spec.blurb,
       offHint: p.offHint,
-      crtOn: onBox.checked,
+      crtOn: onBox.checked && crtAvail,
     });
     if (c.label === "") descEl.textContent = c.tail;
     else descEl.append(el("span", "osm-label", c.label), c.tail);
@@ -572,14 +572,18 @@ syncControls();
 // The sliders only act through the CRT effect: they dim while it's off,
 // the way Mac OS 8 dims controls that depend on an off switch.
 function syncEnabled(): void {
-  for (const input of sliders.values()) setEnabled(input, onBox.checked);
-  for (const btn of presetBtns) btn.disabled = !onBox.checked;
+  // A stored "on" can echo back while the effect can't run (WebGL
+  // gone): the box stays checked as a kept setting, but nothing that
+  // acts through the tube may come live.
+  const live = crtAvail && onBox.checked;
+  for (const input of sliders.values()) setEnabled(input, live);
+  for (const btn of presetBtns) btn.disabled = !live;
   // Defaults only resets CRT sliders — dim it where none are live
   // (it still resets Sound on that pane, CRT or not).
-  defaultsBtn.disabled = !onBox.checked &&
+  defaultsBtn.disabled = !live &&
     PANES.find((p) => p.id === pane)!.keys.length > 0;
   document.getElementById("pfpanes")!
-    .classList.toggle("pfcrtoff", !onBox.checked);
+    .classList.toggle("pfcrtoff", !live);
   // A preset caption is only useful while the effect can take it —
   // fall back to the pane hint (which switches to offHint when off).
   if (describedPreset) describe(null);
