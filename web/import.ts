@@ -608,6 +608,23 @@ export function isListed(list: Importable[], it: Importable): boolean {
   return list.some((a) => a.url === it.url);
 }
 
+const PACK_SECTIONS: readonly string[] = ["", "fish", "gravel",
+  "backgrounds", "tanks", "plants", "accessories", "sounds"];
+
+/** Whether a saved add-on record (untrusted: localStorage or a .fins
+ * file) has the shape the restore path relies on. `copies` needs no
+ * check here: decorCopies() clamps it wherever it is read. */
+export function isSavedAddon(raw: unknown): raw is Importable {
+  const a = raw as Partial<Importable> | null;
+  return typeof a === "object" && a !== null &&
+    typeof a.url === "string" && a.url !== "" &&
+    typeof a.inner === "string" &&
+    typeof a.section === "string" && PACK_SECTIONS.includes(a.section) &&
+    (a.sounds === undefined ||
+     (Array.isArray(a.sounds) &&
+      a.sounds.every((n) => typeof n === "string")));
+}
+
 /** The listing qualifies colliding leaf names ("sub/dup", "dup (2)");
  * an audio-file record takes its name from the basename stem, so it
  * must carry the same qualification — otherwise installing the sibling
