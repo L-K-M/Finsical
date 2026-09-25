@@ -11,7 +11,7 @@ describe("clientWindowFeatures", () => {
   it("asks for a popup the size of the app's window", () => {
     expect(clientWindowFeatures("stats", AT).split(",")[0]).toBe("popup");
     expect(parse(clientWindowFeatures("stats", AT)))
-      .toMatchObject({ width: 380, height: 640 });
+      .toMatchObject({ width: 380, height: 360 });
     expect(parse(clientWindowFeatures("prefs", AT)))
       .toMatchObject({ width: 565, height: 457 });
     expect(parse(clientWindowFeatures("overview", AT)))

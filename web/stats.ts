@@ -1,16 +1,19 @@
 import { openBus, TANK_QUIET_MS } from "./bus.js";
-import { hostWindow, mountPopup, pushButton, setButtonTitle }
+import { hostWindow, mountPopup, mountTabs, pushButton, setButtonTitle }
   from "osmium-ui";
 import { MEDICINES } from "../core/aquarium/disease.js";
 import { deriveStats, hungriestLabel, SPARK_H, SPARK_W, sparkColumns,
-         sparkRow, summaryText, trend, uptime } from "./statsmodel.js";
+         sparkRow, summaryText, tabIndex, trend, uptime }
+  from "./statsmodel.js";
 import type { BusMsg } from "./bus.js";
 import type { StatsInput, TankStats, WaterStats } from "./statsmodel.js";
 
 // Tank Stats — an optional secondary window drawn as a Mac OS 8
-// document window (Osmium UI) and laid out like a Get Info window:
-// bold labels on a shared right edge, values after them, progress
-// bars for the two levels, care hints below.
+// document window (Osmium UI), its readings on tabs: General (the two
+// levels as progress bars, the fish, care hints), Water (the
+// chemistry) and Keeping (the care controls). The readings are laid
+// out like a Get Info window: bold labels on a shared right edge,
+// values after them.
 // The tank page owns the sim; this page renders the `state` payloads
 // it pushes (same contract as the other client windows). The window
 // chrome goes through Osmium UI's hostWindow.
@@ -27,7 +30,9 @@ window.addEventListener("drop", (e) => e.preventDefault());
 
 const win = document.getElementById("swin")!;
 const rowsEl = document.getElementById("srows")!;
+const waterEl = document.getElementById("swrows")!;
 const careEl = document.getElementById("scare")!;
+const quietEl = document.getElementById("squiet")!;
 
 function el(tag: string, cls = "", text = ""): HTMLElement {
   const e = document.createElement(tag);
@@ -36,9 +41,9 @@ function el(tag: string, cls = "", text = ""): HTMLElement {
   return e;
 }
 
-/** One label/value pair of the .osm-fields grid. */
-function field(label: string, value: HTMLElement): void {
-  rowsEl.append(el("span", "osm-label", `${label}:`), value);
+/** One label/value pair of an .osm-fields grid: General's, or `grid`. */
+function field(label: string, value: HTMLElement, grid = rowsEl): void {
+  grid.append(el("span", "osm-label", `${label}:`), value);
 }
 function text(value: string): HTMLElement {
   return el("span", "sval", value);
@@ -124,7 +129,9 @@ function render(st: TankStats): void {
             history.map((s) => ({ t: s.t, v: s.avgHunger }))));
   field("Hungriest", text(hungriestLabel(st)));
   const w = st.water;
+  waterEl.textContent = "";
   if (w) waterRows(w);
+  else field("Water", text("no readings"), waterEl);
   field("Fish", text(`${st.fishCount}` +
     (st.sick.length ? `, ${st.sick.length} sick` : "") +
     (st.dead ? `, ${st.dead} dead` : "") +
@@ -148,19 +155,21 @@ function render(st: TankStats): void {
   for (const a of st.advice) careEl.appendChild(el("div", "scareline", a));
 }
 
-/** The original's water window, per litre. */
+/** The original's water window, per litre: the Water tab. */
 function waterRows(w: WaterStats): void {
   const mg = (v: number, d = 2): string => `${v.toFixed(d)} mg/L`;
-  field("Temperature", text(`${w.temp.toFixed(1)} °C`));
-  field("pH", text(`${w.pH.toFixed(2)}, hardness ${w.gH.toFixed(1)} °dH`));
-  field("Oxygen", text(`${mg(w.o2)} (${w.oxygenPct}%)`));
-  field("Carbon dioxide", text(mg(w.co2, 1)));
-  field("Nitrate", text(mg(w.nitrate)));
-  field("Ammonia", text(mg(w.ammonia)));
-  field("Chlorine", text(mg(w.chlorine)));
-  field("Filter dirt", meter(w.filterDirt / 100,
-                             `${Math.round(w.filterDirt)}%`, ""));
-  field("Medicine", text(w.doses.length
+  const row = (label: string, value: HTMLElement) =>
+    field(label, value, waterEl);
+  row("Temperature", text(`${w.temp.toFixed(1)} °C`));
+  row("pH", text(`${w.pH.toFixed(2)}, hardness ${w.gH.toFixed(1)} °dH`));
+  row("Oxygen", text(`${mg(w.o2)} (${w.oxygenPct}%)`));
+  row("Carbon dioxide", text(mg(w.co2, 1)));
+  row("Nitrate", text(mg(w.nitrate)));
+  row("Ammonia", text(mg(w.ammonia)));
+  row("Chlorine", text(mg(w.chlorine)));
+  row("Filter dirt", meter(w.filterDirt / 100,
+                           `${Math.round(w.filterDirt)}%`, ""));
+  row("Medicine", text(w.doses.length
     ? w.doses.map((d) => `${d.name} ${d.ml} ml`).join(", ") + " dissolving"
     : "none"));
 }
@@ -262,8 +271,11 @@ const bus = openBus((m: BusMsg) => {
   if (m.op !== "state") return;
   greeted = true;
   lastStateAt = Date.now();
-  if (tankGone) { tankGone = false;
-                rowsEl.classList.remove("osm-dimmed"); }
+  if (tankGone) {
+    tankGone = false;
+    for (const g of [rowsEl, waterEl]) g.classList.remove("osm-dimmed");
+    quietEl.hidden = true;
+  }
   if (typeof m.boot === "string") {
     // A restarted tank is a different tank: its water and hunger must
     // not merge into the trends and sparklines the old one drew.
@@ -290,21 +302,41 @@ const bus = openBus((m: BusMsg) => {
 window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener("drop", (e) => e.preventDefault());
 
+// ---- tabs ----------------------------------------------------------------
+// The window reopens on the tab it was left on, as Preferences reopens
+// on its pane.
+const TAB_KEY = "finsical:statsTab";
+const tabsEl = document.getElementById("stabs")!;
+const tabIds = Array.from(tabsEl.querySelectorAll(".osm-tab"), (t) => t.id);
+let savedTab: string | null = null;
+try { savedTab = localStorage.getItem(TAB_KEY); } catch { /* unavailable */ }
+mountTabs(tabsEl, {
+  selected: tabIndex(tabIds, savedTab), label: "Tank Stats",
+  onChange: (i) => {
+    try { localStorage.setItem(TAB_KEY, tabIds[i]!); } catch { /* unavailable */ }
+  },
+});
+
 // ---- window chrome -------------------------------------------------------
-// Zoom toggles to the standard size; the grow box keeps every field
-// and two care hints visible (the window clips rather than scrolls).
+// Zoom toggles to the standard size, which fits two care hints of
+// three lines each; the grow box keeps every tab's fields, two long
+// care hints and the Keeping controls visible (the panels clip rather
+// than scroll).
 hostWindow(win, {
   title: "Tank Stats",
-  zoom: { standard: { w: 380, h: 640 } },
-  // Match the native minimum: below it the water readings, care hints
-  // and Keeping controls clip without a scroll path.
-  grow: { min: { w: 340, h: 560 } },
+  zoom: { standard: { w: 380, h: 360 } },
+  // Match the native minimum: below it the care hints and Keeping
+  // controls clip without a scroll path.
+  grow: { min: { w: 340, h: 330 } },
 });
 
 // Until the first state push lands the window says what it is waiting
 // for — a blank fields grid reads as broken, not as loading.
-let waiting = text("Waiting for the tank…");
-field("Tank", waiting);
+const waiting = [rowsEl, waterEl].map((grid) => {
+  const t = text("Waiting for the tank…");
+  field("Tank", t, grid);
+  return t;
+});
 
 // The tank page may still be loading when the window opens — retry the
 // hello until a state push arrives, then keep a live heartbeat so the
@@ -313,8 +345,10 @@ let tries = 0;
 const greet = setInterval(() => {
   if (greeted || ++tries > 60) {
     clearInterval(greet); // give up after 30s — say so rather than wait on
-    if (!greeted)
-      waiting.textContent = "The tank isn't answering — is Finsical running?";
+    if (!greeted) {
+      for (const t of waiting)
+        t.textContent = "The tank isn't answering — is Finsical running?";
+    }
   } else bus.post({ op: "hello" });
 }, 500);
 bus.post({ op: "hello" });
@@ -378,7 +412,9 @@ setInterval(() => {
   if (!greeted || tankGone ||
       Date.now() - lastStateAt <= TANK_QUIET_MS) return;
   tankGone = true;
-  rowsEl.classList.add("osm-dimmed");
+  for (const g of [rowsEl, waterEl]) g.classList.add("osm-dimmed");
+  // Beside Copy Summary, so the tabs that show no care hints say it too.
+  quietEl.hidden = false;
   careEl.textContent = "";
   careEl.appendChild(el("div", "scareline", "Waiting for the tank…"));
 }, 1000);
