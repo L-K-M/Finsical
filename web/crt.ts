@@ -159,7 +159,11 @@ vec3 scanRow(vec2 lp, float conv) {
 // Beam spot sizes in rows (gaussian sigma) as vec2(black, full drive):
 // a dark row draws a thin line, a bright one a spot that nearly meets
 // its neighbors. SPOT_LINES is where the Scanlines slider's first 40%
-// fades in; SPOT_DEEP is the top of the slider.
+// fades in; SPOT_DEEP is the top of the slider. Keep every sigma under
+// about 0.35: the beam reads only the two rows bracketing a fragment,
+// so a wider spot would leak light into rows it never reads (0.8% of
+// its peak at 0.32, 4% at 0.40), and spotArea's overlap cap only
+// engages from 0.40.
 const vec2 SPOT_LINES = vec2(0.20, 0.32);
 const vec2 SPOT_DEEP = vec2(0.12, 0.24);
 
@@ -286,8 +290,12 @@ void main() {
     vec2 size = mix(SPOT_LINES, SPOT_DEEP,
                     clamp((uScan - 0.4) / 0.6, 0.0, 1.0));
     float fp2 = 1.0 / (12.0 * pxScale.y * pxScale.y);
-    vec3 beam = toLight(a) * spot(fy, spotVar(a, size), fp2) +
-                toLight(b) * spot(1.0 - fy, spotVar(b, size), fp2);
+    // Past the first and last rows there is no beam: the clamped read
+    // would repeat the edge row and fill its outer half-row with light.
+    float inA = step(0.0, row);
+    float inB = step(row + 2.0, uTank.y);
+    vec3 beam = inA * toLight(a) * spot(fy, spotVar(a, size), fp2) +
+                inB * toLight(b) * spot(1.0 - fy, spotVar(b, size), fp2);
     // Below ~3 device px per row the lines would beat against the
     // pixel grid (moire), so they give way to their average light:
     // small pictures lose the lines but keep the same brightness.
