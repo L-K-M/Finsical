@@ -226,6 +226,11 @@ body.crt canvas#tank { opacity: 0; }
 .pfrow { display: flex; gap: 20px; }
 .pfrow + .pfrow { margin-top: 6px; }
 .pfslider { flex: none; width: 125px; }
+/* A disabled slider dims its track and thumb (osmium.css) but left
+   its ticks at full strength, which read as half-on under a gray
+   track. The upstream fix belongs in osmium-ui; until the pin moves,
+   this pane's own stylesheet finishes the job. */
+.pfslider .osm-slider.osm-disabled::after { opacity: .45; }
 .pflabel { display: block; padding-left: 4px; margin-bottom: 5px; }
 .pfends { display: flex; justify-content: space-between; margin-top: 2px; padding: 0 1px 0 3px; }
 /* CRT off: the sliders and preset buttons are disabled and their
@@ -262,8 +267,13 @@ body.crt canvas#tank { opacity: 0; }
 #pfdefaults[hidden] { display: none; }
 
 /* ---- Tank Stats window (web/stats.ts) ----------------------------------
-   Laid out like a Get Info window. */
-#swin .osm-content { padding: 4px 12px 0; }
+   A tab control filling the window above Copy Summary, its panels laid
+   out like a Get Info window. The panels clip rather than scroll. */
+#swin .osm-content { display: flex; flex-direction: column; padding: 10px 12px 0; }
+#stabs { flex: auto; min-height: 0; }
+.spanel { box-sizing: border-box; height: 100%; padding: 10px 12px 0; overflow: hidden; }
+#sfoot { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+#squiet[hidden] { display: none; }
 /* Bar, right-aligned percentage, trend arrow; the bar sits on rows
    1..14 of its 17px field row, centered on the text's cap height. */
 .smeter { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
@@ -276,8 +286,6 @@ body.crt canvas#tank { opacity: 0; }
 .sval { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #srows { margin-bottom: 6px; }
 #scare { margin-top: 3px; }
-/* Change Water — clear of the grow box, like the overview's Remove. */
-#skeep { margin: 8px 0 10px; }
 .skrow { display: flex; align-items: center; gap: 4px; margin: 3px 0; }
 .skrow > .osm-label, .skrow > .osm-popup-title {
   flex: none; width: 66px; text-align: right;
@@ -323,6 +331,25 @@ body.crt canvas#tank { opacity: 0; }
 }
 #olist[data-sort="name"] .ocell-name, #olist[data-sort="kind"] .ocell-kind,
 #olist[data-sort="status"] .ocell-status { background: #ddd; }
+/* The Finder's direction triangle rides in the sorted header: up for
+ * ascending, and down once the column is turned around. The header
+ * button is the triangle's containing block — without this the
+ * absolute offsets resolve against the window instead. */
+.osm-colhead { position: relative; }
+.osm-colhead.osm-sorted::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  top: 8px;
+  width: 0;
+  height: 0;
+  border: 3px solid transparent;
+  border-bottom-color: #000;
+}
+#oheads[data-sort-dir="desc"] .osm-colhead.osm-sorted::after {
+  border-bottom-color: transparent;
+  border-top-color: #000;
+}
 .othumb {
   position: absolute; left: 6px; top: 2px; width: 38px; height: 28px;
   overflow: hidden;

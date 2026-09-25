@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { SURFACE } from "../core/sim.js";
+import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, nightFloor }
+  from "../core/light.js";
+import type { Lighting } from "../core/light.js";
 import { makeRng } from "../core/rng.js";
 import {
   bubbleOffset, bubblePops, bubbleSize, CAUSTIC_TILE_H, CAUSTIC_TILE_W, drawAir,
   causticShimmer, causticTile, causticValue, feedPinch, murkParams,
   MURK_BOTTOM, MURK_TOP, pelletDrift, PINCH_CENTER_SPREAD, PINCH_MAX,
   PINCH_SPREAD, REFRACT_ROWS,
-  refractShift, sunFactor,
+  refractShift, sunFactor, torchRadius, torchShows,
 } from "./water.js";
 import { SURFACE_MAX, SURFACE_W } from "./surface.js";
 
@@ -228,6 +231,40 @@ describe("drawAir", () => {
     for (const [, y, , h] of details)
       expect(y! + h!).toBeLessThanOrEqual(SURFACE - SURFACE_MAX);
   });
+
+  it("reuses its shade gradient until a stop actually changes", () => {
+    // drawAir runs every frame; the other water gradients are built
+    // once and cached, so this one must be too. Its stops are rounded
+    // to a whole grey, so the cache key is the pair of stop strings —
+    // exact, not a tolerance that could shift the picture.
+    let built = 0;
+    let last: unknown = null;
+    const fills: number[] = [];
+    const ctx = {
+      get fillStyle(): unknown { return last; },
+      set fillStyle(v: unknown) {
+        last = v;
+        const g = v as { id?: number };
+        if (g && typeof g.id === "number") fills.push(g.id);
+      },
+      globalAlpha: 1, globalCompositeOperation: "",
+      createLinearGradient: () => {
+        const g = { addColorStop: () => {}, id: ++built };
+        last = g;
+        return g;
+      },
+      fillRect: () => {},
+    } as unknown as CanvasRenderingContext2D;
+
+    drawAir(ctx, 0.33);
+    expect(built).toBe(1);
+    drawAir(ctx, 0.33);
+    expect(built).toBe(1); // same stops: no new object
+    drawAir(ctx, 0.9);
+    expect(built).toBe(2); // a different pair of stops rebuilds
+    // The gradient is what the air strip itself was filled with.
+    expect(fills).toEqual([1, 1, 2]);
+  });
 });
 
 describe("refraction", () => {
@@ -252,5 +289,43 @@ describe("refraction", () => {
     expect(Math.max(...seen)).toBeLessThanOrEqual(3);
     expect(Math.min(...seen)).toBeGreaterThanOrEqual(-3);
     expect(seen.size).toBeGreaterThan(3);
+  });
+});
+
+describe("torch", () => {
+  it("lights at every kind of night and never by day", () => {
+    const lampOff: Lighting = { mode: "always", on: 8, off: 22, lamp: false };
+    const timer: Lighting = { mode: "timer", on: 8, off: 22, lamp: true };
+    const always: Lighting = { mode: "always", on: 8, off: 22, lamp: true };
+    const lit = (s: Lighting, minutes: number): boolean =>
+      torchShows(lightAt(minutes, s)!, nightFloor(s));
+    expect(lit(lampOff, 12 * 60)).toBe(true);
+    expect(lit(timer, 2 * 60)).toBe(true); // timer night, 0.45
+    expect(lit(timer, 12 * 60)).toBe(false);
+    expect(lit(always, 2 * 60)).toBe(false);
+    // The demo's night and day, whose light the sim's cycle drives.
+    expect(torchShows(DEMO_NIGHT_LIGHT, DEMO_NIGHT_LIGHT)).toBe(true);
+    expect(torchShows(1, DEMO_NIGHT_LIGHT)).toBe(false);
+  });
+
+  it("comes on once the light is a good way down, not at first dusk", () => {
+    for (const floor of [DEMO_NIGHT_LIGHT, CLOCK_NIGHT_LIGHT]) {
+      const at = (nightness: number): number => 1 - nightness * (1 - floor);
+      expect(torchShows(at(0.3), floor)).toBe(false);
+      expect(torchShows(at(0.4), floor)).toBe(true);
+    }
+  });
+
+  it("widens from 24 to 40 px as the tank darkens, in whole pixels", () => {
+    let prev = 0;
+    for (let n = -0.5; n <= 1.5; n += 0.01) {
+      const r = torchRadius(n);
+      expect(Number.isInteger(r)).toBe(true);
+      expect(r).toBeGreaterThanOrEqual(Math.max(prev, 24));
+      expect(r).toBeLessThanOrEqual(40);
+      prev = r;
+    }
+    expect(torchRadius(0.35)).toBe(24);
+    expect(torchRadius(1)).toBe(40);
   });
 });
