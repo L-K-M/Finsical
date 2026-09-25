@@ -18,6 +18,6 @@
   },
   "dependencies": {
     "fflate": "^0.8.3",
-    "osmium-ui": "github:L-K-M/osmium-ui#v0.3.0"
+    "osmium-ui": "github:L-K-M/osmium-ui#ab05834e3b4641801edd8cc12145f4e423166485"
   }
 }
