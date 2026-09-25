@@ -6,8 +6,8 @@ import { showAlert } from "./alert.js";
 import type { Alert, AlertButton } from "./alert.js";
 import { listAddons, loadProblem } from "./import.js";
 import type { Importable } from "./import.js";
-import { resolveStarter, starterCollection, wantsStarterSounds }
-  from "./starter.js";
+import { resolveStarter, runStarter, starterCollection,
+         wantsStarterSounds } from "./starter.js";
 
 const WELCOMED_KEY = "finsical:welcomed";
 /** Set once the tank has had its chance at the starter set's sounds:
@@ -113,22 +113,18 @@ async function stock(alert: Alert, hooks: StarterHooks,
     return;
   }
 
-  const failed: Importable[] = [];
-  let problem: unknown = null;
-  for (const [i, it] of items.entries()) {
-    if (stopped) return;
-    alert.progress(`Adding ${i + 1} of ${items.length}: ${it.inner}…`,
-                   i / items.length);
-    try {
-      await hooks.install(it);
-    } catch (e) {
-      console.warn(`starter set: couldn't add ${it.inner}:`, e);
-      failed.push(it);
-      problem ??= e;
-      continue;
-    }
-    if (it.section === "fish") hooks.fishArrived();
-  }
+  const { failed, problem } = await runStarter(items, {
+    install: (it) => hooks.install(it),
+    progress: (i, it) => alert.progress(
+      it.section === "sounds"
+        // The bank started early — by now it is usually mid-flight or
+        // done, so "Adding N of M" would lie about what is happening.
+        ? `Adding the sound effects (${i + 1} of ${items.length})…`
+        : `Adding ${i + 1} of ${items.length}: ${it.inner}…`,
+      i / items.length),
+    fishArrived: () => hooks.fishArrived(),
+    stopped: () => stopped,
+  });
   if (stopped) return;
   if (!failed.length) { alert.close(); return; }
 

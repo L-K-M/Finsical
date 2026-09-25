@@ -7,17 +7,22 @@
  */
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
+import { packSpeciesCare } from "../core/data/species.js";
+import type { SpeciesCare } from "../core/data/species.js";
 import type { IndexedImage, SpriteSheet } from "../core/data/azpack.js";
+import type { PackSection } from "./import.js";
 
 export interface DroppedPack {
   /** Display/species name — the file name minus its extension. */
   name: string;
   /** Tank section the file imports as (see dropSection). */
-  section: string;
+  section: PackSection;
   /** Sprite sheets that spawn a fish: fish packs and the base-library
    * .REZ only. Scenery packs' sprite streams stay out of the fish pool,
    * matching handleSheets' fish-only registration. */
   sheets: Map<string, SpriteSheet>;
+  /** The species' care needs, when the pack spawns a fish. */
+  care: SpeciesCare | null;
   /** Scenery art. Empty for fish packs: their catalog portraits must
    * not take the tank's backdrop. */
   images: Map<string, IndexedImage>;
@@ -30,7 +35,7 @@ export const BACKDROP_MIN = { w: 160, h: 100 } as const;
 
 /** The section a dropped pack imports as, by extension: the same
  * dispatch a remote install gets from its collection's section. */
-export function dropSection(name: string): string {
+export function dropSection(name: string): PackSection {
   const ext = (/\.([^./]+)$/.exec(name)?.[1] ?? "").toLowerCase();
   return ext === "grv" ? "gravel"
     : ext === "plt" ? "plants"
@@ -62,7 +67,7 @@ export function decodeDroppedPacks(
         const img = decodeBmp(data);
         if (img && img.w >= BACKDROP_MIN.w && img.h >= BACKDROP_MIN.h)
           out.push({ name: stem, section: "backgrounds", sheets: new Map(),
-                     images: new Map([[name, img]]) });
+                     images: new Map([[name, img]]), care: null });
       } catch (e) {
         console.warn(`drop: skipping undecodable picture ${name}:`, e);
       }
@@ -78,7 +83,8 @@ export function decodeDroppedPacks(
       const images = section === "fish"
         ? new Map<string, IndexedImage>() : packImages(data);
       if (!sheets.size && !images.size) continue;
-      out.push({ name: stem, section, sheets, images });
+      out.push({ name: stem, section, sheets, images,
+                 care: sheets.size ? packSpeciesCare(data) : null });
     } catch (e) {
       console.warn(`drop: skipping undecodable pack ${name}:`, e);
     }

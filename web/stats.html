@@ -2,18 +2,64 @@
 <html lang="en" class="osm-page">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Finsical Tank Stats: water quality, hunger and care hints for the retro aquarium." />
+  <meta name="theme-color" content="#dddddd" />
+  <meta name="color-scheme" content="light" />
   <title>Tank Stats</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="stylesheet" href="osmium.css" />
   <link rel="stylesheet" href="app.css" />
 </head>
 <body>
+  <noscript><p>Finsical needs JavaScript to show tank stats.</p><style>#swin{display:none}</style></noscript>
   <div id="swin" class="osm-page-window osm-info">
     <div class="osm-content">
       <div id="srows" class="osm-fields"></div>
       <div class="osm-separator"></div>
       <div id="scare"></div>
+      <div class="osm-group" id="skeep" role="group" aria-label="Keeping">
+        <div class="osm-group-title">Keeping</div>
+        <div class="skrow">
+          <span class="osm-label">Heater:</span>
+          <button id="sheatdn" class="osm-button sstep" type="button" data-width="22"
+                  aria-label="Cooler">−</button>
+          <span id="sheat" class="skval"></span>
+          <button id="sheatup" class="osm-button sstep" type="button" data-width="22"
+                  aria-label="Warmer">+</button>
+        </div>
+        <div class="skrow">
+          <span class="osm-label">Filter:</span>
+          <button id="sclean" class="osm-button" type="button">Clean Filter</button>
+        </div>
+        <div class="skrow">
+          <label class="osm-popup-title" for="samt">Change:</label>
+          <button id="samt" class="osm-popup" type="button"></button>
+          <span class="skat">at</span>
+          <button id="stempdn" class="osm-button sstep" type="button" data-width="22"
+                  aria-label="Colder water">−</button>
+          <span id="stemp" class="skval"></span>
+          <button id="stempup" class="osm-button sstep" type="button" data-width="22"
+                  aria-label="Warmer water">+</button>
+        </div>
+        <div class="skrow skright">
+          <button id="schange" class="osm-button" type="button">Change Water</button>
+        </div>
+        <div class="skrow">
+          <label class="osm-popup-title" for="smed">Medicine:</label>
+          <button id="smed" class="osm-popup" type="button"></button>
+        </div>
+        <div class="skrow skright">
+          <button id="sdose" class="osm-button" type="button">Add</button>
+        </div>
+        <div class="skrow">
+          <label class="osm-popup-title" for="sspeed">Time:</label>
+          <button id="sspeed" class="osm-popup" type="button"></button>
+        </div>
+      </div>
       <div id="sfoot">
-        <button id="schange" class="osm-button" type="button">Change Water</button>
+        <button id="scopy" class="osm-button" type="button"
+                aria-live="polite">Copy Summary</button>
       </div>
     </div>
   </div>

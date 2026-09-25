@@ -12,16 +12,23 @@
  */
 import { ownBytes } from "../core/data/bytes.js";
 import { zipEntries, zipRead } from "../core/data/zip.js";
-import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
+import { fshToSheets, isLegacyPack, isPack, packImages }
+  from "../core/data/fsh.js";
+import { packSpeciesCare } from "../core/data/species.js";
+import type { SpeciesCare } from "../core/data/species.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
 import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
 import { bankSounds } from "../core/data/sndbank.js";
 import { isLocalPack, metaGet, metaPut, packDelete, packGet, packPut }
   from "./store.js";
+import { lruGet, lruSet } from "./lru.js";
+import { pickDrawableSheet } from "../core/data/swimsheet.js";
+import { TANK_SIZE } from "../core/tuning.js";
 import type { SpriteSheet } from "../core/data/azpack.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
-import { soundIcon } from "./render.js";
+import { isBackdropImage, isGravelImage, soundIcon } from "./render.js";
+import { hasDecorFrames } from "../core/data/decor.js";
 import { bindDialogKeys, mountList, mountPopup, mountWindow, pushButton,
          setButtonTitle } from "osmium-ui";
 
@@ -41,7 +48,7 @@ const MISSING_7Z = "Missing addons Aquazone.7z";
 const MISSING_ROOT = "Missing addons Aquazone/";
 
 export interface Collection {
-  section: string;
+  section: PackSection;
   /** Zip file inside the item. "a.zip/b.zip" is a nested zip-of-packs
    * (archive.org only serves one zip level), so its entries are
    * enumerated locally after fetching the collection zip. */
@@ -112,10 +119,41 @@ function pageUrl(item: string, outer: string): string {
 }
 
 export interface Importable {
-  section: string; inner: string; url: string;
+  section: PackSection; inner: string; url: string;
   /** Sound record names this add-on contributed — persisted with the
    * install so uninstall can drop exactly these from the bank. */
   sounds?: string[];
+  /** Plants/accessories only: how many copies "Add Again" put in the
+   * tank. Absent means one — and every other section ignores it. */
+  copies?: number;
+}
+
+/** "Add Again" is unbounded in-session; the persisted count caps so a
+ * corrupt save or a bus-injected field can't spawn a floor full of
+ * decor on relaunch. */
+export const DECOR_COPIES_MAX = 16;
+
+/** The single clamp for a decor copy *count* — persisted records and
+ * per-call live counts both pass through it. Bounding the live tank
+ * itself is decorCopyRoom's job below; this only bounds one number. */
+export function clampDecorCopies(n: unknown): number {
+  return Number.isInteger(n)
+    ? Math.min(DECOR_COPIES_MAX, Math.max(1, n as number)) : 1;
+}
+
+/** Live slots left for one decor pack before the tank holds more
+ * copies than a save could restore. addDecor() keys each copy by its
+ * `src` verbatim, so filtering placed copies by `pack === src` counts
+ * every earlier Add Again click. */
+export function decorCopyRoom(decors: ReadonlyArray<{ pack: string }>,
+                              src: string): number {
+  return Math.max(0, DECOR_COPIES_MAX -
+    decors.filter((d) => d.pack === src).length);
+}
+
+/** The persisted copy count, clamped to sanity (storage is untrusted). */
+function decorCopies(it: Importable): number {
+  return clampDecorCopies(it.copies);
 }
 
 /** Raw zip bytes, memoized by URL and persisted in IndexedDB — nested
@@ -123,8 +161,41 @@ export interface Importable {
  * URLs, and a cached zip survives restarts so restores and re-browses
  * never touch archive.org twice. Items are treated as immutable; an
  * uploader replacing a file serves stale bytes until LRU trims it —
- * accepted, since the worst case is dated sprite art. */
+ * accepted, since the worst case is dated sprite art. Bounded: outer
+ * archives can run to tens of MB, and browsing several nested
+ * collections would otherwise pin each one's bytes for the session.
+ * An evicted URL refetches through IndexedDB, not the network. */
+const ZIP_CACHE_CAP = 8;
+/** Resolved-byte budget: entry count alone doesn't bound memory —
+ * eight multi-ten-MB outers is the same leak in miniature. */
+const ZIP_CACHE_BYTES = 96 << 20;
 const zipCache = new Map<string, Promise<Uint8Array>>();
+/** Promises still in flight — their slot is the download dedup key,
+ * so eviction must skip them (a second caller would start a duplicate
+ * multi-MB fetch otherwise). */
+const zipPending = new WeakSet<Promise<Uint8Array>>();
+/** Resolved byteLength per url, and its running total. */
+const zipSize = new Map<string, number>();
+let zipBytes = 0;
+function zipEvict(url: string): void {
+  zipBytes -= zipSize.get(url) ?? 0;
+  zipSize.delete(url);
+  zipCache.delete(url);
+}
+/** Note a resolved entry's size and trim the oldest resolved zips
+ * while the byte budget is overshot. Pending entries stay. */
+function zipWeigh(url: string, bytes: number): void {
+  // Idempotent: a re-weighed url (refetch after eviction) replaces its
+  // old count instead of double-adding.
+  zipBytes -= zipSize.get(url) ?? 0;
+  zipSize.set(url, bytes);
+  zipBytes += bytes;
+  for (const [k, v] of zipCache) {
+    if (zipBytes <= ZIP_CACHE_BYTES) break;
+    if (zipPending.has(v)) continue;
+    zipEvict(k);
+  }
+}
 /** Per-URL bytes on archive.org never change — safe to persist
  * forever. Other hosts (a dev server, a mutable mirror) keep only
  * their in-session memo so stale bytes can't wedge a dev loop. */
@@ -177,11 +248,18 @@ async function readBody(r: Response, kick: () => void):
   return out;
 }
 function fetchZip(url: string): Promise<Uint8Array> {
-  let p = zipCache.get(url);
+  let p = lruGet(zipCache, url);
   if (!p) {
-    p = (async () => {
+    const fresh = (async () => {
       const hit = immutableHost(url) ? await packGet(url) : null;
-      if (hit) return hit;
+      // Weigh only while this promise still holds the slot — a count-
+      // or byte-cap eviction (or a same-tick replacement) means these
+      // bytes answer to nobody, and counting them would inflate
+      // zipBytes with no eviction path to recover them. Invariant:
+      // the lruSet below caches `fresh` itself — a stored wrapper
+      // would silently disable weighing (and the byte cap with it).
+      const ours = () => zipCache.get(url) === fresh;
+      if (hit) { if (ours()) zipWeigh(url, hit.byteLength); return hit; }
       const d = await fetchTimed(url, async (r, kick) => {
         if (!r.ok) throw new Error(`${url}: ${r.status}`);
         return readBody(r, kick);
@@ -190,12 +268,21 @@ function fetchZip(url: string): Promise<Uint8Array> {
       // empty 200. Persisted, that would stand in for the file forever.
       if (!d.length) throw new Error(`${url}: empty`);
       if (immutableHost(url)) void packPut(url, d).catch(() => {});
+      if (ours()) zipWeigh(url, d.byteLength);
       return d;
     })();
-    zipCache.set(url, p);
+    // onEvict routes count-cap trims through zipEvict too — every path
+    // that drops an entry must keep zipSize/zipBytes honest.
+    lruSet(zipCache, url, fresh, ZIP_CACHE_CAP,
+           (v) => !zipPending.has(v), (k) => zipEvict(k));
+    zipPending.add(fresh);
     // Delete only if still ours — a same-tick caller may have swapped in
     // a replacement promise before this one rejected.
-    p.catch(() => { if (zipCache.get(url) === p) zipCache.delete(url); });
+    fresh.then(
+      () => zipPending.delete(fresh),
+      () => { zipPending.delete(fresh);
+              if (zipCache.get(url) === fresh) zipEvict(url); });
+    p = fresh;
   }
   return p;
 }
@@ -294,7 +381,7 @@ async function listCollection(col: Collection): Promise<Importable[]> {
     for (const e of zipEntries(z)) {
       if (e.name.endsWith("/")) continue; // directory entry
       if (exts.test(e.name) && (col.deep || !e.name.includes("/"))) {
-        push(e.name, `${zipUrl}#${e.name}`);
+        push(e.name, `${zipUrl}#${fragEncode(e.name)}`);
         continue;
       }
       if (!col.inside?.test(e.name)) continue;
@@ -306,7 +393,8 @@ async function listCollection(col: Collection): Promise<Importable[]> {
       catch { continue; } // matched the .zip filter but isn't one
       for (const leaf of leaves) {
         if (leaf.name.endsWith("/") || !exts.test(leaf.name)) continue;
-        push(leaf.name, `${zipUrl}#${e.name}#${leaf.name}`);
+        push(leaf.name,
+             `${zipUrl}#${fragEncode(e.name)}#${fragEncode(leaf.name)}`);
       }
     }
     return out;
@@ -361,6 +449,17 @@ async function listCollection(col: Collection): Promise<Importable[]> {
 
 interface RawBlob { name: string; data: Uint8Array }
 
+/** Minimal encoding for a zip-entry name inside a URL fragment: only
+ * `#` and `%` are escaped, so a name without either keeps its raw
+ * spelling and stays identical to URLs stored before encoding was
+ * added (the URL doubles as the add-on's persisted identity). */
+export const fragEncode = (name: string): string =>
+  name.replace(/%/g, "%25").replace(/#/g, "%23");
+/** Inverse of fragEncode: %23 decodes first so an escaped %25
+ * can't decode into a fake %23 escape. */
+export const fragDecode = (frag: string): string =>
+  frag.replace(/%23/g, "#").replace(/%25/g, "%");
+
 /** Fetch an add-on's raw file bytes. URL fragments chain: "{zip}#{entry}"
  * addresses one entry inside a nested collection zip, and a fragment
  * that is itself a zip entry descends another level ("{zip}#{a.zip}
@@ -378,7 +477,13 @@ async function fetchInnerBlobs(url: string): Promise<RawBlob[]> {
   }
   let z = await fetchZip(zipUrl!);
   for (let i = 0; i < frags.length; i++) {
-    const e = zipEntries(z).find((x) => x.name === frags[i]);
+    // Fragments are fragEncode'd at listing time; raw match first
+    // keeps URLs stored before encoding (and a literal %23 name)
+    // working.
+    const frag = frags[i]!;
+    const decoded = fragDecode(frag);
+    const e = zipEntries(z)
+      .find((x) => x.name === frag || x.name === decoded);
     if (!e) throw new Error(`${url}: entry missing`);
     const d = await zipRead(z, e);
     if (i === frags.length - 1) return [{ name: e.name, data: d }];
@@ -389,17 +494,67 @@ async function fetchInnerBlobs(url: string): Promise<RawBlob[]> {
   for (const e of zipEntries(z)) {
     if (!PACK_EXT.test(e.name)) continue;
     const d = await zipRead(z, e);
-    if (isPack(d)) packs.push({ name: e.name, data: d });
+    // Legacy-format files travel too — importAddon says what they are
+    // instead of letting the zip look empty.
+    if (isPack(d) || isLegacyPack(d))
+      packs.push({ name: e.name, data: d });
   }
   return packs;
 }
 
 export interface PackResult {
+  /** The blob's own name inside the add-on (zip entry or file name) —
+   * the fish-identity key when one add-on holds several pack entries. */
+  entry: string;
   sheets: Map<string, SpriteSheet>;
   images: Map<string, IndexedImage>;
   /** Sound records — `wav` is the encoded payload (literal WAV for
    * 'snd ' decodes, the compressed stream for audio files). */
   sounds: { name: string; wav: Uint8Array }[];
+  /** The species' care needs (FsTI), for fish packs that carry them. */
+  care?: SpeciesCare | null;
+}
+
+/** Catalog sections, plus "" for a listed pack not yet stamped. */
+export type PackSection = "" | "fish" | "gravel" | "backgrounds" |
+    "tanks" | "plants" | "accessories" | "sounds";
+
+/** Which decoded packs would actually put something in the tank.
+ * Each section counts only the art its renderer accepts: fish needs a
+ * drawable sheet, gravel a strip-shaped image, backgrounds and tanks a
+ * scene-sized image or a gravel strip (pickBackdrop installs both),
+ * plants and accessories decor art. Sheets only render for fish,
+ * fish-pack portraits aren't scenery, and sections with no image
+ * consumer count nothing visual — sounds still count everywhere. */
+export function usablePacks(rs: PackResult[], section: PackSection):
+    PackResult[] {
+  return rs.filter((r) => {
+    const images = [...r.images.values()];
+    const usable =
+        section === "fish"
+          ? pickDrawableSheet(r.sheets.values()) !== null
+        : section === "gravel"
+          ? images.some((i) => isGravelImage(i, TANK_SIZE.width))
+        : section === "backgrounds" || section === "tanks"
+          ? images.some((i) => isBackdropImage(i, TANK_SIZE) ||
+                             isGravelImage(i, TANK_SIZE.width))
+        : section === "plants" || section === "accessories"
+          ? hasDecorFrames(images)
+        : false;
+    return usable || r.sounds.length > 0;
+  });
+}
+
+/** Why an add-on came back with nothing usable — names the actual
+ * missing piece instead of a generic "no pack inside". */
+export function usableProblem(section: PackSection): string {
+  return section === "fish" ? "no drawable fish inside"
+       : section === "gravel" ? "no gravel art inside"
+       : section === "backgrounds" || section === "tanks"
+         ? "no scenery art inside"
+       : section === "plants" || section === "accessories"
+         ? "no decor art inside"
+       : "no pack inside";
 }
 
 /** Record names the leaving add-ons exclusively own — a name still
@@ -428,10 +583,19 @@ export function recordAddon(list: Importable[], it: Importable,
   const rec = list.find((a) => a.url === it.url);
   if (!rec) {
     if (mode === "refresh") return false;
+    // A bus-sent item could carry a copies field — a fresh record
+    // always starts at one; re-installs grow it below.
+    const clean = { ...it };
+    delete clean.copies;
     list.push(soundNames.length
-      ? { ...it, sounds: [...new Set(soundNames)] } : it);
+      ? { ...clean, sounds: [...new Set(soundNames)] } : clean);
     return true;
   }
+  // Add Again on a decor pack persists one more copy; scenery and
+  // fish records carry no count.
+  if (mode === "install" &&
+      (it.section === "plants" || it.section === "accessories"))
+    rec.copies = Math.min(DECOR_COPIES_MAX, (decorCopies(rec)) + 1);
   if (soundNames.length)
     rec.sounds = [...new Set([...(rec.sounds ?? []), ...soundNames])];
   return true;
@@ -483,55 +647,88 @@ export async function importAddon(url: string): Promise<PackResult[]> {
     // Same shape as the remote isPack branch: a pack blob yields no
     // sound records — dropped loose audio already persisted via
     // handleSounds/sndsPut at drop time.
-    return [{ sheets: fshToSheets(d), images: packImages(d),
-              sounds: [] }];
+    return [{ entry: url, sheets: fshToSheets(d), images: packImages(d),
+              sounds: [], care: packSpeciesCare(d) }];
   }
   const blobs = await fetchInnerBlobs(url);
   const out: PackResult[] = [];
+  let legacy = false;
   for (const b of blobs) {
-    if (isPack(b.data)) {
+    if (isLegacyPack(b.data)) {
+      legacy = true; // count it below, once the readable blobs are in
+    } else if (isPack(b.data)) {
       const sheets = fshToSheets(b.data), images = packImages(b.data);
       // A sound bank (AZ_WAVES.REZ) has WAVs and no art. A pack with
       // art brings no sounds: one kind of content per add-on.
       const sounds = sheets.size || images.size ? [] : bankSounds(b.data);
-      out.push({ sheets, images, sounds });
+      out.push({ entry: b.name, sheets, images, sounds,
+                 care: sheets.size ? packSpeciesCare(b.data) : null });
     } else if (isBmp(b.data)) {
       const img = decodeBmp(b.data);
-      if (img) out.push({ sheets: new Map(), sounds: [],
+      if (img) out.push({ entry: b.name, sheets: new Map(), sounds: [],
                          images: new Map([[url, img]]) });
     } else {
       const sounds = fileSoundRecords(b.name, b.data);
       if (sounds.length)
-        out.push({ sheets: new Map(), images: new Map(), sounds });
+        out.push({ entry: b.name, sheets: new Map(), images: new Map(),
+                   sounds });
     }
   }
+  // Only legacy entries: the download is fine, the format isn't
+  // decodable — say so instead of "no pack inside" plus a Try Again
+  // that can only fail the same way. A mixed zip installs its
+  // readable packs and quietly skips the rest.
+  if (!out.length && legacy) throw new Error("unreadable legacy pack");
   return out;
 }
 
+/** Display order of sections — first collection index per section. */
+const SECTION_RANK = new Map<string, number>();
+COLLECTIONS.forEach((c, i) => {
+  if (!SECTION_RANK.has(c.section)) SECTION_RANK.set(c.section, i);
+});
+
 /** Fetch the listing pages of all collections (or those `only`
  * accepts), grouped by section in COLLECTIONS order. Never rejects: a
- * failed section just comes back empty. */
+ * failed section just comes back empty. `onItems` fires per resolved
+ * collection so a caller can show rows without waiting on the slowest
+ * one. */
 export async function listAddons(
     only: (c: Collection) => boolean = () => true,
+    onItems?: (items: Importable[]) => void,
 ): Promise<Importable[]> {
-  // First collection index per section — items group under it.
-  const rank = new Map<string, number>();
-  COLLECTIONS.forEach((c, i) => {
-    if (!rank.has(c.section)) rank.set(c.section, i);
-  });
   const cols = COLLECTIONS.filter(only);
   const lists = await Promise.all(cols.map(async (col) => {
+    let items: Importable[] = [];
     try {
-      const items = await listCollection(col);
+      items = await listCollection(col);
       for (const it of items) it.section = col.section;
-      return items;
     } catch (e) {
       console.warn(`archive.org listing failed for ${col.outer}:`, e);
-      return [];
+      items = [];
     }
+    // Outside the fetch try: a throwing UI callback must not
+    // masquerade as a fetch failure or drop the collection's items.
+    // But it still needs its own guard — an escape here would reject
+    // Promise.all and void every other collection's results.
+    if (items.length) {
+      const warn = (cbErr: unknown) =>
+        console.warn(`onItems callback failed for ${col.outer}:`, cbErr);
+      try {
+        const r: unknown = onItems?.(items);
+        // A thenable return isn't awaited, but a rejection must still
+        // not escape as an unhandled promise failure. Duck-typed:
+        // instanceof Promise misses cross-realm and custom thenables.
+        if (r && typeof (r as PromiseLike<unknown>).then === "function")
+          Promise.resolve(r).catch(warn);
+      } catch (cbErr) {
+        warn(cbErr);
+      }
+    }
+    return items;
   }));
   return lists.flat().sort((a, b) =>
-    (rank.get(a.section) ?? 0) - (rank.get(b.section) ?? 0));
+    (SECTION_RANK.get(a.section) ?? 0) - (SECTION_RANK.get(b.section) ?? 0));
 }
 
 // ---- import panel --------------------------------------------------------
@@ -539,13 +736,17 @@ export async function listAddons(
 export interface ImportHandlers {
   /** `name` is the display/species label; `url` is the add-on identity.
    * `live` = user-initiated install; false on launch-time restore, which
-   * must not spawn fish (the saved roster already holds them). */
+   * must not spawn fish (the saved roster already holds them). `entry`
+   * is the pack's own name inside the add-on — fish bind to (url, entry)
+   * so a multi-pack add-on can't collapse its fish onto the last entry. */
   onSheets(sheets: Map<string, SpriteSheet>, name: string, url: string,
-           section: string, live: boolean): void;
+           section: string, live: boolean, care?: SpeciesCare | null,
+           entry?: string): void;
   /** `live` as for onSheets: a restore must not change the choice of
-   * scenery on display. */
+   * scenery on display. `count` is the persisted decor copy count —
+   * 1 on a live install, `copies` on restore. */
   onImages(images: Iterable<IndexedImage>, src: string, section: string,
-           live: boolean): void;
+           live: boolean, count?: number): void;
   /** Sound records from a sound-bearing add-on — audio files and
    * 'snd ' resource forks alike arrive pre-flattened to {name, wav}.
    * `live` marks user installs vs restores (a restore must not play). */
@@ -596,18 +797,33 @@ function audioType(d: Uint8Array): string {
 
 // Packs are immutable per URL — memoize so re-visits skip the download.
 // Module-level so the tank page's remote-install path shares the cache.
+// Bounded: a PackResult pins the decoded sheets and images — the
+// expensive part of a pack, and the reason the render-side WeakMaps
+// (swimCanvas, sheetScales) could never collect. Scrolling the whole
+// catalog would otherwise keep every decoded pack in memory; an
+// evicted URL re-derives from the zip cache/IndexedDB on revisit.
+const PACK_CACHE_CAP = 16;
 const packCache = new Map<string, Promise<PackResult[]>>();
+/** Same in-flight pinning as zipPending: the map slot is the dedup
+ * key, so an evicted pending fetch would double-download. */
+const packPending = new WeakSet<Promise<PackResult[]>>();
 /** The sound preview's live Blob URL — one at a time, revoked when the
  * detail pane rebuilds. */
 let sndObjUrl: string | null = null;
 export function fetchAddon(url: string): Promise<PackResult[]> {
-  let p = packCache.get(url);
+  let p = lruGet(packCache, url);
   if (!p) {
-    p = importAddon(url);
-    packCache.set(url, p);
+    const fresh = importAddon(url);
+    lruSet(packCache, url, fresh, PACK_CACHE_CAP,
+           (v) => !packPending.has(v));
+    packPending.add(fresh);
     // Failed fetches stay retryable; only evict if the entry is still
     // this promise (a rider may have replaced it already).
-    p.catch(() => { if (packCache.get(url) === p) packCache.delete(url); });
+    fresh.then(
+      () => packPending.delete(fresh),
+      () => { packPending.delete(fresh);
+              if (packCache.get(url) === fresh) packCache.delete(url); });
+    p = fresh;
   }
   return p;
 }
@@ -620,6 +836,9 @@ export interface PanelOptions {
   /** Set on the Import Add-ons page: installs are posted to the tank
    * page, which owns the sim; results come back through notify(). */
   remote?: Bus;
+  /** Remote mode only: false while no tank state has landed lately —
+   * an install posted then would just wait out the ack timeout. */
+  connected?: () => boolean;
 }
 
 /** Section names as the Show: pop-up lists them. */
@@ -685,6 +904,8 @@ export function loadProblem(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   const http = /: (\d{3})$/.exec(msg);
   if (http) return `archive.org answered with error ${http[1]}.`;
+  if (msg === "unreadable legacy pack")
+    return "Finsical can't read this add-on yet.";
   if (msg === "no pack inside")
     return "The download has no add-on in it.";
   if (msg.endsWith(": empty"))
@@ -696,6 +917,27 @@ export function loadProblem(e: unknown): string {
   return "Check the connection and try again.";
 }
 
+/** True when a failure could be a transient download hiccup — HTTP
+ * statuses, short/empty bodies and network/timeout errors. Decode and
+ * validation failures recur identically on retry, so the panel must
+ * not offer Try Again for them. */
+export function transientFailure(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /: \d{3}$/.test(msg) || /: (empty|entry missing)$/.test(msg) ||
+         /abort|failed to fetch|networkerror|load failed|timeout/i.test(msg);
+}
+
+/** One user-facing line for a failed install: archive.org fetch
+ * errors go through loadProblem; errors the tank raised itself
+ * (cancelled installs, decode failures, refusals) already read as
+ * plain prose and pass through. */
+export function installProblem(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  return transientFailure(msg) || msg === "no pack inside"
+    ? loadProblem(msg)
+    : msg;
+}
+
 export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     { open(): void; close(): void; readonly isOpen: boolean;
       /** Resolves to the add-ons that failed to restore. */
@@ -704,6 +946,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       notify(m: BusMsg): void } {
   const remote = opts?.remote;
   const installed = new Set<string>(); // add-on urls, not display names
+  // Add-ons whose bytes downloaded fine but whose format can't be
+  // decoded — dimmed for the session, and their detail gets an honest
+  // "can't read" instead of a Try Again that only fails again.
+  const unreadable = new Set<string>();
   const thumbs = new Map<string, HTMLCanvasElement>();
   const fetchPack = fetchAddon;
   // The add-on on show — remote install acks update its status line.
@@ -798,6 +1044,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   // One button carries the browser's next step: add the shown add-on,
   // add it again, or retry whatever failed.
   let addAction: (() => void) | null = null;
+  // A double-click on a row whose detail is still fetching: the add
+  // fires as soon as the fetch lands and offers an action.
+  let dblAdd = false;
   function setAdd(title: string, action: (() => void) | null): void {
     addAction = action;
     add.disabled = !action;
@@ -838,10 +1087,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   let sections: string[] = [];
   let section = "";
   let rows: Importable[] = [];
+  // A user's own section pick survives later listing merges — only an
+  // untouched view follows the saved section as collections land.
+  let picked = false;
   const byUrl = new Map<string, Importable>();
   const popup = mountPopup(popBtn, {
     items: ["Fish"], selected: 0, label: "Show",
-    onChange: (i) => showSection(sections[i]!),
+    onChange: (i) => { picked = true; showSection(sections[i]!); },
   });
   function setShowEnabled(on: boolean): void {
     popBtn.disabled = !on;
@@ -857,6 +1109,15 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       const it = rows[i];
       if (it) showDetail(it); else clearDetail();
     },
+    // Chooser convention: double-click installs the add-on. While its
+    // detail is still fetching there's no action yet — queue the add
+    // and fire it when the fetch lands and offers one.
+    onOpen: (i) => {
+      const it = rows[i];
+      if (!it || detailRef?.url !== it.url) return;
+      if (addAction) addAction();
+      else dblAdd = true;
+    },
   });
 
   function rowFor(it: Importable): HTMLElement {
@@ -867,6 +1128,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     r.append(box, el("span", "irowname", it.inner),
              el("span", "icheck", "✓"));
     r.classList.toggle("done", installed.has(it.url));
+    r.classList.toggle("unusable", unreadable.has(it.url));
     const th = it.section === "sounds" ? soundIcon() : thumbs.get(it.url);
     if (th) paintThumb(r, th);
     return r;
@@ -950,7 +1212,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     status.textContent = section === "sounds"
       ? "AZ_WAVES holds the game's own sound effects. You can also drop " +
         "your copy's .rsrc, .bin, .hqx or .REZ file on the tank or this " +
-        "window."
+        "window. Plain audio works too: .wav, .mp3, .aiff, .m4a, .ogg " +
+        "or .flac."
       : all.length ? "Select an add-on to preview it." : "";
     if (all.length) setAdd("Add to Tank", null);
   }
@@ -990,6 +1253,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     releaseSound();
     pending = null;
     offer = null;
+    dblAdd = false;
     shownPreview = null;
     pvBox.textContent = "";
     dname.textContent = it.inner;
@@ -1002,9 +1266,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     detailRef = ref;
 
     void fetchPack(it.url).then((rs) => {
-      const usable = rs.filter(
-        (r) => r.sheets.size || r.images.size || r.sounds.length);
-      if (!usable.length) throw new Error("no pack inside");
+      const usable = usablePacks(rs, it.section);
+      if (!usable.length) throw new Error(usableProblem(it.section));
       const pv = h.preview(usable);
       // Cache the thumb even if the selection moved on while the fetch
       // was in flight; only the pane waits on it being current.
@@ -1038,6 +1301,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       // paths drop a first add of something already in the tank, which
       // is what "Add to Tank" promises.
       const addIt = (again: boolean) => {
+        // No tank heard lately: say so now instead of posting into
+        // the void and waiting out the 15 s ack timeout.
+        if (remote && opts?.connected && !opts.connected()) {
+          status.textContent =
+            "The tank isn't running — is Finsical open?";
+          return;
+        }
         const refusal = remote ? null : h.refuse?.(it) ?? null;
         if (refusal) {
           status.textContent = refusal;
@@ -1074,11 +1344,28 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         setAdd(again ? "Add Again" : "Add to Tank", () => addIt(again));
       };
       offer();
+      // The row was double-clicked while the detail fetched — the
+      // offered action is what that click meant.
+      if (dblAdd) { dblAdd = false; addAction?.(); }
     }).catch((e) => {
       if (detailRef !== ref) return;
+      dblAdd = false;
       console.warn(`add-on ${it.inner} failed to load:`, e);
-      status.textContent = `Couldn't load it. ${loadProblem(e)}`;
-      setAdd("Try Again", () => showDetail(it));
+      if (e instanceof Error && e.message === "unreadable legacy pack") {
+        unreadable.add(it.url);
+        rowOf(it.url)?.classList.add("unusable");
+        status.textContent = loadProblem(e);
+        setAdd("Add to Tank", null);
+        return;
+      }
+      // installProblem, not loadProblem: a deterministic failure keeps
+      // the tank's own message instead of "try again" beside a disabled
+      // Try Again button.
+      status.textContent = `Couldn't load it. ${installProblem(e)}`;
+      // A decode or validation failure recurs identically — retrying
+      // only repeats the same dead end, so the button stays off.
+      setAdd("Try Again", transientFailure(e) ? () => showDetail(it)
+                                              : null);
     });
   }
 
@@ -1121,11 +1408,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
 
   function paintThumb(row: Element, th: HTMLCanvasElement): void {
     const box = row.querySelector(".ithumb");
-    if (!box || box.firstChild) return;
+    if (!box) return;
+    // Replace, don't skip: a pack that reinstalls under the same url
+    // earns a fresh preview, and a re-paint of the same thumb is cheap.
     const cv = miniThumb(th);
     cv.style.left = `${Math.floor((MINI_W - cv.width) / 2)}px`;
     cv.style.top = `${Math.floor((MINI_H - cv.height) / 2)}px`;
-    box.appendChild(cv);
+    box.replaceChildren(cv);
   }
 
   // Row thumbs fetch lazily: when a row scrolls into view its pack is
@@ -1244,8 +1533,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       thumbRunning++;
       thumbFetching.add(it.url);
       void fetchPack(it.url).then((rs) => {
-        const usable = rs.filter(
-          (r) => r.sheets.size || r.images.size || r.sounds.length);
+        const usable = usablePacks(rs, it.section);
         const pv = usable.length ? h.preview(usable) : null;
         if (!pv) return;
         thumbs.set(it.url, pv);
@@ -1290,15 +1578,16 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   // side effect differs. `live` marks user installs vs restores.
   function applyPack(it: Importable, rs: PackResult[],
                      live: boolean): string[] {
-    const usable = rs.filter(
-      (r) => r.sheets.size || r.images.size || r.sounds.length);
-    if (!usable.length) throw new Error("no pack inside");
+    const usable = usablePacks(rs, it.section);
+    if (!usable.length) throw new Error(usableProblem(it.section));
     const soundNames: string[] = [];
     for (const r of usable) {
       if (r.sheets.size)
-        h.onSheets(r.sheets, it.inner, it.url, it.section, live);
+        h.onSheets(r.sheets, it.inner, it.url, it.section, live,
+                   r.care, r.entry);
       if (r.images.size)
-        h.onImages(r.images.values(), it.url, it.section, live);
+        h.onImages(r.images.values(), it.url, it.section, live,
+                   live ? 1 : decorCopies(it));
       if (r.sounds.length) {
         const recs = qualifySoundItemName(r.sounds, it.inner);
         // The handler may rename colliding records in place — read the
@@ -1347,29 +1636,80 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     h.onInstall?.(it, soundNames);
   }
 
+  function savedSection(): string | null {
+    try { return localStorage.getItem(SECTION_KEY); }
+    catch { return null; } // storage unavailable
+  }
+
+  // Invalidates a previous loadListing attempt still in flight — its
+  // late collections must not merge into the retried listing.
+  let listingGen = 0;
+
+  /** Merge one collection's items into the listing as it resolves —
+   * rows appear per section instead of all at once when the slowest
+   * collection lands. */
+  function mergeListing(gen: number, items: Importable[]): void {
+    if (gen !== listingGen) return;
+    all.push(...items);
+    for (const it of items) byUrl.set(it.url, it);
+    all.sort((a, b) => (SECTION_RANK.get(a.section) ?? 0) -
+                       (SECTION_RANK.get(b.section) ?? 0));
+    const secs = [...new Set(all.map((x) => x.section))];
+    if (secs.join("\0") !== sections.join("\0")) {
+      sections = secs;
+      popup.setItems(sections.map((s) => SECTION_TITLES[s] ?? s),
+                     Math.max(0, sections.indexOf(section)));
+    }
+    setShowEnabled(true);
+    if (!picked) {
+      const sv = savedSection();
+      // Land on the saved section once it arrives; until then the
+      // first available section has something to show.
+      showSection(sv && sections.includes(sv) ? sv : sections[0]!);
+    } else if (sections.includes(section)) {
+      applyFilter(); // new rows may join the viewed section
+    }
+    // A section whose collection is still in flight reads as fetching;
+    // an empty *filtered* view of an arrived section is not fetching.
+    list.setEmpty(all.some((x) => x.section === section)
+      ? "" : "Fetching the archive.org listing…");
+  }
+
   function loadListing(): void {
     all = [];
+    sections = [];
+    section = "";
+    rows = [];
+    byUrl.clear();
+    picked = false;
     list.setRows([]);
     list.setEmpty("Fetching the archive.org listing…");
     count.textContent = "";
     status.textContent = "";
     setAdd("Add to Tank", null);
-    void listAddons().then((items) => {
+    setShowEnabled(false);
+    const gen = ++listingGen;
+    void listAddons(undefined, (items) => mergeListing(gen, items))
+      .then((items) => {
+      if (gen !== listingGen) return;
       if (!items.length) throw new Error("empty listing");
+      // Re-anchor `all` to the final COLLECTIONS-ordered list before
+      // re-rendering — mergeListing appended in network-arrival
+      // order, which made within-section row order timing-dependent.
       all = items;
-      byUrl.clear();
-      for (const it of items) byUrl.set(it.url, it);
-      sections = [...new Set(items.map((x) => x.section))];
-      let start = sections[0]!;
-      try {
-        const saved = localStorage.getItem(SECTION_KEY);
-        if (saved && sections.includes(saved)) start = saved;
-      } catch { /* storage unavailable */ }
-      popup.setItems(sections.map((s) => SECTION_TITLES[s] ?? s),
-                     sections.indexOf(start));
-      setShowEnabled(true);
-      list.setEmpty("");
-      showSection(start);
+      // A user's own pick outranks the saved section.
+      if (!picked) {
+        const sv = savedSection();
+        const start = sv && sections.includes(sv) ? sv : sections[0]!;
+        popup.setItems(sections.map((s) => SECTION_TITLES[s] ?? s),
+                       sections.indexOf(start));
+        showSection(start);
+      } else applyFilter();
+      // A viewable section always has items (sections are built from
+      // `all`); empty at this point means its collection failed —
+      // unless a filter hid the rows, which is not a fetch failure.
+      list.setEmpty(all.some((x) => x.section === section)
+        ? "" : "Couldn't load this section.");
     }).catch((e) => {
       console.warn("add-on listing failed:", e);
       list.setEmpty("Couldn't reach archive.org.");
@@ -1423,7 +1763,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         if (detailRef?.url === ackUrl && pending?.ref === detailRef) {
           const p = pending;
           pending = null;
-          detailRef.status.textContent = `Couldn't add it: ${m.error}`;
+          detailRef.status.textContent =
+            m.error ? `Couldn't add it. ${m.error}` : "Couldn't add it.";
           setAdd("Try Again", p.retry);
         }
       } else if (m.op === "state" && Array.isArray(m.addons)) {
@@ -1451,6 +1792,33 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
             wanted: (it: Importable) => boolean): Promise<Importable[]> {
       if (remote) return Promise.resolve([]); // the tank page owns the sim
       const failed: Importable[] = [];
+      // Warm fetches a few at a time: packCache dedupes by URL, so the
+      // serial chain below awaits work already running instead of
+      // starting each download as the previous pack applies. Four
+      // concurrent fetches hide most of restore's latency without a
+      // thundering herd against archive.org (or a decode burst on the
+      // main thread) at the moment of maximum contention. Errors
+      // surface through the chain's own catch, so the warm-up
+      // promise's rejection only needs swallowing.
+      const RESTORE_FETCH_CAP = 4;
+      const warm = list.filter((it) => !installed.has(it.url) && wanted(it));
+      let wi = 0, active = 0;
+      const pump = (): void => {
+        while (wi < warm.length && active < RESTORE_FETCH_CAP) {
+          const it = warm[wi++]!;
+          // Re-check both gates: installed can change while the pump
+          // idles between settles (a manual import landing mid-restore).
+          if (installed.has(it.url) || !wanted(it)) continue;
+          active++;
+          // The trailing catch covers a throwing re-pump (a wanted
+          // predicate throwing inside .finally) — the warm-up path can
+          // never produce an unhandled rejection.
+          void fetchPack(it.url).catch(() => {})
+            .finally(() => { active--; pump(); })
+            .catch(() => {});
+        }
+      };
+      pump();
       let p: Promise<void> = Promise.resolve();
       for (const it of list) {
         p = p.then(() => {
