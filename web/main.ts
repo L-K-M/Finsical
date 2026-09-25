@@ -1583,11 +1583,11 @@ function onBusMessage(m: BusMsg): void {
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
   else if (m.op === "removeFish" && typeof m.id === "number") {
-    // requestPaint, not a tick: the frame loop draws after a sim tick,
-    // so a paused tank would keep showing the fish that was just taken
-    // out of the water.
     if (sim.removeFish(m.id)) {
-      audio.fishOut(); sweepThumbs(); saveTank(); requestPaint();
+      audio.fishOut();
+      sweepThumbs();
+      saveTank();
+      requestPaint(); // the hole opens at once, even while paused
     }
   } else if (m.op === "removeAddon" &&
              typeof m.url === "string" && m.url !== "") {
@@ -2534,7 +2534,8 @@ void (async () => {
     // sound plays now or on the first click.
     audio.open();
     // The user's chosen scenery wins over install-recency — applied
-    // once every pack has had its restore chance.
+    // once every pack has had its restore chance. A pack that failed
+    // to restore leaves whatever the chain picked, until a retry.
     applySceneryChoice();
     remapSheetIdx(); reconcileFish();
     backfillStarterSounds({
