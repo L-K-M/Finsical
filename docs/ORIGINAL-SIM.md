@@ -86,6 +86,31 @@ oxygen to saturation.
 Tapping the glass never hurts a fish: the original's stress hit
 truncates to zero.
 
+## Swimming and depth
+
+Read from the Mac AquaZone 1.5 68k code (MacsBug names) and checked
+against the Windows engine's constants.
+
+| Rule | Original |
+| --- | --- |
+| Step rate | at most 10 steps a second (Windows), 6.7 (Mac); whole pixels per step |
+| Legs | `Calc_New_Dest`: x within ±5 body widths, y within ±80 px (of 480), by per-species top/middle/bottom weights; 64 steps (`Init_Swim`) before re-aiming at the same destination, a new one only on arrival |
+| Speed | quadratic ramp to the species' top speed over 5 to 100 steps, brake at 1.6× that from about half the leg |
+| Idle | on arrival a fish swims on by its species' swim %; otherwise 40% hover for 6 to 63 steps, 60% turn in place |
+| Turn | half of an 8-pose ring, a pose a step |
+| Tap | fish within ±100 px of the click get a destination on the far side (`Calc_Scat_Dest`) and a fresh swim ramp; no speed boost, no cascade |
+| Depth | fish, plants and accessories share one list sorted by depth (`Sort_Anim_Obj_By_Depth`); tank layouts store x, top and depth for each plant (PlPI) and accessory (AccI), bottoms on the floor |
+
+Finsical runs 30 ticks a second and ports these as a 192-tick leg
+budget, a one-second ramp, local legs, a 30% hover of 0.6 to 6.3 s on
+arrival and a 12-tick roll. Where it differs: every species shares
+one swim table (FsTI's speeds, zone weights and swim % are not read
+yet); a scared fish still darts a little faster than cruise and spooks
+its close neighbours; and it makes for cover behind decor, which the
+original's scatter code does not do (its guide only says decor gives
+shy fish "a place to hide"). Standalone plant and accessory packs carry
+no depth, so Finsical seeds one by the art's height.
+
 ## Disease and medicine
 
 - A fish falls sick when damage leaves it below its species' sickness
@@ -152,6 +177,13 @@ truncates to zero.
 - **New tanks start with aged water** (no chlorine), so a first tank
   doesn't poison its fish; water changes bring fresh chlorine as in the
   original.
-- **Not yet reimplemented:** breeding (courtship, eggs, pregnancy,
-  fry, genetics), fighting, the auto feeder, sickness pictures and the
-  Mekasia story mail.
+- **Breeding is paced, not modelled.** The original's Start_Coupling
+  gives each female one try a tank day once she is breedAge days old:
+  15 in 100 to couple, then 50% to conceive, so a healthy pair has
+  young about every 13 tank days, after a gestation or egg time.
+  Finsical rolls the same odds once a tank day for each species with a
+  healthy pair of breeding age, and the fry arrives at once: fish have
+  no sex, and there are no couplings, eggs or pregnancies yet.
+- **Not yet reimplemented:** the rest of breeding (courtship, eggs,
+  pregnancy, genetics), fighting, the auto feeder, sickness pictures
+  and the Mekasia story mail.
