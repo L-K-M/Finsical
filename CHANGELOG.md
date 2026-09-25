@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Tank Stats puts its readings on three Mac OS 8 tabs, General, Water
+  and Keeping, so the window is little more than half as tall. It
+  reopens on the tab you used last. The first time it opens after this
+  update it comes up centered at its new size, since the size you left
+  it at was for the old single pane.
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.
