@@ -10,11 +10,7 @@ export function wav(tag: number): Uint8Array {
   return b;
 }
 
-export interface Res {
-  id: number; body: Uint8Array; name?: string;
-  /** Attribute flags, stored in the data offset's high byte. */
-  attr?: number;
-}
+export interface Res { id: number; body: Uint8Array; name?: string }
 
 /** A 9003 pack laid out like System/AZ_WAVES.REZ: length-prefixed
  * payloads from 0x100, then the little-endian resource map. */
@@ -59,7 +55,7 @@ export function buildBank(types: { tag: string; res: Res[] }[]): Uint8Array {
       const p = mapOff + typeList + ref + j * 12;
       v.setInt16(p, r.id, true);
       v.setInt16(p + 2, nameOff.get(r) ?? -1, true);
-      v.setUint32(p + 4, (offs.get(r)! | (r.attr ?? 0) << 24) >>> 0, true);
+      v.setUint32(p + 4, offs.get(r)!, true);
     });
     ref += t.res.length * 12;
   });

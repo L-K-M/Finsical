@@ -79,25 +79,30 @@ describe("bankSounds", () => {
     expect(bankSounds(bank).map((s) => s.name)).toEqual(["SIDE"]);
   });
 
-  it("reads offsets past the attribute flags in their high byte", () => {
-    const bank = buildBank([{ tag: "snd ", res: [
-      { id: 1000, body: wav(1), attr: 0x20 },
-      { id: 1001, body: wav(2), attr: 0x60 },
-    ] }]);
-    expect(bankSounds(bank).map((s) => s.name)).toEqual(["CENTER*", "SIDE"]);
+  it("ignores the attribute byte in a ref's data offset", () => {
+    const bank = buildBank(
+      [{ tag: "snd ", res: [{ id: 1000, body: wav(1) }] }]);
+    const v = new DataView(bank.buffer);
+    // Ref list starts past the one 8-byte type entry; the offset's
+    // high byte carries attributes real maps set.
+    const ref = v.getUint32(4, true) + 30 + 8;
+    v.setUint8(ref + 7, 0x01);
+    expect(bankSounds(bank).map((s) => s.name)).toEqual(["CENTER*"]);
+  });
+
+  it("reads only the first 'snd ' type entry", () => {
+    // Real maps list a type once; a duplicate entry is crafted chaff
+    // that would re-scan every ref (quadratic on a hostile file).
+    const bank = buildBank([
+      { tag: "snd ", res: [{ id: 1000, body: wav(1) }] },
+      { tag: "snd ", res: [{ id: 1001, body: wav(2) }] },
+    ]);
+    expect(bankSounds(bank).map((s) => s.name)).toEqual(["CENTER*"]);
   });
 
   it("yields a payload once, however many references share it", () => {
     const got = bankSounds(sharedRefs(65536));
     expect(got).toEqual([{ name: "CENTER*", wav: wav(1) }]);
-  });
-
-  it("reads only the first 'snd ' entry of the type list", () => {
-    // Two entries listing the same payload would yield it twice.
-    const res = { id: 1000, body: wav(1) };
-    const bank = buildBank([{ tag: "snd ", res: [res] },
-                            { tag: "snd ", res: [res] }]);
-    expect(bankSounds(bank)).toHaveLength(1);
   });
 
   it("stops at MAX_FILE_SOUNDS records", () => {
