@@ -1,6 +1,6 @@
 # Finsical
 
-**Latest release:** v<!-- version -->0.3.0<!-- /version --> · [Download](https://github.com/L-K-M/Finsical/releases/latest) · [Changelog](CHANGELOG.md)
+**Latest release:** v<!-- version -->0.4.0<!-- /version --> · [Download](https://github.com/L-K-M/Finsical/releases/latest) · [Changelog](CHANGELOG.md)
 
 ![Screenshot showing a Performa backdrop](media-sources/screenshot.png)
 
@@ -64,15 +64,16 @@ Add-ons.
 | Move the window | In the app, drag the computer case around the tank, or the top edge of the window |
 
 A fish nearby comes over to look at the pointer while you hover over
-the tank, unless it is hungry or startled.
+the tank, unless it is hungry or startled. At night the pointer also
+works as a torch, lighting a warm circle of the dark tank.
 
 ### Keeping the tank
 
 The tank lives like the original AquaZone's, in real time: a fed fish
 gets hungry again after most of a day, and time passes while Finsical
 is closed (see [docs/ORIGINAL-SIM.md](docs/ORIGINAL-SIM.md) for the
-rules). Tank Stats shows the water, as mg per litre, and has the
-controls to keep it:
+rules). Tank Stats shows the water on its Water tab, as mg per litre,
+and has the controls to keep it on its Keeping tab:
 
 - **Heater:** holds the water at the temperature you set.
 - **Filter:** aerates the water and, once it has some dirt in it,
@@ -127,7 +128,7 @@ Keys on the tank page, in the app and the browser build (see
 | M | Mute or unmute the sound |
 | P | Pause or resume the tank |
 | C | Toggle the CRT effect |
-| S | Open Tank Stats in a tab (browser only) |
+| S | Open Tank Stats in a window of its own (browser only) |
 | Ctrl-I or Cmd-I | Open the add-on browser over the tank (browser only; the app's Cmd-I opens the Import Add-ons window) |
 | Esc | Close the Get Info card or the front window |
 
@@ -197,7 +198,7 @@ yet.
 | Preferences | **Machine**: the computer case around the tank (Macintosh Plus, Performa 450 and 5200, 20th Anniversary Mac, iMac G3 and G4, PowerBook G3, iBook, or a bare tank). **Monitor**: the CRT effect, presets and its picture tube sliders. **Picture**: the monitor's front-panel controls. **Lighting**: the day and night cycle, a light timer that follows your Mac's clock, or lights always on, and the lamp. **Sound**: volume, mute, and switches for bubble sounds and the water ambience (see [Sounds](#sounds)). |
 | Tank Overview | Everything in the tank as a sortable Name, Kind and Status list, with **Remove**, **Use** for scenery and **Empty Tank…** |
 | Import Add-ons | The archive.org add-on browser described above |
-| Tank Stats | Water quality and average hunger with recent history, the hungriest fish, fish and food counts, day or night, tank age, care hints, and **Change Water** |
+| Tank Stats | **General**: water quality and average hunger with recent history, the hungriest fish, fish and food counts, day or night, tank age and care hints. **Water**: the water's readings per litre. **Keeping**: the heater, filter, water changes, medicine and how fast time runs. **Copy Summary** puts the readings on the clipboard. |
 
 ## Your data
 

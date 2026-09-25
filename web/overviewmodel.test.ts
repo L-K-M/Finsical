@@ -174,6 +174,25 @@ describe("sortItems", () => {
     expect(rows[0]!.status).toMatch(/^Dead/);
     expect(rows[1]!.status).toMatch(/^Sick/);
   });
+  it("defaults to ascending, as a first click on a column does", () => {
+    expect(sortItems(items, "name")).toEqual(sortItems(items, "name", 1));
+  });
+  it("reverses a whole column, tie-breakers and all, when it flips", () => {
+    // The reverse-of-forward identity below holds only while no two
+    // fixtures compare fully equal: rows that tie keep their place in
+    // both directions because the sort is stable. Names compare with
+    // the base collator — case- and accent-insensitive — so assert it
+    // with that collator: a "Cafe"/"Café" pair is distinct lowercase
+    // yet compares equal, and would fail only as a puzzling order
+    // mismatch if this guard didn't catch it first.
+    for (const a of items) for (const b of items)
+      if (a !== b)
+        expect(a.name.localeCompare(b.name, undefined,
+          { sensitivity: "base" })).not.toBe(0);
+    for (const by of ["name", "kind", "status"] as const)
+      expect(sortItems(items, by, -1).map((i) => i.name))
+        .toEqual(sortItems(items, by).map((i) => i.name).reverse());
+  });
 });
 
 describe("summary", () => {

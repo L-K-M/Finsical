@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { curesFor, deriveStats, deriveWater, hungerLabel,
          HUNGER_STARVING, milestone, SPARK_H, SPARK_SLOT_MS, SPARK_W,
-         sparkColumns, sparkRow, summaryText, trend, uptime }
+         sparkColumns, sparkRow, summaryText, tabIndex, trend, uptime }
   from "./statsmodel.js";
 import { DAY_TICKS, Sim } from "../core/sim.js";
 import { hourLabel } from "../core/light.js";
@@ -344,5 +344,18 @@ describe("summaryText", () => {
       fish: [{ species: "Guppy", hunger: HUNGER_SEEK - 0.01, state: "drift" }],
     }));
     expect(under).toContain("Hungriest: —");
+  });
+});
+
+describe("tabIndex", () => {
+  const ids = ["stab-general", "stab-water", "stab-keeping"];
+  it("reopens on the saved tab", () => {
+    expect(tabIndex(ids, "stab-keeping")).toBe(2);
+    expect(tabIndex(ids, "stab-general")).toBe(0);
+  });
+  it("falls back to the first tab", () => {
+    expect(tabIndex(ids, null)).toBe(0);
+    expect(tabIndex(ids, "stab-removed")).toBe(0);
+    expect(tabIndex(ids, "")).toBe(0);
   });
 });
