@@ -78,8 +78,8 @@ export interface TankStats {
   water: WaterStats | null;
 }
 
-/** Hunger where "hungry" becomes "starving" for the worst-off fish. */
-const HUNGER_STARVING = 0.85;
+/** Hunger at or above which a fish is reported as "starving". */
+export const HUNGER_STARVING = 0.85;
 /** Avg hunger that warrants a feeding hint. */
 const HUNGER_FEED = 0.55;
 
@@ -176,7 +176,8 @@ function advice(st: TankStats, water: number): string[] {
              "fouling the water — remove it in Tank Overview.");
   }
   if (!st.fishCount) {
-    if (!st.dead) out.push("No fish yet — add some from the Add-ons importer.");
+    if (!st.dead)
+      out.push("No fish yet — choose Import Add-ons… in the Tank menu.");
     return out;
   }
   // Chlorine is what a fresh water change poisons fish with: it goes
@@ -238,18 +239,19 @@ export function summaryText(st: TankStats): string {
   const lines = [
     `Tank Stats — ${fish}; water ${Math.round(st.waterPct)}%; ${hunger}; ` +
       `up ${uptime(st.uptimeMin)}`,
-    `Hungriest: ${st.hungriest
-      ? `${st.hungriest.name} — ${hungerLabel(st.hungriest.hunger)}`
-      : "—"}`,
+    `Hungriest: ${hungriestLabel(st)}`,
     `Food: ${food} · Light: ${st.lightLabel}`,
   ];
   if (st.advice.length) lines.push(`Care: ${st.advice.join(" · ")}`);
   return lines.join("\n");
 }
 
-/** "1h 23m" / "45m" — matches the panel overview's uptime format. */
+/** "2d 1h" / "1h 23m" / "45m" — matches the panel overview's format. */
 export function uptime(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
+  if (minutes >= 24 * 60)
+    return `${Math.floor(minutes / 1440)}d ` +
+      `${Math.floor(minutes % 1440 / 60)}h`;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
@@ -273,7 +275,16 @@ export function hungerLabel(h: number): string {
   // "peckish" means the fish is looking for food.
   if (h < HUNGER_SEEK) return "full";
   if (h < 0.66) return "peckish";
-  return "hungry";
+  if (h < HUNGER_STARVING) return "hungry";
+  return "starving";
+}
+
+/** Hungriest cell text — blank when nobody is even peckish, so a
+ * well-fed tank doesn't read like an alarm under "Hungriest". */
+export function hungriestLabel(st: TankStats): string {
+  return st.hungriest && st.hungriest.hunger >= HUNGER_SEEK
+    ? `${st.hungriest.name} — ${hungerLabel(st.hungriest.hunger)}`
+    : "—";
 }
 
 /** Trend arrow from a pair of samples, oldest-first; |delta| below
