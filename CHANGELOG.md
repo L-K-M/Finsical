@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A tank saved by 0.3.0 or earlier keeps the look of each fish from an
+  add-on that holds several fish. The first launch after the update
+  would otherwise turn them all into the add-on's last fish: angels.zip
+  gave an angel and a black angel, and both came back black angels.
 - A fish add-on whose fish don't all fit in the tank is refused as a
   whole, with a note of how much room is left. It used to add as many
   as fit and report success.

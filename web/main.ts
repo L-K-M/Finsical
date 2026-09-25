@@ -43,7 +43,8 @@ import { coverCrop, decorCanvases, imageCanvas, isBackdropImage,
          isGravelImage,
          previewOf, soundIcon, swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
-import { capRefusal, partName } from "./tankmodel.js";
+import { capRefusal, entryKey, entryOfSlot, entryStem, legacyEntries,
+         partName } from "./tankmodel.js";
 import { nextNotice, noticePoint } from "./curiosity.js";
 import type { Notice } from "./curiosity.js";
 import { containPoint, isFeedZone } from "./feedzone.js";
@@ -1102,8 +1103,6 @@ const sheetByPack = new Map<string, number>();
 // packs registers one slot per entry, so each fish rebinds to its own
 // blob after relaunch instead of collapsing onto the last entry.
 const sheetByEntry = new Map<string, number>();
-const entryKey = (url: string, entry: string): string =>
-  `${url}\n${entry}`;
 // Reverse of sheetByPack — which pack owns a slot, for migrating
 // species-bound fish onto the URL binding of the sheet they render.
 const packBySheet = new Map<number, string>();
@@ -1176,6 +1175,17 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
  * species, and the stand-in is the honest answer until a restore retry
  * lands the real pack. */
 function remapSheetIdx(): void {
+  // Fish saved before entries were recorded would all bind to a
+  // multi-pack add-on's last entry below; hand them one each first.
+  const legacy = legacyEntries(sim.fish, sheetByEntry);
+  for (const f of sim.fish) {
+    const entry = legacy.get(f.id);
+    if (entry === undefined) continue;
+    f.entry = entry;
+    // They were named after the add-on; name each after its pack.
+    if (f.species === installedAddons.find((a) => a.url === f.pack)?.inner)
+      f.species = entryStem(entry);
+  }
   for (const f of sim.fish) {
     // Fish spawned by an add-on rebind by pack URL; older saves carry
     // only a species name — fall back to it (collisions just share art).
@@ -1196,12 +1206,10 @@ function remapSheetIdx(): void {
       // Backfill entry for any fish whose sheet slot is known —
       // including ones that already had `pack` recorded — or the next
       // relaunch still collapses them onto the add-on's last entry.
-      if (f.pack !== undefined && f.entry === undefined)
-        for (const [k, v] of sheetByEntry)
-          if (v === idx && k.startsWith(`${f.pack}\n`)) {
-            f.entry = k.slice(f.pack.length + 1);
-            break;
-          }
+      if (f.pack !== undefined && f.entry === undefined) {
+        const entry = entryOfSlot(sheetByEntry, f.pack, idx);
+        if (entry !== undefined) f.entry = entry;
+      }
     } else {
       delete f.sheetIdx;
     }
