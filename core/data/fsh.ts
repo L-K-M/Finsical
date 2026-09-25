@@ -99,6 +99,8 @@ export function decodePixels(s: Uint8Array, w: number, h: number): Uint8Array {
       // `out` starts zeroed, so a run of 0 (the transparent margins)
       // only moves the counters.
       if (c !== 0) {
+        // The stream walks columns but `out` is row-major, so a run's
+        // pixels sit `w` apart and cannot be one contiguous out.fill.
         for (let k = 0; k < run; k++) {
           out[y * w + x] = c;
           if (++y === h) { y = 0; x++; }
