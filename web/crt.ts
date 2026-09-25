@@ -14,6 +14,9 @@
  *  - gentle barrel curvature, corner vignette, flicker + rolling band,
  *    faint grain
  *  - service-menu geometry: raster skew and a perspective keystone
+ * The beam smear runs first, once per game row, into an offscreen
+ * target as wide as the raster's device px; the tube pass then reads
+ * finished rows instead of re-smearing every device px.
  * WebGL setup failure returns null and the plain pixelated path stays.
  */
 
@@ -22,35 +25,17 @@ attribute vec2 aPos;
 void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
 `;
 
-const FRAG = `
+// Shared by both passes: precision, the tank frame and its samplers.
+const COMMON = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
 precision mediump float;
+#endif
 uniform sampler2D uTex;
 uniform vec2 uTank;   // logical resolution (320x200)
-uniform vec4 uRect;   // letterboxed tank rect in buffer px, y-up
-uniform float uTime;
-uniform float uScan;  // gap darkness between rows (0 = off, 1 = black)
-uniform float uSoft;  // horizontal beam smear (0 = sharp pixels)
-uniform float uBloom; // bright bleed strength
-uniform float uOver;  // bright-color overdrive
-uniform float uConv;  // R/B misconvergence, edge-weighted
-uniform float uGrill; // RGB mask strength (0 = invisible stripes)
-uniform float uCurve; // barrel warp
-uniform float uVig;   // edge/corner dimming
-uniform float uFlick; // brightness shimmer
-uniform float uGrain; // analog noise
-uniform float uBright;// picture brightness gain (0.5 = neutral)
-uniform float uContr; // picture contrast around mid level
-uniform float uZoom;  // overscan crop (0 = full raster)
-uniform float uHSize; // raster width pot (0.5 = neutral)
-uniform float uVSize; // raster height pot (0.5 = neutral)
-uniform float uSkew;  // raster shear pot (0.5 = square)
-uniform float uPersp; // horizontal keystone (0.5 = head-on)
-uniform float uRed;   // per-channel gain trims
-uniform float uGreen;
-uniform float uBlue;
-uniform float uPower; // 1 = settled; <1 = power-on warm-up in progress
 
-// Device px per game px, set at the top of main().
+// Device px per game px, set at the top of each pass's main().
 vec2 pxScale;
 
 // Sharp-bilinear: the texel center nearest to x, except within one
@@ -76,6 +61,84 @@ vec3 gamePx(vec2 lp) {
 vec3 texelAt(vec2 lp) {
   return gamePx(vec2(sharpCoord(lp.x, uTank.x, pxScale.x), lp.y));
 }
+`;
+
+// Rows pass: the beam's smear along each scanline, computed once per
+// game row into a target one texel row per game row and uCols texels
+// wide (the raster's device width), instead of once per device px.
+const ROWS_FRAG = COMMON + `
+uniform float uSoft;  // horizontal beam smear (0 = sharp pixels)
+uniform float uCols;  // columns drawn
+
+void main() {
+  pxScale = vec2(uCols / uTank.x, 1.0);
+  // The target is uTank.y rows tall, so gl_FragCoord.y is a row center.
+  vec2 lp = vec2(gl_FragCoord.x / pxScale.x, gl_FragCoord.y);
+
+  // Horizontal beam smear: a 9-tap gaussian along the scan. The first
+  // 40% of the slider fades in a beam about one game px wide (sigma
+  // ~0.9 px); beyond that the beam itself widens, to 2.5x at the top.
+  vec3 sharp = texelAt(lp);
+  vec3 c = sharp;
+  float soft = 2.5 * uSoft;
+  if (soft > 0.0) {
+    float pitch = 0.55 * max(soft, 1.0); // tap spacing in game px
+    vec3 sum = gamePx(lp);
+    float total = 1.0;
+    for (int i = 1; i <= 4; i++) {
+      float w = exp(-0.18 * float(i * i));
+      vec2 o = vec2(pitch * float(i), 0.0);
+      sum += (gamePx(lp - o) + gamePx(lp + o)) * w;
+      total += 2.0 * w;
+    }
+    c = mix(sharp, sum / total, min(soft, 1.0));
+  }
+  gl_FragColor = vec4(c, 1.0);
+}
+`;
+
+const FRAG = COMMON + `
+uniform sampler2D uRows; // the rows pass's smeared scanlines
+uniform float uCols;  // columns drawn
+uniform float uColsMax; // the rows texture's width
+uniform vec4 uRect;   // letterboxed tank rect in buffer px, y-up
+// Flicker, rolling-band and grain phases, each pre-wrapped on the CPU
+// (mod 2π for the sin() args, mod 1 for the hash). Wrapping the raw
+// clock instead made every sin(uTime*k) jump once per wrap — a visible
+// flicker blink — and an unwrapped clock loses mediump precision.
+uniform vec3 uPhase;
+uniform float uScan;  // gap darkness between rows (0 = off, 1 = black)
+uniform float uBloom; // bright bleed strength
+uniform float uOver;  // bright-color overdrive
+uniform float uConv;  // R/B misconvergence, edge-weighted
+uniform float uGrill; // RGB mask strength (0 = invisible stripes)
+uniform float uCurve; // barrel warp
+uniform float uVig;   // edge/corner dimming
+uniform float uFlick; // brightness shimmer
+uniform float uGrain; // analog noise
+uniform float uBright;// picture brightness gain (0.5 = neutral)
+uniform float uContr; // picture contrast around mid level
+uniform float uZoom;  // overscan crop (0 = full raster)
+uniform float uHSize; // raster width pot (0.5 = neutral)
+uniform float uVSize; // raster height pot (0.5 = neutral)
+uniform float uSkew;  // raster shear pot (0.5 = square)
+uniform float uPersp; // horizontal keystone (0.5 = head-on)
+uniform float uRed;   // per-channel gain trims
+uniform float uGreen;
+uniform float uBlue;
+uniform float uPower; // 1 = settled; <1 = power-on/off in progress
+uniform float uDegauss; // degauss wobble amplitude (0 = settled)
+
+// The smeared scanline signal at lp. Like gamePx, rows sample sharp:
+// the linear filter blends columns, and rows only across the one
+// device px where they meet.
+vec3 rowPx(vec2 lp) {
+  // Divide before scaling up: lp.x * uCols alone can pass mediump's
+  // 2^14 range where highp is missing.
+  float x = clamp(lp.x / uTank.x * uCols, 0.5, uCols - 0.5);
+  float y = sharpCoord(lp.y, uTank.y, pxScale.y);
+  return texture2D(uRows, vec2(x / uColsMax, y / uTank.y)).rgb;
+}
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -86,7 +149,7 @@ void main() {
   // Overscan and the size pots below scale the raster up; the
   // keystone corrects this per fragment below, while skew (a pure
   // shear — area-preserving), curvature and the warm-up squeeze are
-  // left out of the estimate.
+  // left out of the estimate. crtRowColumns() mirrors the x term.
   pxScale = uRect.zw / uTank * (1.0 + 0.12 * uZoom) *
             vec2(0.75 + 0.5 * uHSize, 0.75 + 0.5 * uVSize);
 
@@ -130,6 +193,12 @@ void main() {
   // Barrel curve: sample positions bow outward like curved tube glass.
   vec2 cc = uv * 2.0 - 1.0;
   uv = (cc * (1.0 + (0.10 * uCurve) * dot(cc, cc))) * 0.5 + 0.5;
+  // Degauss: the coil's field rings the raster side to side — rows
+  // shear along a scrolling sine that dies out with uDegauss. Before
+  // the bounds check, so a strong swing pushes texels off the matte.
+  // uPhase.x already carries t*61 wrapped mod 2π — sin is periodic,
+  // so the wrap is seamless for the scroll.
+  uv.x += sin(uv.y * 40.0 + uPhase.x) * 0.008 * uDegauss;
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
     gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
     return;
@@ -138,29 +207,13 @@ void main() {
   // Logical game pixel under this output pixel (post-warp).
   vec2 lp = uv * uTank;
 
-  // Horizontal beam smear: a 9-tap gaussian along the scan. The first
-  // 40% of the slider fades in a beam about one game px wide (sigma
-  // ~0.9 px); beyond that the beam itself widens, to 2.5x at the top.
-  vec3 sharp = texelAt(lp);
-  vec3 c = sharp;
-  float soft = 2.5 * uSoft;
-  if (soft > 0.0) {
-    float pitch = 0.55 * max(soft, 1.0); // tap spacing in game px
-    vec3 sum = gamePx(lp);
-    float total = 1.0;
-    for (int i = 1; i <= 4; i++) {
-      float w = exp(-0.18 * float(i * i));
-      vec2 o = vec2(pitch * float(i), 0.0);
-      sum += (gamePx(lp - o) + gamePx(lp + o)) * w;
-      total += 2.0 * w;
-    }
-    c = mix(sharp, sum / total, min(soft, 1.0));
-  }
+  // The scanline, already smeared along the scan by the rows pass.
+  vec3 c = rowPx(lp);
 
   // Misconvergence: the outer electron guns never land perfectly —
   // red drifts left and blue right, growing from zero at the center
   // toward the edges. Green stays as the reference beam.
-  float conv = (1.2 * uConv) * length(gc);
+  float conv = (1.2 * uConv) * length(gc) * (1.0 + 6.0 * uDegauss);
   if (conv > 0.001) {
     // Blend, don't overwrite — a hard swap would strip the beam smear
     // from r/b and leave them crisper than green.
@@ -198,9 +251,9 @@ void main() {
   // Glass vignette, faint flicker (plus a slow rolling brightness
   // band — the beam never sits perfectly in sync), and grain.
   c *= 1.0 - (0.40 * uVig) * dot(gc, gc);
-  c *= 1.0 + (0.05 * uFlick) * sin(uTime * 61.0)
-           + (0.03 * uFlick) * sin(uv.y * 3.0 - uTime * 4.0);
-  c += (hash(gl_FragCoord.xy + fract(uTime)) - 0.5) * (0.10 * uGrain);
+  c *= 1.0 + (0.05 * uFlick) * sin(uPhase.x)
+           + (0.03 * uFlick) * sin(uv.y * 3.0 - uPhase.y);
+  c += (hash(gl_FragCoord.xy + uPhase.z) - 0.5) * (0.10 * uGrain);
 
   // Front-panel picture controls, last: contrast pivots around the
   // picture's mid level, brightness is a master gain, and each channel
@@ -212,6 +265,8 @@ void main() {
   // the boost tracks openness, so total emitted light stays roughly
   // constant through warm-up instead of flashing mid-animation.
   c *= 1.0 + 2.0 * (1.0 - open);
+  // The degauss field brightens the whole raster a touch while it rings.
+  c *= 1.0 + 0.25 * uDegauss;
 
   gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
 }
@@ -381,14 +436,47 @@ export function crtRasterRect(bufW: number, bufH: number,
   return [bx + (bw - w) / 2, by + (bh - h) / 2, w, h];
 }
 
+/** Widest rows-pass target, in texels: past this the rows are
+ * resampled up, which only softens the sharp end of Softening. */
+const ROW_COLS_MAX = 4096;
+
+/** How many columns the rows pass draws: the raster's width in device
+ * px once overscan and the width pot have magnified it (mirrors FRAG's
+ * pxScale.x before the keystone), so the smeared rows keep device-px
+ * detail. At least one per game px, at most `max`. */
+export function crtRowColumns(rasterW: number,
+    cfg: Pick<CrtConfig, "zoom" | "hsize">, tankW: number,
+    max: number): number {
+  const w = rasterW * (1 + 0.12 * cfg.zoom) * (0.75 + 0.5 * cfg.hsize);
+  return Math.min(max, Math.max(tankW, Math.round(w)));
+}
+
+/** The degauss wobble's total length — after this degaussAmp() is 0. */
+export const DEGAUSS_MS = 900;
+/** Power-off collapse: raster to a hot line to black. */
+export const POWEROFF_MS = 280;
+
+/** Degauss envelope: exponential decay, snapped to 0 once inaudible —
+ * a hard cutoff keeps animating from lingering on a sub-pixel wobble. */
+export function degaussAmp(elapsedMs: number): number {
+  if (!(elapsedMs >= 0)) return 0;
+  const a = Math.exp(-elapsedMs / 180);
+  return a < 0.01 ? 0 : a;
+}
+
 export interface CrtFilter {
   readonly enabled: boolean;
   /** False once the GL context is lost — the effect can't re-enable. */
   readonly usable: boolean;
-  /** True while the power-on warm-up plays: the page must draw every
-   * frame then, not only on sim ticks. */
+  /** True while a tube animation plays (power warm-up, collapse or
+   * degauss): the page must draw every frame then, not only on ticks.
+   * Stays true through a collapse even after the caller's "on" flag
+   * cleared — the shader still needs frames to finish the effect. */
   readonly animating: boolean;
   setEnabled(on: boolean): void;
+  /** Ring the degauss coil: the raster wobbles and its color fringing
+   * blooms, then settles. No-op while off or under reduced motion. */
+  degauss(): void;
   /** Live-update shader params; `config` reflects the merged result. */
   configure(cfg: Partial<CrtConfig>): void;
   readonly config: CrtConfig;
@@ -414,6 +502,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     e.preventDefault();
     lost = true;
     enabled = false;
+    offT0 = -Infinity; // a collapse in flight dies with the context
     document.body.classList.remove("crt");
   });
 
@@ -428,30 +517,36 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     return s;
   };
   const vs = shader(gl.VERTEX_SHADER, VERT);
-  const fs = shader(gl.FRAGMENT_SHADER, FRAG);
-  if (!vs || !fs) return null;
-  const prog = gl.createProgram()!;
-  gl.attachShader(prog, vs);
-  gl.attachShader(prog, fs);
-  gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-    console.warn("crt link:", gl.getProgramInfoLog(prog));
-    return null;
-  }
-  gl.useProgram(prog);
+  const link = (fragText: string): WebGLProgram | null => {
+    const fs = shader(gl.FRAGMENT_SHADER, fragText);
+    if (!vs || !fs) return null;
+    const p = gl.createProgram()!;
+    gl.attachShader(p, vs);
+    gl.attachShader(p, fs);
+    // Both passes draw the same triangle from attribute slot 0.
+    gl.bindAttribLocation(p, 0, "aPos");
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+      console.warn("crt link:", gl.getProgramInfoLog(p));
+      return null;
+    }
+    return p;
+  };
+  const rowsProg = link(ROWS_FRAG);
+  const prog = link(FRAG);
+  if (!rowsProg || !prog) return null;
 
   // Fullscreen triangle.
   const buf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.bufferData(gl.ARRAY_BUFFER,
     new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-  const aPos = gl.getAttribLocation(prog, "aPos");
-  gl.enableVertexAttribArray(aPos);
-  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
-  // Linear filtering gives the shader's horizontal taps a smooth beam
-  // smear; gamePx() samples rows sharp, so they never blend into each
-  // other.
+  // The tank frame, on texture unit 0. Linear filtering gives the
+  // smear's taps a smooth beam; gamePx() samples rows sharp, so they
+  // never blend into each other.
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -463,14 +558,51 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA,
     gl.UNSIGNED_BYTE, src);
 
-  const uTank = gl.getUniformLocation(prog, "uTank");
-  const uRect = gl.getUniformLocation(prog, "uRect");
-  const uTime = gl.getUniformLocation(prog, "uTime");
-  const uPower = gl.getUniformLocation(prog, "uPower");
-  gl.uniform2f(uTank, src.width, src.height);
-  gl.uniform1f(uPower, 1);
+  // The rows pass's target, on unit 1: one texel row per game row,
+  // allocated once at full width; each frame draws the left
+  // crtRowColumns() of it.
+  const colsMax = Math.min(ROW_COLS_MAX,
+    gl.getParameter(gl.MAX_TEXTURE_SIZE) as number,
+    (gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array)[0]!);
+  const rowTex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, rowTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, colsMax, src.height, 0,
+    gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.activeTexture(gl.TEXTURE0); // texSubImage2D in render() targets unit 0
+  const rowFbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, rowFbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+    gl.TEXTURE_2D, rowTex, 0);
+  const rowsReady =
+    gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  if (!rowsReady) {
+    console.warn("crt: the rows target is incomplete");
+    return null;
+  }
 
-  // Trait uniforms — config keys pair with shader names.
+  for (const p of [rowsProg, prog]) {
+    gl.useProgram(p);
+    gl.uniform2f(gl.getUniformLocation(p, "uTank"), src.width, src.height);
+  }
+  const uRowCols = gl.getUniformLocation(rowsProg, "uCols");
+  const uCols = gl.getUniformLocation(prog, "uCols");
+  const uRect = gl.getUniformLocation(prog, "uRect");
+  const uPhase = gl.getUniformLocation(prog, "uPhase");
+  const uPower = gl.getUniformLocation(prog, "uPower");
+  const uDegauss = gl.getUniformLocation(prog, "uDegauss");
+  gl.uniform1i(gl.getUniformLocation(prog, "uRows"), 1);
+  gl.uniform1f(gl.getUniformLocation(prog, "uColsMax"), colsMax);
+  gl.uniform1f(uPower, 1);
+  gl.uniform1f(uDegauss, 0);
+
+  // Trait uniforms — config keys pair with shader names, each read by
+  // the pass that declares it (softening by the rows pass).
   const TRAIT_UNIFORMS: Record<keyof CrtConfig, string> = {
     scanlines: "uScan", softening: "uSoft", bloom: "uBloom", overdrive: "uOver",
     misconvergence: "uConv", grille: "uGrill", curvature: "uCurve",
@@ -480,14 +612,21 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     skew: "uSkew", perspective: "uPersp",
     red: "uRed", green: "uGreen", blue: "uBlue",
   };
-  const traitLoc = {} as Record<keyof CrtConfig, WebGLUniformLocation | null>;
-  for (const k of Object.keys(TRAIT_UNIFORMS) as (keyof CrtConfig)[])
-    traitLoc[k] = gl.getUniformLocation(prog, TRAIT_UNIFORMS[k]);
+  const traitKeys = Object.keys(TRAIT_UNIFORMS) as (keyof CrtConfig)[];
+  const traitLocs = [rowsProg, prog].map((p) => ({
+    p,
+    locs: traitKeys.flatMap((k) => {
+      const loc = gl.getUniformLocation(p, TRAIT_UNIFORMS[k]);
+      return loc ? [{ k, loc }] : [];
+    }),
+  }));
   let cfg = { ...CRT_DEFAULTS };
   let rasterBox: RasterBox = { x: 0, y: 0, w: 1, h: 1 };
   const upload = (): void => {
-    for (const k of Object.keys(traitLoc) as (keyof CrtConfig)[])
-      gl.uniform1f(traitLoc[k], cfg[k]);
+    for (const { p, locs } of traitLocs) {
+      gl.useProgram(p);
+      for (const { k, loc } of locs) gl.uniform1f(loc, cfg[k]);
+    }
   };
   upload();
 
@@ -497,7 +636,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   // devicePixelRatio read stays per-frame (a cheap number, no
   // layout) so browser-zoom DPR changes still resize the buffer.
   // DPR caps at 2: the grille mask is sub-game-pixel already there,
-  // and the ~18-tap shader scales with buffer pixels.
+  // and the ~9-tap tube pass scales with buffer pixels.
   // Lifetime: initCrt runs once per page load (module scope in
   // web/main.ts) and CrtFilter has no dispose path, so the observer
   // and window listener below live exactly as long as the page.
@@ -518,8 +657,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     const h = Math.max(1, Math.round(out.clientHeight * dpr));
     if (out.width === w && out.height === h) return;
     out.width = w;
-    out.height = h;
-    gl.viewport(0, 0, w, h);
+    out.height = h; // render() sets each pass's viewport
   }
 
   // Power-on warm-up: ~0.45 s of the raster opening from a bright
@@ -531,22 +669,52 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   // 0 would mean page-load time and could play a stray warm-up if a
   // frame draws before setEnabled(true) is ever called.
   let powerT0 = -Infinity;
+  // Power-off collapse: offT0 stays -Infinity unless a disable is
+  // playing out — enabled stays true so render() keeps drawing until
+  // the raster dies, then the body class and the flag drop together.
+  let offT0 = -Infinity;
+  let degaussT0 = -Infinity;
 
   return {
     get enabled() { return enabled; },
     get usable() { return !lost; },
     get animating() {
-      return enabled && !reducedMotion.matches &&
-        performance.now() - powerT0 < POWERON_MS;
+      // A collapse in flight must finish even if reduced-motion flips
+      // on mid-flight — render() is the only place its state cleans up.
+      if (Number.isFinite(offT0) && enabled) return true;
+      if (reducedMotion.matches) return false;
+      const now = performance.now();
+      return enabled &&
+        (now - powerT0 < POWERON_MS || now - degaussT0 < DEGAUSS_MS);
     },
     // A copy — the live cfg could otherwise be mutated without the
     // shader ever seeing it, and goes stale once configure() swaps it.
     get config(): CrtConfig { return { ...cfg }; },
     setEnabled(on: boolean): void {
       if (on && lost) return; // dead context — stay on the plain path
+      // A collapse in flight ignores re-disable — the instant-off
+      // branch would strand offT0 finite with enabled false, and the
+      // next enable would render one dead frame and self-disable.
+      if (!on && enabled && Number.isFinite(offT0)) return;
+      if (!on && enabled && !reducedMotion.matches) {
+        // Real tubes don't cut to black — the raster collapses to a
+        // hot line first. enabled stays true so render() keeps drawing
+        // the fall; render() clears the flag when the line dies.
+        // Backdate offT0 by the warm-up's progress so a mid-bloom
+        // toggle falls from where it is rather than snapping open.
+        const open = Math.min(1,
+          (performance.now() - powerT0) / POWERON_MS);
+        offT0 = performance.now() - (1 - open) * POWEROFF_MS;
+        return;
+      }
       enabled = on;
+      offT0 = -Infinity; // a re-enable mid-collapse just warms back up
       document.body.classList.toggle("crt", on);
       if (on) { powerT0 = performance.now(); resize(); }
+    },
+    degauss(): void {
+      if (!enabled || reducedMotion.matches) return;
+      degaussT0 = performance.now();
     },
     configure(p: Partial<CrtConfig>): void {
       // Merge onto the current config, then sanitize: unknown keys
@@ -561,15 +729,55 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     render(): void {
       if (!enabled) return;
       resize(); // dirty-flagged — catches zoom/fullscreen/dpr changes
-      gl.uniform4f(uRect, ...crtRasterRect(
-        out.width, out.height, src.width, src.height, rasterBox));
-      // Bound the clock: mediump floats lose sin() precision fast once
-      // uTime*61 grows — wrap every 100s (flicker is noise-like anyway).
-      gl.uniform1f(uTime, (performance.now() / 1000) % 100);
-      gl.uniform1f(uPower, reducedMotion.matches ? 1 :
-        Math.min(1, (performance.now() - powerT0) / POWERON_MS));
+      const now = performance.now();
+      let power = 1;
+      // The collapse runs outside the reduced-motion gate: a flip
+      // mid-fall must still finish and run its cleanup, not freeze.
+      if (Number.isFinite(offT0)) {
+        power = Math.max(0, 1 - (now - offT0) / POWEROFF_MS);
+        if (power === 0) {
+          // The line died: the tube is off. The last drawn frame
+          // stays in the buffer but the class drop hides the canvas.
+          enabled = false;
+          offT0 = -Infinity;
+          document.body.classList.remove("crt");
+          return;
+        }
+      } else if (!reducedMotion.matches) {
+        power = Math.min(1, (now - powerT0) / POWERON_MS);
+      }
+      const rect = crtRasterRect(
+        out.width, out.height, src.width, src.height, rasterBox);
+      const cols = crtRowColumns(rect[2], cfg, src.width, colsMax);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA,
         gl.UNSIGNED_BYTE, src);
+
+      // Pass 1: smear each scanline once, into the rows target.
+      gl.bindFramebuffer(gl.FRAMEBUFFER, rowFbo);
+      gl.viewport(0, 0, cols, src.height);
+      gl.useProgram(rowsProg);
+      gl.uniform1f(uRowCols, cols);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      // Pass 2: the tube, at device resolution.
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, out.width, out.height);
+      gl.useProgram(prog);
+      gl.uniform1f(uCols, cols);
+      gl.uniform4f(uRect, ...rect);
+      // Each shader phase arrives pre-wrapped mod its period, so the
+      // sin() args are identical modulo 2π at every point in time —
+      // no wrap jump, no precision loss on a long-running clock.
+      const t = now / 1000, TAU = Math.PI * 2;
+      // Apparent flicker / rolling-band rates. x/y scale t (seconds)
+      // into sin() arguments, so they're radians/sec (Hz = value / TAU);
+      // z is a [0,1) hash seed (grain) and wraps by 1, not 2π.
+      const FLICKER_RATE = 61, BAND_RATE = 4; // ≈9.7 Hz, ≈0.64 Hz
+      gl.uniform3f(uPhase, (t * FLICKER_RATE) % TAU,
+                   (t * BAND_RATE) % TAU, t % 1);
+      gl.uniform1f(uPower, power);
+      gl.uniform1f(uDegauss,
+        reducedMotion.matches ? 0 : degaussAmp(now - degaussT0));
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     },
   };
