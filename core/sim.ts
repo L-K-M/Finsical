@@ -617,15 +617,12 @@ export class Sim {
     // startle branch runs its course, then it beds back down while
     // it's still dark).
     // A hungry fish gets up for food dropped at night rather than
-    // starve until dawn with pellets rotting under its nose. The bar
-    // matches the awake snack rule: at snack hunger it must smell the
-    // pellet (within NOTICE_DIST), at seek hunger any pellet wakes it.
-    const near = this.nearestFood(f);
-    const peckish = near !== null &&
-      this.waterQuality > QUALITY_SEEK &&
-      (f.hunger > HUNGER_SEEK ||
-       (f.hunger > HUNGER_SNACK &&
-        Math.hypot(near.x - f.x, near.y - f.y) < NOTICE_DIST));
+    // starve until dawn with pellets rotting under its nose — the
+    // same bar the awake snack rule uses, so a well-fed fish short-
+    // circuits before the pellet scan: at snack hunger it must smell
+    // the pellet (within NOTICE_DIST), at seek hunger any pellet
+    // wakes it.
+    const peckish = this.foodFor(f) !== null;
     if (f.state === "sleep") {
       if (this.light >= WAKE_LIGHT || peckish) {
         this.setState(f, "drift");
@@ -792,10 +789,12 @@ export class Sim {
                                 f.cruise * (f.phase + 1) ** 2 / RAMP_DIV));
       } else {
         const g = f.phase - f.latch;
-        // A seeking fish must still outswim the sinking pellet. The
-        // floor is pre-vigor — dividing by vigor would cancel the
-        // slowdown a weakened fish is meant to suffer (the vx/vy
-        // multiply below restores it).
+        // A seeking fish keeps a brake floor near pellet-fall speed so
+        // it doesn't idle while food sinks past it. The floor is
+        // pre-vigor — dividing by vigor would cancel the slowdown a
+        // weakened fish is meant to suffer (the vx/vy multiply below
+        // restores it), so a very sick fish can indeed lose a pellet
+        // to the gravel. That's the point of the penalty.
         const floor = food
           ? Math.min(f.cruise,
                      Math.max(f.cruise * 0.15, FOOD_SINK * 1.5))
