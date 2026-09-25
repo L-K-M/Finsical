@@ -116,7 +116,8 @@ body.crt canvas#tank { opacity: 0; }
    ⌥-click a fish: a tiny Mac window pinned over it — striped title bar
    with a close box, live hunger and mood underneath. */
 .finfo {
-  position: absolute; z-index: 2; width: 118px;
+  /* fixed on body: above the machine art (2), under the overlays (10) */
+  position: fixed; z-index: 5; width: 118px;
   background: #fff; border: 1px solid #000;
   box-shadow: 1px 1px 0 rgba(0, 0, 0, .3);
   font: var(--osm-font-small); line-height: 12px;
