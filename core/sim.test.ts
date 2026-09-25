@@ -535,6 +535,24 @@ describe("Sim", () => {
     expect(low).toBeGreaterThan(1200);
   });
 
+  it("a recovered fish that relapses warns again", () => {
+    const sim = new Sim({ width: 300, height: 200 }, 4);
+    const f = sim.addFish({ x: 150, y: 100, hunger: 0 });
+    const sick = () =>
+      sim.events.filter((e) => e.type === "sick" && e.fish === f).length;
+    sim.advanceLife(1);            // creates f.life
+    f.life!.sick = { disease: 0, amount: 20 };
+    sim.advanceLife(1);
+    expect(sick()).toBe(1);
+    sim.advanceLife(1);            // still sick — no repeat warning
+    expect(sick()).toBe(1);
+    f.life!.sick = null;
+    sim.advanceLife(1);
+    f.life!.sick = { disease: 0, amount: 20 };
+    sim.advanceLife(1);
+    expect(sick()).toBe(2);
+  });
+
   it("ambient bubbles rise from the gravel on their own", () => {
     const sim = new Sim({ width: 320, height: 200 }, 13);
     sim.fish.length = 0;    // isolate ambient spawning from fish-blown bubbles
