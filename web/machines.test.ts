@@ -149,6 +149,51 @@ describe("machine silhouettes", () => {
   });
 });
 
+describe("glare mask", () => {
+  it("glassR is set only on image machines with a hole", () => {
+    for (const m of MACHINES) {
+      if (m.glassR === undefined) continue;
+      expect(m.image, `${m.id}: glassR needs a raster shell`).toBeTruthy();
+      expect(m.hole, `${m.id}: glassR needs a measured glass`).toBeTruthy();
+      expect(m.glassR).toBeGreaterThan(0);
+      // The mask insets the hole by 3 and feathers 2 — a hole that
+      // small would collapse the glare region to nothing.
+      expect(m.hole!.w, m.id).toBeGreaterThan(10);
+      expect(m.hole!.h, m.id).toBeGreaterThan(10);
+    }
+  });
+
+  it("glassR machines split the shell into masked glare layers", () => {
+    for (const m of MACHINES) {
+      if (m.glassR === undefined) continue;
+      const svg = shellMarkup(m);
+      const images = svg.match(/<image /g) ?? [];
+      expect(images.length, `${m.id}: shell + glare layers`)
+        .toBe(2);
+      // Both masks and the blur filter are namespaced by machine id —
+      // inline SVG ids are document-global and prefs shows several
+      // previews at once.
+      for (const id of
+        [`glareoff-${m.id}`, `glareon-${m.id}`, `glareblur-${m.id}`])
+        expect(svg, `${m.id}: ${id}`).toContain(`id="${id}"`);
+      expect(svg, m.id).toContain(`mask="url(#glareoff-${m.id})"`);
+      expect(svg, m.id).toContain(`mask="url(#glareon-${m.id})"`);
+      // The glare layer's opacity is driven by the light.
+      expect(svg, m.id).toContain("opacity: var(--glare, 1)");
+    }
+  });
+
+  it("other machines keep the single-image shell", () => {
+    for (const m of MACHINES) {
+      if (!m.image || m.glassR !== undefined) continue;
+      const svg = shellMarkup(m);
+      expect(svg.match(/<image /g)?.length, m.id).toBe(1);
+      expect(svg, m.id).not.toContain("<mask");
+      expect(svg, m.id).not.toContain("--glare");
+    }
+  });
+});
+
 describe("previewMarkup", () => {
   it("fills exactly the screen rect with water, shell painted last", () => {
     for (const m of MACHINES) {
