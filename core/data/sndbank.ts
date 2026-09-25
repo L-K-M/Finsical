@@ -92,6 +92,10 @@ export function bankSounds(d: Uint8Array): BankSound[] {
     const count = u16(e + 4) + 1;
     const refs = typeList + u16(e + 6);
     // A payload yields one record, however many references share it.
+    // Deliberate: a second id aliasing a payload under another name is
+    // dropped too. The Resource Manager stores each resource's data
+    // separately, so only a crafted or hand-packed map shares one, and
+    // losing such an alias beats one WAV filling the MAX_FILE_SOUNDS cap.
     const seen = new Set<number>();
     for (let j = 0; j < count && found.length < MAX_FILE_SOUNDS; j++) {
       const r = refs + j * 12;

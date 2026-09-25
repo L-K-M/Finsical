@@ -176,7 +176,9 @@ class ResFile:
         read, each payload yields once however many references share
         it, and at most MAX_RESOURCES resources come back, so a
         crafted map can't multiply one blob into millions. A reference
-        or payload that runs past the end is skipped, as there."""
+        or payload that runs past the end is skipped, as there.
+        A second id sharing a payload is dropped even under another
+        name, deliberately: see bankSounds in core/data/sndbank.ts."""
         for t, cnt, rbase in self.types():
             if t != rtype:
                 continue
