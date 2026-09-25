@@ -853,8 +853,8 @@ describe("Sim", () => {
       const sim = new Sim({ width: 300, height: 100 }, seed);
       const f = sim.addFish({ x: 284, y: 50, facing: 1, heading: 0 });
       // Out of budget and strokes, pressed to the glass: decide fires
-    // on this tick (no hover — it hasn't arrived anywhere).
-    f.tx = 250; f.ty = 50; f.phase = 1000; f.strokes = 99;
+      // on this tick (no hover — it hasn't arrived anywhere).
+      f.tx = 250; f.ty = 50; f.phase = 1000; f.strokes = 99;
       sim.tick();
       expect(f.tx).toBeLessThan(284);
     }
@@ -1257,7 +1257,13 @@ describe("lifecycle", () => {
     const sim = new Sim({ width: 320, height: 200 }, 42);
     breedingPair(sim);
     for (const f of sim.fish) f.life!.age = 0;
-    for (let d = 0; d < 60; d++) sim.advanceLife(24 * 3600);
+    // Kept thriving so only age can hold them back, up to the day
+    // before they come of age.
+    for (let d = 0; d < DEFAULT_CARE.breedAge - 1; d++) {
+      for (const f of sim.fish) f.life!.ate = f.life!.stomach;
+      sim.advanceLife(24 * 3600);
+      for (const f of sim.fish) f.life!.health = 100;
+    }
     expect(sim.events.some((e) => e.type === "birth")).toBe(false);
   });
 

@@ -428,7 +428,7 @@ export class Sim {
     a.advance(realSeconds, this.residents());
     this.syncLife();
     // A tank day turned over (once, however many passed while the tank
-    // was closed: a catch-up brings at most one litter).
+    // was closed: a catch-up rolls each species' odds at most once).
     if (Math.floor(a.minutes / MINUTES_PER_DAY) > day) this.maybeBirth();
   }
 
@@ -1174,8 +1174,10 @@ export class Sim {
     f.startleLen = Math.round(STARTLE_TICKS * (0.5 + 0.5 * k));
     f.panicHops = hops;
     f.facing = dx >= 0 ? 1 : -1;
-    f.speed = Math.min(STARTLE_MAX_SPEED,
-                       Math.max(f.speed, f.cruise * (1 + STARTLE_BOOST * k)));
+    // Never below cruise: a fish faster than the cap (a restored save
+    // may carry one) must not be braked by a scare.
+    f.speed = Math.max(f.cruise, Math.min(STARTLE_MAX_SPEED,
+      Math.max(f.speed, f.cruise * (1 + STARTLE_BOOST * k))));
     f.vy = (dy / d) * 2.5 * k;
     this.seekCover(f);
   }
