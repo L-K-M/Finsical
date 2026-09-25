@@ -2034,21 +2034,24 @@ const machineEl = document.getElementById("machine")!;
 const shellEl = document.getElementById("shell")!;
 const screenEl = document.getElementById("screen")!;
 const crtEl = document.getElementById("crt")!;
-const nameTags = mountNameTags(screenEl);
+// On body, like the Get Info card: #screen's stacking context paints
+// under #machine, so tags inside it slid under the glass reflections.
+const nameTags = mountNameTags(document.body);
 /** Half the drawn height of a stand-in fish, whose sheet reports none. */
 const PLACEHOLDER_HALF_H = 6;
 /** Put a tag on every fish but the one whose Get Info card is open
  * (the card names it, right where its tag would go). */
 function syncNameTags(): void {
   if (!namesOn) return;
-  const sr = screenEl.getBoundingClientRect();
-  const map = tankMap(canvas.getBoundingClientRect(), sr, TANK);
+  // Tags are fixed on body, so tag space is viewport coordinates.
+  const r = tankRect();
+  const map = tankMap(r, { left: 0, top: 0 }, TANK);
   const carded = infoCard?.fish;
   nameTags.sync(sim.fish.filter((f) => f !== carded).map((f) => {
     const hh = (f.halfH ?? PLACEHOLDER_HALF_H) * f.scale;
     return { id: f.id, label: f.species || "Fish", x: f.x,
              top: f.y - hh, bottom: f.y + hh };
-  }), map, { w: sr.width, h: sr.height }, SURFACE + 1);
+  }), map, r, SURFACE + 1);
 }
 // Cosmetic layer — recreate #screenback and enforce sibling order when
 // stale markup is detected (#machine/#shell/#screen must still exist).

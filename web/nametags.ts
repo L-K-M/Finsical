@@ -12,24 +12,30 @@ const TAG_GAP = 2;
 
 export interface TagSpot { left: number; top: number }
 
+/** The box tags stay inside, host px: the tank's element rect. */
+export interface TagBounds {
+  left: number; top: number; right: number; bottom: number;
+}
+
 /**
  * Where a tag of `w` x `h` px goes for a fish centred at tank x
  * `fx` whose drawn body spans tank rows `top`..`bottom`: centred above
  * the body, or under it when above would reach past the waterline
- * (tank row `surface`) into the air strip. Clamped inside the
- * `bounds` box, host px.
+ * (tank row `surface`) into the air strip. Clamped inside `bounds`.
  */
 export function tagPlacement(fx: number, top: number, bottom: number,
                              map: TankMap, w: number, h: number,
-                             bounds: { w: number; h: number },
+                             bounds: TagBounds,
                              surface: number): TagSpot {
   const cx = map.ox + fx * map.s;
   let y = map.oy + top * map.s - TAG_GAP - h;
   if (y < map.oy + surface * map.s)
     y = map.oy + bottom * map.s + TAG_GAP;
   return {
-    left: Math.round(Math.max(0, Math.min(cx - w / 2, bounds.w - w))),
-    top: Math.round(Math.max(0, Math.min(y, bounds.h - h))),
+    left: Math.round(Math.max(bounds.left,
+                              Math.min(cx - w / 2, bounds.right - w))),
+    top: Math.round(Math.max(bounds.top,
+                             Math.min(y, bounds.bottom - h))),
   };
 }
 
@@ -43,12 +49,13 @@ export interface NameTags {
   /** Show exactly these tags, placed through `map`, kept inside
    * `bounds`. */
   sync(fish: readonly TagFish[], map: TankMap,
-       bounds: { w: number; h: number }, surface: number): void;
+       bounds: TagBounds, surface: number): void;
   /** Remove every tag. */
   clear(): void;
 }
 
-/** A layer of `.nametag` labels inside `host` (positioned). */
+/** A layer of `.nametag` labels appended to `host`. The caller's map
+ * and bounds must be in the coordinates `.nametag` is positioned in. */
 export function mountNameTags(host: HTMLElement): NameTags {
   const tags = new Map<number, { el: HTMLElement; w: number; h: number }>();
   const clear = (): void => {

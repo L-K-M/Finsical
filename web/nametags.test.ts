@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { SURFACE } from "../core/sim.js";
 import { tagPlacement } from "./nametags.js";
 
-// A tank drawn at 2x, its corner 10 px into the host.
+// A tank drawn at 2x, its corner 10 px into the host; tags stay
+// inside the host's 660 x 420 box.
 const MAP = { s: 2, ox: 10, oy: 10 };
-const BOUNDS = { w: 660, h: 420 };
+const BOUNDS = { left: 0, top: 0, right: 660, bottom: 420 };
 const W = 40, H = 12;
 
 describe("tagPlacement", () => {
@@ -26,12 +27,22 @@ describe("tagPlacement", () => {
     expect(tagPlacement(0, 90, 110, MAP, W, H, BOUNDS, SURFACE + 1).left)
       .toBe(0);
     expect(tagPlacement(319, 90, 110, MAP, W, H, BOUNDS, SURFACE + 1).left)
-      .toBe(BOUNDS.w - W);
+      .toBe(BOUNDS.right - W);
   });
 
   it("stays inside the host at the bottom", () => {
     const p = tagPlacement(100, 14, 205, MAP, W, H, BOUNDS, SURFACE + 1);
-    expect(p.top).toBe(BOUNDS.h - H);
+    expect(p.top).toBe(BOUNDS.bottom - H);
+  });
+
+  it("stays inside a box that does not start at the origin", () => {
+    // Viewport space: the tank rect sits at 100,50 in the window.
+    const box = { left: 100, top: 50, right: 740, bottom: 450 };
+    const map = { s: 2, ox: 100, oy: 50 };
+    expect(tagPlacement(0, 90, 110, map, W, H, box, SURFACE + 1).left)
+      .toBe(100);
+    expect(tagPlacement(100, 14, 205, map, W, H, box, SURFACE + 1).top)
+      .toBe(450 - H);
   });
 
   it("lands on whole pixels", () => {

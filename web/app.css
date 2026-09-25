@@ -354,13 +354,16 @@ body.crt canvas#tank { opacity: 0; }
 /* Zen mode (Tank ▸ Zen Mode, or bare Z): every piece of chrome hides;
    the tank and its sounds keep running. !important beats the inline
    display the tip and trigger set on themselves. */
-body.zen #menubar, body.zen #fishtip, body.zen #opentrigger {
+body.zen #menubar, body.zen #fishtip, body.zen #opentrigger,
+body.zen .nametag {
   display: none !important;
 }
 /* Name tags on every fish (N, Tank > Fish Names; web/nametags.ts): the
-   balloon's look, a size smaller and a little see-through. */
+   balloon's look, a size smaller and a little see-through. Fixed on
+   body like .finfo, above the machine art (2) and under the card (5);
+   the same containing-block caveat applies. */
 .nametag {
-  position: absolute; z-index: 1; pointer-events: none;
+  position: fixed; z-index: 4; pointer-events: none;
   background: #ffc; border: 1px solid #000; border-radius: 3px;
   padding: 0 3px; font: var(--osm-font-small); color: #000;
   white-space: nowrap; opacity: 0.85;
