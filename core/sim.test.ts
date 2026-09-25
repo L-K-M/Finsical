@@ -656,6 +656,30 @@ describe("Sim", () => {
     expect(f.state).not.toBe("sleep");
   });
 
+  it("doesn't waggle up and down past a target behind it", () => {
+    // A drifting fish that overshot its target keeps swimming on until
+    // its next decision. With the target behind it at about its own
+    // depth, aiming at it used to clamp to full climb or full dive by
+    // which side of it the fish was on, so the tilt flipped every few
+    // ticks as the fish crossed that depth.
+    const sim = new Sim({ width: 320, height: 200 }, 3);
+    const f = sim.addFish({ x: 160, y: 100, facing: 1, tx: 140, ty: 100.3,
+                          scale: 1 }); // facing right: the target is behind
+    let reversals = 0, dir = 0, prev = pitch(f);
+    for (let i = 0; i < 90; i++) {
+      sim.tick();
+      const p = pitch(f);
+      const d = Math.sign(p - prev);
+      if (Math.abs(p - prev) > 1e-6) {
+        if (dir && d !== dir) reversals++;
+        dir = d;
+      }
+      prev = p;
+    }
+    expect(f.state).toBe("drift");
+    expect(reversals).toBeLessThanOrEqual(1);
+  });
+
   it("sleeps through a light-timer night and gets up for food", () => {
     // Timer nights hold exactly CLOCK_NIGHT_LIGHT; a strict
     // `light < SLEEP_LIGHT` at 0.45 never fired there.

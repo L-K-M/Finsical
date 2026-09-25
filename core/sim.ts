@@ -917,10 +917,18 @@ export class Sim {
       // Steering works in pitch off the facing axis, clamped to
       // MAX_PITCH, so the heading never swings round to the other side:
       // facing changes only by rolling, never as a one-frame mirror.
+      // A wanderer aims at a target behind it (overshot mid-stroke; it
+      // rolls at its next decision) as if mirrored ahead. Aimed at
+      // directly, the pitch clamps to full climb or full dive by which
+      // side of the target's depth the fish is on, and flips each time
+      // it crosses that depth: a rapid up-down waggle. Mirrored, it
+      // eases level onto the target's depth. A seeker still aims
+      // straight at its pellet, past vertical if need be.
       const axis = f.facing > 0 ? 0 : Math.PI;
       const cur = clampPitch(wrapAngle(f.heading - axis));
+      const aimX = food ? f.tx - f.x : Math.abs(f.tx - f.x) * f.facing;
       const want = turning ? cur : clampPitch(
-        wrapAngle(Math.atan2(f.ty - f.y, f.tx - f.x) - axis),
+        wrapAngle(Math.atan2(f.ty - f.y, aimX) - axis),
         food ? MAX_PITCH : WANDER_PITCH);
       f.heading = wrapAngle(axis + cur +
         Math.min(TURN_RATE, Math.max(-TURN_RATE, want - cur)));
