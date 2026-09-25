@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- With the CRT effect on, clicks, hovering and feeding land where the
+  curved, shifted picture shows the tank. They used to follow the flat
+  tank underneath, so a click could miss by several pixels, and with a
+  raised Height or overscan the feeding strip could sit outside the
+  area that took the click.
+- At full Perspective the CRT picture's near edge now stays at the
+  frame and only the far edge shrinks back. The near edge used to
+  spill past the glass and hide the side of the tank.
+- The CRT gains a choice of phosphor mask in Preferences: the aperture
+  grille it had, a slot mask or a shadow mask. The strength slider,
+  which was called Shadow grille, is now Phosphor mask.
+- Bright CRT highlights now roll off smoothly instead of clipping to
+  flat white patches when bloom and Bright-color boost push them past
+  full brightness.
+- Screen readers now say which way the CRT's position pots move the
+  picture and by how much, such as "4% left" or "Centered", and the
+  Preferences caption shows the same.
 - A tank with any add-on installed comes back on launch again. 0.4.0
   read such a save as damaged and started a fresh default tank in its
   place, which then saved over it. A save that can't be fully read is
