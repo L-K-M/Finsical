@@ -20,6 +20,16 @@ import type { SoundConfig } from "./audio.js";
 // carries `crt`, `machine`, `lighting` and `sound` snapshots) and posts
 // intents: crtEnabled, crtConfig, machine, lighting, soundConfig.
 
+// A file dropped on this window must not navigate it to the file —
+// only the tank page and the Add-ons window accept drops.
+window.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  // Reject file drops with the OS "no drop" cursor instead of a copy cursor.
+  if (e.dataTransfer?.types.includes("Files"))
+    e.dataTransfer.dropEffect = "none";
+});
+window.addEventListener("drop", (e) => e.preventDefault());
+
 interface SliderSpec {
   key: keyof CrtConfig;
   label: string;
@@ -508,6 +518,10 @@ const endDrags = () => {
 };
 window.addEventListener("pointerup", endDrags);
 window.addEventListener("pointercancel", endDrags);
+// A file dropped here would navigate this borderless window to the
+// raw file, with no way back — swallow drops like the tank page does.
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
 
 function syncControls(): void {
   for (const spec of ALL_SPECS) {

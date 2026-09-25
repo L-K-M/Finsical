@@ -41,6 +41,10 @@ export const FEEDBACK_MAX_S = 4;
 const FEEDBACK_FADE_S = 0.6;
 /** Time constant of a master level change (about 3 tau to settle). */
 const LEVEL_GLIDE_S = 0.01;
+/** Event sounds are short. A recording longer than this can only be an
+ * imported song, so find() never picks it for a knock or a splash, no
+ * matter what it is named. */
+export const EVENT_MAX_S = 20;
 
 // The original game's sounds, by the names its 'snd ' resources carry
 // (core/data/sndbank.ts), lowercased for lookup.
@@ -67,17 +71,31 @@ const OPENING = "aqua";
  * the gain single bubbles play at, under them. */
 const AMBIENT_GAIN = 0.4;
 
-/** How many extra characters a substring match may carry past the
- * needle. Keeps variants like "IntoWaterBig" for "intowater" and
- * numbered bank names reachable while a song titled "Top of the World"
- * can no longer answer a center-glass tap. */
-const SUBSTRING_SLACK = 8;
+/** True while a user activation is held, so a sound answering that
+ * gesture may wait out a locked AudioContext. Older WebKit and test
+ * fakes have no userActivation — treated as no gesture. */
+function gestureActive(): boolean {
+  return navigator.userActivation?.isActive === true;
+}
 
-/** Substring hit bounded by length: `name` contains `needle` and is at
- * most SUBSTRING_SLACK characters longer. */
+/** Substring hit bounded by word edges: the needle may not hide inside
+ * a longer word — what follows it must be the end of the name, a
+ * separator, or a camelCase capital, and what precedes it a boundary
+ * the same way (or a capital of its own). "Sideways Stories" can't
+ * answer a side tap while "IntoWaterBig" and "knock on the side" still
+ * reach their events. */
 function substringHit(name: string, needle: string): boolean {
-  return name.length <= needle.length + SUBSTRING_SLACK &&
-    name.includes(needle);
+  const lower = name.toLowerCase();
+  let i = lower.indexOf(needle);
+  while (i >= 0) {
+    const before = name[i - 1], after = name[i + needle.length];
+    const beforeOk = before === undefined || !/[a-z]/.test(before) ||
+                     /[A-Z]/.test(name[i]!);
+    const afterOk = after === undefined || !/[a-z]/.test(after);
+    if (beforeOk && afterOk) return true;
+    i = lower.indexOf(needle, i + 1);
+  }
+  return false;
 }
 
 export class TankAudio {
@@ -349,7 +367,8 @@ export class TankAudio {
           for (const [name, buf] of map) {
             const n = name.toLowerCase();
             if (n === skip) continue;
-            if (exact ? n === sub : substringHit(n, sub))
+            if (buf.duration <= EVENT_MAX_S
+                && (exact ? n === sub : substringHit(name, sub)))
               return buf;
           }
     return null;
@@ -383,22 +402,22 @@ export class TankAudio {
     // Hidden: drop the sound rather than resume() the device below. A
     // wanted ambient loop starts from setHidden(false) instead.
     if (this.hidden) return null;
-    // A suspended context means no gesture has unlocked audio yet.
-    // Queueing every play until then bursts the backlog out at the
-    // first click, long after the taps and feeds it answered — so only
-    // the ambient loop, wanted continuously rather than for a moment,
-    // gets a deferred start; one-shots fired early are simply dropped.
-    if (loop && retry && this.ctx.state === "suspended") {
+    if (this.ctx.state === "suspended" && retry) {
+      // Only the ambient loop and a sound answering the gesture in
+      // progress wait out the lock. Anything else (bubbles from a
+      // tick, a stale feed) drops here — queueing them all fired a
+      // burst of stale sounds on the first click.
+      if (!loop && !gestureActive()) return null;
       const ac = this.ctx;
       const gen = this.ambientGen;
       void ac.resume()
         .then(() => {
           // Superseded by load(), a newer ambient call, or a second
           // ambient call that raced in while resume was pending.
-          if (gen !== this.ambientGen || !this.ambientWanted ||
-              this.ambientSrc) return;
-          const n = this.play(buf, gain, true, false);
-          if (n) this.ambientSrc = n; // keep the loop stoppable
+          if (loop && (gen !== this.ambientGen || !this.ambientWanted ||
+                       this.ambientSrc)) return;
+          const n = this.play(buf, gain, loop, false);
+          if (n && loop) this.ambientSrc = n; // keep the loop stoppable
         })
         .catch(() => { /* resume blocked until a user gesture */ });
       return null;
