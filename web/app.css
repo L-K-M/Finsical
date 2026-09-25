@@ -226,7 +226,9 @@ body.crt canvas#tank { opacity: 0; }
 /* The preset row clears the checkbox — the groups need less air.
    Preferences is a fixed 565x457 window with no scrolling: the last
    group must end above the caption area's separator (at 388), which
-   holds Picture to four slider rows and Monitor to two groups. */
+   holds Picture to four slider rows and Monitor to two groups. The
+   two-line CRT warning takes the hidden preset row's place, so the
+   Monitor pane ends at 380 either way. */
 #pftraits .pfgroup:first-child { margin-top: 12px; }
 #pftraits .pfgroup + .pfgroup { margin-top: 16px; }
 #pfpicture .pfgroup { margin-top: 12px; }
