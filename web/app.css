@@ -191,7 +191,7 @@ body.crt canvas#tank { opacity: 0; }
 .pfgroup { padding: 12px 11px 6px; }
 /* A client window whose tank went quiet — stale readings dim like a
    disabled control. */
-.osm-dimmed { opacity: .55; }
+.osm-dimmed { opacity: .55; pointer-events: none; }
 /* The preset row clears the checkbox — the groups need less air. */
 #pftraits .pfgroup:first-child { margin-top: 12px; }
 #pftraits .pfgroup + .pfgroup { margin-top: 24px; }

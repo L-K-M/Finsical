@@ -1,4 +1,4 @@
-import { openBus } from "./bus.js";
+import { openBus, TANK_QUIET_MS } from "./bus.js";
 import { COLUMNS, itemsOf, sortItems, summary } from "./overviewmodel.js";
 import type { Column, Item, TankState } from "./overviewmodel.js";
 import { centerText, hostWindow, mountList, pushButton } from "osmium-ui";
@@ -389,18 +389,25 @@ setInterval(() => {
 // still on screen are stale. Dim them and stand the buttons down
 // rather than let Remove post into the void.
 setInterval(() => {
-  const gone = greeted && Date.now() - lastStateAt > 6000;
-  if (gone === tankGone) return;
-  tankGone = gone;
-  if (!gone) return; // the state handler's render() restores
+  // Only mark — the state handler restores when a real push lands, so
+  // a late hello reply can't strand the dim between the two.
+  if (!greeted || tankGone ||
+      Date.now() - lastStateAt <= TANK_QUIET_MS) return;
+  tankGone = true;
   summaryEl.textContent = "Waiting for the tank…";
   centerText(summaryEl);
   listEl.classList.add("osm-dimmed");
   syncRemove();
 }, 1000);
-// Snap to fresh state the moment the window is shown again.
+// Snap to fresh state the moment the window is shown again. The
+// hello's response window also resets staleness — a backgrounded tab
+// is expected to be quiet, so without the grace the next tick would
+// flash "Waiting for the tank…" on a perfectly live one.
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) bus.post({ op: "hello" });
+  if (!document.hidden) {
+    lastStateAt = Date.now();
+    bus.post({ op: "hello" });
+  }
 });
 // Right-click inside a borderless WebKit window surfaces WebKit's
 // generic menu (Reload etc.) — nothing in it applies to a desk

@@ -1,4 +1,4 @@
-import { openBus } from "./bus.js";
+import { openBus, TANK_QUIET_MS } from "./bus.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { mountImportPanel } from "./import.js";
 import { previewOf } from "./render.js";
@@ -17,11 +17,11 @@ const bus = openBus((m) => {
   if (m.op === "state") { greeted = true; lastStateAt = Date.now(); }
   panel.notify(m);
 });
-// The tank pushes on every save and answers each hello — six quiet
-// seconds means the tab is gone or reloading, so Add to Tank would
+// The tank pushes on every save and answers each hello — a quiet
+// spell means the tab is gone or reloading, so Add to Tank would
 // just spin to its timeout.
 const tankConnected = (): boolean =>
-  greeted && Date.now() - lastStateAt < 6000;
+  greeted && Date.now() - lastStateAt < TANK_QUIET_MS;
 
 const win = document.getElementById("awin")!;
 hostWindow(win, {
