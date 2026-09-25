@@ -201,21 +201,35 @@ const onBox = document.getElementById("crt-on") as HTMLInputElement;
 const warnEl = document.getElementById("crt-warn")!;
 const descEl = document.getElementById("pfdesc")!;
 const defaultsBtn = document.getElementById("pfdefaults") as HTMLButtonElement;
+const presetHost = document.getElementById("pfpresets")!;
+// Set from the tank's crt snapshot: the effect can be off (a setting)
+// or unavailable (this Mac can't show it at all).
+let crtUnavailable = false;
 
 const bus = openBus((m) => {
   if (m.op !== "state") return;
   const firstState = !greeted;
   greeted = true;
   const crt = (m.crt ?? {}) as CrtSnap;
-  if (firstState || !onTouched || crt.available === false ||
+  // Only when the tank explicitly reports the effect can't run —
+  // a missing field just means an older page build.
+  const unavailable = crt.available === false;
+  const availChanged = crtUnavailable !== unavailable;
+  crtUnavailable = unavailable;
+  if (firstState || !onTouched || availChanged ||
       (crt.on === true) === onBox.checked) {
     onTouched = false;
     onBox.checked = crt.on === true;
     syncEnabled();
   }
-  // Only warn when the tank explicitly reports the effect can't run —
-  // a missing field just means an older page build.
-  warnEl.hidden = crt.available !== false;
+  warnEl.hidden = !unavailable;
+  // Everything the effect drives goes inert with it. The caption
+  // promises the setting is kept for later, so the switch keeps its
+  // checked state and only loses the ability to change it; the
+  // presets hide rather than crowd the caption now in the flow.
+  onBox.disabled = unavailable;
+  defaultsBtn.disabled = unavailable;
+  presetHost.hidden = unavailable;
   if (crt.cfg !== undefined) cfg = sanitizeCrtConfig(crt.cfg);
   if (m.sound !== undefined) takeSound(sanitizeSoundConfig(m.sound));
   const mc = m.machine as { id?: unknown } | undefined;
@@ -398,7 +412,6 @@ function showMachine(id: string): void {
 // ---- picture presets ---------------------------------------------------
 // One-click full configs beside the per-slider Defaults: Authentic is
 // the tuned defaults, the others are named restore paths (see crt.ts).
-const presetHost = document.getElementById("pfpresets")!;
 const presetBtns: HTMLButtonElement[] = [];
 
 function applyPreset(p: CrtPreset): void {
@@ -556,10 +569,13 @@ syncControls();
 // The sliders only act through the CRT effect: they dim while it's off,
 // the way Mac OS 8 dims controls that depend on an off switch.
 function syncEnabled(): void {
-  for (const input of sliders.values()) setEnabled(input, onBox.checked);
-  for (const btn of presetBtns) btn.disabled = !onBox.checked;
+  // Unavailable keeps the stored setting visible on the switch, but
+  // everything that depends on the effect goes with it.
+  const on = onBox.checked && !crtUnavailable;
+  for (const input of sliders.values()) setEnabled(input, on);
+  for (const btn of presetBtns) btn.disabled = !on;
   document.getElementById("pfpanes")!
-    .classList.toggle("pfcrtoff", !onBox.checked);
+    .classList.toggle("pfcrtoff", !on);
   // A preset caption is only useful while the effect can take it —
   // fall back to the pane hint (which switches to offHint when off).
   if (describedPreset) describe(null);

@@ -181,12 +181,16 @@ body.crt canvas#tank { opacity: 0; }
 #pfcrt { display: flex; width: max-content; }
 /* Lines up with the Lighting pane's pop-ups (82 px titles, 6 px gap). */
 #pflamp { display: flex; width: max-content; margin-left: 88px; }
-#crt-warn { position: absolute; left: 196px; right: 0; top: 0; }
+/* The warning sits in the flow under the checkbox. It used to be
+   floated beside it, which was fine until the preset row landed
+   underneath it and the caption ran across the buttons. */
+#crt-warn { margin-top: 6px; }
 /* One-click picture-tube presets under the CRT switch. */
 #pfpresets {
   display: flex; flex-wrap: wrap; gap: 6px;
   margin-top: 10px; margin-bottom: 2px;
 }
+#pfpresets[hidden] { display: none; }
 #pfpresets .pfpreset { min-width: 0; }
 .pfgroup { padding: 12px 11px 6px; }
 /* The preset row clears the checkbox — the groups need less air. */
@@ -197,6 +201,11 @@ body.crt canvas#tank { opacity: 0; }
 .pfrow { display: flex; gap: 20px; }
 .pfrow + .pfrow { margin-top: 6px; }
 .pfslider { flex: none; width: 125px; }
+/* A disabled slider dims its track and thumb (osmium.css) but left
+   its ticks at full strength, which read as half-on under a gray
+   track. The upstream fix belongs in osmium-ui; until the pin moves,
+   this pane's own stylesheet finishes the job. */
+.pfslider .osm-slider.osm-disabled::after { opacity: .45; }
 .pflabel { display: block; padding-left: 4px; margin-bottom: 5px; }
 .pfends { display: flex; justify-content: space-between; margin-top: 2px; padding: 0 1px 0 3px; }
 /* CRT off: the sliders and preset buttons are disabled and their
