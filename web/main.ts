@@ -1328,7 +1328,12 @@ function onBusMessage(m: BusMsg): void {
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
   else if (m.op === "removeFish" && typeof m.id === "number") {
-    if (sim.removeFish(m.id)) { audio.fishOut(); sweepThumbs(); saveTank(); }
+    if (sim.removeFish(m.id)) {
+      audio.fishOut();
+      sweepThumbs();
+      saveTank();
+      requestPaint(); // the hole opens at once, even while paused
+    }
   } else if (m.op === "removeAddon" &&
              typeof m.url === "string" && m.url !== "") {
     const url = m.url;
