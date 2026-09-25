@@ -13,11 +13,23 @@ def read_bmp(d, off=0):
     bpp, comp = struct.unpack_from('<HI', d, off + 28)
     ncol = struct.unpack_from('<I', d, off + 46)[0] or (1 << bpp)
     assert comp in (0, 1), f'unsupported compression {comp}'
+    # Untrusted input: raise rather than assert, so python -O cannot skip
+    # it. 8192 matches core/data/bmp.ts — past it the row loops below would
+    # grind through billions of pixels and the RGBA buffer would dwarf the
+    # file it came from.
+    if not (0 < w <= 8192 and 0 < abs(h) <= 8192):
+        raise ValueError(f'implausible BMP size {w}x{h}')
+    # An 8-bit palette holds 256 entries at most; a longer count reads as
+    # far as the file goes, the same clamp bmp_palette applies.
+    ncol = min(ncol, 256)
     topdown = h < 0
     h = abs(h)
     pal = []
     for i in range(ncol):
-        b, g, r, _ = d[off + 14 + hdr + i * 4: off + 18 + hdr + i * 4]
+        ent = d[off + 14 + hdr + i * 4: off + 18 + hdr + i * 4]
+        if len(ent) < 4:
+            break
+        b, g, r, _ = ent
         pal.append((r, g, b))
     rgba = bytearray(w * h * 4)
     stride = ((w * bpp + 31) // 32) * 4
