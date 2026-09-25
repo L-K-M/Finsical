@@ -1,6 +1,6 @@
 # Finsical Analysis: Shovel-Ready Improvements
 
-Consolidates fourteen review passes and their review-response logs into
+Consolidates sixteen review passes and their review-response logs into
 one
 backlog. Completed work stays listed with its PR so later passes can
 see what landed; every open idea is written so an LLM can pick it up
@@ -57,6 +57,15 @@ one entry per idea, and each merge is recorded in that entry's
   restore its entry from `tmp.md` history or the PR description.
   Fourteenth-pass notes cite that revision; verify against
   `origin/main` before re-scoping.
+- Sixteenth pass (2026-09-25, `origin/main` `06f7935`): a fresh
+  full-repo review; its `tmp.md` was folded into this document. Three
+  PRs (#263 frame-loop allocations, #265 launch and removal
+  reliability, #272 Monitor pane) are open for the maintainer with CI
+  green on all three. **The GLM reviewer could not run:** every attempt
+  on all three returned `Z.ai API: HTTP 429` (rate limit) — those are
+  review gaps, not clean rounds, and no review round has completed.
+  Sixteenth-pass notes cite `06f7935`; the tree moved ~70 commits
+  during the pass, so verify against `origin/main` before re-scoping.
 
 ## Baselines
 
@@ -131,6 +140,26 @@ one entry per idea, and each merge is recorded in that entry's
   claims are under "Refuted or dropped in the fourteenth-pass review".
   PR #229 (open) makes CI's macOS job launch the app
   (`--smoke-test`); other Swift behavior is code-verified only, as
+  before.
+- Sixteenth pass (full-repo review at `06f7935`, 2026-09-25): written
+  from scratch against a tree that had moved ~70 commits past its
+  first draft. `npm ci` clean (0 advisories), `npm run typecheck`
+  clean, vitest **53 files / 691 tests** green (692 with PR #263's new
+  gradient test), `python3 -m unittest discover -s tools/tests` 78
+  green, `node scripts/check-version.mjs` agrees on 0.3.0. Runtime
+  checks drove the real pages in headless Chromium at 1280x900 (2x
+  DPR) and at the native 565x520 window size, with and without
+  `--disable-webgl --disable-3d-apis`, measuring element rects rather
+  than eyeballing screenshots. Findings became `tmp.md` (folded in
+  here), then three PRs: #263 (P-24's gradient and Date, red→green
+  test), #265 (S-07's terminal catch plus the Overview repaint, test
+  impractical — verification procedure in the PR), #272 (U-13 and
+  A-07, measured in the browser before and after). New open entries
+  take the next free IDs (V-38, U-40); everything else maps to
+  existing entries. Roughly 25 of the first draft's findings had
+  already landed on main during the pass and were dropped rather than
+  re-filed; the list is preserved at the end of the sixteenth-pass
+  Completed section below. Swift behavior code-verified only, as
   before.
 
 ## ID scheme and map
@@ -291,6 +320,25 @@ number marks the review PR that implements the finding:
 - AquaZone fidelity: FIDELITY-01 F-10, FIDELITY-02 F-14, FIDELITY-03 F-37 PR #212, FIDELITY-04 U-39, FIDELITY-05 U-03, FIDELITY-06 B-13 PR #239, FIDELITY-07 F-24 PR #208, FIDELITY-08 F-34, FIDELITY-09 F-02, FIDELITY-10 F-01, FIDELITY-11 F-09, FIDELITY-12 D-39, FIDELITY-13 F-26, FIDELITY-14 T-36, FIDELITY-15 F-17, FIDELITY-16 F-38, FIDELITY-17 U-15.
 - Delight: DELIGHT-01 D-40 PR #242, DELIGHT-02 D-41 PR #211, DELIGHT-03 F-37 PR #212, DELIGHT-04 D-42, DELIGHT-05 D-36, DELIGHT-06 F-38, DELIGHT-07 D-24, DELIGHT-08 D-39, DELIGHT-09 F-39, DELIGHT-10 D-43, DELIGHT-11 V-23, DELIGHT-12 F-40, DELIGHT-13 A-13, DELIGHT-14 D-44, DELIGHT-15 U-39, DELIGHT-16 D-45, DELIGHT-17 F-41, DELIGHT-18 F-42, DELIGHT-19 D-09, DELIGHT-20 D-46, DELIGHT-21 U-03.
 - Tooling, tests and docs: TOOLING-01 S-05 PR #210, TOOLING-02 T-06, TOOLING-03 T-06, TOOLING-04 T-37, TOOLING-05 T-38, TOOLING-06 T-28, TOOLING-07 T-39 PR #210, TOOLING-08 T-21.
+
+Sixteenth-pass review IDs (`tmp.md`, folded in at `06f7935`) and
+where they went; a PR number marks the review PR that implements the
+finding:
+
+- Reliability: R-1 S-07 PR #265, R-2 (new; Completed as part of PR
+  #265), R-3 B-46 (same fix, note appended), R-4 (process note only —
+  a second agent's branch overlaps R-2; drop it from #265 if that one
+  merges first).
+- Performance: P-1 P-24 PR #263, P-2 P-24 (landed upstream during the
+  pass in `f79cba9`/`004030c`, not in any PR of this pass), P-3 P-24
+  PR #263, P-4 P-18, P-5 P-24/P-27.
+- Visual: V-1 U-13 (UI-14) PR #272, V-2 A-07 PR #272, V-3 V-38.
+- UX: U-1 U-40, U-2 B-46, U-3 (declined, low value against stealing
+  arrow keys from sliders).
+- Tooling: T-1 T-06/T-08 (the gradient test went in `water.ts`, which
+  is covered; `main.ts` remains uncovered), T-2 T-13 (already filed,
+  nothing added), T-3 A-07's note (`web/osmium.css` is a build
+  artifact).
 
 ## Completed work
 
@@ -2702,6 +2750,21 @@ archive.org (grep); the status wording overlaps U-28.
 
 Thirteenth-pass update: Folded into PR #193 (open).
 
+Sixteenth pass (R-3 and U-2 of `tmp.md`): re-verified and widened.
+The launch-side retry still tells nobody anything: `retryRestores`
+ends in `.catch((e) => console.warn("add-on restore retry failed:",
+e))` (`web/main.ts:1205-1207`), so once the 15 s/60 s/online rounds
+have failed, the reason exists only in the tank page's console while
+Overview keeps showing the species as swimming and the pack as
+installed. The launch chain deliberately leaves whatever the chain
+picked in place on the assumption a retry will happen; when it does
+not, nothing surfaces. Same fix as this entry's Change — carry the
+failed URLs into the state push (either this entry's `missing:
+string[]`, or `restoreFailed: string[]` on the tank side feeding the
+existing `installFailed` wording in Import), and render them where
+add-ons are listed. Additive field; clients ignore unknown fields
+today, so no protocol break. Pairs with U-28's visible failure states.
+
 ### B-47 Dropping a folder imports every audio file inside it, reading each up to 32 MB
 
 Size S · Severity low · Value 2/5 · Risk 1/5
@@ -3379,6 +3442,87 @@ open: the panel drops to normal level with the tank.
   avoid this), D-09 (any non-modal NSSavePanel needs the same lift).
 - Fourteenth pass: MACOS-03.
 
+### Completed (sixteenth pass, PRs open for review, CI green, reviewer blocked)
+
+All three are open and rebased onto `06f7935`; `core-linux` and
+`native-macos` pass on each. **None has had a review round:** the GLM
+job failed on all three with `Z.ai API: HTTP 429`, so treat these as
+unreviewed rather than at steady state.
+
+- **PR #263** (`perf/frame-loop-allocations`) — P-24's two
+  per-frame allocations that already had a cache key. `drawAir`'s
+  shade gradient is memoized on its stop-string pair (`airShade`,
+  `airShadeLip`, `airShadeLow` in `web/water.ts`, declared above
+  `drawAir`, mirroring `shaftFill` and `murkFill`): `grey()` rounds
+  each stop to a whole grey, so the pair of stop strings is an exact
+  key and a steady lamp rebuilds nothing — the discarded rebuilds were
+  byte-identical, so no visual change is possible. `frame()` now makes
+  one `Date` per frame and passes it to `syncLight` and
+  `render(now)` → `drawNight(now)` instead of two clock reads
+  microseconds apart. Also updated the `syncFeedHover` comment, whose
+  subject (`tankRect()`) had landed upstream mid-pass. Test:
+  `web/water.test.ts` "reuses its shade gradient until a stop actually
+  changes" — red on `main`, green after. typecheck clean; 692 tests
+  green.
+- **PR #265** (`fix/launch-and-removal-reliability`) — S-07's
+  terminal `.catch`, plus the Overview repaint the same chain was
+  missing. The launch chain now logs a failure and repaints what did
+  land, and `retryRestores(restoreFailed)` moved from the success
+  `.then` into a `.finally` with its own `try/catch`: the call that
+  re-fetches the packs a restore could not fetch ran only when
+  everything else had already succeeded, so any exception in
+  `applySceneryChoice`/`remapSheetIdx`/`reconcileFish` skipped it and
+  left the failure as an `unhandledrejection`. `removeFish` now calls
+  `requestPaint()` on success (`web/main.ts:1533`): while the tank was
+  paused the removed fish stayed in the water indefinitely, because
+  the frame loop draws only on a tick or when `frameDirty` is set.
+  No automated test (browser-only promise control flow in the one
+  uncovered `web/` file); the PR carries the reproduction and
+  verification procedure AGENTS.md asks for instead. typecheck clean;
+  691 tests green at push.
+- **PR #272** (`fix/prefs-crt-pane`) — U-13 (UI-14) and A-07. The
+  WebGL-unavailable caption moved out of `position: absolute` into the
+  flow under the switch (`web/app.css`), `#pfpresets` now actually
+  hides (`display: flex` had made the `hidden` attribute a no-op),
+  `#crt-on` and `#pfdefaults` go disabled with it, and `syncEnabled()`
+  folds `crtUnavailable` into its `on` so the sliders and preset
+  buttons dim too. A pane-scoped tick rule dims the ticks A-07
+  filed — `opacity: .45` on `.pfslider .osm-slider.osm-disabled::after`
+  in `web/app.css` — and the upstream osmium-ui fix is still owed. Measured headless before and after: no
+  intersection between `#crt-warn` and `#pfpresets` or any `.pfgroup`
+  at 1280x900 or 565x520, controls disabled, presets hidden, 455 px
+  (63 px native) of clearance above `#pffoot`, and the normal
+  WebGL-available pane byte-identical in layout. typecheck clean; 691
+  tests green.
+
+**Landed on main by `06f7935`** (the first draft was written ~70
+commits earlier, so most of these arrived during the pass; each was
+re-read on the later revision and dropped rather than filed — recorded
+so a later pass does not re-raise them):
+
+- Simulation and data: `addFish` sanitization and `sanitizeSavedFish`
+  clamping every saved numeric field (#135), `changeWater`'s fraction
+  clamp, lifecycle `sick`/`dead` fields, the fish cap, capped feeding
+  and marked-eaten pellets (#209), uneaten-food cap and waste
+  softening (#189), feeding-at-the-surface edges (#190), per-launch sim
+  seed (#197, #255), AquaZone water/health/disease/medicine (#163).
+- Performance: `postState()` coalescing and the split push/persist
+  interval (#230), bounded pack and zip caches (#196, #205), the
+  failing `snds` merge chain (#201), and **P-2 of `tmp.md` — the tank
+  rect cache and `syncFeedHover()`'s use of it, which landed upstream
+  mid-pass (`f79cba9`/`004030c`) while PR #263 was being written.**
+- Reliability: two tank tabs fighting over the save (#233), installs
+  that cannot put anything in the tank (#203), feed/Add-Again race
+  guards (#235), audio burst fixes (#185, #188), tap-sound word
+  matching (#181), import-window honesty (#199), client-window
+  hardening (#195, #186, #222).
+- Features and delight: tank export/import (#256), Zen mode (#217),
+  integer display scale (#237), lifecycle sick/dead/born (#206), the
+  timed auto-feeder (#228), snail (#232), cat (#204), plant sway
+  (#238), oxygen stream (#247), dinner bell (#216), golden pellet
+  (#254), crowd at the pointer (#243), starter parade, one-time
+  persistence warning, and three tank-page CSS nits (#184).
+
 ## Performance and smoothness (open)
 
 Done this pass and removed from this list: P-03, P-13, and P-10's
@@ -3734,6 +3878,13 @@ Re-verified open at 62b8572 (fourteenth-pass audit): render() still
 clears and rebuilds the rows (`web/stats.ts:101-125`; UI-17 cites
 :101-128 including the care lines).
 
+Sixteenth pass (re-verified at `06f7935`, P-4 of `tmp.md`): still
+open. `render(st)` runs unconditionally from the message handler with
+no comparison against the previous values (`web/stats.ts:145-164`) and
+rebuilds from `web/stats.ts:113`. Nothing in the change is blocked;
+`statsmodel` is already pure and tested, so the new-node reference
+test the Acceptance asks for can be written against `stats.ts`.
+
 ### P-19 (remainder) Per-frame allocations in `render()`
 
 Size S · Severity nit · Value 1/5 · Risk 1/5 (from passes 1-7)
@@ -3879,6 +4030,16 @@ minute of calm tank; pointermove performs no layout reads.
 
 - Related: P-19 (render allocations), P-03/P-13 (render-on-tick),
   P-10 (CRT shader cost).
+- Sixteenth pass: P-1 and P-3 of `tmp.md` shipped in **PR #263**
+  (see the sixteenth-pass Completed section) — the `drawAir` shade
+  gradient and the two per-frame `Date`s. The rect and layout reads
+  landed separately: `tankPoint` now reads the cached `tankRect()`
+  (`web/main.ts:543-555`), and `pointermove` keeps `lastClient` only,
+  so hover is evaluated from the frame loop. Still open here:
+  `drawSurface`'s ~320 per-column alpha `fillRect`s, `drawLight`'s
+  ~56 caustic `drawImage`s, and `placeTip` reading
+  `offsetWidth`/`offsetHeight` on every move that shows a tip
+  (`web/main.ts:680-684`) — cheap, but cacheable like the rect.
 
 ### P-25 `serveThumbs` is O(keys × fish) per wantThumbs push
 
@@ -4576,6 +4737,47 @@ Size S · Severity low · Value 2/5 · Risk 1/5 (fourteenth pass)
 - Needs a macOS check (T-32); Linux browsers do not rubber-band, so it cannot be reproduced or verified there.
 - Fourteenth pass: MACOS-10.
 
+### V-38 The Preferences description clips its third line with no ellipsis
+
+Size S · Severity nit · Value 1/5 · Risk 1/5 (sixteenth pass)
+
+**Problem.** `#pfdesc` is `max-height: 39px; overflow: hidden` over a
+13 px line-height — exactly three lines — with no `text-overflow`, so a
+description long enough to wrap three times is cut mid-glyph. Every
+other truncating surface in the app ends in an ellipsis (for example
+`.osm-list-empty`, `web/osmium.css`). The defect is latent: the
+longest shipped hint is 101 characters (the Picture pane's `offHint`,
+`web/prefs.ts:156-157`), which is one longer sentence away from
+showing it.
+
+**Evidence.** `web/app.css:226-231` (`#pfdesc { position: absolute;
+left: 0; right: 0; top: 8px; font: var(--osm-font-small);
+line-height: 13px; max-height: 39px; overflow: hidden; }` and the
+`#pffoot.pfdefaults #pfdesc { right: 76px }` shift),
+`web/prefs.ts:244`, `:279` (the hint and `offHint` are the only
+things that reach it), `node_modules/osmium-ui/osmium.css:676-681`
+(the in-house ellipsis precedent). Read at `06f7935`; wrapping not
+measured.
+
+**Change.** `-webkit-line-clamp: 3` with `display: -webkit-box` (the
+clamp supplies the `...` on the last line), or keep the box layout and
+shorten any hint that would exceed three lines. Prefer the clamp: it
+needs no per-pane measurement. Re-check that the
+`#pffoot.pfdefaults` `right: 76px` shift, which narrows the box when
+Defaults is showing, does not push a hint from two lines to three.
+
+**Acceptance.** Playwright: set `#pfdesc` to a 400-character string;
+its height stays 39 px and the third line ends in `...`. Every shipped
+hint still fits in the box at the native 565x520 window size and at
+1280x900, with and without the Defaults button present.
+
+**Merged and related.**
+
+- Sixteenth pass: V-3 of `tmp.md`, where it was deferred rather than
+  dropped; filed so the deferral does not lose it.
+- Related: U-27 (Preferences fixed layout and clipping).
+
+
 ## UX and convenience (open)
 
 Done this pass and removed from this list: U-05, U-16, U-17, U-19,
@@ -4889,6 +5091,21 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 - Fourteenth pass: UI-14.
 
 Fourteenth-pass update (UI-14): still open, and worse than filed: `#crt-warn` was positioned before the preset row existed (#142), so its third line ('for later.') is painted under the Authentic, Sharp, Soft and Pixel Perfect buttons. Current evidence: `web/prefs.html:27-30` (`#crt-warn`), `web/app.css:157-163` (`#crt-warn` absolute at left 196px, top 0; the presets 10px under the checkbox), `web/prefs.ts:199-207` (the state handler only unhides the warning; the checkbox is never disabled), `web/prefs.ts:526-535` (syncEnabled leaves Defaults alone). The reviewer's run with `--disable-webgl --disable-3d-apis` (`ui/nogl.mjs`) gave warnBottom 70 > presetsTop 60, onDisabled false, defaultsDisabled false; the screenshot `ui/nogl-monitor.png` (checked) shows the overlap and the 'Turn on Simulate a CRT monitor…' caption. Change addition: put `#crt-warn` in the flow under the checkbox (position static, margin-top 6px) and hide `#pfpresets` while unavailable, so nothing overlaps at any text length; recheck UI-01's budget (V-30, PR #225): the Monitor pane must still clear the separator with the warning shown. Acceptance (supersedes the line above): Playwright with `--disable-webgl --disable-3d-apis`, `#crt-warn`'s rect intersects neither `#pfpresets` nor any `.pfgroup`, `#crt-on` and `#pfdefaults` are disabled, the caption is the unavailable text, and the last group still ends 8 px above the separator.
+
+Sixteenth pass (V-1 of `tmp.md`): **shipped in PR #272.** The
+Change-addition and this Acceptance were implemented as written —
+`#crt-warn` in the flow (`web/app.css`), `#pfpresets[hidden] { display:
+none }` (its `display: flex` had made the `hidden` attribute a
+no-op), `#crt-on` and `#pfdefaults` disabled with it, and
+`syncEnabled()` folding `crtUnavailable` into its `on` so the sliders
+and preset buttons dim too. Measured headless with
+`--disable-webgl --disable-3d-apis` at 1280x900 and at the native
+565x520: no intersection with `#pfpresets` or any `.pfgroup` (12 px
+clear above the first), controls disabled, presets hidden, 455 px
+(63 px native) of clearance to `#pffoot`; the WebGL-available pane is
+unchanged (warning hidden, presets at y 60-80). UI-01's budget
+(V-30) is respected by that clearance. Verify against `origin/main`
+before picking this up again — PR #272 may have merged.
 
 ### U-14 (remainder) The browser menu bar covers the top of the case, and its menus disagree with the app's
 
@@ -5364,6 +5581,46 @@ Size M · Severity low · Value 3/5 · Risk 2/5 (fourteenth pass)
 - Related: F-28 (mentions the Tool Bar only as a presentation toggle), D-38 (UI-20, a Control Strip on the browser tank page, overlaps design (b)), F-37 (fish names, PR #212), U-14, U-15.
 - Fourteenth pass: FIDELITY-04, DELIGHT-15.
 
+### U-40 Deleting a fish that is already gone does nothing, silently
+
+Size S · Severity nit · Value 2/5 · Risk 1/5 (sixteenth pass)
+
+**Problem.** The tank's `removeFish` handler only acts when
+`sim.removeFish(id)` returns true; on a stale id — another window
+removed it, or the Overview row predates the last push — the false
+return is dropped on the floor and no state is pushed back. The row
+stays on screen, the user presses Delete again, and again nothing
+happens. The `removeAddon` branch is the same shape: `fishOutAfter`
+runs the fish-out animation unconditionally and `removeAddon` then
+finds nothing to remove.
+
+**Evidence.** `web/main.ts:1533-1539` (`if (sim.removeFish(m.id)) {
+audio.fishOut(); sweepThumbs(); saveTank(); }` — no else), `web/main.ts:1540-1544`
+(`removeAddon` through `fishOutAfter`), `web/overview.ts:105-120`
+(the Remove button posts and forgets). Read at `06f7935`;
+`web/main.ts` has no test file.
+
+**Change.** In the false branch, `postState()` so the panel re-renders
+from the truth and the dead row disappears or changes status within
+one push — one line, no new UI. Same treatment for `removeAddon`'s
+no-op path if it can be distinguished cheaply (have `removeAddon`
+report whether it spliced anything).
+
+**Acceptance.** Manual, two windows open on one tank: Delete a fish in
+window A, then Delete the same row in window B; within one state push
+window B's row for that fish is gone or marked out of the tank, and
+the tank page's console shows no error. (Automated regression test
+impractical until T-06's browser suite or a `main.ts` harness exists —
+documented here per AGENTS.md.)
+
+**Merged and related.**
+
+- Sixteenth pass: U-1 of `tmp.md`.
+- Related: U-04 (Overview Remove without confirmation), UI-07 (U-06,
+  rows that look unchanged after a Delete), U-28 (visible failure
+  states).
+
+
 ## Aesthetics and Mac OS 8 fidelity (open)
 
 Done this pass and removed from this list: A-01.
@@ -5470,6 +5727,20 @@ Size S · Severity nit · Value 1/5 · Risk 1/5
 **Change.** Upstream in L-K-M/osmium-ui: a dimmed tick sprite for `.osm-inactive .osm-slider::after` and `.osm-slider.osm-disabled::after`, then bump the dependency.
 
 **Acceptance.** (derived) With the CRT off, disabled sliders show dimmed ticks (screenshot); the osmium-ui pin is bumped.
+
+Sixteenth pass (V-2 of `tmp.md`): **partly shipped in PR #272.** The
+pane's own stylesheet now dims the ticks where the CRT is unavailable —
+`.pfslider .osm-slider.osm-disabled::after { opacity: .45 }` in
+`web/app.css`, measured in headless Chromium (computed style 0.45;
+forcing `opacity: 1` changes 1582 PNG bytes, so the rule reaches the
+pixels). Still owed: the fix **upstream in osmium-ui** and the pin
+bump this entry's Acceptance requires. Two notes for whoever does it:
+`web/osmium.css` is a **build artifact** — gitignored and copied from
+`node_modules/osmium-ui/osmium.css` by both `npm run build` and
+`npm run dev`, so editing it in this repo is silently overwritten;
+and do not reach for `:has()` — the repo documents (in that same
+file) that `:has()` needs Safari 15.4, newer than the macOS 12.0
+floor.
 
 ### A-08 iMac G3 cases bury part of the tank under an opaque white glare that stays lit at night
 
@@ -7149,6 +7420,18 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 
 Fourteenth-pass audit (62b8572): PR #135 landed. `sanitizeSavedFish` clamps every saved numeric fish field (`web/main.ts:172-207`), so the cruise-null freeze, the negative cruise and the string hunger are fixed; `tickCount` and `waterQuality` are clamped too, and an intentionally empty v2 roster is kept (`keepEmpty`). Still open: saved add-on entries are unvalidated (`web/main.ts:99`), so a `null` entry throws in `importPanel.restore` at `installed.has(it.url)` and, with no terminal `.catch` on the launch chain (`web/main.ts:1626-1658`), skips remap and reconcile; remoteInstall still does not check `inner`; bus.ts forwards any payload; duplicate or 1e300 ids are accepted (`core/sim.ts:271-273`); and the motion-field decision and a last-good save are still open.
 
+Sixteenth pass: **the terminal `.catch` is shipped in PR #265** (R-1
+of `tmp.md`; see the sixteenth-pass Completed section). The chain now
+logs and repaints on failure, and `retryRestores(restoreFailed)` runs
+from a `.finally` with its own `try/catch`, so a throw in
+`applySceneryChoice`/`remapSheetIdx`/`reconcileFish` can no longer
+skip the pack re-fetch that exists to recover from a partial restore.
+`web/main.ts` has no test file, so PR #265 carries a documented
+verification procedure rather than a red→green test. The rest of this
+entry — unvalidated `addons` entries, `inner`, bus payloads, ids, and
+the motion-field/last-good-save decision — is untouched and still
+open.
+
 ### S-08 The Swift bus relay can crash on NaN or Date values and accepts posts from any frame
 
 Size S · Severity low · Value 3/5 · Risk 1/5
@@ -8660,6 +8943,23 @@ has their entries.
   subagents in their own worktrees and reviewed by the lead before
   pushing; the lead re-ran typecheck and tests and read every diff.
 
+### Review-response log (sixteenth pass)
+
+- Applied: nothing yet — no review round has completed.
+- Review gaps: **all three PRs (#263, #265, #272) failed the GLM job
+  with `Z.ai API: HTTP 429` on every attempt** (the automatic run on
+  each push, plus one spaced rerun). Rate limit from concurrent
+  reviews, not a code finding. Per the stopping rules these are gaps,
+  not clean rounds and not approval; CI (`core-linux`,
+  `native-macos`) is green on all three, and the branches were rebased
+  onto `06f7935` and re-verified after each move (typecheck clean;
+  vitest 691 green, 692 with PR #263's test).
+- Cross-pass overlap to reconcile at merge: another agent's
+  `fix/remove-fish-repaint` covers the same repaint as R-2 inside PR
+  #265. This pass did not read that branch. If it merges first, drop
+  the hunk from #265 rather than fighting the conflict.
+- Steady state: not reached; nothing to report as reviewed.
+
 ## Implementation Order (suggested)
 
 Highest value per risk first. Phase 0 is a merge backlog, not new
@@ -8839,7 +9139,10 @@ to U-39, A-08 to A-13, F-34 to F-42, D-35 to D-46, T-34 to T-38) and
 its refutations are folded into the fourteenth-pass sections in the
 same way; the fifteenth pass's `tmp.md` review and its 41 merged PRs
 (#190-#259, with #191 closed as a subset of #255) are folded into the
-fifteenth-pass sections in the same way. No open idea
+fifteenth-pass sections in the same way; the sixteenth pass's fresh
+`tmp.md` review, its three open PRs (#263, #265, #272) and its three
+new entries (V-38, U-40) are folded into the sixteenth-pass
+sections in the same way. No open idea
 was removed: duplicates were consolidated into one entry each (see the
 ID map and each entry's "Merged and related" notes), and unsupported
 claims are kept under "Declined, refuted and corrected".*
