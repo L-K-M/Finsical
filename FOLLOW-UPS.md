@@ -153,6 +153,14 @@ descriptions of #161 and #162.
   the first frame after install showed stale content; it never
   reproduced.
 - The AppStream metainfo has no screenshots.
+- Android: while a panel is open, the full-screen panel layer takes
+  drag-and-drop meant for the tank, so a drop outside the panel is lost.
+  `PanelLayer.dispatchDragEvent` could hand drags outside every panel
+  to the tank.
+- Linux: Get Info needs Alt-click, which many window managers (openbox,
+  Xfce, KDE Plasma 5, MATE, Cinnamon) take for moving windows. A second
+  trigger, such as a Get Info item in the app menu, would need a web
+  change.
 - After a web process crash, the Linux and Android shells (like the
   macOS one) reload the tank within about a second, while the dead
   page's tank lease (`web/tankclaim.ts`, 4 s) still holds. The reloaded

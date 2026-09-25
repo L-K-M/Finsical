@@ -104,11 +104,12 @@ Add-ons.
 | Feed the fish | Click above the waterline, in the dark strip at the top of the tank (the pointer becomes a crosshair) |
 | Tap the glass | Click in the water; nearby fish startle |
 | See a fish's name | Point at it: a balloon names it and says what it is doing |
-| Get Info on a fish | Option-click it (Alt-click on Linux): a card follows it with its health, hunger and mood |
+| Get Info on a fish | Option-click it (Alt-click on Linux, unless your window manager uses Alt-drag to move windows): a card follows it with its health, hunger and mood |
 | Move the window | In the app, drag the computer case around the tank, or the top edge of the window |
 
-On Android, tap instead of clicking; naming a fish, Get Info and
-moving the window need a mouse.
+On Android, tap instead of clicking. Naming a fish needs a mouse, and
+Get Info a mouse and an Alt key. The tank fills the screen, so neither
+it nor its panels move.
 
 A fish nearby comes over to look at the pointer while you hover over
 the tank, unless it is hungry or startled.
@@ -164,14 +165,17 @@ Menu commands in the app:
 Cmd-W closes Preferences and the other windows but not the tank; quit
 with Cmd-Q.
 
-On Linux, right-click the tank or any Finsical window for the same
-commands, with Ctrl in place of Cmd: Ctrl-, for Preferences, Ctrl-O,
-Shift-Ctrl-S, Ctrl-I, Ctrl-F, Ctrl-R, Ctrl-L, Ctrl-P, Ctrl-W and
-Ctrl-Q as above, Ctrl-Alt-S for Mute Sound and F1 for Finsical Help.
-The tank has no window frame to resize by, so the menu adds **Larger**
-(Ctrl-=) and **Smaller** (Ctrl--). Float Above Other Windows and Show
-on All Desktops are dimmed on native Wayland, which doesn't allow them.
-`man finsical` lists everything.
+On Linux, right-click the tank or any Finsical window for the app
+menu: the Tank commands above plus **Take a Picture**, Preferences,
+Float Above Other Windows and Show on All Desktops, Finsical Help,
+About and Quit. There is no Hide or Minimize. Keys use Ctrl in place of
+Cmd: Ctrl-, for Preferences, Ctrl-O, Shift-Ctrl-S, Ctrl-I, Ctrl-F,
+Ctrl-R, Ctrl-L, Ctrl-P and Ctrl-Q as above, Ctrl-Alt-S for Mute Sound,
+F1 for Finsical Help, and Ctrl-W to close the front window (not the
+tank). The tank has no window frame to resize by, so the menu adds
+**Larger** (Ctrl-=) and **Smaller** (Ctrl--). Float Above Other
+Windows and Show on All Desktops are dimmed on native Wayland, which
+doesn't allow them. `man finsical` lists the keys.
 
 On Android, the tank uses the browser build's menu bar (below).
 Preferences, Tank Overview and Tank Stats open as panels over the tank;
@@ -290,7 +294,10 @@ On Linux the web storage lives in `~/.local/share/finsical/` (web
 caches in `~/.cache/finsical/`), and window positions and the Float
 Above Other Windows and Show on All Desktops choices in
 `~/.config/finsical/`. On Android it is the app's private storage,
-which Android's app backup includes and uninstalling deletes.
+which uninstalling deletes. Android's cloud backup covers it only while
+the app's data stays under Android's 25 MB limit, and the add-on cache
+usually grows past that, so don't count on a restore bringing back your
+tank; Export Tank saves a copy you can import again.
 
 The only network host Finsical contacts is archive.org, for add-on listings
 and downloads. Other web links open in your default browser.
@@ -347,7 +354,9 @@ on (`python3-gi`, `python3-gi-cairo`, `gir1.2-gtk-3.0`,
 platform `android-37.0` and build tools 36.0.0 (`ANDROID_HOME` pointing
 at it). From `android/`, `./gradlew assembleDebug assembleRelease`
 builds `app/build/outputs/apk/debug/Finsical-<version>-android-debug.apk`
-and an unsigned release APK next to it; Gradle runs `npm run build`
+and the unsigned
+`app/build/outputs/apk/release/Finsical-<version>-android-release-unsigned.apk`;
+Gradle runs `npm run build`
 itself, so `npm` must be on the Gradle daemon's `PATH` (after fixing
 `PATH`, run `./gradlew --stop`). `./gradlew lint lintRelease test` runs
 the checks CI runs. The version comes from `package.json`; the
@@ -408,7 +417,8 @@ options.
 - The [Unlicense](LICENSE) covers Finsical's own code only. It does not
   cover AquaZone data, add-ons, or the case art. Ported third-party code
   carries its own notices.
-- The one exception in the code is the MACE sound decoder
+- The exceptions in the code are the MACE sound decoder
   (`core/data/mace.ts`, `tools/az/mace.py` and its tables), ported from
-  FFmpeg and licensed under the LGPL 2.1 or later; see
+  FFmpeg and licensed under the LGPL 2.1 or later, and the fflate
+  library compiled into the app's bundles (MIT); see
   [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

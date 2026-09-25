@@ -21,7 +21,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: bash -n scripts/*.sh linux/*.sh
+      # bash -n parses only its first operand, so one file at a time.
+      - run: for f in scripts/*.sh linux/*.sh; do bash -n "$f"; done
       # package.json, Info.plist and the README's "Latest release" marker
       # must name the same version; scripts/release.sh bumps all three.
       - run: node scripts/check-version.mjs
