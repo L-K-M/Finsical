@@ -1334,3 +1334,57 @@ describe("B-58 hunger and vigor", () => {
     }
   });
 });
+
+describe("depth among the decor", () => {
+  const plant = { x0: 140, x1: 180, top: 60, depth: 0.6 };
+
+  it("never passes through a piece of decor it overlaps", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 3);
+    sim.cover = [plant];
+    const f = sim.addFish({ x: 160, y: 120, z: 0.8, tz: 0.2 });
+    for (let i = 0; i < 3000; i++) {
+      const before = f.z;
+      sim.tick();
+      const crossed = (before < plant.depth) !== (f.z < plant.depth);
+      if (crossed) expect(f.x > plant.x1 || f.x < plant.x0 ||
+                          f.y < plant.top).toBe(true);
+    }
+  });
+
+  it("wanders through the tank's depth over time", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 5);
+    const f = sim.addFish({ x: 100, y: 100 });
+    let lo = 1, hi = 0;
+    for (let i = 0; i < 30 * 600; i++) {
+      sim.tick();
+      lo = Math.min(lo, f.z); hi = Math.max(hi, f.z);
+    }
+    expect(hi - lo).toBeGreaterThan(0.3);
+  });
+
+  it("a knock sends a fish behind nearby cover, then back out", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    sim.setLight(1);
+    sim.cover = [plant];
+    const f = sim.addFish({ x: 110, y: 120, z: 0.8, tz: 0.8, hunger: 0 });
+    sim.tap(95, 120);
+    expect(f.hideTicks).toBeGreaterThan(0);
+    let hidden = 0;
+    for (let i = 0; i < 90; i++) {
+      sim.tick();
+      if (f.z < plant.depth && f.x > plant.x0 && f.x < plant.x1) hidden++;
+    }
+    expect(hidden).toBeGreaterThan(20);
+    for (let i = 0; i < 300; i++) sim.tick();
+    expect(f.hideTicks).toBe(0);
+  });
+
+  it("a knock with no cover in reach is just a dart", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    sim.cover = [{ ...plant, depth: 0.1 }]; // too far back to get behind
+    const f = sim.addFish({ x: 110, y: 120, z: 0.8 });
+    sim.tap(95, 120);
+    expect(f.state).toBe("startle");
+    expect(f.hideTicks).toBe(0);
+  });
+});

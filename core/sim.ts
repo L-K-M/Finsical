@@ -9,6 +9,7 @@ import { hungerOf, newLife, stomachSize, vigorOf }
 import type { FishLife } from "./aquarium/life.js";
 import { DEFAULT_CARE } from "./data/species.js";
 import type { SpeciesCare } from "./data/species.js";
+import type { Cover } from "./depth.js";
 
 export interface Tank {
   width: number;
@@ -65,6 +66,13 @@ export interface Fish {
   turnFrom: 1 | -1;
   /** Preferred depth band the fish wanders around. */
   bandY: number;
+  /** Distance from the back glass, 0 (back) to 1 (front): where the
+   * fish sorts among the decor. `tz` is where it is heading. */
+  z: number;
+  tz: number;
+  /** Ticks left hiding behind `hideIn` after a scare (runtime only). */
+  hideTicks: number;
+  hideIn?: Cover;
   /** Render scale — juveniles spawn small, meals grow toward adult. */
   scale: number;
   /** 0 = full, 1 = starving: how empty the stomach is. The life model
@@ -227,6 +235,24 @@ const MIRROR_MIN = 4;
 export const BAND_HALF = 24;
 /** Chance per decision of picking a new depth band. */
 const BAND_SHIFT = 0.2;
+/** Range of distances from the back glass fish wander through, and
+ * the chance per decision of heading for a new one. */
+const Z_MIN = 0.15;
+const Z_MAX = 0.85;
+const Z_SHIFT = 0.25;
+/** Depth change per tick: a calm fish takes ~7 s to cross the tank
+ * front to back, a scared one under a second. */
+const Z_RATE = 0.004;
+const Z_DART = 0.04;
+/** A scared fish makes for cover within this distance, behind decor at
+ * least this far from the back glass (room to get behind it). */
+const HIDE_RADIUS = 120;
+const HIDE_MIN_DEPTH = 0.25;
+/** How far behind its cover a hiding fish tucks in. */
+const HIDE_BEHIND = 0.15;
+/** Ticks a fish stays hidden after the dart: 3 to 8 s. */
+const HIDE_TICKS_MIN = 90;
+const HIDE_TICKS_RANGE = 150;
 /** Chance per decision a wander anchors on a schoolmate's
  * neighborhood instead of the open water. PR #154's longer strokes
  * dilute each anchor, so the pull is high enough to still read as a
@@ -295,6 +321,10 @@ export class Sim {
   readonly fish: Fish[] = [];
   readonly food: Food[] = [];
   readonly bubbles: Bubble[] = [];
+  /** The decor as the fish see it, set by the view whenever the decor
+   * changes: fish pass behind and in front of it, and hide behind it
+   * when scared. */
+  cover: readonly Cover[] = [];
   /** Spawn a bubble at a point — the view emits these for decor
    * (plants oxygenating); the lifecycle (rise, surface pop) is the
    * same as a gravel bubble's. */
@@ -336,6 +366,9 @@ export class Sim {
     return this.fish.some((f) => this.isBegging(f));
   }
   private rand: () => number;
+  /** Depth draws have their own stream, so the swim path for a seed
+   * stays what it was before fish had depth. */
+  private zRand: () => number;
   private nextId = 0;
   /** Fish only bed down after the tank has seen daylight once — a
    * sim created or restored mid-night keeps its fish awake until
@@ -345,6 +378,7 @@ export class Sim {
   constructor(tank: Tank, seed = 1) {
     this.tank = tank;
     this.rand = makeRng(seed);
+    this.zRand = makeRng(seed ^ 0x2de9);
     this.aquarium = new Aquarium(makeRng(seed ^ 0x5eed));
   }
 
@@ -435,7 +469,8 @@ export class Sim {
       id: this.nextId, species: "",
       facing: 1, heading: 0, phase: 0, latch: -1, peak: 0, cruise: 1,
       speed: 1, vy: 0, tx: 0, ty: 0, turnDir: 1, turnFrom: 1,
-      strokes: 0, bandY: 0, scale: 1, hunger: SPAWN_HUNGER,
+      strokes: 0, bandY: 0, z: 0, tz: 0, hideTicks: 0, scale: 1,
+      hunger: SPAWN_HUNGER,
       state: "drift", stateTicks: 0, startleLen: STARTLE_TICKS,
       panicHops: 0, ...fish,
     };
@@ -453,6 +488,9 @@ export class Sim {
     if (!Number.isFinite(fish.tx)) f.tx = f.x;
     if (!Number.isFinite(fish.ty)) f.ty = f.y;
     if (!Number.isFinite(fish.bandY)) f.bandY = f.y;
+    if (!Number.isFinite(fish.z) || f.z < 0 || f.z > 1)
+      f.z = Z_MIN + this.zRand() * (Z_MAX - Z_MIN);
+    if (!Number.isFinite(fish.tz) || f.tz < 0 || f.tz > 1) f.tz = f.z;
     // Saved/restored fish keep their size; new fish spawn as juveniles
     // of varying size so a school doesn't read as clones.
     if (fish.scale === undefined)
@@ -551,13 +589,15 @@ export class Sim {
       (f.x - n.x) ** 2 + (f.y - n.y) ** 2 < NOTICE_RADIUS * NOTICE_RADIUS;
     this._noticeFish = this._noticeFish.filter((f) =>
       this.fish.includes(f) && f.state !== "dead" && inRange(f) &&
-      (f.state === "drift" || f.state === "turn"));
+      f.hideTicks === 0 && (f.state === "drift" || f.state === "turn"));
     if (n && this._noticeFish.length < NOTICE_CAP) {
       // Fill the open slots with the nearest drifters not already
       // watching — a small crowd presses the glass, like the original.
       const cand: { f: Fish; d: number }[] = [];
       for (const f of this.fish) {
-        if (f.state !== "drift" || this._noticeFish.includes(f))
+        // A fish hiding from a knock stays in cover.
+        if (f.state !== "drift" || f.hideTicks > 0 ||
+            this._noticeFish.includes(f))
           continue;
         const d = (f.x - n.x) ** 2 + (f.y - n.y) ** 2;
         if (d < NOTICE_RADIUS * NOTICE_RADIUS) cand.push({ f, d });
@@ -870,6 +910,8 @@ export class Sim {
       }
     }
 
+    if (f.state !== "sleep") this.stepDepth(f);
+
     const { x0, x1, y0, y1 } = this.room(f);
     let hit = false;
     // Direction back into the tank from a side wall the fish reached.
@@ -964,6 +1006,18 @@ export class Sim {
    */
   private decide(f: Fish): void {
     const { x0, x1, y0, y1 } = this.room(f);
+    if (f.hideTicks > 0 && f.hideIn) {
+      // Hiding: potter about behind the cover, below its top.
+      const c = f.hideIn, m = Math.min(8, (c.x1 - c.x0) / 4);
+      f.tx = Math.min(x1, Math.max(x0,
+        c.x0 + m + this.zRand() * Math.max(0, c.x1 - c.x0 - 2 * m)));
+      const top = Math.min(y1, Math.max(y0, c.top + this.halfH(f)));
+      f.ty = top + this.zRand() * (y1 - top);
+      f.phase = 0;
+      f.latch = -1;
+      f.strokes = 0;
+      return;
+    }
     if (this.rand() < BAND_SHIFT) f.bandY = y0 + this.rand() * (y1 - y0);
     f.tx = x0 + this.rand() * (x1 - x0);
     if ((f.tx - f.x) * f.facing < 0 && this.rand() < AHEAD_BIAS) {
@@ -1004,6 +1058,7 @@ export class Sim {
     // A sick fish keeps to the bottom of its range (Calc_New_Dest_Vert).
     if (f.life?.sick)
       f.ty = y0 + (y1 - y0) * (SICK_DEPTH + this.rand() * (1 - SICK_DEPTH));
+    if (this.zRand() < Z_SHIFT) f.tz = Z_MIN + this.zRand() * (Z_MAX - Z_MIN);
     f.phase = 0;
     f.latch = -1;
     f.strokes = 0;
@@ -1031,6 +1086,50 @@ export class Sim {
     f.speed = Math.min(STARTLE_MAX_SPEED,
                        Math.max(f.speed, f.cruise * (1 + 1.5 * k)));
     f.vy = (dy / d) * 2.5 * k;
+    this.seekCover(f);
+  }
+
+  /** A scared fish makes for the nearest decor it can get behind, and
+   * stays there a few seconds (the original's guide: accessories give
+   * "your shy fish a place to hide"). No cover in reach: it just darts. */
+  private seekCover(f: Fish): void {
+    let best: Cover | undefined, bd = HIDE_RADIUS;
+    for (const c of this.cover) {
+      if (c.depth < HIDE_MIN_DEPTH) continue;
+      // A fish already inside a piece's span can't slip behind it
+      // without passing through it, unless it is behind already.
+      const inside = f.x > c.x0 && f.x < c.x1;
+      if (inside && f.z >= c.depth) continue;
+      const d = inside ? 0 : Math.min(Math.abs(f.x - c.x0), Math.abs(f.x - c.x1));
+      if (d < bd) { bd = d; best = c; }
+    }
+    if (!best) return;
+    f.hideIn = best;
+    f.hideTicks = HIDE_TICKS_MIN + Math.floor(this.zRand() * HIDE_TICKS_RANGE);
+    f.tz = Math.max(0, best.depth - HIDE_BEHIND);
+  }
+
+  /** Move toward the target depth, never through a piece of decor the
+   * fish's body overlaps — that would pop it from behind the art to in
+   * front of it. It changes depth in open water, or above the art. */
+  private stepDepth(f: Fish): void {
+    if (f.hideTicks > 0 && f.state !== "startle") {
+      // Cover removed from the tank, or time up: back to open water.
+      if (!f.hideIn || !this.cover.includes(f.hideIn) || --f.hideTicks === 0) {
+        f.hideTicks = 0;
+        delete f.hideIn;
+        f.tz = Z_MIN + this.zRand() * (Z_MAX - Z_MIN);
+      }
+    }
+    const rate = f.hideTicks > 0 ? Z_DART : Z_RATE;
+    const nz = f.z + Math.max(-rate, Math.min(rate, f.tz - f.z));
+    if (nz === f.z) return;
+    const hw = this.halfW(f), hh = this.halfH(f);
+    for (const c of this.cover) {
+      if ((f.z < c.depth) === (nz < c.depth)) continue;
+      if (f.x + hw > c.x0 && f.x - hw < c.x1 && f.y + hh > c.top) return;
+    }
+    f.z = nz;
   }
 
   /** A target behind the fish needs a reversal — the original plays
@@ -1094,6 +1193,7 @@ export class Sim {
         y: Math.min(parent.y + 10, this.tank.height - BOTTOM_PAD - 4),
         facing: parent.facing, heading: parent.heading,
         cruise: parent.cruise, hunger: 0.3, scale: FRY_SCALE,
+        z: parent.z,
         ...(parent.sheetIdx !== undefined ? { sheetIdx: parent.sheetIdx } : {}),
         ...(parent.pack !== undefined ? { pack: parent.pack } : {}),
       });
