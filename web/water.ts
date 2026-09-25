@@ -180,8 +180,12 @@ export function drawBubbles(ctx: CanvasRenderingContext2D,
 
 /** Most pellets one feed drops. */
 export const PINCH_MAX = 5;
-/** Horizontal scatter of a pinch around the drop x, px. */
+/** Horizontal scatter of a pinch around its center, px. */
 export const PINCH_SPREAD = 24;
+/** How far a multi-pellet pinch's centers may sit from the drop x, px.
+ * One center covers a hungry fish or two; a fuller pinch splits across
+ * up to three centers so the far school isn't raced to one spot. */
+export const PINCH_CENTER_SPREAD = 48;
 /** Delay between pellets of one pinch, ms: they rain in, not as a row. */
 const PINCH_STAGGER_MS = 110;
 
@@ -199,10 +203,15 @@ export interface PinchPellet {
 export function feedPinch(rand: () => number,
                           hungry: number): PinchPellet[] {
   const n = Math.min(PINCH_MAX, Math.max(1, Math.floor(hungry)));
+  const centers = Math.min(3, Math.ceil(n / 2));
+  const at: number[] = [];
+  for (let c = 0; c < centers; c++)
+    at.push(Math.round((rand() * 2 - 1) * PINCH_CENTER_SPREAD));
   const out: PinchPellet[] = [];
   for (let i = 0; i < n; i++) {
     out.push({
-      dx: Math.round((rand() * 2 - 1) * PINCH_SPREAD),
+      dx: at[i % centers]!
+        + Math.round((rand() * 2 - 1) * PINCH_SPREAD),
       delay: i === 0
         ? 0 : Math.round(i * PINCH_STAGGER_MS * (0.6 + rand() * 0.8)),
     });
