@@ -32,18 +32,20 @@ export function lruSet<K, V>(m: Map<K, V>, k: K, v: V, cap: number,
                              canEvict?: (v: V) => boolean,
                              onEvict?: (k: K, v: V) => void): void {
   const old = m.get(k);
-  try {
-    if (m.has(k)) { m.delete(k); onEvict?.(k, old as V); }
-  } finally {
-    // A throwing callback must not turn a replace into a delete.
-    m.set(k, v);
-  }
   // A throwing callback mid-trim must not abandon the loop with the
   // map still over cap — finish evicting, then rethrow the first error.
   // The flag, not the value, marks an error: `throw undefined` must
-  // still propagate.
+  // still propagate. The replace callback below counts as a trim error
+  // for the same reason.
   let trimErr: unknown;
   let haveTrimErr = false;
+  if (m.has(k)) {
+    m.delete(k);
+    try { onEvict?.(k, old as V); }
+    catch (e) { trimErr = e; haveTrimErr = true; }
+  }
+  // A throwing callback must not turn a replace into a delete.
+  m.set(k, v);
   while (m.size > cap) {
     const [k0, v0] = m.entries().next().value!;
     if (canEvict && !canEvict(v0)) break;
