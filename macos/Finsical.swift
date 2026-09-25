@@ -908,12 +908,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         // excluded (they ride their parent's level).
         NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification,
-            object: nil, queue: .main) { [weak self] note in
-            guard let self, let w = note.object as? NSWindow,
-                  w !== self.window, w.sheetParent == nil,
-                  w.level.rawValue < self.window.level.rawValue
-            else { return }
-            w.level = self.window.level
+            object: nil, queue: .main) { _ in
+            // The observer closure is @Sendable; hop to the main actor
+            // to touch AppKit windows.
+            Task { @MainActor [weak self] in
+                guard let self, let w = NSApp.keyWindow,
+                      w !== self.window, w.sheetParent == nil,
+                      w.level.rawValue < self.window.level.rawValue
+                else { return }
+                w.level = self.window.level
+            }
         }
         window.contentAspectRatio = NSSize(width: 320, height: 200)
         window.contentView = webView
