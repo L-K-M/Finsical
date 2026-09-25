@@ -27,4 +27,4 @@ file in this repository, and `npm run build` rebuilds the bundles from
 it, so you can modify or replace the LGPL-covered decoder and relink
 it. The macOS app ships this file at
 `Finsical.app/Contents/Resources/core/data/mace.ts`, with the
-license text at `Finsical.app/Contents/Resources`.
+license text (`LGPL-2.1.txt`) at `Finsical.app/Contents/Resources`.
