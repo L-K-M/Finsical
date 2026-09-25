@@ -82,12 +82,15 @@ bus.post({ op: "hello" });
 // Poll while visible so install marks stay synced with the tank (and
 // recover if the tank page reloaded mid-session). Skipped while
 // hidden: the relay filters pushes to closed windows anyway.
+// `greeted` gates neither this nor the show below: if the greet loop
+// gave up with the tank still loading, they are what pick contact
+// back up, and an unanswered hello costs nothing with no tank.
 setInterval(() => {
-  if (greeted && !document.hidden) bus.post({ op: "hello" });
+  if (!document.hidden) bus.post({ op: "hello" });
 }, 2000);
 // Snap to fresh state the moment the window is shown again.
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && greeted) bus.post({ op: "hello" });
+  if (!document.hidden) bus.post({ op: "hello" });
 });
 // Right-click inside a borderless WebKit window surfaces WebKit's
 // generic menu (Reload etc.) — nothing in it applies to a desk
