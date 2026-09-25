@@ -508,6 +508,10 @@ body.zen .nametag {
   -webkit-font-smoothing: none;
   user-select: none; -webkit-user-select: none;
 }
+/* The alert takes focus so Return and Escape reach it; the window
+ * itself is no control, so no browser focus ring around its frame.
+ * Its buttons still ring under keyboard use (osmium.css). */
+.alertwin:focus { outline: none; }
 .alertwin::before {
   content: ""; position: absolute; inset: 3px; pointer-events: none;
   box-shadow: inset 1px 1px #999, inset -1px -1px #fff;
