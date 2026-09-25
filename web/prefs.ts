@@ -13,7 +13,7 @@ import { hourLabel, LIGHTING_DEFAULTS, sanitizeLighting }
 import type { Lighting, LightMode } from "../core/light.js";
 import { SOUND_DEFAULTS, sanitizeSoundConfig } from "./audio.js";
 import type { SoundConfig } from "./audio.js";
-import { tubeCaption } from "./caption.js";
+import { positionText, tubeCaption } from "./caption.js";
 
 // Preferences window: a Mac OS 8 control panel with five panes: the
 // machine case, the CRT tube effect, the monitor's picture controls,
@@ -47,6 +47,11 @@ const offset = (v: number): string => {
   const d = Math.round((v - 0.5) * 200);
   return d === 0 ? "0" : `${d > 0 ? "+" : ""}${d}`;
 };
+
+// Position pots name the shift direction in the same words as their
+// end captions, so the ends feed both.
+const HPOS_ENDS = ["Left", "Right"] as const;
+const VPOS_ENDS = ["Down", "Up"] as const;
 
 const SPECS: SliderSpec[] = [
   { key: "scanlines", label: "Scanlines", ends: ["Off", "Deep"],
@@ -100,12 +105,12 @@ const PIC_SPECS: SliderSpec[] = [
   { key: "vsize", label: "Height", ends: ["Short", "Tall"], fmt: offset,
     blurb: "The height pot — tubes drifted tall or squat as they " +
       "warmed up, and owners dialed it back by hand." },
-  { key: "hpos", label: "Horizontal position", ends: ["Left", "Right"],
-    fmt: offset,
+  { key: "hpos", label: "Horizontal position", ends: HPOS_ENDS,
+    fmt: (v) => positionText(v, HPOS_ENDS),
     blurb: "The horizontal position pot. Slides the whole picture " +
       "left or right inside the glass, to center a raster that drifted." },
-  { key: "vpos", label: "Vertical position", ends: ["Down", "Up"],
-    fmt: offset,
+  { key: "vpos", label: "Vertical position", ends: VPOS_ENDS,
+    fmt: (v) => positionText(v, VPOS_ENDS),
     blurb: "The vertical position pot. Raises or lowers the whole " +
       "picture inside the glass." },
   { key: "skew", label: "Horizontal skew",

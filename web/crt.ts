@@ -141,6 +141,12 @@ void main() {
 }
 `;
 
+/** How far the position pots (hpos, vpos) slide the raster at
+ * either end, as a share of the neutral raster's width or height.
+ * The shader and the Preferences value labels both read it; the
+ * shader gets it through toFixed so GLSL sees a float literal. */
+export const POS_RANGE = 0.1;
+
 const FRAG = COMMON + `
 uniform sampler2D uRows; // the rows pass's smeared scanlines
 uniform sampler2D uBloomTex; // bright pass, blurred: phosphor bloom
@@ -180,7 +186,7 @@ uniform float uDegauss; // degauss wobble amplitude (0 = settled)
 
 // How far the position pots slide the raster at either end, as a
 // share of the neutral raster's width or height.
-const float POS_RANGE = 0.10;
+const float POS_RANGE = ${POS_RANGE.toFixed(4)};
 
 // Corner radius of the raster, in game px.
 const float RASTER_CORNER = 6.0;

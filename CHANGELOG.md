@@ -11,6 +11,22 @@
   reopens on the tab you used last. The first time it opens after this
   update it comes up centered at its new size, since the size you left
   it at was for the old single pane.
+- The CRT's scanlines now follow the picture's brightness, like a real
+  tube's beam. Dark rows thin to lines with deep gaps, while bright
+  rows swell to nearly fill them, so highlights look painted rather
+  than striped and a lone bright pixel glows as a dot. In a small
+  window the lines fade to their average brightness instead of
+  beating into moire patterns.
+- The CRT's bloom and glass halation are now smooth glows. Small
+  bright shapes such as bubbles used to cast sharp copies of
+  themselves a few pixels to each side.
+- The CRT's Softening blends colors the way a tube's light does, so
+  dithered patterns and the seams between two colors no longer come
+  out darker than they should.
+- The CRT picture's corners are rounded and its curved edges are
+  smooth instead of stair-stepped.
+- The CRT's Geometry group gains Horizontal and Vertical position
+  pots, which shift the picture left, right, up or down on the glass.
 - A tank saved by 0.3.0 or earlier keeps the look of each fish from an
   add-on that holds several fish. The first launch after the update
   would otherwise turn them all into the add-on's last fish: angels.zip
