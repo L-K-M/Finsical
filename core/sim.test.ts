@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { BAND_HALF, BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, MARGIN,
-         MAX_UNEATEN, NOTICE_RADIUS, PELLET_UNITS, Sim, SLEEP_LIGHT,
-         SURFACE,
+import { BAND_HALF, BEDTIME_MIN, BEDTIME_SPREAD, BOTTOM_PAD, DAY_TICKS,
+         FOOD_ROT_TICKS, LIE_IN_MIN, LIE_IN_SPREAD, MARGIN, MAX_UNEATEN,
+         NOTICE_RADIUS, PELLET_UNITS, Sim, SLEEP_LIGHT, SURFACE,
          TURN_TICKS, WAKE_LIGHT } from "./sim.js";
 import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
   from "./tuning.js";
@@ -633,8 +633,8 @@ describe("Sim", () => {
   it("fish bed down for the night and wake at dawn", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const f = sim.addFish({ x: 160, y: 60, cruise: 1.4 });
-    // Fish only sleep after the tank has seen daylight; a fresh demo
-    // cycle opens at 10:00, so this loop is a guard, not a wait.
+    // A fresh demo cycle opens at 10:00, so this loop is a guard, not
+    // a wait.
     for (let i = 0; i < DAY_TICKS && sim.light < WAKE_LIGHT; i++)
       sim.tick();
     // Tick until dark, then let the fish settle — it sinks at
@@ -649,10 +649,10 @@ describe("Sim", () => {
     const x0 = f.x;
     for (let i = 0; i < 300; i++) sim.tick();
     expect(f.x).toBe(x0);
-    // Dawn sends it wandering again.
+    // Dawn sends it wandering again, after its lie-in (under 11 s).
     for (let i = 0; i < DAY_TICKS && sim.light < WAKE_LIGHT; i++)
       sim.tick();
-    for (let i = 0; i < 60; i++) sim.tick();
+    for (let i = 0; i < LIE_IN_MIN + LIE_IN_SPREAD + 80; i++) sim.tick();
     expect(f.state).not.toBe("sleep");
   });
 
@@ -663,9 +663,9 @@ describe("Sim", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const f = sim.addFish({ x: 160, y: 60, cruise: 1.4 });
     sim.setLight(1);
-    sim.tick(); // the tank has seen daylight
+    sim.tick();
     sim.setLight(CLOCK_NIGHT_LIGHT);
-    for (let i = 0; i < 600; i++) sim.tick();
+    for (let i = 0; i < BEDTIME_MIN + BEDTIME_SPREAD + 40; i++) sim.tick();
     expect(f.state).toBe("sleep");
     // Rests level on the gravel, whatever its heading at bedtime.
     expect(Math.abs(pitch(f))).toBeLessThan(1e-9);
@@ -679,6 +679,45 @@ describe("Sim", () => {
     expect(f.state).toBe("sleep");
   });
 
+  it("settles for the night when the tank opens in the dark", () => {
+    // A timer night, or the lamp saved off: no daylight this session.
+    for (const night of [CLOCK_NIGHT_LIGHT, 0.3]) {
+      const sim = new Sim({ width: 320, height: 200 }, 7);
+      const fish = [0, 1, 2, 3, 4, 5].map((i) =>
+        sim.addFish({ x: 40 + i * 45, y: 60, cruise: 1.4 }));
+      sim.setLight(night);
+      sim.tick();
+      // Never knocked out on the first tick…
+      expect(fish.some((f) => f.state === "sleep")).toBe(false);
+      for (let i = 0; i < BEDTIME_MIN + BEDTIME_SPREAD + 40; i++) sim.tick();
+      // …but asleep before long, not awake until the next dawn.
+      expect(fish.map((f) => f.state)).toEqual(Array(6).fill("sleep"));
+    }
+  });
+
+  it("beds fish down and wakes them one at a time, not in unison", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const fish = [0, 1, 2, 3, 4, 5].map((i) =>
+      sim.addFish({ x: 40 + i * 45, y: 60, cruise: 1.4, hunger: 0 }));
+    const bed = new Map<number, number>(), woke = new Map<number, number>();
+    // A demo day: dusk, the night and the next dawn.
+    for (let t = 0; t < DAY_TICKS * 1.2; t++) {
+      sim.tick();
+      for (const f of fish) {
+        f.hunger = 0; // keep appetite out of it
+        if (f.state === "sleep" && !bed.has(f.id)) bed.set(f.id, t);
+        if (bed.has(f.id) && f.state !== "sleep" && !woke.has(f.id))
+          woke.set(f.id, t);
+      }
+    }
+    const span = (m: Map<number, number>) =>
+      Math.max(...m.values()) - Math.min(...m.values());
+    expect(bed.size).toBe(6);
+    expect(woke.size).toBe(6);
+    expect(span(bed)).toBeGreaterThanOrEqual(100);
+    expect(span(woke)).toBeGreaterThanOrEqual(60);
+  });
+
   it("a big fish sleeps inside its room, not in the gravel", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     // Half-height 30: room() keeps its centre 24 px (0.8 of that) off
@@ -687,7 +726,7 @@ describe("Sim", () => {
                             halfW: 40, halfH: 30 });
     const bed = 200 - 30 * 0.8;
     sim.setLight(1);
-    sim.tick(); // the tank has seen daylight
+    sim.tick();
     sim.setLight(CLOCK_NIGHT_LIGHT);
     for (let i = 0; i < 900; i++) {
       sim.tick();

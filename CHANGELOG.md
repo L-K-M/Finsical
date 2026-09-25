@@ -69,6 +69,12 @@
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.
+- Fish go to sleep in a tank that opens in the dark. With the light
+  timer past its off hour, or the lamp left off, they used to swim all
+  night, because they only bedded down after seeing daylight first.
+  Fish also settle one at a time, each between 2 and 22 seconds after
+  dark, and wake one by one within 11 seconds of dawn, instead of all
+  on the same instant.
 - A hungry fish between two pellets picks one and eats it. Near the
   midpoint it used to roll back and forth between them, sometimes for a
   minute, while both sank and fouled the water.
