@@ -2197,7 +2197,12 @@ function takePicture(): void {
   out.height = TANK.height * 2;
   const c = out.getContext("2d")!;
   c.imageSmoothingEnabled = false;
+  // A paused canvas carries the scrim and the PAUSED label — repaint
+  // without them for the shot, then put the overlay back. Both
+  // renders run inside this task, so nothing flickers.
+  if (paused) render(true);
   c.drawImage(canvas, 0, 0, out.width, out.height);
+  if (paused) render();
   const d = new Date();
   const pad = (n: number): string => String(n).padStart(2, "0");
   const name = `finsical-${d.getFullYear()}${pad(d.getMonth() + 1)}` +
@@ -3007,7 +3012,7 @@ function stirSurface(): void {
     disturbSurface(surface, f.x, sign * f.speed * WAKE_PUSH, 2);
   }
 }
-function render(): void {
+function render(hidePauseOverlay = false): void {
   // The startup parade owns the canvas until it fades: black, desktop,
   // marching icons — then the tank draws normally under a fading boot
   // screen, so the crossfade needs no compositing machinery.
@@ -3160,7 +3165,7 @@ function render(): void {
     if (pose) drawPaw(pose.x, pose.y);
   }
 
-  if (paused) {
+  if (paused && !hidePauseOverlay) {
     ctx.save();
     ctx.fillStyle = "rgba(4,8,24,0.35)";
     ctx.fillRect(0, 0, TANK.width, TANK.height);
