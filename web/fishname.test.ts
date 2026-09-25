@@ -22,6 +22,15 @@ describe("cleanFishName", () => {
     expect(cleanFishName("Fi\u202enn\ufeff")).toBe("Finn");
   });
 
+  it("keeps joiners inside a name, never a name of joiners alone", () => {
+    const family = "\u{1F468}\u200d\u{1F469}\u200d\u{1F467}";
+    expect(cleanFishName(family)).toBe(family);
+    expect(cleanFishName("\u0645\u06cc\u200c\u0634\u0648\u062f"))
+      .toBe("\u0645\u06cc\u200c\u0634\u0648\u062f");
+    expect(cleanFishName("\u200d\u200c \u200d")).toBeUndefined();
+    expect(cleanFishName("\u200dFinn\u200c")).toBe("Finn");
+  });
+
   it("cuts to NAME_MAX code points without splitting a pair", () => {
     const long = "a".repeat(NAME_MAX + 10);
     expect(cleanFishName(long)).toHaveLength(NAME_MAX);
@@ -41,5 +50,7 @@ describe("fishLabel", () => {
     expect(fishLabel({ name: 7, species: "Guppy" })).toBe("Guppy");
     expect(fishLabel({ name: null, species: {} })).toBe("Fish");
     expect(fishLabel({ name: "  ", species: "Guppy" })).toBe("Guppy");
+    expect(fishLabel({ name: " Wanda\u00a0", species: "Guppy" }))
+      .toBe("Wanda");
   });
 });
