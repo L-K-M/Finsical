@@ -898,8 +898,11 @@ describe("sanitizeSoundConfig", () => {
   });
 
   it("migrates an explicit v: 1 marker, but never v: 2 or newer", () => {
-    expect(sanitizeSoundConfig({ volume: 0.49, v: 1 }).volume)
-      .toBeCloseTo(0.7, 10);
+    const mig = sanitizeSoundConfig({ volume: 0.49, v: 1 });
+    expect(mig.volume).toBeCloseTo(0.7, 10);
+    // The output must carry the current marker — copying r.v through
+    // would re-migrate an already-quadratic volume on the next load.
+    expect(mig.v).toBe(2);
     // A future or malformed marker keeps the volume verbatim — sqrt
     // on an already-quadratic value would be a silent drift.
     for (const v of [2, 3, "2", null])
