@@ -13,7 +13,8 @@
  *    than the game pixels
  *  - gentle barrel curvature with rounded, anti-aliased raster
  *    corners, corner vignette, flicker + rolling band, faint grain
- *  - service-menu geometry: raster skew and a perspective keystone
+ *  - service-menu geometry: raster position, skew and a perspective
+ *    keystone
  * The beam smear runs first, once per game row, into an offscreen
  * target as wide as the raster's device px; the tube pass then reads
  * finished rows instead of re-smearing every device px.
@@ -123,11 +124,17 @@ uniform float uHSize; // raster width pot (0.5 = neutral)
 uniform float uVSize; // raster height pot (0.5 = neutral)
 uniform float uSkew;  // raster shear pot (0.5 = square)
 uniform float uPersp; // horizontal keystone (0.5 = head-on)
+uniform float uHPos;  // raster position pots (0.5 = centered)
+uniform float uVPos;
 uniform float uRed;   // per-channel gain trims
 uniform float uGreen;
 uniform float uBlue;
 uniform float uPower; // 1 = settled; <1 = power-on/off in progress
 uniform float uDegauss; // degauss wobble amplitude (0 = settled)
+
+// How far the position pots slide the raster at either end, as a
+// share of the neutral raster's width or height.
+const float POS_RANGE = 0.10;
 
 // Corner radius of the raster, in game px.
 const float RASTER_CORNER = 6.0;
@@ -159,6 +166,12 @@ void main() {
   // gc is the position on the glass — vignette and misconvergence
   // follow the tube, not the raster.
   vec2 gc = uv * 2.0 - 1.0;
+  // Position pots slide the whole raster inside the glass, up to
+  // POS_RANGE of its neutral size either way. First, so the distance
+  // stays the same whatever the overscan and size pots do; the
+  // raster's warp and its matte edges travel with it, while the
+  // vignette and misconvergence (gc) stay where they are.
+  uv -= (vec2(uHPos, uVPos) - 0.5) * (2.0 * POS_RANGE);
   // Overscan: real sets run the raster slightly past the glass, so a
   // little crop is authentic. Crop in raster space, BEFORE the warp —
   // the crop stays uniform and the curved black corners survive.
@@ -327,6 +340,10 @@ export interface CrtConfig {
   /** Keystone warp, the raster swung about its vertical axis —
    * 0.5 faces the viewer. */
   perspective: number;
+  /** Raster position, left to right. 0.5 is centered. */
+  hpos: number;
+  /** Raster position, bottom to top. 0.5 is centered. */
+  vpos: number;
   /** Per-channel trims — 0.5 is neutral on each. */
   red: number;
   green: number;
@@ -339,6 +356,7 @@ export const CRT_DEFAULTS: Readonly<CrtConfig> = Object.freeze<CrtConfig>({
   flicker: 0.30, grain: 0.30,
   brightness: 0.50, contrast: 0.50, zoom: 0.0,
   hsize: 0.50, vsize: 0.50, skew: 0.50, perspective: 0.50,
+  hpos: 0.50, vpos: 0.50,
   red: 0.50, green: 0.50, blue: 0.50,
 });
 
@@ -378,7 +396,7 @@ export interface CrtPreset {
  * are the user's. Every other key is the tube itself. */
 export const PICTURE_KEYS: readonly (keyof CrtConfig)[] = Object.freeze([
   "brightness", "contrast", "zoom",
-  "hsize", "vsize", "skew", "perspective",
+  "hsize", "vsize", "skew", "perspective", "hpos", "vpos",
   "red", "green", "blue",
 ]);
 
@@ -624,7 +642,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     misconvergence: "uConv", grille: "uGrill", curvature: "uCurve",
     vignette: "uVig", flicker: "uFlick", grain: "uGrain",
     brightness: "uBright", contrast: "uContr", zoom: "uZoom",
-    hsize: "uHSize", vsize: "uVSize",
+    hsize: "uHSize", vsize: "uVSize", hpos: "uHPos", vpos: "uVPos",
     skew: "uSkew", perspective: "uPersp",
     red: "uRed", green: "uGreen", blue: "uBlue",
   };

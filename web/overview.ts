@@ -129,14 +129,17 @@ centerText(summaryEl);
 
 // ---- column headers ---------------------------------------------------
 let sortBy: Column = "name"; // the Finder's default
+let sortDir: 1 | -1 = 1;     // ...and its ascending one
 const heads = new Map<Column, HTMLButtonElement>();
 for (const c of COLUMNS) {
   const h = el("button", `osm-colhead ohead-${c.id}`, c.title) as
     HTMLButtonElement;
   h.type = "button";
   h.addEventListener("click", () => {
-    if (sortBy === c.id) return;
-    sortBy = c.id;
+    // A column's first click sorts it ascending; clicking the column
+    // that is already sorted turns it around instead of doing nothing.
+    if (sortBy === c.id) sortDir = sortDir === 1 ? -1 : 1;
+    else { sortBy = c.id; sortDir = 1; }
     syncHeads();
     lastStructure = "";
     render("top");
@@ -146,10 +149,16 @@ for (const c of COLUMNS) {
 }
 function syncHeads(): void {
   for (const [id, h] of heads) {
-    h.classList.toggle("osm-sorted", id === sortBy);
-    h.setAttribute("aria-pressed", String(id === sortBy));
-    h.setAttribute("aria-label", `Sort by ${h.textContent}`);
+    const on = id === sortBy;
+    h.classList.toggle("osm-sorted", on);
+    h.setAttribute("aria-pressed", String(on));
+    h.setAttribute("aria-label", on
+      ? `Sort by ${h.textContent}, ${sortDir === 1 ? "ascending" : "descending"}`
+      : `Sort by ${h.textContent}`);
   }
+  // The direction triangle lives over the headers; the cell shading
+  // below only needs to know which column is sorted.
+  headsEl.dataset.sortDir = sortDir === 1 ? "asc" : "desc";
   listEl.dataset.sort = sortBy;
 }
 syncHeads();
@@ -324,7 +333,7 @@ function render(scroll: ListScroll = "keep"): void {
   // Only now is "empty" a fact rather than "not heard from the tank".
   list.setEmpty("The tank is empty. Import add-ons to stock it.");
   const fishN = (s.fish ?? []).length;
-  const next = sortItems(itemsOf(s), sortBy);
+  const next = sortItems(itemsOf(s), sortBy, sortDir);
   const addonN = next.filter((i) => i.rank === 1).length;
   summaryEl.textContent =
     summary(fishN, addonN, s.waterQuality ?? 1, s.tickCount ?? 0);
