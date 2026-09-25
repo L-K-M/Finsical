@@ -908,12 +908,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         // excluded (they ride their parent's level).
         NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification,
-            object: nil, queue: .main) { _ in
+            object: nil, queue: .main) { note in
             // The observer closure is @Sendable; hop to the main actor
-            // to touch AppKit windows.
+            // to touch AppKit windows. Carry the notified window across
+            // — re-reading keyWindow inside the task can miss it or hit
+            // a window that became key since.
+            guard let w = note.object as? NSWindow else { return }
             Task { @MainActor [weak self] in
-                guard let self, let w = NSApp.keyWindow,
-                      w !== self.window, w.sheetParent == nil,
+                guard let self, w !== self.window, w.sheetParent == nil,
                       w.level.rawValue < self.window.level.rawValue
                 else { return }
                 w.level = self.window.level
