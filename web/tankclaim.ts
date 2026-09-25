@@ -109,6 +109,15 @@ export function claimTank(onLost: () => void,
                ownerGone: () =>
                  !leaseAlive(readLease(storage.get()), Date.now()) };
     storage.set(JSON.stringify({ id, at: Date.now() }));
+    // Verify the retake like the initial claim: a live rival that
+    // overwrote it wins, or two stale-claim observers would both
+    // "retake" and run as dual owners until the first beat.
+    const retaken = readLease(storage.get());
+    if (retaken !== null && retaken.id !== id &&
+        leaseAlive(retaken, Date.now()))
+      return { owned: false,
+               ownerGone: () =>
+                 !leaseAlive(readLease(storage.get()), Date.now()) };
   }
   const beat = setInterval(() => {
     if (beatLease(storage, id, Date.now())) return;

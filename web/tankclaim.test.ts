@@ -90,6 +90,33 @@ describe("tank lease", () => {
     expect(readLease(store.get())?.id).toBe("b");
   });
 
+  it("claimTank retakes a stale rival's lease", () => {
+    vi.useFakeTimers();
+    const { store, setRaw } = fakeStore();
+    setRaw(JSON.stringify({ id: "b", at: Date.now() - 86_400_000 }));
+    const c = claimTank(() => {}, store);
+    expect(c.owned).toBe(true);
+    expect(readLease(store.get())?.id).not.toBe("b");
+  });
+
+  it("claimTank spectates when a rival overwrites the retake", () => {
+    vi.useFakeTimers();
+    const { store, setRaw } = fakeStore();
+    setRaw(JSON.stringify({ id: "b", at: Date.now() - 86_400_000 }));
+    // The retake's own set() races a live rival's write — the read-back
+    // must see it and yield rather than report ownership anyway.
+    const racing: LeaseStore = {
+      get: store.get,
+      set: (v) => { store.set(v);
+                    setRaw(JSON.stringify({ id: "c",
+                                            at: Date.now() })); },
+      clear: store.clear,
+    };
+    const c = claimTank(() => {}, racing);
+    expect(c.owned).toBe(false);
+    expect(readLease(store.get())?.id).toBe("c");
+  });
+
   it("onLost fires when the lease is stolen mid-session", () => {
     vi.useFakeTimers();
     const { store, setRaw } = fakeStore();
