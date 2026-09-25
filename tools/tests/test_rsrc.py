@@ -2,6 +2,7 @@ import os
 import struct
 import tempfile
 import unittest
+from unittest import mock
 
 from tools.az.rsrc import (ResFile, unwrap_appledouble, unwrap_binhex,
                            unwrap_container, unwrap_macbinary)
@@ -89,6 +90,23 @@ class TestRsrc(unittest.TestCase):
             rf = ResFile(_write(td, bytes(rf_bytes)))
             got = list(rf.resources(b"snd "))
         self.assertEqual(got, [])
+
+    def test_cap_counts_resources_returned(self):
+        # Skipped references must not use up the cap.
+        rf_bytes = bytearray(build_rsrc({b"snd ": [
+            (1, "a", 0, b"one"), (2, "b", 0, b"two"),
+            (3, "c", 0, b"three"), (4, "d", 0, b"four")]}))
+        mo = struct.unpack_from(">I", rf_bytes, 4)[0]
+        refs = mo + 28 + 2 + 8
+        # The first two references point past the end of the file.
+        for j, off in enumerate((0xFFFFF0, 0xFFFFF1)):
+            p = refs + j * 12 + 5
+            rf_bytes[p:p + 3] = off.to_bytes(3, "big")
+        with tempfile.TemporaryDirectory() as td:
+            rf = ResFile(_write(td, bytes(rf_bytes)))
+            with mock.patch("tools.az.rsrc.MAX_RESOURCES", 2):
+                got = [rid for rid, _n, _a, _b in rf.resources(b"snd ")]
+        self.assertEqual(got, [3, 4])
 
     def test_appledouble_unwrap(self):
         inner = build_rsrc({b"DATA": [(100, None, 0, b"xyz")]})

@@ -181,8 +181,9 @@ class ResFile:
             if t != rtype:
                 continue
             seen = set()
+            emitted = 0  # the cap counts what comes back, not refs read
             for j in range(cnt):
-                if len(seen) >= MAX_RESOURCES:
+                if emitted >= MAX_RESOURCES:
                     break
                 r = rbase + j * 12
                 if r + 12 > len(self.data):
@@ -213,6 +214,7 @@ class ResFile:
                         ln = self.data[p]
                         name = self.data[p + 1:p + 1 + ln] \
                             .decode('mac_roman', 'replace')
+                emitted += 1
                 yield rid, name, attr, blob
             return
 
