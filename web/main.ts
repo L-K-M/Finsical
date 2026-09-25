@@ -746,6 +746,9 @@ function openInfo(f: Fish): void {
   // #machine, so a card inside it slid under the glass reflections.
   document.body.appendChild(root);
   infoCard = { root, hunger, mood, fish: f };
+  // Position now, not next frame: unpositioned the card would paint
+  // once at its in-flow default (the end of body) before landing.
+  layoutInfo();
 }
 
 /** Reposition the card over its fish and refresh the two live lines.

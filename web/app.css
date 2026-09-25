@@ -116,7 +116,10 @@ body.crt canvas#tank { opacity: 0; }
    ⌥-click a fish: a tiny Mac window pinned over it — striped title bar
    with a close box, live hunger and mood underneath. */
 .finfo {
-  /* fixed on body: above the machine art (2), under the overlays (10) */
+  /* fixed on body: above the machine art (2), under the overlays (10).
+     layoutInfo() feeds it viewport rects, so no ancestor of body may
+     gain a transform/filter/perspective/contain — that would re-root
+     the fixed containing block and break the math. */
   position: fixed; z-index: 5; width: 118px;
   background: #fff; border: 1px solid #000;
   box-shadow: 1px 1px 0 rgba(0, 0, 0, .3);
