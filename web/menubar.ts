@@ -27,7 +27,7 @@ const CLIENT_SIZES: Readonly<Record<ClientPage, { w: number; h: number }>> = {
   prefs: { w: 565, h: 518 },
   overview: { w: 521, h: 381 },
   addons: { w: 621, h: 441 },
-  stats: { w: 380, h: 640 },
+  stats: { w: 380, h: 360 },
 };
 /** Where a new client window opens, relative to the tank window's top
  * left: a little in and down, the way the Finder staggered windows. */

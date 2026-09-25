@@ -339,3 +339,9 @@ export function sparkColumns(
 export function sparkRow(v: number): number {
   return 1 + Math.round((1 - Math.min(1, Math.max(0, v))) * (SPARK_H - 3));
 }
+
+/** The tab a Tank Stats window reopens on: the saved tab id's index,
+ * or the first tab when nothing was saved or the saved tab is gone. */
+export function tabIndex(ids: readonly string[], saved: string | null): number {
+  return saved === null ? 0 : Math.max(0, ids.indexOf(saved));
+}
