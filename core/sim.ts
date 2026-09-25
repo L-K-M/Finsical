@@ -1,5 +1,6 @@
 import { makeRng } from "./rng.js";
-import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK } from "./tuning.js";
+import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
+  from "./tuning.js";
 import { demoLight, DUSK_LIGHT } from "./light.js";
 import { Aquarium } from "./aquarium/aquarium.js";
 import type { Resident } from "./aquarium/aquarium.js";
@@ -419,12 +420,21 @@ export class Sim {
     this.waterQuality = Math.max(0, Math.min(1 - a.oxygenDeficit(), clarity));
   }
 
-  addFish(fish: Partial<Fish> & { x: number; y: number }): Fish {
+  addFish(fish: Partial<Fish> & { x: number; y: number }): Fish;
+  /** `"enforce"` refuses a spawn at FISH_CAP (returns null) — the sim
+   * owns the cap so every spawn path enforces the same rule. A
+   * restored roster omits it: dropping a saved pet is worse than
+   * letting a hand-edited tank sit a fish over. */
+  addFish(fish: Partial<Fish> & { x: number; y: number },
+          cap: "enforce" | "bypass"): Fish | null;
+  addFish(fish: Partial<Fish> & { x: number; y: number },
+          cap: "enforce" | "bypass" = "bypass"): Fish | null {
+    if (cap === "enforce" && this.fish.length >= FISH_CAP) return null;
     const f: Fish = {
       id: this.nextId, species: "",
       facing: 1, heading: 0, phase: 0, latch: -1, peak: 0, cruise: 1,
       speed: 1, vy: 0, tx: 0, ty: 0, turnDir: 1, turnFrom: 1,
-      strokes: 0, bandY: 0, scale: 1, hunger: 0.2,
+      strokes: 0, bandY: 0, scale: 1, hunger: SPAWN_HUNGER,
       state: "drift", stateTicks: 0, startleLen: STARTLE_TICKS,
       panicHops: 0, ...fish,
     };
@@ -617,9 +627,12 @@ export class Sim {
     // startle branch runs its course, then it beds back down while
     // it's still dark).
     // A hungry fish gets up for food dropped at night rather than
-    // starve until dawn with pellets rotting under its nose.
-    const peckish = f.hunger > HUNGER_SEEK &&
-      this.waterQuality > QUALITY_SEEK && this.nearestFood(f) !== null;
+    // starve until dawn with pellets rotting under its nose — the
+    // same bar the awake snack rule uses, so a well-fed fish short-
+    // circuits before the pellet scan: at snack hunger it must smell
+    // the pellet (within NOTICE_DIST), at seek hunger any pellet
+    // wakes it.
+    const peckish = this.foodFor(f) !== null;
     if (f.state === "sleep") {
       if (this.light >= WAKE_LIGHT || peckish) {
         this.setState(f, "drift");
@@ -775,69 +788,82 @@ export class Sim {
       f.heading = wrapAngle(axis + cur +
         Math.min(TURN_RATE, Math.max(-TURN_RATE, want - cur)));
 
-      // Stroke pulse — the original's "fin push": quadratic acceleration
-      // out of the decision, then quadratic braking once the destination
-      // region is reached (dart-and-glide, not linear cruise). A new
-      // stroke glides on the speed it still carries until the ramp
-      // catches up, so fish never stop dead between strokes.
-      if (f.latch < 0) {
-        if (dist < BRAKE_DIST) { f.latch = f.phase; f.peak = f.speed; }
-        else f.speed = Math.max(f.speed * GLIDE, Math.min(f.cruise,
-                                f.cruise * (f.phase + 1) ** 2 / RAMP_DIV));
-      } else {
-        const g = f.phase - f.latch;
-        // A seeking fish must still outswim the sinking pellet.
-        const floor = food
-          ? Math.min(f.cruise,
-                     Math.max(f.cruise * 0.15, FOOD_SINK * 1.5 / vigor))
-          : f.cruise * 0.15;
-        f.speed = Math.max(floor, f.peak - g * g * f.peak / BRAKE_DIV);
-      }
+      // A roll that began on this tick owns its own integration from
+      // the turn branch — running this branch's stroke pulse and step
+      // too would move the fish twice on the entry tick. The eat check
+      // sits inside the guard on purpose: the bite lands a tick later
+      // once the roll has committed, and eating now would setState out
+      // of the turn that was just entered.
+      if (!turning) {
+        // Stroke pulse — the original's "fin push": quadratic acceleration
+        // out of the decision, then quadratic braking once the destination
+        // region is reached (dart-and-glide, not linear cruise). A new
+        // stroke glides on the speed it still carries until the ramp
+        // catches up, so fish never stop dead between strokes.
+        if (f.latch < 0) {
+          if (dist < BRAKE_DIST) { f.latch = f.phase; f.peak = f.speed; }
+          else f.speed = Math.max(f.speed * GLIDE, Math.min(f.cruise,
+                                  f.cruise * (f.phase + 1) ** 2 / RAMP_DIV));
+        } else {
+          const g = f.phase - f.latch;
+          // A seeking fish keeps a brake floor near pellet-fall speed so
+          // it doesn't idle while food sinks past it. The floor is
+          // pre-vigor — dividing by vigor would cancel the slowdown a
+          // weakened fish is meant to suffer (the vx/vy multiply below
+          // restores it), so a very sick fish can indeed lose a pellet
+          // to the gravel. That's the point of the penalty.
+          const floor = food
+            ? Math.min(f.cruise,
+                       Math.max(f.cruise * 0.15, FOOD_SINK * 1.5))
+            : f.cruise * 0.15;
+          f.speed = Math.max(floor, f.peak - g * g * f.peak / BRAKE_DIV);
+        }
 
-      const vx = Math.cos(f.heading) * f.speed * vigor;
-      const vy = Math.sin(f.heading) * f.speed * vigor;
-      f.x += vx;
-      f.y += vy;
-      f.vy = vy;
+        const vx = Math.cos(f.heading) * f.speed * vigor;
+        const vy = Math.sin(f.heading) * f.speed * vigor;
+        f.x += vx;
+        f.y += vy;
+        f.vy = vy;
 
-      if (food) {
-        const d = Math.max(Math.hypot(food.x - f.x, food.y - f.y), 1);
-        // A big fish can't sink to a settled pellet's depth or press
-        // its centre against the side glass; it eats what comes within
-        // reach of its body. EDGE_KEEP matches room()'s floor clamp, so
-        // the reach spans the depth gap, and the pellet's distance
-        // outside room()'s sides is added to span the wall gap (at a
-        // corner the two gaps sum to more than their hypotenuse).
-        const { x0, x1 } = this.room(f);
-        const wallGap = Math.max(0, x0 - food.x, food.x - x1);
-        if (d < Math.max(EAT_DIST, this.halfH(f) * EDGE_KEEP) + wallGap) {
-          food.eaten = true;
-          // It eats until full; what it can't finish breaks up.
-          this.aquarium.spoil(this.aquarium.feed(this.resident(f), PELLET_UNITS));
-          f.hunger = hungerOf(this.lifeOf(f));
-          // A gulped pellet lets a little air loose — one bubble rises
-          // from the meal and pops at the surface on its own clock.
-          this.bubbles.push({ x: food.x, y: food.y });
-          // A meal puts a little size on — asymptotic toward adult.
-          f.scale += (MAX_SCALE - f.scale) * GROWTH;
-          // The stomach grows with the fish, or an adult keeps a
-          // juvenile appetite; preserve fill across the rescale.
-          const life = this.lifeOf(f);
-          const stomach = stomachSize(this.weightOf(f));
-          if (stomach !== life.stomach && life.stomach > 0) {
-            life.ate = Math.round(life.ate / life.stomach * stomach);
-            life.stomach = stomach;
-          }
-          this.setState(f, "drift");
-          this.decide(f);
-          if (food.golden) {
-            // A golden meal earns a victory roll whether or not the
-            // next destination lies behind.
-            this.startTurn(f, this.rand() < 0.5 ? 1 : -1);
-          } else {
-            // The next destination may lie behind: roll to it now rather
-            // than pitching against the clamp until the next decision.
-            this.maybeTurn(f);
+        if (food) {
+          const d = Math.max(Math.hypot(food.x - f.x, food.y - f.y), 1);
+          // A big fish can't sink to a settled pellet's depth or press
+          // its centre against the side glass; it eats what comes within
+          // reach of its body. EDGE_KEEP matches room()'s floor clamp, so
+          // the reach spans the depth gap, and the pellet's distance
+          // outside room()'s sides is added to span the wall gap (at a
+          // corner the two gaps sum to more than their hypotenuse).
+          const { x0, x1 } = this.room(f);
+          const wallGap = Math.max(0, x0 - food.x, food.x - x1);
+          if (d < Math.max(EAT_DIST, this.halfH(f) * EDGE_KEEP) + wallGap) {
+            food.eaten = true;
+            // It eats until full; what it can't finish breaks up.
+            this.aquarium.spoil(this.aquarium.feed(this.resident(f), PELLET_UNITS));
+            f.hunger = hungerOf(this.lifeOf(f));
+            // A gulped pellet lets a little air loose — one bubble rises
+            // from the meal and pops at the surface on its own clock.
+            this.bubbles.push({ x: food.x, y: food.y });
+            // A meal puts a little size on — asymptotic toward adult.
+            f.scale += (MAX_SCALE - f.scale) * GROWTH;
+            // The stomach grows with the fish, or an adult keeps a
+            // juvenile appetite; preserve fill across the rescale.
+            const life = this.lifeOf(f);
+            const stomach = stomachSize(this.weightOf(f));
+            if (stomach !== life.stomach && life.stomach > 0) {
+              life.ate = Math.round(life.ate / life.stomach * stomach);
+              life.stomach = stomach;
+            }
+            this.setState(f, "drift");
+            this.decide(f);
+            if (food.golden) {
+              // A golden meal earns a victory roll whether or not the
+              // next destination lies behind.
+              this.startTurn(f, this.rand() < 0.5 ? 1 : -1);
+            } else {
+              // The next destination may lie behind: roll to it now rather
+              // than pitching against the clamp until the next decision.
+              this.maybeTurn(f);
+            }
           }
         }
       }
@@ -877,7 +903,11 @@ export class Sim {
     }
     // A hard clamp means the movement ran out of room — decide early.
     // Not while seeking: phase is also the brake's clock, and a fish
-    // waiting under the surface for a pellet would stall.
+    // waiting under the surface for a pellet would stall. Nor needed
+    // while seeking — the eat reach spans room()'s side gap plus
+    // EDGE_KEEP of body height, so a pellet beyond the walls is still
+    // edible from the boundary; a seeker pressed to the glass slides
+    // to it rather than sticking.
     if (hit && f.state === "drift") {
       f.phase = Math.max(f.phase, MOVE_TICKS);
       f.strokes = MAX_STROKES;

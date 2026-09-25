@@ -3,7 +3,7 @@ import { BOTTOM_PAD, DAY_TICKS, FOOD_ENTRY_Y, Sim,
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
-import { FISH_CAP, FOOD_CAP, HUNGER_SEEK, SPAWN_HUNGER, TANK_SIZE }
+import { FISH_CAP, FOOD_CAP, HUNGER_SEEK, TANK_SIZE }
   from "../core/tuning.js";
 import { planFrame } from "../core/loop.js";
 import { Aquarium } from "../core/aquarium/aquarium.js";
@@ -20,7 +20,8 @@ import { decorFrame, decorPhase, decorPhaseFrac }
 import { bodySize, pickDrawableSheet }
   from "../core/data/swimsheet.js";
 import { fishScale } from "./artscale.js";
-import { panFor, sanitizeSoundConfig, TankAudio } from "./audio.js";
+import { loadSoundConfig, panFor, sanitizeSoundConfig, TankAudio }
+  from "./audio.js";
 import { drawRipples, drawSplashes, newSplash, tickRipples,
          tickSplashes } from "./fx.js";
 import type { Ripple, Splash } from "./fx.js";
@@ -288,8 +289,8 @@ function applyLighting(raw: unknown): void {
 }
 const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
   [0, 1, 2, 3].map((i) =>
-    ({ x: 40 + i * 60, y: 50 + i * 30, facing: (i % 2 ? -1 : 1) as 1 | -1,
-       hunger: SPAWN_HUNGER }));
+    ({ x: 40 + i * 60, y: 50 + i * 30,
+       facing: (i % 2 ? -1 : 1) as 1 | -1 }));
 /** Saved fish fields are untrusted input: a corrupted hunger or
  * heading enters the sim (NaN hunger ⇒ fish can never seek food) and
  * then re-persists. Clamp each numeric field; keep x/y finite-or-drop
@@ -568,6 +569,9 @@ function fishAtPoint(p: { x: number; y: number }): Fish | null {
 // per frame instead of per move.
 let overFeedZone = false;
 let lastClient: { x: number; y: number } | null = null;
+// The mouse's last position, kept separately so a lifting touch can
+// hand hover back to a mouse that never moved.
+let mouseClient: { x: number; y: number } | null = null;
 function setFeedHover(on: boolean): void {
   if (on === overFeedZone) return;
   overFeedZone = on;
@@ -684,11 +688,15 @@ function placeTip(e: { clientX: number; clientY: number }): void {
 }
 
 canvas.addEventListener("pointermove", (e) => {
+  // Primary-only invariant: lastClient, hover, and curiosity follow the
+  // primary pointer. Any other handler that writes lastClient must apply
+  // the same guard, since pointerleave ignores non-primary pointers.
+  if (!e.isPrimary) return;
   lastClient = { x: e.clientX, y: e.clientY };
-  if (!e.isPrimary) return; // one pointer drives curiosity
   const p = tankPoint(e.clientX, e.clientY);
   sim.notice = p;
   if (e.pointerType === "touch") return; // no hover on touch
+  mouseClient = lastClient;
   lastHover = p;
   const tip = p && tipForPoint(p);
   if (!tip) { fishTip.style.display = "none"; return; }
@@ -696,11 +704,23 @@ canvas.addEventListener("pointermove", (e) => {
   placeTip(e);
 });
 canvas.addEventListener("pointerleave", (e) => {
+  // A second finger lifting must not clear the primary pointer's hover:
+  // lastClient and the feed crosshair follow the primary only, and
+  // syncFeedHover() re-reads lastClient every frame.
+  if (!e.isPrimary) return;
+  // isPrimary is per pointer *type*: on hybrids the mouse and the first
+  // touch are both primary at once, so a finger lifting must not wipe
+  // the mouse's hover — restore its position instead.
+  if (e.pointerType === "touch") {
+    lastClient = mouseClient;
+    sim.notice = mouseClient && tankPoint(mouseClient.x, mouseClient.y);
+    return;
+  }
+  mouseClient = null;
   lastClient = null;
   lastHover = null;
   fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
-  if (!e.isPrimary) return; // don't clear the primary's curiosity
   sim.notice = null;
 });
 
@@ -742,8 +762,13 @@ function openInfo(f: Fish): void {
   root.append(title, body);
   // A press on the card is on the card — never feed or tap through it.
   root.addEventListener("pointerdown", (e) => e.stopPropagation());
-  screenEl.appendChild(root);
+  // On body, not #screen: #screen's stacking context paints under
+  // #machine, so a card inside it slid under the glass reflections.
+  document.body.appendChild(root);
   infoCard = { root, hunger, mood, fish: f };
+  // Position now, not next frame: unpositioned the card would paint
+  // once at its in-flow default (the end of body) before landing.
+  layoutInfo();
 }
 
 /** Reposition the card over its fish and refresh the two live lines.
@@ -754,23 +779,21 @@ function layoutInfo(): void {
   if (!card) return;
   const f = card.fish;
   if (!sim.fish.includes(f)) { closeInfo(); return; }
+  // Fixed on body, so card space is viewport coordinates.
   const r = canvas.getBoundingClientRect();
-  const sr = screenEl.getBoundingClientRect();
   const s = Math.min(r.width / TANK.width, r.height / TANK.height);
-  // Card space is screenEl-relative — rect deltas stay right under
-  // scroll and regardless of which ancestor is positioned.
-  const ox = r.left - sr.left + (r.width - TANK.width * s) / 2;
-  const oy = r.top - sr.top + (r.height - TANK.height * s) / 2;
+  const ox = r.left + (r.width - TANK.width * s) / 2;
+  const oy = r.top + (r.height - TANK.height * s) / 2;
   const cw = card.root.offsetWidth, ch = card.root.offsetHeight;
   let px = ox + f.x * s - cw / 2;
   let py = oy + f.y * s - ch - 8;
-  if (py < 0) py = oy + f.y * s + 16; // too near the surface: go under
-  // Bounds are screenEl-relative like the offsets above — the canvas
-  // may not fill the screen exactly.
+  if (py < r.top) py = oy + f.y * s + 16; // too near the surface: go under
+  // Clamp inside the tank rect — the card can't slide under the
+  // case's bezel edge or off the window.
   card.root.style.left =
-    `${Math.max(0, Math.min(px, sr.width - cw))}px`;
+    `${Math.max(r.left, Math.min(px, r.right - cw))}px`;
   card.root.style.top =
-    `${Math.max(0, Math.min(py, sr.height - ch))}px`;
+    `${Math.max(r.top, Math.min(py, r.bottom - ch))}px`;
   const hunger = f.life?.dead ? conditionLabel(conditionOf(f))
     : `Health  ${f.life?.health ?? 100}%  Hunger  ${Math.round(f.hunger * 100)}%`;
   const mood = f.life?.sick && !f.life.dead
@@ -854,9 +877,9 @@ function fishRefusal(section: string): string | null {
  * Returns the new fish, or null when the tank is already full. */
 function spawnFish(sheetIdx: number, species: string, pack?: string,
                    cap: CapRule = "enforce", entry?: string): Fish | null {
-  if (cap === "enforce" && sim.fish.length >= FISH_CAP) return null;
   const facing = Math.random() < 0.5 ? 1 : -1;
   const x = 60 + Math.random() * (TANK.width - 120);
+  // addFish owns the cap refusal; SPAWN_HUNGER is its default too.
   const f = sim.addFish({
     x,
     // New fish enter through the surface, where the splash below lands
@@ -867,11 +890,11 @@ function spawnFish(sheetIdx: number, species: string, pack?: string,
     facing: facing as 1 | -1,
     heading: facing > 0 ? 0 : Math.PI,
     cruise: 1.1 + Math.random() * 0.7,
-    hunger: SPAWN_HUNGER,
     sheetIdx, species,
     ...(pack !== undefined ? { pack } : {}),
     ...(entry !== undefined ? { entry } : {}),
-  });
+  }, cap);
+  if (!f) return null;
   bindExtents(f);
   // A new fish enters through the surface — pair the splash sound
   // with droplets where it went in.
@@ -884,12 +907,13 @@ function spawnFish(sheetIdx: number, species: string, pack?: string,
 /** A drop-time spawn: splash on success, say why on refusal — after
  * the idx guard, spawnFish only declines a full tank. Drops have no
  * panel to ack, so the explanation goes to the console. */
-function spawnFromDrop(idx: number, species: string): void {
-  if (idx < 0) return;
+function spawnFromDrop(idx: number, species: string): Fish | null {
+  if (idx < 0) return null;
   const f = spawnFish(idx, species);
   if (f) audio.splash(panFor(f.x, TANK.width));
   else console.warn(`Tank is full — ${FISH_CAP} fish max. ` +
     "Release one from Tank Overview first.");
+  return f;
 }
 
 // Biggest pack image large enough to matter becomes the tank backdrop —
@@ -1069,6 +1093,9 @@ const entryKey = (url: string, entry: string): string =>
 // Reverse of sheetByPack — which pack owns a slot, for migrating
 // species-bound fish onto the URL binding of the sheet they render.
 const packBySheet = new Map<number, string>();
+// URLs installed whole — their slots hold every entry's art, the only
+// pack-level slots an entry-scoped re-add may reuse.
+const wholePackUrls = new Set<string>();
 function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
                       url: string, section: string, live: boolean,
                       care?: SpeciesCare | null, entry?: string): void {
@@ -1077,7 +1104,18 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
   // nobody chose.
   if (section !== "fish") return;
   if (care) careByPack.set(url, care);
-  const idx = usePack({ sheets });
+  // A restore retry or an Add Again re-registers the same art — reuse
+  // the pack's existing slot instead of leaking a fishSheets entry
+  // (slots are kept forever to preserve sheetIdx bindings). An entry
+  // may also reuse the URL's whole-pack slot, which holds every
+  // entry's art — but never another entry's slot, and a whole-pack
+  // install must not collapse onto an entry's partial art either.
+  const wholeSlot = wholePackUrls.has(url) ? sheetByPack.get(url)
+                                           : undefined;
+  const known = (entry !== undefined
+                   ? sheetByEntry.get(entryKey(url, entry))
+                   : undefined) ?? wholeSlot;
+  const idx = known ?? usePack({ sheets });
   if (idx < 0) {
     // A sheet that can't draw is not an install — usePack refused it.
     console.info(`archive.org: ${section} ${name} has no usable art`);
@@ -1086,11 +1124,18 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
   sheetBySpecies.set(name, idx);
   if (entry !== undefined) sheetByEntry.set(entryKey(url, entry), idx);
   // A reinstall can rebind the url to a new slot — drop the old
-  // reverse entry so the two maps stay exact inverses.
-  const prior = sheetByPack.get(url);
-  if (prior !== undefined && prior !== idx) packBySheet.delete(prior);
-  sheetByPack.set(url, idx);
+  // reverse entry so each slot names at most one pack. Once a
+  // whole-pack slot exists it owns the URL binding: an entry retry
+  // must not repoint it at partial art. packBySheet may then hold
+  // several slots for the URL — every slot rendering the pack's art
+  // should map back to it so species-bound fish can migrate.
+  if (entry === undefined || !wholePackUrls.has(url)) {
+    const prior = sheetByPack.get(url);
+    if (prior !== undefined && prior !== idx) packBySheet.delete(prior);
+    sheetByPack.set(url, idx);
+  }
   packBySheet.set(idx, url);
+  if (entry === undefined) wholePackUrls.add(url);
   // A live fish-pack install adds a real fish; restores replay sheets
   // only — the saved roster already carries those fish.
   if (live) {
@@ -1263,7 +1308,9 @@ async function handleSounds(
   // Persist best-effort — a quota failure logs, never breaks import.
   void sndsMerge(recs).catch((e) =>
     console.warn("snd persist failed:", e));
-  if (live) audio.playImported(recs[0]!.name);
+  // The Add-to-Tank click and the file drop are gestures; a context
+  // still locked at decode time must resume before the feedback plays.
+  if (live) { audio.unlock(); audio.playImported(recs[0]!.name); }
   audio.startAmbient();
 }
 
@@ -1463,11 +1510,14 @@ function addonThumb(url: string): string | null {
 const pendingThumbs = new Set<string>();
 function serveThumbs(keys: Iterable<unknown>): void {
   const thumbs: Record<string, string> = {};
+  // One key→fish map per call — each f: lookup used to scan the roster
+  // and rebuild the key string, O(keys × fish) per wantThumbs push.
+  const fishByKey = new Map(sim.fish.map((f) => [fishThumbKey(f), f]));
   for (const k of keys) {
     if (typeof k !== "string") continue;
     const data = k.startsWith("f:")
       ? (() => {
-          const f = sim.fish.find((x) => fishThumbKey(x) === k);
+          const f = fishByKey.get(k);
           return f ? fishThumb(f) : null;
         })()
       : k.startsWith("a:") ? addonThumb(k.slice(2)) : null;
@@ -1478,7 +1528,7 @@ function serveThumbs(keys: Iterable<unknown>): void {
       // with no sheet yet (placeholders) stay pending on purpose:
       // a reinstall re-serves them on the next asset import.
       const alive = k.startsWith("f:")
-        ? sim.fish.some((x) => fishThumbKey(x) === k)
+        ? fishByKey.has(k)
         : k.startsWith("a:") &&
           installedAddons.some((a) => a.url === k.slice(2));
       if (alive) pendingThumbs.add(k); else pendingThumbs.delete(k);
@@ -1487,12 +1537,14 @@ function serveThumbs(keys: Iterable<unknown>): void {
   if (Object.keys(thumbs).length) bus.post({ op: "thumbs", thumbs });
 }
 
-// Thumb entries keyed to a fish that's gone can never be served
-// again — sweep them on any removal so the maps stay bounded.
+// Thumb entries keyed to a fish or add-on that's gone can never be
+// served again — sweep them on any removal so the maps stay bounded.
 function sweepThumbs(): void {
   const alive = (k: string) =>
-    !k.startsWith("f:") ||
-    sim.fish.some((x) => fishThumbKey(x) === k);
+    k.startsWith("f:")
+      ? sim.fish.some((x) => fishThumbKey(x) === k)
+      : k.startsWith("a:") &&
+        installedAddons.some((a) => a.url === k.slice(2));
   for (const k of [...thumbMemo.keys()]) if (!alive(k)) thumbMemo.delete(k);
   for (const k of [...pendingThumbs]) if (!alive(k)) pendingThumbs.delete(k);
 }
@@ -1541,6 +1593,9 @@ function onBusMessage(m: BusMsg): void {
              typeof m.url === "string" && m.url !== "") {
     const url = m.url;
     fishOutAfter(() => removeAddon(url));
+    // The removed art clears at once, even while paused — the same as
+    // the removeFish branch above.
+    requestPaint();
   } else if (m.op === "useAddon" &&
              typeof m.url === "string" && m.url !== "") {
     useScenery(m.url);
@@ -1651,12 +1706,13 @@ function removeAddon(url: string, opts: { persist?: boolean } = {}): void {
   for (const s of orphaned) sheetBySpecies.delete(s);
   for (const k of [...sheetByEntry.keys()])
     if (k.startsWith(`${url}\n`)) sheetByEntry.delete(k);
-  const slot = sheetByPack.get(url);
-  // Only delete the reverse entry it still owns — a rebind may have
-  // handed the slot to a different pack since.
-  if (slot !== undefined && packBySheet.get(slot) === url)
-    packBySheet.delete(slot);
+  // Drop every reverse entry still naming this pack — whole-pack and
+  // entry slots alike. A slot a rebind handed to another pack maps to
+  // that URL instead and is left alone.
+  for (const [k, v] of packBySheet)
+    if (v === url) packBySheet.delete(k);
   sheetByPack.delete(url);
+  wholePackUrls.delete(url);
   // A dropped pack's stored bytes are the only copy — uninstall
   // deletes them (archive packs keep their cache entries).
   if (isLocalPack(url)) void packDelete(url)
@@ -1897,7 +1953,7 @@ let machine: Machine =
 // Volume, mute and the bubble/ambience switches. Declared before the
 // setCrt call below for the same TDZ reason: postState() reads them.
 const SOUND_KEY = "finsical:sound";
-let soundCfg: SoundConfig = sanitizeSoundConfig(
+let soundCfg: SoundConfig = loadSoundConfig(
   (() => { try {
     return JSON.parse(localStorage.getItem(SOUND_KEY) ?? "null");
   } catch { return null; /* storage or JSON: defaults */ } })());
@@ -1948,6 +2004,9 @@ catch { /* storage unavailable — default off */ }
 // #screenback paints unlit-glass black into the aperture behind the
 // tank; the native mask refills the same aperture so the window keeps
 // a screen-shaped silhouette instead of a see-through hole.
+// Last --glare value written to the shell — setProperty every frame
+// would re-style the masked image for nothing.
+let lastGlare = -1;
 const machineEl = document.getElementById("machine")!;
 const shellEl = document.getElementById("shell")!;
 const screenEl = document.getElementById("screen")!;
@@ -1973,15 +2032,20 @@ if (!backEl.isConnected ||
 
 function layoutMachine(): void {
   canvasRect = null; // the tank may have moved with the aperture
-  const w = machineEl.clientWidth, h = machineEl.clientHeight;
-  if (!w || !h) return;
+  // The browser's menu bar is fixed over the page top — letterbox
+  // into the room below it so it never covers the case's crown or,
+  // on Bare, the tank's top feed rows. Hidden/absent (zen, native,
+  // old markup) measures 0 and the layout is unchanged.
+  const barH = document.getElementById("menubar")?.offsetHeight ?? 0;
+  const w = machineEl.clientWidth, h = machineEl.clientHeight - barH;
+  if (!w || h <= 0) return;
   // preserveAspectRatio=meet letterboxes the shell — land the screen
   // and its backplate on the same scaled + offset rects as the art's
   // glass. Computed, not CSS-percentage'd, so browser dev (no native
   // aspect enforcement) stays aligned too.
   const s = Math.min(w / machine.vbW, h / machine.vbH);
   const ox = (w - machine.vbW * s) / 2;
-  const oy = (h - machine.vbH * s) / 2;
+  const oy = barH + (h - machine.vbH * s) / 2;
   screenEl.style.left = `${ox + machine.sx * s}px`;
   screenEl.style.top = `${oy + machine.sy * s}px`;
   screenEl.style.width = `${machine.sw * s}px`;
@@ -2160,15 +2224,56 @@ function takePicture(): void {
   out.height = TANK.height * 2;
   const c = out.getContext("2d")!;
   c.imageSmoothingEnabled = false;
+  // A paused canvas carries the scrim and the PAUSED label — repaint
+  // without them for the shot, then put the overlay back. Both
+  // renders run inside this task, so nothing flickers.
+  if (paused) render(true);
   c.drawImage(canvas, 0, 0, out.width, out.height);
+  if (paused) render();
   const d = new Date();
   const pad = (n: number): string => String(n).padStart(2, "0");
-  const a = document.createElement("a");
-  a.href = out.toDataURL("image/png");
-  a.download = `finsical-${d.getFullYear()}${pad(d.getMonth() + 1)}` +
+  const name = `finsical-${d.getFullYear()}${pad(d.getMonth() + 1)}` +
     `${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}` +
     `${pad(d.getSeconds())}.png`;
-  a.click();
+  // A detached anchor's click() is ignored by some browsers — append
+  // it for the click, then remove.
+  const save = (href: string, revoke = false): void => {
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = name;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    // Revoking in the same tick can abort the download where blob
+    // saves start asynchronously (Safari, Firefox).
+    if (revoke) setTimeout(() => URL.revokeObjectURL(href), 5000);
+  };
+  const saveBlob = (blob: Blob | null): void => {
+    if (!blob) { save(out.toDataURL("image/png")); return; }
+    // WKWebView ignores <a download> entirely — hand the PNG bytes to
+    // the shell, which answers with a real NSSavePanel.
+    if (inNativeShell()) {
+      const r = new FileReader();
+      r.onload = () => {
+        const url = typeof r.result === "string" ? r.result : "";
+        bus.post({ op: "savePicture", name,
+                   png: url.slice(url.indexOf(",") + 1) });
+      };
+      // Without this the picture just vanishes — try the anchor as a
+      // last resort (ignored by WKWebView, harmless elsewhere).
+      r.onerror = () => {
+        console.warn("takePicture: FileReader failed:", r.error);
+        save(URL.createObjectURL(blob), true);
+      };
+      r.readAsDataURL(blob);
+      return;
+    }
+    save(URL.createObjectURL(blob), true);
+  };
+  // toBlob encodes off the critical path where supported; toDataURL
+  // (synchronous on the main thread) is the fallback.
+  if (typeof out.toBlob === "function") out.toBlob(saveBlob, "image/png");
+  else save(out.toDataURL("image/png"));
 }
 // ---- keeping the tank --------------------------------------------------
 // The water change, filter, heater, medicine and speed controls live in
@@ -2228,6 +2333,9 @@ function setZen(on: boolean): boolean {
     closeInfo(); // the card is chrome too
     fishTip.style.display = "none";
   }
+  // Zen hides the menu bar — the case reclaims its 20 px (or pays it
+  // back on exit).
+  layoutMachine();
   requestPaint();
   return zen; // like togglePause: the native menu retitles at once
 }
@@ -2241,16 +2349,24 @@ function openImport(): void {
   if (zen) setZen(false);
   importPanel.open();
 }
-(window as unknown as { finsical?: unknown }).finsical =
-  { openImport, feedFish, changeWater, toggleLights,
-    toggleAutoFeed,
-    // Menu clicks land here via evaluateJavaScript — not always a
-    // user activation, but unlock() is harmless if resume is blocked.
-    toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute,
-    degauss: degaussTube,
-    // Returns the new flag, so the native menu retitles at once.
-    togglePause: () => setPaused(!paused),
-    toggleZen: () => setZen(!zen) };
+// Only what the native menu actually calls — Swift's Import Add-ons
+// opens its own window, and Auto Feed, Degauss and Zen have no menu
+// item to reach them through here. The type documents the bridge shape
+// for this side only: Swift's evaluateJavaScript strings are untyped,
+// so keep the member list in sync by hand.
+const finsicalBridge = {
+  feedFish, changeWater, toggleLights, takePicture,
+  // Menu clicks land here via evaluateJavaScript — not always a
+  // user activation, but unlock() is harmless if resume is blocked.
+  toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute,
+  // Returns the new flag, so the native menu retitles at once.
+  togglePause: () => setPaused(!paused),
+};
+type FinsicalBridge = typeof finsicalBridge;
+declare global {
+  interface Window { finsical?: FinsicalBridge; }
+}
+window.finsical = finsicalBridge;
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
 // path. Touch fallback: hover-less devices have no keyboard or native menu.
@@ -2360,6 +2476,9 @@ mountTankMenuBar({
                   lampOn: lighting.lamp, muted: soundCfg.muted, paused,
                   zen, scoldOn, bootOn: bootEnabled }),
 });
+// The bar may have mounted after the first layout — place the case
+// below it now rather than waiting for a resize.
+layoutMachine();
 
 // web/pack/ is gitignored and no build ships one, so a missing
 // manifest means no bundled pack, not a failure worth a warning.
@@ -2504,8 +2623,32 @@ window.addEventListener("drop", (e) => {
 // Right-click surfaces WebKit's generic menu (Reload etc.) — nothing
 // in it applies to the tank, and the native window has no chrome.
 window.addEventListener("contextmenu", (e) => e.preventDefault());
+// A drop has no panel to ack into — say what happened on the glass
+// itself, the way the "Drop to add" cue speaks from the same place.
+const dropMsg = document.createElement("div");
+dropMsg.id = "dropmsg";
+// A polite live region — the result reaches screen readers too.
+dropMsg.setAttribute("role", "status");
+dropMsg.hidden = true;
+document.getElementById("screen")!.appendChild(dropMsg);
+let dropMsgTimer: ReturnType<typeof setTimeout> | undefined;
+function dropSay(text: string): void {
+  // A live region only announces a change — an identical repeat (two
+  // bad drops in a row) needs a cleared frame between writes to speak.
+  dropMsg.textContent = "";
+  requestAnimationFrame(() => { dropMsg.textContent = text; });
+  dropMsg.hidden = false;
+  clearTimeout(dropMsgTimer);
+  dropMsgTimer = setTimeout(() => {
+    dropMsg.hidden = true;
+    dropMsg.textContent = ""; // invisible, so stale text leaves the tree
+  }, 4000);
+}
 window.addEventListener("drop", (e) => {
   e.preventDefault();
+  // A drop is a gesture — wake audio now so the install feedback can
+  // still answer it once the (async) decode finishes.
+  audio.unlock();
   // Entries must be read before the handler returns — items invalidate.
   const items = e.dataTransfer?.items;
   const entries: FileSystemEntry[] = [];
@@ -2549,7 +2692,7 @@ window.addEventListener("drop", (e) => {
     if (flat.has("manifest.json")) {
       const pack = await loadAzpack(readFile);
       const idx = usePack(pack, readFile);
-      spawnFromDrop(idx, pack.manifest.tag);
+      const spawn = spawnFromDrop(idx, pack.manifest.tag);
       const imgs: IndexedImage[] = [];
       for (const c of pack.manifest.chunks) {
         if (!c.image) continue;
@@ -2557,6 +2700,9 @@ window.addEventListener("drop", (e) => {
         catch { /* keep going without that image */ }
       }
       pickBackdrop(imgs);
+      dropSay(idx >= 0 && !spawn
+        ? fishRefusal("fish") ?? "The tank is full."
+        : `Added ${pack.manifest.tag?.trim() || "the add-on"}.`);
       console.info(`azpack imported: ${flat.size} files`);
       return;
     }
@@ -2590,10 +2736,18 @@ window.addEventListener("drop", (e) => {
     if (sndSkipped)
       console.warn(`drop: ${sndSkipped} files skipped — ` +
                    `${DROP_SOUNDS_MAX} sounds per drop is plenty`);
+    const notes: string[] = [];
     // A bad audio file mustn't abort the raw-pack pass below.
-    if (recs.length)
-      await handleSounds(recs)
-        .catch((e) => console.warn("sound import failed:", e));
+    if (recs.length) {
+      const ok = await handleSounds(recs)
+        .then(() => true)
+        .catch((e) => { console.warn("sound import failed:", e);
+                        return false; });
+      if (ok)
+        notes.push(`Added ${recs.length} ` +
+                   `sound${recs.length === 1 ? "" : "s"}.`);
+      else notes.push("Couldn't save the sounds.");
+    }
     // Not an .azpack folder — every dropped pack file imports, not
     // just the first (web/drop.ts, tested there). One file at a time:
     // an unreadable file costs only itself, and a folder drop never
@@ -2601,6 +2755,7 @@ window.addEventListener("drop", (e) => {
     // extension like remote installs' collections: a .fsh fish adds
     // no scenery, so its catalog art can't take the backdrop.
     let imported = 0;
+    let packName = "";
     for (const [name, file] of packFiles) {
       let data: Uint8Array;
       try { data = new Uint8Array(await file.arrayBuffer()); }
@@ -2628,6 +2783,7 @@ window.addEventListener("drop", (e) => {
       const refusal = p.sheets.size ? fishRefusal("fish") : null;
       if (refusal) {
         console.warn(`drop: ${name}: ${refusal}`);
+        if (!notes.includes(refusal)) notes.push(refusal);
         continue;
       }
       // A dropped pack has no home URL — mint a local: identity so the
@@ -2675,11 +2831,25 @@ window.addEventListener("drop", (e) => {
         recordInstall({ section: p.sheets.size ? "fish" : p.section,
                         inner: p.name, url });
       imported++;
+      if (!packName) packName = p.name || name;
       console.info(`${name}: pack imported${stored ? "" : " (session only)"}`);
     }
+    if (imported)
+      notes.push(imported === 1 ? `Added ${packName}.`
+                                : `Added ${imported} add-ons.`);
+    if (notes.length) dropSay(notes.join(" "));
+    // Sounds push a note on either outcome, so nothing said yet means
+    // the drop had nothing usable at all.
+    else
+      dropSay(`Finsical can't use ${flat.size === 1 ? "that file" :
+        "those files"} — drop an AquaZone .fsh or .azpack, ` +
+        "or a sound file.");
     if (!imported && !recs.length)
       console.warn("drop: no manifest.json, pack file, or 'snd ' found");
-  })().catch((e) => console.warn("azpack import failed:", e));
+  })().catch((e) => {
+    console.warn("drop failed:", e);
+    dropSay("Couldn't finish the drop — the file may be damaged or unsupported.");
+  });
 });
 
 // Aquazone fish art is stored vertical (profiles in groups 0 and
@@ -2879,7 +3049,7 @@ function stirSurface(): void {
     disturbSurface(surface, f.x, sign * f.speed * WAKE_PUSH, 2);
   }
 }
-function render(): void {
+function render(hidePauseOverlay = false): void {
   // The startup parade owns the canvas until it fades: black, desktop,
   // marching icons — then the tank draws normally under a fading boot
   // screen, so the crossfade needs no compositing machinery.
@@ -2997,6 +3167,16 @@ function render(): void {
   drawRefraction(ctx, t);
   // The lamp lights the air as brightly as the daylight in the water.
   const sun = sunFactor(sim.light, floor);
+  // The glare baked into the iMac renders rides over the tank — dim
+  // it with the room light so fish stay readable at night. Only on
+  // machines that ask (glassR); others' reflections stay put.
+  if (machine.glassR !== undefined) {
+    const glare = 0.25 + 0.35 * sun;
+    if (Math.abs(glare - lastGlare) >= 0.02) {
+      lastGlare = glare;
+      shellEl.style.setProperty("--glare", String(glare));
+    }
+  }
   drawAir(ctx, sun, waterline);
   // The waterline divides feeding from tapping, so it brightens while
   // a click would feed. Under the murk and night overlays, so it dims
@@ -3022,7 +3202,7 @@ function render(): void {
     if (pose) drawPaw(pose.x, pose.y);
   }
 
-  if (paused) {
+  if (paused && !hidePauseOverlay) {
     ctx.save();
     ctx.fillStyle = "rgba(4,8,24,0.35)";
     ctx.fillRect(0, 0, TANK.width, TANK.height);
@@ -3067,12 +3247,15 @@ function drawNight(now: Date): void {
   const cycle = (sim.tickCount % DAY_TICKS) / DAY_TICKS;
   const tint = twilightTint(lighting, minutesOfDay(now), cycle);
   if (tint) {
-    // Warmest at the surface, where the low sun comes in.
+    // Warmest at the surface, where the low sun comes in. Soft-light
+    // leaves black black and warms midtones — source-over lifted the
+    // whole tank toward brown mud instead.
     const rgb = `${tint.r},${tint.g},${tint.b}`;
     const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, `rgba(${rgb},${tint.a.toFixed(3)})`);
-    g.addColorStop(1, `rgba(${rgb},${(tint.a * 0.3).toFixed(3)})`);
-    ctx.globalCompositeOperation = "source-over";
+    g.addColorStop(0,
+      `rgba(${rgb},${Math.min(1, 2 * tint.a).toFixed(3)})`);
+    g.addColorStop(1, `rgba(${rgb},${(0.6 * tint.a).toFixed(3)})`);
+    ctx.globalCompositeOperation = "soft-light";
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
   }
