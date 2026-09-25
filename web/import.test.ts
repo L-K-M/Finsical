@@ -431,9 +431,17 @@ describe("usablePacks", () => {
     expect(usablePacks(rs, "tanks")).toEqual(rs);
   });
   it("counts decor art for plants and accessories", () => {
-    const rs = [res({ images: new Map([["i", fakeImage(40, 30)]]) })];
+    const art = fakeImage(40, 30);
+    art.idx.fill(1); // 1 keys transparent at the corners...
+    art.idx[15 * 40 + 20] = 7; // ...with a non-key pixel inside
+    const rs = [res({ images: new Map([["i", art]]) })];
     expect(usablePacks(rs, "plants")).toEqual(rs);
     expect(usablePacks(rs, "accessories")).toEqual(rs);
+  });
+  it("rejects decor that is nothing but its transparent key", () => {
+    const rs = [res({ images: new Map([["i", fakeImage(40, 30)]]) })];
+    expect(usablePacks(rs, "plants")).toEqual([]);
+    expect(usablePacks(rs, "accessories")).toEqual([]);
   });
   it("doesn't count sheets a non-fish section can't render", () => {
     // handleSheets only registers art for fish — sheets in a decor or

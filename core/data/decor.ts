@@ -136,16 +136,17 @@ export function pickDecorFrames(images: Iterable<IndexedImage>):
   return { frames: [img], ...rest };
 }
 
-/** Whether any of `images` would render as decor — the same acceptance
- * rule decorCanvases applies (a pickable frame with nonzero area), so
- * install validation can tell a decor pack from one that draws
- * nothing. A pick's frames are equal-size by construction (they're
- * grouped on `${w}x${h}`), so the first frame speaks for all of
- * them. */
+/** Whether any of `images` would render as decor — a pickable frame
+ * with nonzero area and at least one pixel outside the transparent
+ * key, so install validation can tell a decor pack from one that
+ * draws nothing. Every frame is scanned, not just the first: frames
+ * are equal-size by construction (grouped on `${w}x${h}`), but an
+ * animation may legitimately blank some frames. */
 export function hasDecorFrames(images: Iterable<IndexedImage>): boolean {
   const pick = pickDecorFrames(images);
   const first = pick?.frames[0];
-  return !!first && first.w > 0 && first.h > 0;
+  return !!pick && !!first && first.w > 0 && first.h > 0 &&
+         pick.frames.some((f) => f.idx.some((px) => px !== pick.key));
 }
 
 /** The frame an item shows at sim tick `tick`: `n` frames looped, each

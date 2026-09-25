@@ -26,7 +26,9 @@ export function pickSwimSheet(
 
 /** Whether any frame of the sheet has an opaque pixel. Cells whose
  * dims are missing or truncated (frame() throws) count for nothing —
- * a sheet that can only throw or paint transparency installs no fish. */
+ * a sheet that can only throw or paint transparency installs no fish.
+ * Assumes palette index 0 is the transparent key wherever a sheet
+ * renders (indexedPixels' opaque=false path). */
 export function hasDrawableFrame(sheet: SpriteSheet): boolean {
   for (let g = 0; g < sheet.meta.groups; g++)
     for (let f = 0; f < sheet.meta.framesPerGroup; f++) {
