@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A pointer left resting over the tank loses the fish's interest after
+  about 20 seconds, so the fish gathered to look at it swim off again
+  instead of waiting there for hours. Moving the pointer brings them
+  back.
 - A bubble you pop by tapping it now bursts with a soft plip from its
   side of the tank, or with a sound of your own that has "pop" in its
   name. The Bubble sounds switch in Preferences turns it off.

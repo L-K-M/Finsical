@@ -43,6 +43,8 @@ import { coverCrop, decorCanvases, imageCanvas, isBackdropImage,
          isGravelImage,
          previewOf, soundIcon, swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
+import { nextNotice, noticePoint } from "./curiosity.js";
+import type { Notice } from "./curiosity.js";
 import { containPoint, isFeedZone } from "./feedzone.js";
 import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
          PAW_GAP_RANGE, PAW_H, PAW_W, pawPose, pawSpawnX, pawSwatAt }
@@ -637,7 +639,16 @@ canvas.addEventListener("pointerdown", (e) => {
   requestPaint();
 });
 // The nearest calm fish notices the hovering pointer and drifts over
-// to look — hunger and panic still outrank curiosity in the sim.
+// to look — hunger and panic still outrank curiosity in the sim. The
+// pointer's last real move is kept here: a resting pointer loses the
+// fish's interest after a while (web/curiosity.ts).
+let notice: Notice | null = null;
+/** Record a sighting of the primary pointer (null: off the tank) and
+ * hand the sim whatever of it is still interesting. */
+function seePointer(p: { x: number; y: number } | null): void {
+  notice = nextNotice(notice, p, sim.tickCount);
+  sim.notice = noticePoint(notice, sim.tickCount);
+}
 
 // Hover a fish and its species (and mood) pops up in a little
 // balloon — a nod to System 7's Balloon Help.
@@ -695,7 +706,7 @@ canvas.addEventListener("pointermove", (e) => {
   if (!e.isPrimary) return;
   lastClient = { x: e.clientX, y: e.clientY };
   const p = tankPoint(e.clientX, e.clientY);
-  sim.notice = p;
+  seePointer(p);
   if (e.pointerType === "touch") return; // no hover on touch
   mouseClient = lastClient;
   lastHover = p;
@@ -714,7 +725,7 @@ canvas.addEventListener("pointerleave", (e) => {
   // the mouse's hover — restore its position instead.
   if (e.pointerType === "touch") {
     lastClient = mouseClient;
-    sim.notice = mouseClient && tankPoint(mouseClient.x, mouseClient.y);
+    seePointer(mouseClient && tankPoint(mouseClient.x, mouseClient.y));
     return;
   }
   mouseClient = null;
@@ -722,7 +733,7 @@ canvas.addEventListener("pointerleave", (e) => {
   lastHover = null;
   fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
-  sim.notice = null;
+  seePointer(null);
 });
 
 // ---- fish Get-Info card -------------------------------------------------
@@ -3329,6 +3340,7 @@ const PLANT_BUBBLE = 0.006;
 function tickSim(): void {
   const bubbles = sim.bubbles.length;
   const pellets = sim.food.slice();
+  sim.notice = noticePoint(notice, sim.tickCount); // curiosity fades
   stirSurface();
   sim.tick();
   // Lifecycle: each transition rings its original event sound. A birth
