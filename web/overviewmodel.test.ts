@@ -113,6 +113,18 @@ describe("sortItems", () => {
     ] }), "status");
     expect(rows.map((i) => i.name)).toEqual(["Zebra", "Alpha"]);
   });
+  it("ailing fish lead the status sort, Dead before Sick", () => {
+    // Names are picked so the alphabetical tiebreak would produce the
+    // wrong order if the ailing ranks didn't split.
+    const rows = sortItems(itemsOf({ ...STATE, addons: [], fish: [
+      { id: 1, species: "Alive", hunger: 0.9, state: "seek" },
+      { id: 2, species: "Zombie", hunger: 0.1, state: "drift", sick: 3 },
+      { id: 3, species: "Mort", hunger: 0.1, state: "dead", dead: 1 },
+    ] }), "status");
+    expect(rows.map((i) => i.name)).toEqual(["Mort", "Zombie", "Alive"]);
+    expect(rows[0]!.status).toMatch(/^Dead/);
+    expect(rows[1]!.status).toMatch(/^Sick/);
+  });
 });
 
 describe("summary", () => {

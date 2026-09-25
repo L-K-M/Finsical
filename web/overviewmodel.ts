@@ -6,7 +6,6 @@ import type { Importable } from "./import.js";
 import type { FishState } from "../core/sim.js";
 import { conditionLabel } from "./lifecopy.js";
 import { hungerLabel, uptime } from "./statsmodel.js";
-import { HUNGER_SEEK } from "../core/tuning.js";
 
 export interface FishSnap {
   id: number; species: string; hunger: number; state: string;
@@ -76,11 +75,18 @@ export function stateLabel(state: string): string {
 // Status-column ordering: hunger band first (hungrier sorts earlier),
 // then a fixed per-state rank. Transient states share a rank where
 // they read the same — a barrel roll is Swimming for list purposes.
+// Bands ride on hungerLabel so the sort and the status text can't
+// drift on separate cut-offs.
+const BAND_RANK = { starving: 0, hungry: 1, peckish: 2 } as const;
 const hungerBand = (h: number): number =>
-  // !(h >= …) so a non-finite bus value sorts with "full".
-  !(h >= HUNGER_SEEK) ? 2 : h >= 0.66 ? 0 : 1;
+  // !(h >= 0) catches non-finite bus values: they sort with "full".
+  !(h >= 0) ? 3
+    : BAND_RANK[hungerLabel(h) as keyof typeof BAND_RANK] ?? 3;
 const STATE_ORDER: Record<FishState, number> = {
-  startle: 0, seek: 1, sleep: 2, turn: 3, drift: 3, dead: 0,
+  startle: 0, seek: 1, sleep: 2, turn: 3, drift: 3,
+  // A real dead fish takes the ailing branch below; this only orders
+  // a malformed bus frame that reports state "dead" with no timestamp.
+  dead: 0,
 };
 
 /** The Finder-style header line: "8 fish, 3 add-ons, water 96%, up
@@ -115,7 +121,9 @@ export function itemsOf(s: TankState): Item[] {
       rank: 0,
       remove: { op: "removeFish", id: f.id },
       fishId: f.id,
-      statusRank: ailing ? 0
+      // Ailing rows lead the list, Dead before Sick — a corpse needs
+      // attention before a patient does.
+      statusRank: ailing ? (typeof f.dead === "number" ? 0 : 1)
         : 10 + hungerBand(f.hunger) * 10 +
           (STATE_ORDER[f.state as FishState] ?? 3),
     };
