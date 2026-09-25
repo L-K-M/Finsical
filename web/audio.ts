@@ -78,6 +78,26 @@ function gestureActive(): boolean {
   return navigator.userActivation?.isActive === true;
 }
 
+/** Substring hit bounded by word edges: the needle may not hide inside
+ * a longer word — what follows it must be the end of the name, a
+ * separator, or a camelCase capital, and what precedes it a boundary
+ * the same way (or a capital of its own). "Sideways Stories" can't
+ * answer a side tap while "IntoWaterBig" and "knock on the side" still
+ * reach their events. */
+function substringHit(name: string, needle: string): boolean {
+  const lower = name.toLowerCase();
+  let i = lower.indexOf(needle);
+  while (i >= 0) {
+    const before = name[i - 1], after = name[i + needle.length];
+    const beforeOk = before === undefined || !/[a-z]/.test(before) ||
+                     /[A-Z]/.test(name[i]!);
+    const afterOk = after === undefined || !/[a-z]/.test(after);
+    if (beforeOk && afterOk) return true;
+    i = lower.indexOf(needle, i + 1);
+  }
+  return false;
+}
+
 export class TankAudio {
   private ctx: AudioContext | null = null;
   // Every sound's per-play gain feeds this one node, created with the
@@ -336,18 +356,21 @@ export class TankAudio {
   private find(subs: readonly string[], skip = ""): AudioBuffer | null {
     // Exact names beat substring hits globally — a bundled "drop" keeps
     // the feed slot over an unrelated import that merely contains the
-    // substring. Within each pass, imported (user-dropped) sounds
-    // still outrank bundled manifest ones — the drop is the more
-    // deliberate, more recent act.
+    // substring. Needle order is the caller's stated preference:
+    // feed's ["drop", "intowater"] and splash's ["intowater", "drop"]
+    // must not collapse onto whichever name decoded first. Within each
+    // needle, imported (user-dropped) sounds still outrank bundled
+    // manifest ones — the drop is the more deliberate, more recent act.
     for (const exact of [true, false])
-      for (const map of [this.imported, this.buffers])
-        for (const [name, buf] of map) {
-          const n = name.toLowerCase();
-          if (n === skip) continue;
-          if (buf.duration <= EVENT_MAX_S
-              && subs.some((s) => exact ? n === s : n.includes(s)))
-            return buf;
-        }
+      for (const sub of subs)
+        for (const map of [this.imported, this.buffers])
+          for (const [name, buf] of map) {
+            const n = name.toLowerCase();
+            if (n === skip) continue;
+            if (buf.duration <= EVENT_MAX_S
+                && (exact ? n === sub : substringHit(name, sub)))
+              return buf;
+          }
     return null;
   }
 
