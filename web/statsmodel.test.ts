@@ -3,6 +3,7 @@ import { curesFor, deriveStats, deriveWater, hungerLabel, milestone,
          SPARK_H, SPARK_SLOT_MS, SPARK_W, sparkColumns, sparkRow,
          summaryText, trend, uptime } from "./statsmodel.js";
 import { DAY_TICKS, Sim } from "../core/sim.js";
+import { hourLabel } from "../core/light.js";
 import { HUNGER_SEEK } from "../core/tuning.js";
 
 const base = {
@@ -114,9 +115,9 @@ describe("deriveStats", () => {
   it("names the next switch under the light timer", () => {
     const timer = { mode: "timer", on: 8, off: 22 };
     expect(deriveStats({ ...base, light: 0.45, lighting: timer }).lightLabel)
-      .toBe("Night (lights on at 08:00)");
+      .toBe(`Night (lights on at ${hourLabel(8)})`);
     expect(deriveStats({ ...base, light: 1, lighting: timer }).lightLabel)
-      .toBe("Day (lights off at 22:00)");
+      .toBe(`Day (lights off at ${hourLabel(22)})`);
     for (const lighting of [undefined, { ...timer, mode: "demo" },
                             { ...timer, mode: "always" },
                             { ...timer, on: 9, off: 9 }])
