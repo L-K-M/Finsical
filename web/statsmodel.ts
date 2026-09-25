@@ -40,6 +40,8 @@ export interface TankStats {
   /** "Night (lights on at 08:00)" under the timer, else the phase. */
   lightLabel: string;
   uptimeMin: number;
+  /** Highest tank-age milestone reached, if any (the Fish Diary). */
+  milestone: string | null;
   /** Ordered care hints — the most urgent first, capped at two. */
   advice: string[];
 }
@@ -69,6 +71,7 @@ export function deriveStats(s: StatsInput): TankStats {
   const water = Math.min(1, Math.max(0, fin(s.waterQuality, 1)));
   const light = fin(s.light, 1);
   const phase = light > DUSK_LIGHT ? "day" : "night";
+  const uptimeMin = Math.floor(fin(s.tickCount, 0) / 30 / 60);
   const stats: TankStats = {
     fishCount: fish.length,
     avgHunger,
@@ -81,7 +84,8 @@ export function deriveStats(s: StatsInput): TankStats {
     bubbles: fin(s.bubbles, 0),
     phase,
     lightLabel: lightLabel(phase, s.lighting),
-    uptimeMin: Math.floor(fin(s.tickCount, 0) / 30 / 60),
+    uptimeMin,
+    milestone: milestone(uptimeMin),
     advice: [],
   };
   stats.advice = advice(stats, water);
@@ -155,6 +159,21 @@ export function summaryText(st: TankStats): string {
 export function uptime(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/** Highest tank-age anniversary reached, if any: the Fish Diary. Tank
+ * time only advances while the tank page is visible, so these are
+ * quiet anniversaries, not alarms. */
+export function milestone(minutes: number): string | null {
+  if (minutes >= 30 * 24 * 60)
+    return "One month or more of tank time: veteran waters.";
+  if (minutes >= 7 * 24 * 60)
+    return "One week of tank time: an established tank.";
+  if (minutes >= 24 * 60)
+    return "One full day of tank time: the fish know the routine.";
+  if (minutes >= 60)
+    return "First hour of tank time: the tank is running.";
+  return null;
 }
 
 /** Compact hunger label — same bands as the overview's. */
