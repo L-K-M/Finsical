@@ -1742,7 +1742,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         if (detailRef?.url === ackUrl && pending?.ref === detailRef) {
           const p = pending;
           pending = null;
-          detailRef.status.textContent = `Couldn't add it: ${m.error}`;
+          detailRef.status.textContent = `Couldn't add it. ${m.error}`;
           setAdd("Try Again", p.retry);
         }
       } else if (m.op === "state" && Array.isArray(m.addons)) {
