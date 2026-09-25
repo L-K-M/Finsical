@@ -117,7 +117,7 @@ body.crt canvas#tank { opacity: 0; }
    with a close box, live hunger and mood underneath. */
 .finfo {
   /* fixed on body: above the machine art (2), under the overlays (10).
-     layoutInfo() feeds it viewport rects, so no ancestor of body may
+     layoutInfo() feeds it viewport rects, so neither body nor html may
      gain a transform/filter/perspective/contain — that would re-root
      the fixed containing block and break the math. */
   position: fixed; z-index: 5; width: 118px;
