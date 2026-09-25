@@ -223,6 +223,19 @@ describe("pacing (review regressions)", () => {
     expect(r.life.dead).toBeNull();
   });
 
+  it("a sub-threshold dose topped up inside the window still acts", () => {
+    const rand = makeRng(25);
+    const a = new Aquarium(rand);
+    const r = resident(1, rand);
+    r.life.sick = { disease: 0, amount: 1 };
+    a.addMedicine(1100, 10);       // alone: 0.6, below threshold
+    a.advanceMinutes(8, [r]);      // still inside the batching window
+    a.addMedicine(1100, 10);       // top-up: 20 ml can reach c >= 1
+    live(a, 60, [r]);
+    expect(r.life.sick).toBeNull();
+    expect(a.doses).toEqual([]);
+  });
+
   it("a topped-up dose doesn't come out as an overdose", () => {
     const rand = makeRng(24);
     const a = new Aquarium(rand);
