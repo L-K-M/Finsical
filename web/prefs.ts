@@ -12,6 +12,7 @@ import { hourLabel, LIGHTING_DEFAULTS, sanitizeLighting }
 import type { Lighting, LightMode } from "../core/light.js";
 import { SOUND_DEFAULTS, sanitizeSoundConfig } from "./audio.js";
 import type { SoundConfig } from "./audio.js";
+import { tubeCaption } from "./caption.js";
 
 // Preferences window: a Mac OS 8 control panel with five panes: the
 // machine case, the CRT tube effect, the monitor's picture controls,
@@ -19,6 +20,16 @@ import type { SoundConfig } from "./audio.js";
 // rendering: this page renders the state it pushes back (op:"state"
 // carries `crt`, `machine`, `lighting` and `sound` snapshots) and posts
 // intents: crtEnabled, crtConfig, machine, lighting, soundConfig.
+
+// A file dropped on this window must not navigate it to the file —
+// only the tank page and the Add-ons window accept drops.
+window.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  // Reject file drops with the OS "no drop" cursor instead of a copy cursor.
+  if (e.dataTransfer?.types.includes("Files"))
+    e.dataTransfer.dropEffect = "none";
+});
+window.addEventListener("drop", (e) => e.preventDefault());
 
 interface SliderSpec {
   key: keyof CrtConfig;
@@ -258,17 +269,34 @@ function describe(spec: SliderSpec | LightSpec | SoundItem | null,
       return;
     }
   }
+  // `pane` is a closed PaneId union and PANES covers every pane, so
+  // this lookup cannot miss; both hint paths below share it. Only the
+  // Monitor and Picture panes mount "key" sliders, both define offHint,
+  // and syncEnabled dims exactly those sliders while off — onBox is the
+  // switch they depend on, not some other pane's.
+  const p = PANES.find((x) => x.id === pane)!;
   if (!spec) {
-    const p = PANES.find((x) => x.id === pane)!;
     descEl.textContent = !onBox.checked && p.offHint ? p.offHint : p.hint;
     return;
   }
-  const [label, blurb] = "key" in spec
-    ? [`${spec.label}: ${(spec.fmt ?? pct)(cfg[spec.key])}`, spec.blurb]
-    : "input" in spec
-      ? [spec.value ? `${spec.label}: ${spec.value()}` : spec.label,
-         spec.blurb]
-      : [`${spec.label}: ${spec.value()}`, spec.blurb()];
+  // A dimmed tube slider explains the switch instead of showing a
+  // value that cannot apply (tubeCaption pins the wording).
+  if ("key" in spec) {
+    const c = tubeCaption({
+      label: spec.label,
+      valueText: (spec.fmt ?? pct)(cfg[spec.key]),
+      blurb: spec.blurb,
+      offHint: p.offHint,
+      crtOn: onBox.checked,
+    });
+    if (c.label === "") descEl.textContent = c.tail;
+    else descEl.append(el("span", "osm-label", c.label), c.tail);
+    return;
+  }
+  const [label, blurb] = "input" in spec
+    ? [spec.value ? `${spec.label}: ${spec.value()}` : spec.label,
+       spec.blurb]
+    : [`${spec.label}: ${spec.value()}`, spec.blurb()];
   descEl.append(el("span", "osm-label", label), ` — ${blurb}`);
 }
 
@@ -508,6 +536,10 @@ const endDrags = () => {
 };
 window.addEventListener("pointerup", endDrags);
 window.addEventListener("pointercancel", endDrags);
+// A file dropped here would navigate this borderless window to the
+// raw file, with no way back — swallow drops like the tank page does.
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
 
 function syncControls(): void {
   for (const spec of ALL_SPECS) {
@@ -828,4 +860,13 @@ setInterval(() => {
 // tank isn't there yet.
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) bus.post({ op: "hello" });
+});
+// Right-click inside a borderless WebKit window surfaces WebKit's
+// generic menu (Reload etc.) — nothing in it applies to a desk
+// accessory, so swallow it like the tank page does.
+window.addEventListener("contextmenu", (e) => {
+  // Editable fields keep their native Cut/Copy/Paste menu.
+  if ((e.target as HTMLElement).closest(
+      "input, textarea, select, [contenteditable]")) return;
+  e.preventDefault();
 });

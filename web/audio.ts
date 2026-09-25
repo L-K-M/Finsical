@@ -41,6 +41,10 @@ export const FEEDBACK_MAX_S = 4;
 const FEEDBACK_FADE_S = 0.6;
 /** Time constant of a master level change (about 3 tau to settle). */
 const LEVEL_GLIDE_S = 0.01;
+/** Event sounds are short. A recording longer than this can only be an
+ * imported song, so find() never picks it for a knock or a splash, no
+ * matter what it is named. */
+export const EVENT_MAX_S = 20;
 
 // The original game's sounds, by the names its 'snd ' resources carry
 // (core/data/sndbank.ts), lowercased for lookup.
@@ -67,10 +71,41 @@ const OPENING = "aqua";
  * the gain single bubbles play at, under them. */
 const AMBIENT_GAIN = 0.4;
 
-/** Lowercase alphanumeric words in a sound name: "CENTER*" and
- * "bubble pop" both carry their event word; "Centerfold" is one word. */
-function words(name: string): string[] {
-  return name.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w !== "");
+/** Stereo position of a tank event at x in a w-wide tank: the edges
+ * pan to ±0.8 — a clear sense of side without a hard pan. */
+export function panFor(x: number, w: number): number {
+  if (!(w > 0)) return 0;
+  return Math.min(0.8, Math.max(-0.8, 0.8 * (2 * x / w - 1)));
+}
+
+/** Per-play color: stereo pan (-1..1) and a playback-rate jitter. */
+interface PlayFx { pan?: number; rate?: number; }
+
+/** True while a user activation is held, so a sound answering that
+ * gesture may wait out a locked AudioContext. Older WebKit and test
+ * fakes have no userActivation — treated as no gesture. */
+function gestureActive(): boolean {
+  return navigator.userActivation?.isActive === true;
+}
+
+/** Substring hit bounded by word edges: the needle may not hide inside
+ * a longer word — what follows it must be the end of the name, a
+ * separator, or a camelCase capital, and what precedes it a boundary
+ * the same way (or a capital of its own). "Sideways Stories" can't
+ * answer a side tap while "IntoWaterBig" and "knock on the side" still
+ * reach their events. */
+function substringHit(name: string, needle: string): boolean {
+  const lower = name.toLowerCase();
+  let i = lower.indexOf(needle);
+  while (i >= 0) {
+    const before = name[i - 1], after = name[i + needle.length];
+    const beforeOk = before === undefined || !/[a-z]/.test(before) ||
+                     /[A-Z]/.test(name[i]!);
+    const afterOk = after === undefined || !/[a-z]/.test(after);
+    if (beforeOk && afterOk) return true;
+    i = lower.indexOf(needle, i + 1);
+  }
+  return false;
 }
 
 export class TankAudio {
@@ -335,17 +370,21 @@ export class TankAudio {
   private find(subs: readonly string[], skip = ""): AudioBuffer | null {
     // Exact names beat word hits globally — a bundled "drop" keeps
     // the feed slot over an unrelated import that merely contains the
-    // word. Within each pass, imported (user-dropped) sounds
-    // still outrank bundled manifest ones — the drop is the more
-    // deliberate, more recent act.
+    // substring. Needle order is the caller's stated preference:
+    // feed's ["drop", "intowater"] and splash's ["intowater", "drop"]
+    // must not collapse onto whichever name decoded first. Within each
+    // needle, imported (user-dropped) sounds still outrank bundled
+    // manifest ones — the drop is the more deliberate, more recent act.
     for (const exact of [true, false])
-      for (const map of [this.imported, this.buffers])
-        for (const [name, buf] of map) {
-          const n = name.toLowerCase();
-          if (n === skip) continue;
-          if (subs.some((s) => exact ? n === s : words(n).includes(s)))
-            return buf;
-        }
+      for (const sub of subs)
+        for (const map of [this.imported, this.buffers])
+          for (const [name, buf] of map) {
+            const n = name.toLowerCase();
+            if (n === skip) continue;
+            if (buf.duration <= EVENT_MAX_S
+                && (exact ? n === sub : substringHit(name, sub)))
+              return buf;
+          }
     return null;
   }
 
@@ -372,12 +411,17 @@ export class TankAudio {
   }
 
   private play(buf: AudioBuffer | null, gain = 0.8, loop = false,
-               retry = true): AudioBufferSourceNode | null {
+               retry = true, fx?: PlayFx): AudioBufferSourceNode | null {
     if (!buf || !this.ctx) return null;
     // Hidden: drop the sound rather than resume() the device below. A
     // wanted ambient loop starts from setHidden(false) instead.
     if (this.hidden) return null;
     if (this.ctx.state === "suspended" && retry) {
+      // Only the ambient loop and a sound answering the gesture in
+      // progress wait out the lock. Anything else (bubbles from a
+      // tick, a stale feed) drops here — queueing them all fired a
+      // burst of stale sounds on the first click.
+      if (!loop && !gestureActive()) return null;
       const ac = this.ctx;
       const gen = this.ambientGen;
       void ac.resume()
@@ -396,20 +440,38 @@ export class TankAudio {
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     src.loop = loop;
+    if (fx?.rate && fx.rate !== 1) src.playbackRate.value = fx.rate;
     const g = this.ctx.createGain();
     g.gain.value = gain;
-    src.connect(g).connect(this.master!); // created with ctx
+    const pan = fx?.pan ?? 0;
+    // StereoPannerNode needs WebKit 14.1+, fine for macOS 12 — and a
+    // pan of 0 keeps the direct path, so the node is opt-in only.
+    if (pan !== 0 && typeof this.ctx.createStereoPanner === "function") {
+      const p = this.ctx.createStereoPanner();
+      p.pan.value = pan;
+      src.connect(p).connect(g).connect(this.master!);
+    } else {
+      src.connect(g).connect(this.master!); // created with ctx
+    }
     src.start();
     return src;
   }
 
-  feed(): void {
-    this.play(this.find(["drop", "intowater"]), 0.7);
+  feed(pan = 0): void {
+    this.play(this.find(["drop", "intowater"]), 0.7, false, true,
+              { pan });
   }
 
   /** Fish entering the tank — the original's water-entry sound. */
-  splash(): void {
-    this.play(this.find(["intowater", "drop"]), 0.7);
+  splash(pan = 0): void {
+    this.play(this.find(["intowater", "drop"]), 0.7, false, true,
+              { pan });
+  }
+
+  /** A pellet eaten — silent unless a pack or drop ships a bite. */
+  eat(pan = 0): void {
+    this.play(this.find(["eat", "gulp", "munch"]), 0.5, false, true,
+              { pan });
   }
 
   /** A water change. Sets without the original's own sound for it
@@ -461,7 +523,8 @@ export class TankAudio {
     return this.play(chime, 0.45) !== null;
   }
 
-  /** Tap sounds are positional in the original app. */
+  /** Tap sounds are positional in the original app — by zone in its
+   * name set, and stereo-panned to the glass that was knocked. */
   tap(x: number, y: number, w: number, h: number): void {
     const dx = Math.min(x, w - x), dy = Math.min(y, h - y);
     let sub = "center";
@@ -469,7 +532,8 @@ export class TankAudio {
       // Compare normalized distances — the tank is wider than tall,
       // so raw pixels call near-side taps "top"/"bottom".
       sub = dx / w < dy / h ? "side" : (y < h - y ? "top" : "bottom");
-    this.play(this.find([sub]) ?? this.find(["center", "side"]), 0.8);
+    this.play(this.find([sub]) ?? this.find(["center", "side"]), 0.8,
+              false, true, { pan: panFor(x, w) });
   }
 
   /** The auto-feeder's timer tripped — the original's TimerOnOff
@@ -479,10 +543,12 @@ export class TankAudio {
   }
 
   /** A bubble rising. The original has no sound for one, so this plays
-   * a short bubble sound the user added, never the filter's loop. */
-  bubble(): void {
+   * a short bubble sound the user added, never the filter's loop —
+   * panned to the bubble, pitched a touch at random. */
+  bubble(pan = 0): void {
     if (!this.bubblesOn) return;
-    this.play(this.find(["bubble"], FILTER_BUBBLING), 0.4);
+    this.play(this.find(["bubble"], FILTER_BUBBLING), 0.4, false, true,
+              { pan, rate: 0.94 + Math.random() * 0.12 });
   }
 
   /** The degauss coil's BWONG — synthesized, not a bank sound: a 55 Hz

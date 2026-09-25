@@ -17,7 +17,11 @@ export interface Fish {
   /** Install URL of the add-on that spawned this fish — the precise
    * identity when two packs share a species name. */
   pack?: string;
-  /** Renderer sheet index; undefined = round-robin assignment. */
+  /** The pack entry (zip member) inside `pack` this fish came from —
+   * set for multi-entry add-ons so each fish rebinds to its own blob's
+   * sheet after relaunch instead of the last entry's. */
+  entry?: string;
+  /** Renderer sheet index; undefined = no sheet bound. */
   sheetIdx?: number;
   x: number;
   y: number;
@@ -131,8 +135,13 @@ const FOOD_SINK = 0.35;
 const GOLDEN_ODDS = 1 / 50;
 /** Ticks a settled pellet takes to dissolve away (~45 s at 30 tps). */
 export const FOOD_ROT_TICKS = 30 * 45;
-/** Quality drained per tick per rotting pellet (~0.2 over a full rot). */
-const WASTE_PER_TICK = 1 / 6000;
+/** Uneaten pellets the tank holds before dropFood refuses: past it a
+ * feed only adds waste. Even at the cap, six rotting pellets drain
+ * quality ~7x faster than the filter recovers it, so sustained
+ * overfeeding still fouls the tank without a water change. */
+export const MAX_UNEATEN = 6;
+/** Quality drained per tick per rotting pellet (~0.14 over a full rot). */
+const WASTE_PER_TICK = 1 / 10000;
 /** Filtration: recovers a fouled tank over ~7 min of clean water. */
 const FILTER_PER_TICK = 1 / 12000;
 /** Below this water quality fish start gasping: wander targets pull
@@ -300,7 +309,9 @@ export class Sim {
   /** The same condition decide() uses to send a fish begging at the
    * surface: starving, and water clean enough to keep an appetite. */
   isBegging(f: Fish): boolean {
-    return f.hunger > BEG_HUNGER && this.waterQuality > QUALITY_SEEK;
+    // A starved corpse keeps its last hunger — it is not begging.
+    return !f.dead && f.hunger > BEG_HUNGER &&
+      this.waterQuality > QUALITY_SEEK;
   }
 
   /** True while any fish is begging — the dinner-bell predicate. */
@@ -374,8 +385,11 @@ export class Sim {
   }
 
   /** Drop a food pellet at x (kept off the side glass); it sinks to the
-   * gravel. Returns the pellet, so callers can mark where it went in. */
-  dropFood(x: number): Food {
+   * gravel. Returns the pellet, so callers can mark where it went in —
+   * or null when the tank already holds MAX_UNEATEN uneaten pellets. */
+  dropFood(x: number): Food | null {
+    if (this.food.filter((f) => !f.eaten).length >= MAX_UNEATEN)
+      return null;
     const cx = Math.min(Math.max(x, MARGIN), this.tank.width - MARGIN);
     const pellet = { x: cx, y: FOOD_ENTRY_Y, eaten: false, settled: 0,
                      golden: this.rand() < GOLDEN_ODDS };
@@ -447,14 +461,15 @@ export class Sim {
     const inRange = (f: Fish): boolean => !!n &&
       (f.x - n.x) ** 2 + (f.y - n.y) ** 2 < NOTICE_RADIUS * NOTICE_RADIUS;
     this._noticeFish = this._noticeFish.filter((f) =>
-      this.fish.includes(f) && inRange(f) &&
+      this.fish.includes(f) && !f.dead && inRange(f) &&
       (f.state === "drift" || f.state === "turn"));
     if (n && this._noticeFish.length < NOTICE_CAP) {
       // Fill the open slots with the nearest drifters not already
       // watching — a small crowd presses the glass, like the original.
       const cand: { f: Fish; d: number }[] = [];
       for (const f of this.fish) {
-        if (f.state !== "drift" || this._noticeFish.includes(f))
+        if (f.dead || f.state !== "drift" ||
+            this._noticeFish.includes(f))
           continue;
         const d = (f.x - n.x) ** 2 + (f.y - n.y) ** 2;
         if (d < NOTICE_RADIUS * NOTICE_RADIUS) cand.push({ f, d });
@@ -751,6 +766,9 @@ export class Sim {
         const wallGap = Math.max(0, x0 - food.x, food.x - x1);
         if (d < Math.max(EAT_DIST, this.halfH(f) * EDGE_KEEP) + wallGap) {
           food.eaten = true;
+          // A gulped pellet lets a little air loose — one bubble rises
+          // from the meal and pops at the surface on its own clock.
+          this.bubbles.push({ x: food.x, y: food.y });
           f.hunger = 0;
           // A meal puts a little size on — asymptotic toward adult.
           f.scale += (MAX_SCALE - f.scale) * GROWTH;
