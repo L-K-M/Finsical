@@ -663,7 +663,8 @@ describe("Sim", () => {
     // which side of it the fish was on, so the tilt flipped every few
     // ticks as the fish crossed that depth.
     const sim = new Sim({ width: 320, height: 200 }, 3);
-    const f = sim.addFish({ x: 160, y: 100, tx: 140, ty: 100.3, scale: 1 });
+    const f = sim.addFish({ x: 160, y: 100, facing: 1, tx: 140, ty: 100.3,
+                          scale: 1 }); // facing right: the target is behind
     let reversals = 0, dir = 0, prev = pitch(f);
     for (let i = 0; i < 90; i++) {
       sim.tick();
