@@ -12,7 +12,7 @@ import { decorFrame, decorPhase, decorPhaseFrac }
   from "../core/data/decor.js";
 import { bodySize, pickSwimSheet } from "../core/data/swimsheet.js";
 import { fishScale } from "./artscale.js";
-import { sanitizeSoundConfig, TankAudio } from "./audio.js";
+import { panFor, sanitizeSoundConfig, TankAudio } from "./audio.js";
 import { drawRipples, drawSplashes, newSplash, tickRipples,
          tickSplashes } from "./fx.js";
 import type { Ripple, Splash } from "./fx.js";
@@ -500,7 +500,7 @@ canvas.addEventListener("pointerdown", (e) => {
   if (isFeedZone(p.x, p.y, waterline)) {
     const pellet = sim.dropFood(p.x);
     if (pellet) {
-      audio.feed();
+      audio.feed(panFor(pellet.x, TANK.width));
       splashAt(pellet.x, pellet.y, PUSH.pellet);
     } else {
       noteFoodRefused();
@@ -771,7 +771,8 @@ function spawnFish(sheetIdx: number, species: string, pack?: string,
  * panel to ack, so the explanation goes to the console. */
 function spawnFromDrop(idx: number, species: string): void {
   if (idx < 0) return;
-  if (spawnFish(idx, species)) audio.splash();
+  const f = spawnFish(idx, species);
+  if (f) audio.splash(panFor(f.x, TANK.width));
   else console.warn(`Tank is full — ${FISH_CAP} fish max. ` +
     "Release one from Tank Overview first.");
 }
@@ -964,7 +965,10 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
     packBySheet.set(idx, url);
     // A live fish-pack install adds a real fish; restores replay sheets
     // only — the saved roster already carries those fish.
-    if (live && spawnFish(idx, name, url, "enforce", entry)) audio.splash();
+    if (live) {
+      const f = spawnFish(idx, name, url, "enforce", entry);
+      if (f) audio.splash(panFor(f.x, TANK.width));
+    }
   }
   console.info(`archive.org: imported ${section} ${name}`);
   requestPaint(); // restores can rebind existing fish to new art
@@ -1939,7 +1943,7 @@ function feedFish(): void {
       requestPaint();
     }, p.delay);
   }
-  audio.feed();
+  audio.feed(panFor(x, TANK.width));
   requestPaint();
 }
 function toggleAutoFeed(): void {
@@ -2917,6 +2921,7 @@ const PLANT_BUBBLE = 0.006;
 
 function tickSim(): void {
   const bubbles = sim.bubbles.length;
+  const pellets = sim.food.slice();
   stirSurface();
   sim.tick();
   // Lifecycle: each transition rings its original event sound. A birth
@@ -2974,12 +2979,19 @@ function tickSim(): void {
   }
   tickRipples(ripples);
   tickSplashes(splashes);
+  // A pellet eaten this tick is already spliced out of sim.food — its
+  // `eaten` flag still reads on the snapshot taken above.
+  for (const p of pellets)
+    if (p.eaten && !sim.food.includes(p))
+      audio.eat(panFor(p.x, TANK.width));
   for (let i = pops.length - 1; i >= 0; i--)
     if (++pops[i]!.age > 8) pops.splice(i, 1);
   // Sparse bloops: only some spawns make a sound. Checked per tick so
   // the odds don't depend on how often the tank is drawn.
-  if (sim.bubbles.length > bubbles && Math.random() < 0.25)
-    audio.bubble();
+  if (sim.bubbles.length > bubbles && Math.random() < 0.25) {
+    const b = sim.bubbles[sim.bubbles.length - 1]!;
+    audio.bubble(panFor(b.x, TANK.width));
+  }
 }
 
 // Fixed-step sim on rAF. render() depends only on sim state and
