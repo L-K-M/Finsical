@@ -566,8 +566,8 @@ function fishAtPoint(p: { x: number; y: number }): Fish | null {
 // click drops food, the cursor becomes a crosshair and the waterline
 // brightens (see render()). Hover is re-evaluated every frame from the
 // last client point (see frame()), so a resize under a stationary
-// pointer can't leave it stale, and getBoundingClientRect runs once
-// per frame instead of per move.
+// pointer can't leave it stale, and the rect comes from tankRect()'s
+// cache — a layout read per resize, not per frame.
 let overFeedZone = false;
 let lastClient: { x: number; y: number } | null = null;
 // The mouse's last position, kept separately so a lifting touch can
@@ -2234,11 +2234,11 @@ function takePicture(): void {
   // hovering pointer may light the torch — repaint without them for
   // the shot, then put them back. Both renders run inside this task,
   // so nothing flickers.
-  const clean = paused || torchLit;
-  if (clean) render("picture");
-  c.drawImage(canvas, 0, 0, out.width, out.height);
-  if (clean) render();
   const d = new Date();
+  const clean = paused || torchLit;
+  if (clean) render(d, "picture");
+  c.drawImage(canvas, 0, 0, out.width, out.height);
+  if (clean) render(d);
   const pad = (n: number): string => String(n).padStart(2, "0");
   const name = `finsical-${d.getFullYear()}${pad(d.getMonth() + 1)}` +
     `${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}` +
@@ -2550,13 +2550,24 @@ void (async () => {
     // to restore leaves whatever the chain picked, until a retry.
     applySceneryChoice();
     remapSheetIdx(); reconcileFish();
-    retryRestores(restoreFailed);
     backfillStarterSounds({
       welcomePending,
       hasSounds: storedSounds > 0 ||
         installedAddons.some((a) => a.section === "sounds"),
       install: (it) => installAddon(it, false),
     }).catch((e) => console.warn("starter sounds skipped:", e));
+  })
+  // A step above throwing used to end the chain silently: the tank
+  // came up missing art or fish, and the retry below — the whole
+  // reason a pack that failed to restore is kept in restoreFailed —
+  // never ran. Log it, repaint what did land, and retry regardless.
+  .catch((e) => {
+    console.warn("launch stopped before the tank was settled:", e);
+    requestPaint();
+  })
+  .finally(() => {
+    try { retryRestores(restoreFailed); }
+    catch (e) { console.warn("add-on restore retry failed to start:", e); }
   });
 
 // First launch: offer to stock the tank (web/welcome.ts). Accepting
@@ -3051,7 +3062,7 @@ function stirSurface(): void {
  * which leaves out what only the viewer's pointer and the pause put
  * there (the torch, the scrim). */
 type RenderTarget = "screen" | "picture";
-function render(target: RenderTarget = "screen"): void {
+function render(now: Date, target: RenderTarget = "screen"): void {
   // The startup parade owns the canvas until it fades: black, desktop,
   // marching icons — then the tank draws normally under a fading boot
   // screen, so the crossfade needs no compositing machinery.
@@ -3200,7 +3211,7 @@ function render(target: RenderTarget = "screen"): void {
     ? lastHover : null;
   torchLit = torch !== null;
   if (torch) keepTorch(ctx, torch.x, torch.y, 1 - sun);
-  drawNight(new Date());
+  drawNight(now);
   if (torch) drawTorch(ctx);
 
   // The cat presses its paw to the outside of the glass — painted after
@@ -3437,8 +3448,10 @@ function frame(now: number): void {
   acc = plan.acc;
   last = now;
   // The light timer follows the Mac's clock; hand the sim this
-  // frame's light before it ticks.
-  syncLight(new Date());
+  // frame's light before it ticks. One Date for the whole frame: the
+  // light timer and the night tint read it microseconds apart.
+  const frameDate = new Date();
+  syncLight(frameDate);
   // Ahead of the tick gate: hover must update (and repaint) even
   // while no tick runs.
   syncFeedHover();
@@ -3461,7 +3474,7 @@ function frame(now: number): void {
   const crtBusy = crt?.animating ?? false;
   if (ticks === 0 && !frameDirty && !crtBusy && bootT0 === null) return;
   frameDirty = false;
-  render();
+  render(frameDate);
   // A parked cursor doesn't re-hit-test: hide the tip once the fish
   // under it has swum off, and refresh the label while it stays —
   // the state word would otherwise go stale between pointermoves.
