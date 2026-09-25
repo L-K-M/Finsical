@@ -1426,6 +1426,9 @@ function onBusMessage(m: BusMsg): void {
              typeof m.url === "string" && m.url !== "") {
     const url = m.url;
     fishOutAfter(() => removeAddon(url));
+    // The removed art clears at once, even while paused — the same as
+    // the removeFish branch above.
+    requestPaint();
   } else if (m.op === "useAddon" &&
              typeof m.url === "string" && m.url !== "") {
     useScenery(m.url);
