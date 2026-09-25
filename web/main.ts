@@ -1077,7 +1077,12 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
   // nobody chose.
   if (section !== "fish") return;
   if (care) careByPack.set(url, care);
-  const idx = usePack({ sheets });
+  // A restore retry or an Add Again re-registers the same art — reuse
+  // the pack's existing slot instead of leaking a fishSheets entry
+  // (slots are kept forever to preserve sheetIdx bindings).
+  const known = entry !== undefined ? sheetByEntry.get(entryKey(url, entry))
+                                    : sheetByPack.get(url);
+  const idx = known ?? usePack({ sheets });
   if (idx < 0) {
     // A sheet that can't draw is not an install — usePack refused it.
     console.info(`archive.org: ${section} ${name} has no usable art`);
@@ -1463,11 +1468,14 @@ function addonThumb(url: string): string | null {
 const pendingThumbs = new Set<string>();
 function serveThumbs(keys: Iterable<unknown>): void {
   const thumbs: Record<string, string> = {};
+  // One key→fish map per call — each f: lookup used to scan the roster
+  // and rebuild the key string, O(keys × fish) per wantThumbs push.
+  const fishByKey = new Map(sim.fish.map((f) => [fishThumbKey(f), f]));
   for (const k of keys) {
     if (typeof k !== "string") continue;
     const data = k.startsWith("f:")
       ? (() => {
-          const f = sim.fish.find((x) => fishThumbKey(x) === k);
+          const f = fishByKey.get(k);
           return f ? fishThumb(f) : null;
         })()
       : k.startsWith("a:") ? addonThumb(k.slice(2)) : null;
@@ -1478,7 +1486,7 @@ function serveThumbs(keys: Iterable<unknown>): void {
       // with no sheet yet (placeholders) stay pending on purpose:
       // a reinstall re-serves them on the next asset import.
       const alive = k.startsWith("f:")
-        ? sim.fish.some((x) => fishThumbKey(x) === k)
+        ? fishByKey.has(k)
         : k.startsWith("a:") &&
           installedAddons.some((a) => a.url === k.slice(2));
       if (alive) pendingThumbs.add(k); else pendingThumbs.delete(k);
