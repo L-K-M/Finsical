@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  CRT_DEFAULTS, CRT_PRESETS, DEGAUSS_MS, PICTURE_KEYS, crtClientToTank,
-  crtRasterRect, crtRasterToScreen, crtRowColumns, crtScreenToRaster,
-  crtTankToClient, degaussAmp, presetTube, sanitizeCrtConfig,
+  CRT_DEFAULTS, CRT_MASKS, CRT_PRESETS, DEGAUSS_MS, PICTURE_KEYS,
+  PRESET_KEPT_TUBE_KEYS, crtClientToTank, crtRasterRect,
+  crtRasterToScreen, crtRowColumns, crtScreenToRaster, crtTankToClient,
+  degaussAmp, presetTube, sanitizeCrtConfig,
 } from "./crt.js";
 import type { CrtConfig, CrtGeometry } from "./crt.js";
 
@@ -59,6 +60,22 @@ describe("sanitizeCrtConfig", () => {
     expect(c.hsize).toBe(0.8);
   });
 
+  it("defaults the mask to the aperture grille", () => {
+    expect(CRT_DEFAULTS.mask).toBe("aperture");
+    expect(sanitizeCrtConfig({}).mask).toBe("aperture");
+  });
+
+  it("keeps every known mask type", () => {
+    for (const mask of CRT_MASKS)
+      expect(sanitizeCrtConfig({ mask }).mask).toBe(mask);
+  });
+
+  it("falls back to the aperture grille for an unknown mask", () => {
+    for (const mask of ["trinitron", "Slot", "", 1, null, {}, ["slot"]])
+      expect(sanitizeCrtConfig({ mask, grille: 0.3 })).toEqual(
+        { ...CRT_DEFAULTS, grille: 0.3 });
+  });
+
   it("round-trips a full config", () => {
     const c = sanitizeCrtConfig(CRT_DEFAULTS);
     expect(c).toEqual(CRT_DEFAULTS);
@@ -77,7 +94,8 @@ describe("CRT_PRESETS", () => {
   it("every preset is a complete, in-range CrtConfig", () => {
     const keys = Object.keys(CRT_DEFAULTS) as (keyof CrtConfig)[];
     for (const p of CRT_PRESETS) {
-      for (const k of keys) expect(p.config[k]).toBeTypeOf("number");
+      for (const k of keys)
+        expect(p.config[k]).toBeTypeOf(k === "mask" ? "string" : "number");
       expect(sanitizeCrtConfig(p.config)).toEqual(p.config);
     }
   });
@@ -110,8 +128,18 @@ describe("CRT_PRESETS", () => {
     // Every key is one or the other: a picture trim added later but
     // left out of PICTURE_KEYS would count as tube and be reset.
     const tube = Object.keys(presetTube(CRT_PRESETS[0]!));
-    expect([...PICTURE_KEYS, ...tube].sort())
+    expect([...PICTURE_KEYS, ...PRESET_KEPT_TUBE_KEYS, ...tube].sort())
       .toEqual(Object.keys(CRT_DEFAULTS).sort());
+  });
+
+  it("leaves the mask type the user picked", () => {
+    // A preset tunes trait strengths, not which tube it is.
+    for (const mask of CRT_MASKS)
+      for (const p of CRT_PRESETS) {
+        const next = { ...CRT_DEFAULTS, mask, ...presetTube(p) };
+        expect(next.mask).toBe(mask);
+        expect(next.grille).toBe(p.config.grille);
+      }
   });
 
   it("counts the position pots as the user's trims", () => {

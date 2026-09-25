@@ -1,8 +1,8 @@
 /**
  * CRT post-process. The tank still renders at its logical 320×200 into
  * the 2D canvas; when enabled, that bitmap is re-drawn every frame at
- * the display's device resolution through a shader emulating an
- * aperture-grille tube:
+ * the display's device resolution through a shader emulating a
+ * color tube:
  *  - scanlines locked to logical game rows (they follow the warped,
  *    letterboxed image, not fixed screen stripes), drawn as a beam
  *    whose spot swells with brightness: thin lines in the dark, full
@@ -11,8 +11,9 @@
  *  - phosphor bloom that over-emphasizes bright colors, plus wider
  *    glass halation, both smooth blurs
  *  - R/B misconvergence that grows toward the screen edges
- *  - RGB grille stripes at device-pixel pitch, so the mask is far finer
- *    than the game pixels
+ *  - an RGB phosphor mask (aperture grille, slot mask or shadow mask)
+ *    at device-pixel pitch, so the mask is far finer than the game
+ *    pixels
  *  - gentle barrel curvature with rounded, anti-aliased raster
  *    corners, corner vignette, flicker + rolling band, faint grain
  *  - service-menu geometry: raster position, skew and a perspective
@@ -141,9 +142,14 @@ void main() {
 }
 `;
 
+/** How far the position pots (hpos, vpos) slide the raster at
+ * either end, as a share of the neutral raster's width or height.
+ * The shader, its pointer mirror crtScreenToRaster() and the
+ * Preferences value labels all read it. */
+export const POS_RANGE = 0.1;
+
 // Geometry constants shared by FRAG and its pointer mirror,
 // crtScreenToRaster(); see FRAG for what each does.
-const POS_RANGE = 0.10;
 const RASTER_CORNER = 6;
 const KEYSTONE = 0.8;
 
@@ -167,7 +173,12 @@ uniform float uScan;  // gap darkness between rows (0 = off, 1 = black)
 uniform float uBloom; // bright bleed strength
 uniform float uOver;  // bright-color overdrive
 uniform float uConv;  // R/B misconvergence, edge-weighted
-uniform float uGrill; // RGB mask strength (0 = invisible stripes)
+uniform float uGrill; // RGB mask strength (0 = invisible mask)
+// Phosphor mask type, the index into CRT_MASKS: 0 aperture grille,
+// 1 slot mask, 2 shadow mask.
+uniform float uMask;
+// A slot mask's gap rows, relative to the lit rows.
+const float SLOT_GAP = 0.85;
 uniform float uCurve; // barrel warp
 uniform float uVig;   // edge/corner dimming
 uniform float uFlick; // brightness shimmer
@@ -412,13 +423,39 @@ void main() {
   }
   c *= 1.0 + (0.60 * uOver) * smoothstep(0.5, 1.0, max(c.r, max(c.g, c.b)));
 
-  // Aperture grille: one RGB channel per device-pixel column.
-  float stripe = mod(floor(gl_FragCoord.x), 3.0);
+  // Phosphor mask at device-pixel pitch: each device px lights one
+  // RGB channel fully and the other two at 0.72. The patterns follow
+  // Lottes' CRT masks.
+  //  - Aperture grille: one channel per column, vertical stripes.
+  //  - Slot mask: the grille's stripes cut into slots. Every other
+  //    row of each 3-px triad dims, offset between neighboring triads
+  //    like brickwork, so each row and column averages the same and
+  //    the gaps cannot beat against the scanlines.
+  //  - Shadow mask: dot triads, 2 px dots on a 6 px pitch, each row
+  //    shifted by half a triad so the dots sit in a delta pattern.
+  // Every pattern lights each channel equally often, and the gain
+  // puts the mean back where the unmasked picture was (1.18, with the
+  // slot mask's gaps compensated on top), so switching type at the
+  // same strength keeps the picture's level.
+  vec2 dp = floor(gl_FragCoord.xy);
+  float stripe;
+  float gain = 1.18;
+  float gap = 1.0;
+  if (uMask < 0.5) {
+    stripe = mod(dp.x, 3.0);
+  } else if (uMask < 1.5) {
+    stripe = mod(dp.x, 3.0);
+    if (mod(dp.y + floor(dp.x / 3.0), 2.0) < 0.5) gap = SLOT_GAP;
+    gain = 1.18 * 2.0 / (1.0 + SLOT_GAP);
+  } else {
+    // 3 * y mod 6, kept small for mediump.
+    stripe = floor(mod(dp.x + 3.0 * mod(dp.y, 2.0), 6.0) / 2.0);
+  }
   vec3 mask = vec3(0.72);
   if (stripe < 0.5) mask.r = 1.0;
   else if (stripe < 1.5) mask.g = 1.0;
   else mask.b = 1.0;
-  c *= mix(vec3(1.0), mask * 1.18, uGrill); // 1.18 compensates dimming
+  c *= mix(vec3(1.0), mask * (gap * gain), uGrill);
 
   c *= edge;
 
@@ -446,8 +483,13 @@ void main() {
 }
 `;
 
-/** Tunable CRT traits, all normalized 0–1. The shader multiplies each
- * by a tuned ceiling, so 1.0 is "authentic" rather than "clipped". */
+/** Phosphor mask types, in the order FRAG's uMask indexes them. */
+export const CRT_MASKS = Object.freeze(["aperture", "slot", "shadow"] as const);
+export type CrtMask = (typeof CRT_MASKS)[number];
+
+/** Tunable CRT traits: the mask type plus levels normalized 0–1. The
+ * shader multiplies each level by a tuned ceiling, so 1.0 is
+ * "authentic" rather than "clipped". */
 export interface CrtConfig {
   /** Darkness of the gaps between game-pixel rows. Bright rows swell
    * to fill them, so the lines show most in the dark. Up to 0.4 the
@@ -462,8 +504,11 @@ export interface CrtConfig {
   overdrive: number;
   /** Red/blue fringing that grows toward the screen edges. */
   misconvergence: number;
-  /** Visibility of the fine vertical RGB stripes. */
+  /** Visibility of the phosphor mask. */
   grille: number;
+  /** Phosphor mask pattern: aperture-grille stripes, slot mask or
+   * shadow-mask dot triads. */
+  mask: CrtMask;
   /** Bow of the image, like curved tube glass. */
   curvature: number;
   /** Dimming toward the screen edges and corners. */
@@ -497,10 +542,13 @@ export interface CrtConfig {
   blue: number;
 }
 
+/** The 0–1 level keys: every key but the mask type. */
+export type CrtLevel = Exclude<keyof CrtConfig, "mask">;
+
 export const CRT_DEFAULTS: Readonly<CrtConfig> = Object.freeze<CrtConfig>({
   scanlines: 0.40, softening: 0.40, bloom: 0.50, overdrive: 0.50,
-  misconvergence: 0.35, grille: 1.0, curvature: 0.45, vignette: 0.35,
-  flicker: 0.30, grain: 0.30,
+  misconvergence: 0.35, grille: 1.0, mask: "aperture",
+  curvature: 0.45, vignette: 0.35, flicker: 0.30, grain: 0.30,
   brightness: 0.50, contrast: 0.50, zoom: 0.0,
   hsize: 0.50, vsize: 0.50, skew: 0.50, perspective: 0.50,
   hpos: 0.50, vpos: 0.50,
@@ -512,7 +560,8 @@ export const CRT_DEFAULTS: Readonly<CrtConfig> = Object.freeze<CrtConfig>({
 const LEGACY_BEAM_SCALE = 0.4;
 
 /** Merge an untrusted source (localStorage, bus message) onto the
- * defaults: unknown keys drop, each value clamps into 0–1. A legacy
+ * defaults: unknown keys drop, each level clamps into 0–1 and an
+ * unknown mask type falls back to the aperture grille. A legacy
  * `beam` value converts to `softening` when that key is absent. */
 export function sanitizeCrtConfig(raw: unknown): CrtConfig {
   const c = { ...CRT_DEFAULTS };
@@ -522,12 +571,17 @@ export function sanitizeCrtConfig(raw: unknown): CrtConfig {
     if (typeof beam === "number")
       raw = { ...raw, softening: beam * LEGACY_BEAM_SCALE };
   }
-  if (raw && typeof raw === "object")
-    for (const k of Object.keys(c) as (keyof CrtConfig)[]) {
-      const v = (raw as Record<string, unknown>)[k];
-      if (typeof v === "number" && Number.isFinite(v))
-        c[k] = Math.min(1, Math.max(0, v));
-    }
+  if (!raw || typeof raw !== "object") return c;
+
+  const r = raw as Record<string, unknown>;
+  for (const k of Object.keys(c) as (keyof CrtConfig)[]) {
+    if (k === "mask") continue;
+    const v = r[k];
+    if (typeof v === "number" && Number.isFinite(v))
+      c[k] = Math.min(1, Math.max(0, v));
+  }
+  const mask = CRT_MASKS.find((m) => m === r.mask);
+  if (mask) c.mask = mask;
   return c;
 }
 
@@ -547,11 +601,19 @@ export const PICTURE_KEYS: readonly (keyof CrtConfig)[] = Object.freeze([
   "red", "green", "blue",
 ]);
 
-/** What a preset sets: its tube keys only. It is picked on the Monitor
- * pane, so it leaves the Picture pane's trims alone. */
+/** Tube keys a preset leaves alone. A preset tunes how strongly each
+ * trait shows, not which tube it is, so the mask type the user picked
+ * stays when a preset applies (the Monitor pane's Defaults still
+ * resets it). */
+export const PRESET_KEPT_TUBE_KEYS: readonly (keyof CrtConfig)[] =
+  Object.freeze(["mask"]);
+
+/** What a preset sets: its tube levels only. It is picked on the
+ * Monitor pane, so it leaves the Picture pane's trims and the mask
+ * type alone. */
 export function presetTube(p: CrtPreset): Partial<CrtConfig> {
   const out: Partial<CrtConfig> = { ...p.config };
-  for (const k of PICTURE_KEYS) delete out[k];
+  for (const k of [...PICTURE_KEYS, ...PRESET_KEPT_TUBE_KEYS]) delete out[k];
   return out;
 }
 
@@ -955,6 +1017,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   const uPhase = gl.getUniformLocation(prog, "uPhase");
   const uPower = gl.getUniformLocation(prog, "uPower");
   const uDegauss = gl.getUniformLocation(prog, "uDegauss");
+  const uMask = gl.getUniformLocation(prog, "uMask");
   gl.uniform1i(gl.getUniformLocation(prog, "uBloomTex"), 2);
   gl.uniform1i(gl.getUniformLocation(prog, "uHaloTex"), 3);
   gl.uniform1i(gl.getUniformLocation(prog, "uRows"), 1);
@@ -964,7 +1027,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
 
   // Trait uniforms — config keys pair with shader names, each read by
   // the pass that declares it (softening by the rows pass).
-  const TRAIT_UNIFORMS: Record<keyof CrtConfig, string> = {
+  const TRAIT_UNIFORMS: Record<CrtLevel, string> = {
     scanlines: "uScan", softening: "uSoft", bloom: "uBloom", overdrive: "uOver",
     misconvergence: "uConv", grille: "uGrill", curvature: "uCurve",
     vignette: "uVig", flicker: "uFlick", grain: "uGrain",
@@ -973,7 +1036,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     skew: "uSkew", perspective: "uPersp",
     red: "uRed", green: "uGreen", blue: "uBlue",
   };
-  const traitKeys = Object.keys(TRAIT_UNIFORMS) as (keyof CrtConfig)[];
+  const traitKeys = Object.keys(TRAIT_UNIFORMS) as CrtLevel[];
   const traitLocs = [rowsProg, prog].map((p) => ({
     p,
     locs: traitKeys.flatMap((k) => {
@@ -988,6 +1051,8 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       gl.useProgram(p);
       for (const { k, loc } of locs) gl.uniform1f(loc, cfg[k]);
     }
+    gl.useProgram(prog);
+    gl.uniform1f(uMask, CRT_MASKS.indexOf(cfg.mask));
   };
   upload();
 
