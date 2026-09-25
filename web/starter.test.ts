@@ -246,4 +246,40 @@ describe("runStarter", () => {
     expect(calls).toEqual(["banggai"]);
     expect(r.failed).toEqual([]);
   });
+
+  it("skips what the tank already has and counts only the rest", async () => {
+    const calls: string[] = [];
+    const seen: [number, number][] = [];
+    const have = new Set(["banggai", "brownsand"]);
+    const r = await runStarter(set, {
+      install: (it) => { calls.push(it.inner); return Promise.resolve(); },
+      installed: (it) => have.has(it.inner),
+      progress: (i, total) => seen.push([i, total]),
+      fishArrived: () => {},
+      soundsArrived: () => {},
+      stopped: () => false,
+    });
+    expect(calls).not.toContain("banggai");
+    expect(calls).not.toContain("brownsand");
+    expect(calls).toHaveLength(set.length - have.size);
+    expect(seen).toEqual(calls.map((_, i) => [i, set.length - have.size]));
+    expect(r.failed).toEqual([]);
+  });
+
+  it("reports the sound bank only when it lands", async () => {
+    const landed: string[] = [];
+    const hooks = (fail: boolean) => ({
+      install: (it: Importable) => fail && it.section === "sounds"
+        ? Promise.reject(new Error("bank fetch died")) : Promise.resolve(),
+      installed: () => false,
+      progress: () => {},
+      fishArrived: () => {},
+      soundsArrived: (it: Importable) => { landed.push(it.inner); },
+      stopped: () => false,
+    });
+    await runStarter(set, hooks(true));
+    expect(landed).toEqual([]);
+    await runStarter(set, hooks(false));
+    expect(landed).toEqual(["AZ_WAVES"]);
+  });
 });

@@ -84,12 +84,12 @@ export interface StarterRun {
 
 /** Install a resolved starter set, skipping the items the tank already
  * has (a retry after an unfinished run). The art installs strictly in
- * order — fish first so the stand-ins leave as early as possible — while the
- * sounds, the slowest download, kick off once the first fish lands and
- * overlap the remaining art instead of stacking on the end. The sounds
- * are still awaited last, so progress numbering and failure order keep
- * the set's order. A stopped run returns what it has so far; an
- * in-flight download still lands. */
+ * order — fish first so the stand-ins leave as early as possible —
+ * while the sounds, the slowest download, kick off once the first fish
+ * lands and overlap the remaining art instead of stacking on the end.
+ * The sounds are still awaited last, so progress numbering and
+ * failure order keep the set's order. A stopped run returns what it
+ * has so far; an in-flight download still lands. */
 export async function runStarter(
   items: readonly Importable[],
   hooks: {
