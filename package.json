@@ -1,7 +1,7 @@
 {
   "name": "finsical",
   "version": "0.3.0",
-  "description": "A lightweight retro virtual aquarium for modern macOS.",
+  "description": "A lightweight retro virtual aquarium for macOS, Linux and Android.",
   "license": "Unlicense",
   "type": "module",
   "private": true,

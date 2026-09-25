@@ -26,4 +26,9 @@ Add-ons), which carry its license header. Its readable source is that
 file in this repository, and `npm run build` rebuilds the bundles from
 it, so you can modify or replace the LGPL-covered decoder and relink
 it. The macOS app ships this file and the license text in
-`Finsical.app/Contents/Resources`.
+`Finsical.app/Contents/Resources`. The Linux package ships this file in
+`/usr/share/doc/finsical/` and states the license in
+`/usr/share/doc/finsical/copyright`, which points to the system's copy
+of the license text in `/usr/share/common-licenses/LGPL-2.1`. The
+Android app ships this file, `LICENSE` and the license text in the
+APK's `assets/licenses/`.

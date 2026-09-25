@@ -126,6 +126,34 @@ descriptions of #161 and #162.
   once, a few milliseconds in. Harmless, but the rule could compare
   names instead.
 
+### Linux and Android apps
+
+- Web copy still speaks of a Mac: the WebGL note in `web/prefs.html`,
+  the light timer's "this Mac's clock" in `web/prefs.ts` and the
+  browser About text in `web/menubar.ts`. That is wrong on Linux,
+  Android and in any other browser.
+- On touch screens nothing names a fish (hover) or opens Get Info
+  (Option/Alt-click). A long press could open the card.
+- Android can't import local packs or sounds: the web app has no file
+  picker, and drag and drop only reaches it from another app in split
+  screen. An `<input type=file>` in Import Add-ons would cover it.
+- Android: a folded (windowshaded) panel keeps its full size, so its
+  transparent area still takes taps meant for the tank. In browser mode
+  the page sends the shell no shade message.
+- Android: no themed (monochrome) launcher icon; it needs single-colour
+  art. No keep-screen-on option either.
+- Android: before merge only the CI emulator (API 35) ran the app. Run
+  a phone through panels, Back, Take a Picture, external links, insets
+  and rotation.
+- Linux: the tank resizes only through Larger and Smaller; there is no
+  edge to drag. On native Wayland the tank can't float, stick or reopen
+  where it was, and client windows don't open beside it.
+- Linux: not yet run on a GNOME Shell or KDE session, on HiDPI, or
+  installed on Ubuntu 22.04 or Debian 12. Once, without a compositor,
+  the first frame after install showed stale content; it never
+  reproduced.
+- The AppStream metainfo has no screenshots.
+
 ### Tooling and tests
 
 - `tools/az/pack.py` reads a pack's trailer as (id, sub, offset, pad)

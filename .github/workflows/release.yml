@@ -89,15 +89,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            lintian python3-gi gir1.2-gtk-3.0
+            lintian desktop-file-utils appstream python3-gi gir1.2-gtk-3.0
       - run: npm ci
       - name: Build
         env:
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
-          linux/build-deb.sh
-          lintian --profile debian --fail-on error,warning \
-            "out/Finsical-$VERSION-linux.deb"
+          linux/build-deb.sh --check
           mkdir -p release
           mv "out/Finsical-$VERSION-linux.deb" release/
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
