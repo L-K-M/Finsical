@@ -100,6 +100,14 @@ const PIC_SPECS: SliderSpec[] = [
   { key: "vsize", label: "Height", ends: ["Short", "Tall"], fmt: offset,
     blurb: "The height pot — tubes drifted tall or squat as they " +
       "warmed up, and owners dialed it back by hand." },
+  { key: "hpos", label: "Horizontal position", ends: ["Left", "Right"],
+    fmt: offset,
+    blurb: "The horizontal position pot. Slides the whole picture " +
+      "left or right inside the glass, to center a raster that drifted." },
+  { key: "vpos", label: "Vertical position", ends: ["Down", "Up"],
+    fmt: offset,
+    blurb: "The vertical position pot. Raises or lowers the whole " +
+      "picture inside the glass." },
   { key: "skew", label: "Skew", ends: ["Leans left", "Leans right"],
     fmt: offset,
     blurb: "The parallelogram pot — the raster's top edge slides " +
@@ -134,8 +142,8 @@ const MONITOR_GROUPS: Group[] = [
 ];
 const PICTURE_GROUPS: Group[] = [
   { title: "Picture", rows: [["brightness", "contrast", "zoom"]] },
-  { title: "Geometry", rows: [["hsize", "vsize"],
-                             ["skew", "perspective"]] },
+  { title: "Geometry", rows: [["hsize", "vsize", "hpos"],
+                             ["skew", "perspective", "vpos"]] },
   { title: "Color", rows: [["red", "green", "blue"]] },
 ];
 
