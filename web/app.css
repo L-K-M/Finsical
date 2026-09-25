@@ -81,15 +81,19 @@ canvas#tank {
   /* Fallback until layoutMachine() sets the snapped inline size. */
   width: 100%; height: 100%; object-fit: contain;
 }
-/* CRT pass: full-window WebGL canvas over the (kept-live) tank canvas.
-   The 2D canvas stays as the texture source — opacity 0 hides it while
-   keeping pointer events; clicks still land on #tank through the
-   pointer-events:none overlay. */
+/* CRT pass: WebGL canvas over the whole glass, above the (kept-live)
+   tank canvas, which stays as the texture source at opacity 0. While
+   it draws, the CRT canvas takes the pointer: its picture moves with
+   the geometry pots, and main.ts maps pointer input through the same
+   warp. Like #tank, a click on it feeds or taps, never drags. */
 canvas#crt {
   display: none; position: absolute; inset: 0; z-index: 1;
   width: 100%; height: 100%; pointer-events: none;
 }
-body.crt canvas#crt { display: block; }
+body.crt canvas#crt {
+  display: block; pointer-events: auto;
+  touch-action: none; cursor: default;
+}
 body.crt canvas#tank { opacity: 0; }
 
 /* ---- browser menu bar (web/menubar.ts) ---------------------------------

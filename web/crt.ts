@@ -144,9 +144,18 @@ void main() {
 
 /** How far the position pots (hpos, vpos) slide the raster at
  * either end, as a share of the neutral raster's width or height.
- * The shader and the Preferences value labels both read it; the
- * shader gets it through toFixed so GLSL sees a float literal. */
+ * The shader, its pointer mirror crtScreenToRaster() and the
+ * Preferences value labels all read it. */
 export const POS_RANGE = 0.1;
+
+// Geometry constants shared by FRAG and its pointer mirror,
+// crtScreenToRaster(); see FRAG for what each does.
+const RASTER_CORNER = 6;
+const KEYSTONE = 0.8;
+
+/** A GLSL float literal (GLSL ES 1.0 rejects a bare integer). */
+const glslFloat = (n: number): string =>
+  Number.isInteger(n) ? n.toFixed(1) : String(n);
 
 const FRAG = COMMON + `
 uniform sampler2D uRows; // the rows pass's smeared scanlines
@@ -192,10 +201,15 @@ uniform float uDegauss; // degauss wobble amplitude (0 = settled)
 
 // How far the position pots slide the raster at either end, as a
 // share of the neutral raster's width or height.
-const float POS_RANGE = ${POS_RANGE.toFixed(4)};
+const float POS_RANGE = ${glslFloat(POS_RANGE)};
 
 // Corner radius of the raster, in game px.
-const float RASTER_CORNER = 6.0;
+const float RASTER_CORNER = ${glslFloat(RASTER_CORNER)};
+
+// Keystone strength per unit of the Perspective pot away from center.
+// At full swing the raster's far edge keeps 1 / (1 + K/2) of the
+// looming edge's height: 71% at 0.8.
+const float KEYSTONE = ${glslFloat(KEYSTONE)};
 
 // Light the bloom, halation, overdrive and the grille's lit stripe
 // add at full slider. The highlight shoulder's peak is built from the
@@ -301,9 +315,14 @@ void main() {
   pxScale = uRect.zw / uTank * (1.0 + 0.12 * uZoom) *
             vec2(0.75 + 0.5 * uHSize, 0.75 + 0.5 * uVSize);
 
-  // gc is the position on the glass — vignette and misconvergence
-  // follow the tube, not the raster.
+  // gc is the position in the neutral raster box (uRect), so the
+  // vignette and misconvergence stay put while the pots move the
+  // raster.
   vec2 gc = uv * 2.0 - 1.0;
+  // The uv chain from here to the bounds and corner test below is
+  // mirrored by crtScreenToRaster() for pointer input: keep it in sync.
+  // (The warm-up squeeze and the degauss wobble are transient and left
+  // out of the mirror.)
   // Position pots slide the whole raster inside the glass, up to
   // POS_RANGE of its neutral size either way. First, so the distance
   // stays the same whatever the overscan and size pots do; the
@@ -326,9 +345,13 @@ void main() {
   // keystone — the sample window compresses toward the receding
   // edge and opens toward the looming one, so the raster reads as
   // swung on its stand. All are centered: 0.5 leaves uv alone.
+  // The keystone is normalized by its looming side, whose edge stays
+  // where it sits head-on (depth 1) while only the far edge shrinks
+  // (see KEYSTONE).
   uv.x -= (uSkew - 0.5) * 0.5 * (uv.y - 0.5);
   uv.y -= (uVSkew - 0.5) * 0.5 * (uv.x - 0.5);
-  float depth = 1.0 - (uPersp - 0.5) * 1.2 * (uv.x - 0.5);
+  float keyA = (uPersp - 0.5) * KEYSTONE;
+  float depth = (1.0 - keyA * (uv.x - 0.5)) / (1.0 + 0.5 * abs(keyA));
   uv = (uv - 0.5) / depth + 0.5;
   // The keystone magnifies texels per axis: y by depth, and x by
   // depth squared — depth itself varies with x, so the columns
@@ -369,6 +392,8 @@ void main() {
   vec2 q = abs(lp - 0.5 * uTank) - (0.5 * uTank - RASTER_CORNER);
   float sd = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - RASTER_CORNER;
   float edge = clamp(0.5 - sd * min(pxScale.x, pxScale.y), 0.0, 1.0);
+  // End of the part crtScreenToRaster() mirrors (it treats sd > 0 as
+  // off the raster, half a device px inside this fade's outer end).
   if (edge <= 0.0) {
     gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
     return;
@@ -702,6 +727,146 @@ export function crtRasterRect(bufW: number, bufH: number,
   return [bx + (bw - w) / 2, by + (bh - h) / 2, w, h];
 }
 
+/** The pots that move or warp the raster, read by the pointer mirror. */
+export type CrtGeometry = Pick<CrtConfig, "zoom" | "hsize" | "vsize" |
+  "skew" | "vskew" | "perspective" | "curvature" | "hpos" | "vpos">;
+
+/** A point in raster uv: 0-1 across the neutral raster rect (FRAG's
+ * uRect), y up like gl_FragCoord. */
+export interface RasterUv { x: number; y: number; }
+
+/** A tank-space point in logical px, y down. */
+export interface TankPoint { x: number; y: number; }
+
+/** A logical tank size in px. */
+type TankSize = { width: number; height: number };
+
+// The stages FRAG and its mirror share. Keep in sync with FRAG.
+const posShift = (pot: number): number => (pot - 0.5) * (2 * POS_RANGE);
+const overscanScale = (zoom: number): number => 1 + 0.12 * zoom;
+const sizeScale = (pot: number): number => 0.75 + 0.5 * pot;
+const skewShear = (g: CrtGeometry): number => (g.skew - 0.5) * 0.5;
+const vskewShear = (g: CrtGeometry): number => (g.vskew - 0.5) * 0.5;
+const keystoneA = (g: CrtGeometry): number =>
+  (g.perspective - 0.5) * KEYSTONE;
+const barrelK = (g: CrtGeometry): number => 0.10 * g.curvature;
+
+/** Where the screen point (u, v) of the neutral raster rect samples
+ * the raster once the pots and the tube have moved and warped it:
+ * FRAG's uv chain in order (position pots, overscan, size pots, skews,
+ * keystone, barrel) for the settled tube (no warm-up squeeze or
+ * degauss wobble). Null where the shader draws black: outside the
+ * raster or past its rounded corners, whose radius is in `tank` px.
+ * Keep in sync with FRAG. */
+export function crtScreenToRaster(u: number, v: number, g: CrtGeometry,
+    tank: TankSize = { width: 320, height: 200 }): RasterUv | null {
+  let x = u - posShift(g.hpos);
+  let y = v - posShift(g.vpos);
+  x = (x - 0.5) / overscanScale(g.zoom) + 0.5;
+  y = (y - 0.5) / overscanScale(g.zoom) + 0.5;
+  x = (x - 0.5) / sizeScale(g.hsize) + 0.5;
+  y = (y - 0.5) / sizeScale(g.vsize) + 0.5;
+  x -= skewShear(g) * (y - 0.5);
+  y -= vskewShear(g) * (x - 0.5);
+  const a = keystoneA(g);
+  const depth = (1 - a * (x - 0.5)) / (1 + 0.5 * Math.abs(a));
+  // Past the keystone's vanishing line the shader samples garbage
+  // that its bounds test would reject anyway.
+  if (!(depth > 0)) return null;
+  x = (x - 0.5) / depth + 0.5;
+  y = (y - 0.5) / depth + 0.5;
+  const cx = x * 2 - 1, cy = y * 2 - 1;
+  const bow = 1 + barrelK(g) * (cx * cx + cy * cy);
+  x = cx * bow * 0.5 + 0.5;
+  y = cy * bow * 0.5 + 0.5;
+  if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return null;
+
+  // The rounded corners, as FRAG's signed distance in game px.
+  const qx = Math.abs((x - 0.5) * tank.width) -
+    (0.5 * tank.width - RASTER_CORNER);
+  const qy = Math.abs((y - 0.5) * tank.height) -
+    (0.5 * tank.height - RASTER_CORNER);
+  const sd = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) +
+    Math.min(Math.max(qx, qy), 0) - RASTER_CORNER;
+  return sd > 0 ? null : { x, y };
+}
+
+/** Barrel inversion stops once a step moves less than this (in raster
+ * uv, far below a tank px) or after the step cap. */
+const BARREL_EPS = 1e-9;
+const BARREL_MAX_STEPS = 32;
+
+/** The inverse of crtScreenToRaster, without its null cases: the
+ * neutral-raster screen point where raster point (x, y) shows. Every
+ * stage but the barrel inverts in closed form; the barrel inverts by
+ * fixed-point iteration, which converges because the bow is gentle
+ * (the iteration's gain stays under 0.4 across the raster). */
+export function crtRasterToScreen(x: number, y: number,
+    g: CrtGeometry): RasterUv {
+  const k = barrelK(g);
+  const tx = x * 2 - 1, ty = y * 2 - 1;
+  let cx = tx, cy = ty;
+  for (let i = 0; i < BARREL_MAX_STEPS; i++) {
+    const bow = 1 + k * (cx * cx + cy * cy);
+    const nx = tx / bow, ny = ty / bow;
+    const moved = Math.abs(nx - cx) + Math.abs(ny - cy);
+    cx = nx;
+    cy = ny;
+    if (moved < BARREL_EPS) break;
+  }
+  let u = cx * 0.5 + 0.5;
+  let v = cy * 0.5 + 0.5;
+  // Keystone: t' = t * n / (1 - a t) solves to t = t' / (n + a t').
+  const a = keystoneA(g), n = 1 + 0.5 * Math.abs(a);
+  const t = (u - 0.5) / (n + a * (u - 0.5));
+  const depth = (1 - a * t) / n;
+  u = t + 0.5;
+  v = (v - 0.5) * depth + 0.5;
+  // The shears undo in reverse: vertical skew read the sheared x.
+  v += vskewShear(g) * (u - 0.5);
+  u += skewShear(g) * (v - 0.5);
+  u = (u - 0.5) * sizeScale(g.hsize) + 0.5;
+  v = (v - 0.5) * sizeScale(g.vsize) + 0.5;
+  u = (u - 0.5) * overscanScale(g.zoom) + 0.5;
+  v = (v - 0.5) * overscanScale(g.zoom) + 0.5;
+  return { x: u + posShift(g.hpos), y: v + posShift(g.vpos) };
+}
+
+/** A client rect, as getBoundingClientRect() reports it. */
+type ClientRect = { left: number; top: number; width: number; height: number };
+
+/** Client px over the CRT canvas to the tank point its picture shows
+ * there, or null over black glass. `rect` is the canvas's client rect
+ * and `box` where the neutral raster sits in it (see setRasterBox). */
+export function crtClientToTank(clientX: number, clientY: number,
+    rect: ClientRect, box: RasterBox, g: CrtGeometry,
+    tank: TankSize): TankPoint | null {
+  const [rx, ry, rw, rh] =
+    crtRasterRect(rect.width, rect.height, tank.width, tank.height, box);
+  const u = (clientX - rect.left - rx) / rw;
+  const v = (rect.top + rect.height - clientY - ry) / rh; // y up
+  if (!Number.isFinite(u) || !Number.isFinite(v)) return null;
+  const r = crtScreenToRaster(u, v, g, tank);
+  if (!r) return null;
+  const x = r.x * tank.width, y = (1 - r.y) * tank.height;
+  // Half-open like containPoint: x = width is past the last column.
+  return x < tank.width && y < tank.height ? { x, y } : null;
+}
+
+/** Where a tank point shows on the CRT canvas, in client px: the
+ * inverse of crtClientToTank. */
+export function crtTankToClient(x: number, y: number, rect: ClientRect,
+    box: RasterBox, g: CrtGeometry,
+    tank: TankSize): { x: number; y: number } {
+  const [rx, ry, rw, rh] =
+    crtRasterRect(rect.width, rect.height, tank.width, tank.height, box);
+  const s = crtRasterToScreen(x / tank.width, 1 - y / tank.height, g);
+  return {
+    x: rect.left + rx + s.x * rw,
+    y: rect.top + rect.height - ry - s.y * rh,
+  };
+}
+
 /** Widest rows-pass target, in texels: past this the rows are
  * resampled up, which only softens the sharp end of Softening. */
 const ROW_COLS_MAX = 4096;
@@ -721,7 +886,7 @@ const HALO_SIGMA = 4.5;
 export function crtRowColumns(rasterW: number,
     cfg: Pick<CrtConfig, "zoom" | "hsize">, tankW: number,
     max: number): number {
-  const w = rasterW * (1 + 0.12 * cfg.zoom) * (0.75 + 0.5 * cfg.hsize);
+  const w = rasterW * overscanScale(cfg.zoom) * sizeScale(cfg.hsize);
   return Math.min(max, Math.max(tankW, Math.round(w)));
 }
 
