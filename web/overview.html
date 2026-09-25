@@ -14,7 +14,8 @@
 <body>
   <noscript><p>Finsical needs JavaScript to show the tank.</p><style>#owin{display:none}</style></noscript>
   <!-- A Finder list-view window of what's in the tank: header placard,
-       sortable column headers, the list, and a strip with Remove.
+       sortable column headers, the list, and a strip with Rename and
+       Remove.
        overview.ts fills it in. -->
   <div id="owin" class="osm-page-window">
     <div class="osm-content">
@@ -22,8 +23,9 @@
       <div id="oheads" class="osm-colheads"></div>
       <div id="olist"></div>
       <div id="obar">
-        <button type="button" class="osm-button" id="ouse" disabled>Use</button>
+        <button type="button" class="osm-button" id="ouse" disabled hidden>Use</button>
         <button type="button" class="osm-button" id="oempty">Empty Tank…</button>
+        <button type="button" class="osm-button" id="orename" disabled>Rename…</button>
         <button type="button" class="osm-button" id="oremove" disabled>Remove</button>
       </div>
     </div>

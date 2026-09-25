@@ -9,9 +9,11 @@ import { DUSK_LIGHT, hourLabel, sanitizeLighting } from "../core/light.js";
 import { HUNGER_SEEK, QUALITY_SEEK } from "../core/tuning.js";
 import { MEDICINES } from "../core/aquarium/disease.js";
 import { diseaseName } from "./lifecopy.js";
+import { fishLabel } from "./fishname.js";
 
 export interface StatsFish {
   species?: string;
+  name?: string;
   hunger?: number; // 0 full .. 1 starving
   state?: string;
   health?: number;        // 0..100
@@ -124,7 +126,7 @@ export function deriveStats(s: StatsInput): TankStats {
   const hungries = fish
     .filter((f): f is StatsFish & { hunger: number } =>
       Number.isFinite(f.hunger))
-    .map((f) => ({ name: f.species || "Fish", hunger: f.hunger! }));
+    .map((f) => ({ name: fishLabel(f), hunger: f.hunger! }));
   const avgHunger = hungries.length
     ? hungries.reduce((a, f) => a + f.hunger, 0) / hungries.length
     : null;
@@ -151,7 +153,7 @@ export function deriveStats(s: StatsInput): TankStats {
     milestone: milestone(uptimeMin),
     advice: [],
     sick: fish.filter((f) => Number.isInteger(f.sick))
-      .map((f) => ({ name: f.species || "Fish", disease: f.sick! })),
+      .map((f) => ({ name: fishLabel(f), disease: f.sick! })),
     dead: all.filter(isDead).length,
     water: deriveWater(s.aquarium),
   };

@@ -144,6 +144,8 @@ body.crt canvas#tank { opacity: 0; }
   background: #fff; border: 1px solid #000;
   box-shadow: 1px 1px 0 rgba(0, 0, 0, .3);
   font: var(--osm-font-small); line-height: 12px;
+  /* The tank page is color-scheme: dark, whose default text is white. */
+  color: #000;
 }
 .fintitle {
   position: relative; height: 13px;
@@ -162,9 +164,22 @@ body.crt canvas#tank { opacity: 0; }
 .finclose::before { content: ""; position: absolute; inset: -6px; }
 .finclose:active { background: #000; }
 .finname {
+  display: block; width: 100%; height: 13px; box-sizing: border-box;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
   text-align: center; padding: 0 14px;
+  /* A button (the rename) that reads as the window's title. */
+  margin: 0; border: 0; background: none; color: #000;
+  font: inherit; line-height: 12px; cursor: text;
 }
+/* The rename field sits on the title bar between the close box and the
+   right edge, a plain Mac text field like .ifilter. */
+.finedit {
+  position: absolute; left: 14px; right: 3px; top: 0; height: 13px;
+  box-sizing: border-box; padding: 0 2px; border-radius: 0;
+  border: 1px solid #000; background: #fff; color: #000;
+  font: var(--osm-font-small); line-height: 11px; appearance: none;
+}
+.finedit:focus { outline: none; }
 .finbody { padding: 2px 6px 5px; }
 
 /* ---- client windows --------------------------------------------------
@@ -373,11 +388,14 @@ body.crt canvas#tank { opacity: 0; }
 #olist .osm-row.osm-selected { background: #fff; color: #000; }
 .osm-selected .oname { background: #000; color: #fff; box-shadow: 1px 0 #000, -1px 0 #000; }
 .osm-selected .othumb img { filter: brightness(0.5); }
-#obar { position: relative; height: 31px; border-top: 1px solid #000; }
-#oremove { position: absolute; right: 22px; top: 5px; }
-#ouse { position: absolute; right: 110px; top: 5px; }
+#obar {
+  height: 31px; border-top: 1px solid #000; box-sizing: border-box;
+  display: flex; align-items: center; gap: 10px; padding: 0 22px;
+}
+#obar .osm-button { flex: none; }
+#obar .osm-button[hidden] { display: none; }
 /* Danger action sits alone on the left, away from Remove. */
-#oempty { position: absolute; left: 22px; top: 5px; color: #a00; }
+#oempty { margin-right: auto; color: #a00; }
 #oempty[data-armed] { font-weight: bold; }
 
 /* Hover a fish: its species in a System 7 Balloon-Help-style tip. */
@@ -527,6 +545,19 @@ body.zen .nametag {
 }
 .alerttext { grid-column: 2; min-height: 32px; overflow-wrap: anywhere; }
 .alertprogress { grid-column: 2; margin-top: 9px; }
+/* The Mac text field, as .ifilter draws it, under the alert text. */
+.alertfield {
+  grid-column: 2; margin-top: 9px; height: 19px; width: 100%;
+  box-sizing: border-box; padding: 0 4px; border-radius: 0;
+  border: 1px solid #000; background: #fff; color: #000;
+  font: var(--osm-font-system); appearance: none;
+  user-select: text; -webkit-user-select: text;
+}
+.alertfield:focus { outline: none; box-shadow: 0 0 0 1px #fff, 0 0 0 2px #000; }
+.alertfield[hidden] { display: none; }
+@media (forced-colors: active) {
+  .alertfield:focus { outline: 2px solid Highlight; box-shadow: none; }
+}
 .alertprogress[hidden] { display: none; }
 .alertbuttons {
   grid-column: 1 / -1; margin-top: 15px;

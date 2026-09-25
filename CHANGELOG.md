@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- You can name your fish. Click the name in a fish's Get Info card and
+  type, or select the fish in Tank Overview and choose Rename… (or
+  press Return). The name shows on its name tag, hover tip, Get Info
+  card, Tank Overview, Tank Stats and notices, and it is saved with the
+  tank. Clear the name to go back to the species name.
+- The Get Info card's text is black again. It had turned white on the
+  card's white background.
 - Fish no longer waggle rapidly up and down after swimming past the
   spot they were heading for. They now level out and carry on until
   they turn around.
