@@ -160,7 +160,7 @@ describe("Sim", () => {
     let gold = 0;
     for (let i = 0; i < 500; i++) {
       sim.food.length = 0; // keep the tank clear; only the flag matters
-      if (sim.dropFood(160).golden) gold++;
+      if (sim.dropFood(160)!.golden) gold++;
     }
     expect(gold).toBeGreaterThan(2);
     expect(gold).toBeLessThan(30);
