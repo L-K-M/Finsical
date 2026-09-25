@@ -39,10 +39,11 @@ export interface Item {
   use?: BusMsg | undefined;
   /** Fish rows carry the sim id so a selection can spotlight it. */
   fishId?: number;
-  /** Status-column order: ailing fish first, then hunger bands, then
-   * a fixed state order — a fish turning or startling for a second
-   * must not reshuffle the list under the pointer. */
-  statusRank: number;
+  /** Status-column order as an explicit lexicographic key: ailing fish
+   * first, then hunger bands, then a fixed state order — a fish turning
+   * or startling for a second must not reshuffle the list under the
+   * pointer. A tuple can't collide the way packed integer ranks can. */
+  statusKey: readonly number[];
 }
 
 export type Column = "name" | "kind" | "status";
@@ -124,9 +125,9 @@ export function itemsOf(s: TankState): Item[] {
       fishId: f.id,
       // Ailing rows lead the list, Dead before Sick — a corpse needs
       // attention before a patient does.
-      statusRank: ailing ? (typeof f.dead === "number" ? 0 : 1)
-        : 10 + hungerBand(f.hunger) * 10 +
-          (STATE_ORDER[f.state as FishState] ?? 3),
+      statusKey: ailing ? [typeof f.dead === "number" ? 0 : 1]
+        : [2, hungerBand(f.hunger),
+           STATE_ORDER[f.state as FishState] ?? 3],
     };
   });
   const showing = new Set(
@@ -144,7 +145,9 @@ export function itemsOf(s: TankState): Item[] {
       kind: KINDS[a.section] ?? a.section,
       status: on ? "Showing" : "In tank",
       rank: 1,
-      statusRank: 50, // add-ons sit after every fish
+      // Add-ons sit after every fish; "In tank" sorts ahead of
+      // "Showing" the way the old status-text compare did.
+      statusKey: [3, on ? 1 : 0],
       remove: { op: "removeAddon", url: a.url },
       use: !on && USABLE.has(a.section)
         ? { op: "useAddon", url: a.url } : undefined,
@@ -153,11 +156,18 @@ export function itemsOf(s: TankState): Item[] {
   return items;
 }
 
+/** Lexicographic compare for status keys — prefix-free. */
+function cmpKey(a: readonly number[], b: readonly number[]): number {
+  for (let i = 0; i < a.length && i < b.length; i++)
+    if (a[i]! !== b[i]!) return a[i]! - b[i]!;
+  return a.length - b.length;
+}
+
 export function sortItems(items: Item[], by: Column): Item[] {
   const name = (a: Item, b: Item) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   return [...items].sort((a, b) =>
     by === "kind" ? a.kind.localeCompare(b.kind) || name(a, b)
-    : by === "status" ? a.statusRank - b.statusRank || name(a, b)
+    : by === "status" ? cmpKey(a.statusKey, b.statusKey) || name(a, b)
     : name(a, b) || a.kind.localeCompare(b.kind));
 }

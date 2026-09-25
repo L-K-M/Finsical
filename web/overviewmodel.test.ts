@@ -136,6 +136,19 @@ describe("sortItems", () => {
     expect(rows.map((i) => i.name))
       .toEqual(["Peckish", "Negative", "Notanum"]);
   });
+  it("keeps add-ons after fish, In tank before Showing", () => {
+    // The old status-text sort grouped the two; the rank key must keep
+    // that order rather than interleaving add-ons by name.
+    const rows = sortItems(itemsOf({ ...STATE,
+      fish: [{ id: 1, species: "Guppy", hunger: 0.9, state: "drift" }],
+      addons: [
+        { section: "gravel", inner: "Ashown.grv", url: "u:shown" },
+        { section: "gravel", inner: "Zidle.grv", url: "u:idle" },
+      ],
+      scenery: { gravel: "u:shown" } }), "status");
+    expect(rows.map((i) => i.name))
+      .toEqual(["Guppy", "Zidle.grv", "Ashown.grv"]);
+  });
   it("ailing fish lead the status sort, Dead before Sick", () => {
     // Names are picked so the alphabetical tiebreak would produce the
     // wrong order if the ailing ranks didn't split.
