@@ -267,8 +267,13 @@ body.crt canvas#tank { opacity: 0; }
 #pfdefaults[hidden] { display: none; }
 
 /* ---- Tank Stats window (web/stats.ts) ----------------------------------
-   Laid out like a Get Info window. */
-#swin .osm-content { padding: 4px 12px 0; }
+   A tab control filling the window above Copy Summary, its panels laid
+   out like a Get Info window. The panels clip rather than scroll. */
+#swin .osm-content { display: flex; flex-direction: column; padding: 10px 12px 0; }
+#stabs { flex: auto; min-height: 0; }
+.spanel { box-sizing: border-box; height: 100%; padding: 10px 12px 0; overflow: hidden; }
+#sfoot { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+#squiet[hidden] { display: none; }
 /* Bar, right-aligned percentage, trend arrow; the bar sits on rows
    1..14 of its 17px field row, centered on the text's cap height. */
 .smeter { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
@@ -281,8 +286,6 @@ body.crt canvas#tank { opacity: 0; }
 .sval { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #srows { margin-bottom: 6px; }
 #scare { margin-top: 3px; }
-/* Change Water — clear of the grow box, like the overview's Remove. */
-#skeep { margin: 8px 0 10px; }
 .skrow { display: flex; align-items: center; gap: 4px; margin: 3px 0; }
 .skrow > .osm-label, .skrow > .osm-popup-title {
   flex: none; width: 66px; text-align: right;
