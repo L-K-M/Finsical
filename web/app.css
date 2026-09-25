@@ -46,10 +46,12 @@ body.dragging #screen::after {
   position: absolute; inset: 0; width: 100%; height: 100%;
   user-select: none;
 }
-body.tankpage { cursor: grab; }
+/* The grab hand belongs to the native shell's drag-anywhere window —
+   in a browser nothing drags, so the hand would just promise it. */
+html.native body.tankpage { cursor: grab; }
 /* JS-set, not :active — a native performDrag owns the mouse and the
  * page may never see the pointerup that ends :active. */
-body.tankpage.grabbing { cursor: grabbing; }
+html.native body.tankpage.grabbing { cursor: grabbing; }
 /* Size and position come from layoutMachine(): upscales snap to
    integer multiples of the 320x200 raster so pixels stay uniform. */
 canvas#tank {
@@ -77,8 +79,9 @@ body.crt canvas#tank { opacity: 0; }
 /* ---- browser menu bar (web/menubar.ts) ---------------------------------
    The browser tank page is the whole desktop, so it gets the desktop's
    menu bar: Platinum bar, pull-downs, a clock in the corner. Sits
-   above the machine art (z 2), below the overlay windows (z 10). */
-#menubar { position: fixed; top: 0; left: 0; right: 0; z-index: 6; }
+   above the machine art (z 2) and the overlay windows (z 10) — Mac OS
+   keeps the bar live while a window is open — below alerts (z 20). */
+#menubar { position: fixed; top: 0; left: 0; right: 0; z-index: 15; }
 #menubar .mbclock {
   position: absolute; right: 12px; top: 2px;
   font: var(--osm-font-system); color: #000;

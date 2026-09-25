@@ -1968,15 +1968,20 @@ if (!backEl.isConnected ||
 
 function layoutMachine(): void {
   canvasRect = null; // the tank may have moved with the aperture
-  const w = machineEl.clientWidth, h = machineEl.clientHeight;
-  if (!w || !h) return;
+  // The browser's menu bar is fixed over the page top — letterbox
+  // into the room below it so it never covers the case's crown or,
+  // on Bare, the tank's top feed rows. Hidden/absent (zen, native,
+  // old markup) measures 0 and the layout is unchanged.
+  const barH = document.getElementById("menubar")?.offsetHeight ?? 0;
+  const w = machineEl.clientWidth, h = machineEl.clientHeight - barH;
+  if (!w || h <= 0) return;
   // preserveAspectRatio=meet letterboxes the shell — land the screen
   // and its backplate on the same scaled + offset rects as the art's
   // glass. Computed, not CSS-percentage'd, so browser dev (no native
   // aspect enforcement) stays aligned too.
   const s = Math.min(w / machine.vbW, h / machine.vbH);
   const ox = (w - machine.vbW * s) / 2;
-  const oy = (h - machine.vbH * s) / 2;
+  const oy = barH + (h - machine.vbH * s) / 2;
   screenEl.style.left = `${ox + machine.sx * s}px`;
   screenEl.style.top = `${oy + machine.sy * s}px`;
   screenEl.style.width = `${machine.sw * s}px`;
@@ -2223,6 +2228,9 @@ function setZen(on: boolean): boolean {
     closeInfo(); // the card is chrome too
     fishTip.style.display = "none";
   }
+  // Zen hides the menu bar — the case reclaims its 20 px (or pays it
+  // back on exit).
+  layoutMachine();
   requestPaint();
   return zen; // like togglePause: the native menu retitles at once
 }
@@ -2355,6 +2363,9 @@ mountTankMenuBar({
                   lampOn: lighting.lamp, muted: soundCfg.muted, paused,
                   zen, scoldOn, bootOn: bootEnabled }),
 });
+// The bar may have mounted after the first layout — place the case
+// below it now rather than waiting for a resize.
+layoutMachine();
 
 // web/pack/ is gitignored and no build ships one, so a missing
 // manifest means no bundled pack, not a failure worth a warning.
