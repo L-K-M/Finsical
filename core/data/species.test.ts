@@ -108,4 +108,14 @@ describe("packSpeciesCare", () => {
     ]);
     expect(packSpeciesCare(d)!.susceptible).toEqual(DEFAULT_SUSCEPTIBLE);
   });
+
+  it("won't borrow a lone SuS# that another species claims", () => {
+    // FsTI 600's list was lost; the pack's only SuS# belongs to 700.
+    const d = buildPack([
+      { type: "FsTI", id: 600, payload: [...fsti()] },
+      { type: "FsTI", id: 700, payload: [...fsti()] },
+      { type: "SuS#", id: 700, payload: [1, 0, 7, 0] },
+    ]);
+    expect(packSpeciesCare(d)!.susceptible).toEqual(DEFAULT_SUSCEPTIBLE);
+  });
 });

@@ -137,13 +137,15 @@ export function packSpeciesCare(d: Uint8Array): SpeciesCare | null {
     if (!s) continue;
     // A species' records share one id across types — pair the SuS# by
     // id so a multi-species pack can't hand this fish another species'
-    // disease list. The single-SuS# fallback covers packs with one
-    // shared list; with several present, no id match means this
-    // species has none (the sequential parser's all--1 ids still
-    // match the primary find).
+    // disease list. The lone-SuS# fallback covers packs with one shared
+    // list, but only when no FsTI claims that id — a lone list that is
+    // another species' stays its own (the sequential parser's all--1
+    // ids still match the primary find).
     const allSus = res.filter((x) => x.type === "SuS#");
+    const lone = allSus.length === 1 ? allSus[0] : undefined;
     const sus = allSus.find((x) => x.id === r.id) ??
-                (allSus.length === 1 ? allSus[0] : undefined);
+                (lone && !res.some((x) => x.type === "FsTI" &&
+                                   x.id === lone.id) ? lone : undefined);
     const ids = sus ? parseSusceptibility(sus.payload) : null;
     if (ids) s.susceptible = ids;
     return s;
