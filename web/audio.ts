@@ -6,18 +6,28 @@ import type { AzpackManifest } from "../core/data/azpack.js";
 /** The tank's sound settings, owned and persisted by the tank page and
  * edited from Preferences' Sound pane. */
 export interface SoundConfig {
-  /** Master level, 0 (silent) to 1 (each sound at its mixed gain). */
+  /** Master level, 0 (silent) to 1 (each sound at its mixed gain).
+   * This is the slider position — the heard level is
+   * `gainForVolume(volume)`. */
   volume: number;
   /** Silences everything but keeps `volume` for unmuting. */
   muted: boolean;
   bubbles: boolean;
   ambient: boolean;
+  /** Schema marker: 2 since the gain curve turned quadratic. Absent
+   * on older saves; only sanitizeSoundConfig reads it. */
+  v?: number;
 }
 
 export const SOUND_DEFAULTS: Readonly<SoundConfig> =
   Object.freeze<SoundConfig>({
-    volume: 0.7, muted: false, bubbles: true, ambient: true,
+    volume: 0.84, muted: false, bubbles: true, ambient: true, v: 2,
   });
+
+/** Slider position → master gain. Quadratic: the ear hears roughly
+ * logarithmically, so half the slider's travel no longer covers just
+ * one halving of loudness — 50% is -12 dB, 25% is -24 dB. */
+export function gainForVolume(v: number): number { return v * v; }
 
 /** Trust boundary for localStorage payloads and bus messages: unknown
  * keys drop, wrong types fall back to the defaults, volume clamps. */
@@ -25,8 +35,12 @@ export function sanitizeSoundConfig(raw: unknown): SoundConfig {
   const c = { ...SOUND_DEFAULTS };
   if (!raw || typeof raw !== "object") return c;
   const r = raw as Record<string, unknown>;
-  if (typeof r.volume === "number" && Number.isFinite(r.volume))
-    c.volume = Math.min(1, Math.max(0, r.volume));
+  const hadVolume =
+    typeof r.volume === "number" && Number.isFinite(r.volume);
+  if (hadVolume) c.volume = Math.min(1, Math.max(0, r.volume as number));
+  // A volume saved before v: 2 was the gain itself; it becomes the
+  // slider position that reproduces that level under the new curve.
+  if (r.v !== 2 && hadVolume) c.volume = Math.sqrt(c.volume);
   for (const k of ["muted", "bubbles", "ambient"] as const) {
     const v = r[k];
     if (typeof v === "boolean") c[k] = v;
@@ -237,7 +251,9 @@ export class TankAudio {
     return ac;
   }
 
-  private level(): number { return this.muted ? 0 : this.volume; }
+  private level(): number {
+    return this.muted ? 0 : gainForVolume(this.volume);
+  }
 
   /** Glide the live master to the current level: a hard step in the
    * gain mid-waveform clicks on mute and zippers under a slider drag. */

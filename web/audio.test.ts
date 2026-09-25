@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FEEDBACK_MAX_S, panFor, SOUND_DEFAULTS, sanitizeSoundConfig,
+import { FEEDBACK_MAX_S, gainForVolume, panFor, SOUND_DEFAULTS,
+         sanitizeSoundConfig,
          TankAudio } from "./audio.js";
 import type { AzpackManifest } from "../core/data/azpack.js";
 
@@ -121,16 +122,24 @@ const stubActivation = (isActive: boolean): void => {
     { configurable: true, get: () => ({ isActive }) });
 };
 
+describe("gainForVolume", () => {
+  it("is quadratic over the slider range", () => {
+    expect(gainForVolume(0)).toBe(0);
+    expect(gainForVolume(1)).toBe(1);
+    expect(gainForVolume(0.5)).toBe(0.25);
+  });
+});
+
 describe("TankAudio master gain", () => {
   it("routes every sound through the master and maps the volume", async () => {
     const { audio, ac, master } = await tank({ bubble: 1, drop: 1 });
-    expect(master.gain.value).toBe(SOUND_DEFAULTS.volume);
+    expect(master.gain.value).toBe(gainForVolume(SOUND_DEFAULTS.volume));
     audio.bubble();
     audio.feed();
     expect(ac.sources).toHaveLength(2);
     for (const s of ac.sources) expect(sinkOf(s)).toBe(master);
-    audio.setVolume(0.25);
-    expect(level(master.gain)).toBe(0.25);
+    audio.setVolume(0.5);
+    expect(level(master.gain)).toBe(0.25); // quadratic: -12 dB at 50%
     audio.setVolume(3);
     expect(level(master.gain)).toBe(1);
   });
@@ -142,7 +151,8 @@ describe("TankAudio master gain", () => {
     await audio.addWavs([{ name: "bubble", wav: wav(1) }]);
     expect(FakeContext.last!.gains[0]!.gain.value).toBe(0);
     audio.setMuted(false);
-    expect(level(FakeContext.last!.gains[0]!.gain)).toBe(0.4);
+    expect(level(FakeContext.last!.gains[0]!.gain))
+      .toBe(gainForVolume(0.4));
   });
 
   it("mute sets the master to 0 and unmute restores the volume", async () => {
@@ -153,7 +163,7 @@ describe("TankAudio master gain", () => {
     audio.setVolume(0.9); // adjusting while muted stays silent
     expect(level(master.gain)).toBe(0);
     audio.setMuted(false);
-    expect(level(master.gain)).toBe(0.9);
+    expect(level(master.gain)).toBe(gainForVolume(0.9));
   });
 
   it("glides a live level change instead of stepping it", async () => {
@@ -859,22 +869,37 @@ describe("sanitizeSoundConfig", () => {
   });
 
   it("keeps valid values and drops unknown keys", () => {
-    const c = sanitizeSoundConfig({ volume: 0.3, muted: true, bogus: 1 });
+    const c = sanitizeSoundConfig(
+      { volume: 0.3, muted: true, bogus: 1, v: 2 });
     expect(c).toEqual({ ...SOUND_DEFAULTS, volume: 0.3, muted: true });
     expect("bogus" in c).toBe(false);
   });
 
   it("clamps the volume and rejects wrong types", () => {
-    expect(sanitizeSoundConfig({ volume: 5 }).volume).toBe(1);
-    expect(sanitizeSoundConfig({ volume: -1 }).volume).toBe(0);
+    expect(sanitizeSoundConfig({ volume: 5, v: 2 }).volume).toBe(1);
+    expect(sanitizeSoundConfig({ volume: -1, v: 2 }).volume).toBe(0);
     const c = sanitizeSoundConfig({
       volume: NaN, muted: "yes", bubbles: 0, ambient: null,
     });
     expect(c).toEqual(SOUND_DEFAULTS);
   });
 
+  it("maps a pre-quadratic volume to the slider that replays it", () => {
+    // Before v: 2 the saved number was the gain itself; under the new
+    // curve the same level sits at sqrt(volume).
+    const c = sanitizeSoundConfig({ volume: 0.49 });
+    expect(c.volume).toBeCloseTo(0.7, 10);
+    expect(c.v).toBe(2);
+    // Idempotent: re-sanitizing the migrated config does not move it.
+    expect(sanitizeSoundConfig(c).volume).toBeCloseTo(0.7, 10);
+    // A missing or non-numeric volume doesn't migrate the default.
+    expect(sanitizeSoundConfig({ muted: true }).volume)
+      .toBe(SOUND_DEFAULTS.volume);
+  });
+
   it("round-trips a full config as a copy", () => {
-    const off = { volume: 0, muted: true, bubbles: false, ambient: false };
+    const off = { volume: 0, muted: true, bubbles: false,
+                  ambient: false, v: 2 };
     expect(sanitizeSoundConfig(off)).toEqual(off);
     const c = sanitizeSoundConfig(SOUND_DEFAULTS);
     expect(c).toEqual(SOUND_DEFAULTS);

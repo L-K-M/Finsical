@@ -34,7 +34,7 @@ descriptions of #161 and #162.
 | Backdrops downscale nearest-neighbor, per `PLAN.md` (#125 smoothed them). | `fitBackdrop` in `web/main.ts` |
 | One bad sheet rejects a whole `.azpack` (#145). Only the project's own emitter makes these packs. | `core/data/azpack.ts` |
 | Add Again on decor adds another copy, as it does for fish. Copies don't persist yet (B-21 in `ANALYSIS.md`). | `web/main.ts` |
-| The default volume is 0.7 (#159). | sound defaults in `web/audio.ts` |
+| The default volume is 0.84 — the slider position that gives the old default's ~-3 dB under the quadratic gain curve. | sound defaults in `web/audio.ts` |
 | Pause is remembered across launches and uses Cmd-P; there is no Print item. | `PAUSE_KEY` in `web/main.ts` |
 | First launch offers the starter set from archive.org; Not Now keeps the stand-in fish (#160). | `web/welcome.ts`, `web/starter.ts` |
 | The glass-tap sign is a modal alert, shown at most once per 30 minutes. | `SCOLD_COOLDOWN_MS` in `web/scold.ts` |
