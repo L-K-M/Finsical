@@ -1,4 +1,5 @@
 import Cocoa
+import UniformTypeIdentifiers
 import WebKit
 
 /// Serves the bundled web app (Resources/web/) on the `finsical` scheme so
@@ -495,6 +496,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 OsmiumWindowHost.drag(window, firstResponder: webView)
                 return
             }
+            // WKWebView ignores <a download>: Take a Picture posts the
+            // PNG over the bus for a real NSSavePanel instead.
+            if body["op"] as? String == "savePicture",
+               message.webView === webView,
+               let name = body["name"] as? String,
+               let png = body["png"] as? String {
+                savePicturePng(png, suggestedName: name)
+                return
+            }
             // Tank state carries the Tank menu's live toggles and the
             // machine's viewBox aspect. Falls through: clients still
             // need the push.
@@ -607,6 +617,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                  " : (() => { throw new Error('window.finsical.toggleCrt missing') })()"
         webView?.evaluateJavaScript(js) { _, error in
             if let error { NSLog("Finsical: toggleCrt JS failed: \(error.localizedDescription)") }
+        }
+    }
+
+    /// Take a Picture's save: decode the base64 PNG the page posted and
+    /// offer it to a real save panel (WKWebView ignores <a download>).
+    private func savePicturePng(_ base64: String, suggestedName: String) {
+        guard let data = Data(base64Encoded: base64) else {
+            NSLog("Finsical: savePicture payload was not base64 data")
+            return
+        }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = suggestedName
+        panel.allowedContentTypes = [.png]
+        panel.canCreateDirectories = true
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do { try data.write(to: url, options: .atomic) }
+            catch {
+                NSLog("Finsical: Take a Picture save failed: "
+                      + "\(error.localizedDescription)")
+            }
+        }
+    }
+
+    @objc func takePicture() {
+        let js = "window.finsical?.takePicture ? window.finsical.takePicture()" +
+                 " : (() => { throw new Error('window.finsical.takePicture missing') })()"
+        webView?.evaluateJavaScript(js) { _, error in
+            if let error { NSLog("Finsical: takePicture JS failed: \(error.localizedDescription)") }
         }
     }
 
@@ -964,6 +1003,9 @@ enum FinsicalApp {
                                  action: #selector(AppDelegate.togglePause),
                                  keyEquivalent: "p") // ⌘P — no Print menu here
         delegate.setPauseMenuItem(pause)
+        tankMenu.addItem(withTitle: "Take a Picture",
+                         action: #selector(AppDelegate.takePicture),
+                         keyEquivalent: "")
         tankMenu.addItem(.separator())
         tankMenu.addItem(withTitle: "Support the Internet Archive",
                          action: #selector(AppDelegate.supportArchive),
