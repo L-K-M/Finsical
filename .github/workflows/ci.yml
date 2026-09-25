@@ -78,6 +78,12 @@ jobs:
       # lint covers the debug variant only; lintRelease checks release.
       - run: ./gradlew assembleDebug assembleRelease lint lintRelease test
         working-directory: android
+      # THIRD_PARTY_NOTICES.md promises the LGPL decoder's source in the
+      # APK; a byte compare catches a missing or stale copy.
+      - name: Check the APK ships the decoder source
+        run: |
+          unzip -p android/app/build/outputs/apk/release/Finsical-*-android-release-unsigned.apk \
+            assets/core/data/mace.ts | cmp - core/data/mace.ts
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: finsical-android-debug

@@ -35,6 +35,9 @@ readonly WEB_FILES=(index.html overview.html addons.html prefs.html stats.html
 readonly DEPENDS="python3 (>= 3.10), python3-gi, python3-gi-cairo, gir1.2-gtk-3.0, gir1.2-webkit2-4.1 (>= 2.40)"
 # GStreamer's AIFF and AAC decoders, for importing .aiff and .m4a sounds.
 readonly RECOMMENDS="gstreamer1.0-plugins-bad"
+# The LGPL decoder's source, relative to the repository root; shipped
+# under the same relative path in /usr/share/finsical.
+readonly MACE_SOURCE=core/data/mace.ts
 # Renders the icons (GdkPixbuf through PyGObject).
 readonly PYTHON="${PYTHON:-/usr/bin/python3}"
 
@@ -103,7 +106,8 @@ WORK="$(mktemp -d)"
 trap 'rm -rf -- "$WORK"' EXIT
 readonly ROOT="$WORK/root"
 install -d -m 0755 "$ROOT/DEBIAN" "$ROOT/$BIN_DIR" "$ROOT/$SHARE_DIR/finsical_shell" \
-  "$ROOT/$SHARE_DIR/web" "$ROOT/usr/share/applications" "$ROOT/usr/share/metainfo" \
+  "$ROOT/$SHARE_DIR/web" "$ROOT/$SHARE_DIR/core/data" \
+  "$ROOT/usr/share/applications" "$ROOT/usr/share/metainfo" \
   "$ROOT/$DOC_DIR" "$ROOT/usr/share/man/man$MAN_SECTION" "$ROOT/usr/share/lintian/overrides"
 
 # --- Program ------------------------------------------------------------------
@@ -122,6 +126,9 @@ if [[ -d web/pack ]]; then
   cp -R web/pack "$ROOT/$SHARE_DIR/web/pack"
 fi
 printf '%s\n' "$VERSION" > "$ROOT/$SHARE_DIR/version.txt"
+# The bundles compile in the LGPL decoder: ship its source too, at the
+# path THIRD_PARTY_NOTICES.md names (as macos/Makefile does).
+install -m 0644 "$MACE_SOURCE" "$ROOT/$SHARE_DIR/$MACE_SOURCE"
 
 # --- Desktop integration ------------------------------------------------------
 install -m 0644 "$SCRIPT_DIR/$APP_ID.desktop" "$ROOT/usr/share/applications/"
@@ -250,6 +257,8 @@ if ((check_requested)); then
   dpkg-deb -x "$DEB" "$CHECK"
   desktop-file-validate "$CHECK/usr/share/applications/$APP_ID.desktop"
   appstreamcli validate-tree --no-net "$CHECK"
+  cmp "$MACE_SOURCE" "$CHECK/$SHARE_DIR/$MACE_SOURCE" ||
+    die "the package's $MACE_SOURCE differs from the repository's"
   lintian --profile debian --display-info --fail-on error,warning "$DEB"
   echo "Checks passed"
 fi

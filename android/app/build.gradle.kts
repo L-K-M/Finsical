@@ -166,7 +166,9 @@ abstract class BuildWeb : DefaultTask() {
 
 /**
  * Collects the APK's assets: the web root under web/ (with the optional
- * bundled pack under web/pack/) and the license files under licenses/.
+ * bundled pack under web/pack/), the license files under licenses/, and
+ * the LGPL decoder's source under core/data/ (THIRD_PARTY_NOTICES.md
+ * names that path; the bundles compile it in).
  */
 abstract class SyncWebAssets : DefaultTask() {
     @get:InputDirectory
@@ -182,6 +184,10 @@ abstract class SyncWebAssets : DefaultTask() {
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.NAME_ONLY)
     abstract val licenseFiles: ConfigurableFileCollection
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val decoderSource: RegularFileProperty
 
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
@@ -205,6 +211,7 @@ abstract class SyncWebAssets : DefaultTask() {
             from(root) { into("web") }
             if (pack.isDirectory) from(pack) { into("web/pack") }
             from(licenseFiles) { into("licenses") }
+            from(decoderSource) { into("core/data") }
         }
     }
 }
@@ -237,6 +244,7 @@ val syncWebAssets = tasks.register<SyncWebAssets>("syncWebAssets") {
         repoRoot.file("THIRD_PARTY_NOTICES.md"),
         repoRoot.file("LICENSES/LGPL-2.1.txt"),
     )
+    decoderSource = repoRoot.file("core/data/mace.ts")
 }
 
 // ---- Launcher icons ---------------------------------------------------------

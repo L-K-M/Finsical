@@ -13,9 +13,10 @@ Copyright: 2002 Laszlo Torok
 License: LGPL-2.1+
 Comment: Ported from FFmpeg libavcodec/mace.c. The decoder is compiled
  into /usr/share/finsical/web/bundle.js and addons.js, which carry its
- license header. Its readable source is core/data/mace.ts in the
- upstream repository, whose `npm run build` rebuilds the bundles from
- it. See /usr/share/doc/finsical/THIRD_PARTY_NOTICES.md.
+ license header. Its readable source ships as
+ /usr/share/finsical/core/data/mace.ts; in the upstream repository,
+ `npm run build` rebuilds the bundles from it. See
+ /usr/share/doc/finsical/THIRD_PARTY_NOTICES.md.
 
 License: LGPL-2.1+
  This library is free software; you can redistribute it and/or
