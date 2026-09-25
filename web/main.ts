@@ -565,8 +565,8 @@ function fishAtPoint(p: { x: number; y: number }): Fish | null {
 // click drops food, the cursor becomes a crosshair and the waterline
 // brightens (see render()). Hover is re-evaluated every frame from the
 // last client point (see frame()), so a resize under a stationary
-// pointer can't leave it stale, and getBoundingClientRect runs once
-// per frame instead of per move.
+// pointer can't leave it stale, and the rect comes from tankRect()'s
+// cache — a layout read per resize, not per frame.
 let overFeedZone = false;
 let lastClient: { x: number; y: number } | null = null;
 // The mouse's last position, kept separately so a lifting touch can
@@ -2223,10 +2223,10 @@ function takePicture(): void {
   // A paused canvas carries the scrim and the PAUSED label — repaint
   // without them for the shot, then put the overlay back. Both
   // renders run inside this task, so nothing flickers.
-  if (paused) render(true);
-  c.drawImage(canvas, 0, 0, out.width, out.height);
-  if (paused) render();
   const d = new Date();
+  if (paused) render(d, true);
+  c.drawImage(canvas, 0, 0, out.width, out.height);
+  if (paused) render(d);
   const pad = (n: number): string => String(n).padStart(2, "0");
   const name = `finsical-${d.getFullYear()}${pad(d.getMonth() + 1)}` +
     `${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}` +
@@ -3035,7 +3035,7 @@ function stirSurface(): void {
     disturbSurface(surface, f.x, sign * f.speed * WAKE_PUSH, 2);
   }
 }
-function render(hidePauseOverlay = false): void {
+function render(now: Date, hidePauseOverlay = false): void {
   // The startup parade owns the canvas until it fades: black, desktop,
   // marching icons — then the tank draws normally under a fading boot
   // screen, so the crossfade needs no compositing machinery.
@@ -3178,7 +3178,7 @@ function render(hidePauseOverlay = false): void {
   // Fouled water murks the whole scene.
   drawMurk(ctx, sim.waterQuality, t);
 
-  drawNight(new Date());
+  drawNight(now);
 
   // The cat presses its paw to the outside of the glass — painted after
   // the murk and night tints, which can't dim what's on the viewer's
@@ -3414,8 +3414,10 @@ function frame(now: number): void {
   acc = plan.acc;
   last = now;
   // The light timer follows the Mac's clock; hand the sim this
-  // frame's light before it ticks.
-  syncLight(new Date());
+  // frame's light before it ticks. One Date for the whole frame: the
+  // light timer and the night tint read it microseconds apart.
+  const frameDate = new Date();
+  syncLight(frameDate);
   // Ahead of the tick gate: hover must update (and repaint) even
   // while no tick runs.
   syncFeedHover();
@@ -3438,7 +3440,7 @@ function frame(now: number): void {
   const crtBusy = crt?.animating ?? false;
   if (ticks === 0 && !frameDirty && !crtBusy && bootT0 === null) return;
   frameDirty = false;
-  render();
+  render(frameDate);
   // A parked cursor doesn't re-hit-test: hide the tip once the fish
   // under it has swum off, and refresh the label while it stays —
   // the state word would otherwise go stale between pointermoves.
