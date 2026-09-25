@@ -287,7 +287,10 @@ body.crt canvas#tank { opacity: 0; }
 #olist[data-sort="name"] .ocell-name, #olist[data-sort="kind"] .ocell-kind,
 #olist[data-sort="status"] .ocell-status { background: #ddd; }
 /* The Finder's direction triangle rides in the sorted header: up for
- * ascending, and down once the column is turned around. */
+ * ascending, and down once the column is turned around. The header
+ * button is the triangle's containing block — without this the
+ * absolute offsets resolve against the window instead. */
+.osm-colhead { position: relative; }
 .osm-colhead.osm-sorted::after {
   content: "";
   position: absolute;
