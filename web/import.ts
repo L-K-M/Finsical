@@ -667,11 +667,20 @@ export function qualifySoundItemName(
  * the caller can pick each one's best sheet. Sound-bearing entries
  * (audio files, 'snd ' resource forks) come back as sound records. */
 export async function importAddon(url: string): Promise<PackResult[]> {
-  // Dropped packs persist as raw bytes under a `local:` key — nothing
-  // to download; decode them like any other pack blob.
+  // Dropped packs and pictures persist as raw bytes under a `local:`
+  // key — nothing to download; decode them like any other blob.
   if (isLocalPack(url)) {
     const d = await packGet(url);
     if (!d) throw new Error(`${url}: stored pack missing`);
+    // A dropped picture: the same images-only result as the remote
+    // isBmp branch. The drop keeps only pictures that decode.
+    if (isBmp(d)) {
+      const img = decodeBmp(d);
+      if (!img)
+        throw new Error(`${url}: stored picture is not a 256-color BMP`);
+      return [{ entry: url, sheets: new Map(), images: new Map([[url, img]]),
+                sounds: [] }];
+    }
     if (!isPack(d)) throw new Error(`${url}: stored data is not a pack`);
     // Same shape as the remote isPack branch: a pack blob yields no
     // sound records — dropped loose audio already persisted via

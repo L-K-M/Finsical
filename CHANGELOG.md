@@ -69,6 +69,11 @@
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.
+- You can use your own picture as the backdrop, as in AquaZone: drag a
+  256-color BMP of at least 160 by 100 pixels onto the tank. It is
+  kept, so it comes back at every launch, and Tank Overview lists it
+  with Remove. A picture Finsical can't use, such as a 24-bit BMP or
+  a smaller one, gets a note on the glass saying which pictures work.
 - In the Machine list the Performas drop "Macintosh" from their names,
   so "Performa 5200 (Black)" and "Performa 450 (II)" are no longer cut
   off mid-letter; a name still too long for the list ends in an
