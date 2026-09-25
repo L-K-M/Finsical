@@ -261,7 +261,7 @@ void main() {
 
   // Scanlines: each row is a beam whose spot swells with its
   // brightness, so dark rows thin to lines with deep gaps while bright
-  // rows nearly fill them and spill a little into their neighbors — a
+  // rows nearly fill them and spill a little into their neighbors. A
   // lone bright pixel glows as a dot instead of a sliver. Like
   // Softening, the first 40% of the slider fades the lines in at a
   // fixed spot size; beyond that the spots narrow and the gaps deepen.
