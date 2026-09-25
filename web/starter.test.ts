@@ -172,7 +172,7 @@ describe("runStarter", () => {
     });
     expect(r.failed.map((f) => f.inner)).toEqual(["brownsand"]);
     expect(r.problem).toBeInstanceOf(Error);
-    expect(r.problem!.message).toContain("brownsand");
+    expect((r.problem as Error).message).toContain("brownsand");
   });
 
   it("still installs the sounds when every fish fails", async () => {
