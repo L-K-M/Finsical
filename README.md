@@ -2,7 +2,7 @@
 
 **Latest release:** v<!-- version -->0.4.0<!-- /version --> · [Download](https://github.com/L-K-M/Finsical/releases/latest) · [Changelog](CHANGELOG.md)
 
-![Screenshot showing a Performa backdrop](media-sources/screenshot.png)
+![Screenshot showing a Performa 5200 backdrop](media-sources/screenshot3.png)
 
 > [!IMPORTANT]
 > LLM disclosure: This codebase was written with substantial help from large language models: AI coding agents working from the [`AGENTS.md`](AGENTS.md) brief in this repo.
