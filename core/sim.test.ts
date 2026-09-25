@@ -1179,3 +1179,51 @@ describe("lifecycle", () => {
   });
 
 });
+
+describe("B-58 hunger and vigor", () => {
+  it("brakes a weakened seeker — the floor is pre-vigor", () => {
+    // A latched brake past its decay lands on the floor; a fish whose
+    // vigor is down (ill or worn by foul water) must cross that floor
+    // proportionally instead of having the division cancel it out.
+    const step = (health: number): number => {
+      const sim = new Sim({ width: 320, height: 200 }, 5);
+      const f = sim.addFish({ x: 100, y: 100, hunger: 1, facing: 1,
+                              state: "seek", latch: 0, peak: 1,
+                              phase: 30, speed: 0.6 });
+      sim.advanceLife(1);
+      f.life!.health = health;
+      sim.food.push({ x: 108, y: 100, eaten: false, settled: 1 });
+      sim.tick();
+      return Math.hypot(f.x - 100, f.y - 100);
+    };
+    const well = step(90);
+    const weak = step(1);
+    expect(weak).toBeLessThan(well * 0.9);
+  });
+
+  it("wakes a sleeper for a pellet inside NOTICE_DIST at snack hunger", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 4);
+    sim.setLight(0); // night
+    const f = sim.addFish({ x: 100, y: 184, hunger: 0.2,
+                            state: "sleep" });
+    sim.dropFood(115); // sinks to the gravel 15 px from the sleeper
+    let woke = false;
+    for (let i = 0; i < 700 && !woke; i++) {
+      sim.tick();
+      woke = f.state !== "sleep";
+    }
+    expect(woke).toBe(true);
+  });
+
+  it("keeps a snack-hungry sleeper down for a distant pellet", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 4);
+    sim.setLight(0);
+    const f = sim.addFish({ x: 100, y: 184, hunger: 0.2,
+                            state: "sleep" });
+    sim.dropFood(300); // 200 px away — too far to smell at 0.2
+    for (let i = 0; i < 600; i++) {
+      sim.tick();
+      expect(f.state).toBe("sleep");
+    }
+  });
+});
