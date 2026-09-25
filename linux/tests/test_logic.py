@@ -895,9 +895,7 @@ class TestPicture(unittest.TestCase):
             logic.picture_file_name("finsical-20260925-101010.png"),
             "finsical-20260925-101010.png",
         )
-        self.assertEqual(
-            logic.picture_file_name("../../etc/passwd"), "passwd"
-        )
+        self.assertEqual(logic.picture_file_name("../../etc/passwd"), "passwd")
         self.assertEqual(logic.picture_file_name("a\\b.png"), "b.png")
         for bad in (None, "", "..", "dir/", 5):
             self.assertEqual(
@@ -948,9 +946,7 @@ class TestMenu(unittest.TestCase):
     def test_take_a_picture_is_in_the_menu(self):
         # macOS Tank ▸ Take a Picture, right after Pause.
         actions = [e and e.action for e in logic.APP_MENU]
-        self.assertEqual(
-            actions[actions.index("pause") + 1], "picture"
-        )
+        self.assertEqual(actions[actions.index("pause") + 1], "picture")
 
     def test_actions_are_unique(self):
         actions = [e.action for e in logic.APP_MENU if e is not None]

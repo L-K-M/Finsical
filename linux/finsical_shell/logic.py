@@ -944,6 +944,29 @@ def scaled_shape_rects(shape: tuple[BoxRect, ...], scale: float) -> list[Rect]:
 
 
 # ---------------------------------------------------------------------------
+# The right-click menu
+
+# Every page cancels contextmenu, to hide WebKit's generic menu (Reload
+# and so on) in the macOS shell. WebKitGTK then never emits
+# context-menu, and this shell's app menu, the only route to several
+# commands, could not open. The shell replaces the generic menu anyway,
+# so this capture-phase listener, injected before the page's scripts,
+# keeps the pages' handlers from seeing the event. Editable fields get
+# WebKit's editing menu from the shell (web.py).
+KEEP_CONTEXT_MENU_SCRIPT = (
+    'window.addEventListener("contextmenu",'
+    " (e) => e.stopImmediatePropagation(), true);"
+)
+# True when a contextmenu event reaches the page uncancelled: the smoke
+# test's check that the listener above is in place and wins.
+CONTEXT_MENU_REACHES_SHELL_SCRIPT = (
+    "(() => { const e = new MouseEvent('contextmenu',"
+    " {bubbles: true, cancelable: true});"
+    " document.body.dispatchEvent(e); return !e.defaultPrevented; })()"
+)
+
+
+# ---------------------------------------------------------------------------
 # Take a Picture (the tank posts {op: "savePicture", name, png})
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"

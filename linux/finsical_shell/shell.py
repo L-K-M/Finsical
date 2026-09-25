@@ -116,6 +116,9 @@ class FinsicalApp(Gtk.Application):
 
     def do_startup(self) -> None:
         Gtk.Application.do_startup(self)
+        # Taskbars and window managers that read a window's own icon
+        # (_NET_WM_ICON: libwnck, xfwm4) find it in the hicolor theme.
+        Gtk.Window.set_default_icon_name(logic.APP_ID)
         self._web = WebHost(
             self._config.web_root,
             self._config.data_dir,
@@ -451,6 +454,10 @@ class FinsicalApp(Gtk.Application):
         all_desktops = self._settings.get(WindowPref.ALL_DESKTOPS)
         self.tank.apply_window_prefs(float_above, all_desktops)
         self.clients.set_keep_above(float_above)
+        # An About left floating over a normal tank would cover every
+        # other app (macOS applyWindowPrefs).
+        if self._about is not None:
+            self._about.set_keep_above(float_above)
         x11 = is_x11(self.tank.window.get_display())
         for name, on in (
             ("float-above", float_above),

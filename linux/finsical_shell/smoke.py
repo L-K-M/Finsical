@@ -33,6 +33,11 @@ class Step(enum.Enum):
     )
     CLIENTS = ("every client window says hello and reports its fold state", 30)
     STATS_ROWS = ("Tank Stats renders a state relayed from the tank", 20)
+    CONTEXT_MENU = (
+        "a right-click reaches the app menu on every page, not the"
+        " page's own contextmenu handler",
+        10,
+    )
     MENU_CALL = ("the menu's Pause Simulation reaches the tank and back", 10)
     PICTURE = ("the menu's Take a Picture hands the shell a PNG", 15)
     QUIT = ("quitting saves through the normal quit sequence", 10)
@@ -155,16 +160,54 @@ class SmokeTest(Observer):
             elif (
                 value is not None and value.is_boolean() and value.to_boolean()
             ):
-                # The menu's own action, as a click on it runs it.
-                self._begin(Step.MENU_CALL)
-                self._want_paused = True
-                assert self._app is not None
-                self._app.activate_action("pause", None)
+                self._check_context_menu()
             else:
                 GLib.timeout_add(STATS_POLL_MS, self._poll_stats)
 
         page.evaluate(STATS_ROWS_SCRIPT, done)
         return GLib.SOURCE_REMOVE
+
+    def _check_context_menu(self) -> None:
+        """Every page cancels contextmenu; the shell's injected listener
+        must keep that from happening, or WebKit never asks the shell
+        for the app menu."""
+        self._begin(Step.CONTEXT_MENU)
+        assert self._app is not None and self._app.tank is not None
+        assert self._app.clients is not None
+        pages = {"tank": self._app.tank.page}
+        for name, client in self._app.clients.windows.items():
+            assert client.page is not None
+            pages[name] = client.page
+        waiting = set(pages)
+
+        def checked(
+            name: str, value: Any, error: Optional[GLib.Error]
+        ) -> None:
+            if self._step is not Step.CONTEXT_MENU:
+                return
+            if error is not None:
+                self._fail(f"evaluating {name} failed: {error.message}")
+                return
+            if (
+                value is None
+                or not value.is_boolean()
+                or not value.to_boolean()
+            ):
+                self._fail(f"{name} cancelled the contextmenu event")
+                return
+            waiting.discard(name)
+            if not waiting:
+                # The menu's own action, as a click on it runs it.
+                self._begin(Step.MENU_CALL)
+                self._want_paused = True
+                assert self._app is not None
+                self._app.activate_action("pause", None)
+
+        for name, page in pages.items():
+            page.evaluate(
+                logic.CONTEXT_MENU_REACHES_SHELL_SCRIPT,
+                lambda v, e, name=name: checked(name, v, e),
+            )
 
     def _step_timeout(self, step: Step) -> bool:
         self._step_timer = 0

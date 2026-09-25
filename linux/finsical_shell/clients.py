@@ -105,14 +105,26 @@ class ClientHost:
 
     def show(self, name: str) -> None:
         client = self.windows[name]
+        reopening = client.window is not None
         if client.window is None:
             self._create(client)
         window = client.window
         assert window is not None
-        reopened = client.state.reopen(window_frame(window))
+        frame = window_frame(window)
+        reopened = client.state.reopen(frame)
         if reopened is not None:
             self._apply_hints(client)
             window.resize(reopened.w, reopened.h)
+        # Re-hinting a mapped window (a fold, an unfold, the resize
+        # above) makes GTK drop its position hint, so an X11 window
+        # manager places a hidden window anew when it maps again, and
+        # the configure handler would save that over the user's spot.
+        if (
+            reopening
+            and not window.get_visible()
+            and is_x11(window.get_display())
+        ):
+            window.move(frame.x, frame.y)
         window.set_keep_above(self._keep_above)
         window.present_with_time(Gtk.get_current_event_time())
 

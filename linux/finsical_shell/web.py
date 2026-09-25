@@ -145,9 +145,17 @@ class WebHost:
         if not allowed:
             log.warning("not reloading %s: it keeps crashing", view.get_uri())
             return
+        # Still the page's URI while the signal runs, even when the load
+        # never committed.
+        uri = view.get_uri()
 
         def reload() -> bool:
-            view.reload()
+            # A crash before the first commit leaves no back-forward item,
+            # and reload() would then load nothing at all.
+            if view.get_back_forward_list().get_current_item() is None and uri:
+                view.load_uri(uri)
+            else:
+                view.reload()
             return GLib.SOURCE_REMOVE
 
         GLib.timeout_add(logic.CRASH_RETRY_DELAY_MS, reload)
@@ -244,6 +252,15 @@ class PageView:
         self._press_event: Optional[Gdk.Event] = None
         self._menu: Optional[Gtk.Menu] = None
         manager = WebKit2.UserContentManager()
+        manager.add_script(
+            WebKit2.UserScript.new(
+                logic.KEEP_CONTEXT_MENU_SCRIPT,
+                WebKit2.UserContentInjectedFrames.TOP_FRAME,
+                WebKit2.UserScriptInjectionTime.START,
+                None,
+                None,
+            )
+        )
         for name, handler in handlers.items():
             manager.connect(
                 f"script-message-received::{name}",
