@@ -5,7 +5,7 @@ import { curesFor, deriveStats, deriveWater, hungerLabel,
   from "./statsmodel.js";
 import { DAY_TICKS, Sim } from "../core/sim.js";
 import { hourLabel } from "../core/light.js";
-import { HUNGER_SEEK } from "../core/tuning.js";
+import { HUNGER_SEEK, QUALITY_SEEK } from "../core/tuning.js";
 
 const base = {
   fish: [
@@ -67,6 +67,22 @@ describe("deriveStats", () => {
     const s = deriveStats({ ...base, waterQuality: 0.2, foodSettled: 2 });
     expect(s.advice.join(" ")).toMatch(/Stop feeding/);
     expect(s.advice.join(" ")).not.toMatch(/rotting/);
+  });
+
+  it("matches the sim at exactly QUALITY_SEEK: fish won't eat", () => {
+    // The sim refuses food at waterQuality <= QUALITY_SEEK, so at the
+    // boundary the advice must already say stop feeding — not invite
+    // a meal the fish will ignore.
+    const s = deriveStats({ ...base, waterQuality: QUALITY_SEEK,
+                            foodSettled: 2,
+                            fish: [{ hunger: 0.9, state: "seek" }] });
+    expect(s.advice.join(" ")).toMatch(/Stop feeding/);
+    expect(s.advice.join(" ")).not.toMatch(/hungry|rotting/);
+    // One step above the boundary the feeding advice comes back.
+    const ok = deriveStats({ ...base,
+      waterQuality: QUALITY_SEEK + 0.01,
+      fish: [{ hunger: 0.9, state: "seek" }] });
+    expect(ok.advice.join(" ")).toMatch(/hungry/);
   });
 
   it("advises feeding when the tank is hungry", () => {
