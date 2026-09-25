@@ -78,8 +78,8 @@ export interface TankStats {
   water: WaterStats | null;
 }
 
-/** Hunger where "hungry" becomes "starving" for the worst-off fish. */
-const HUNGER_STARVING = 0.85;
+/** Hunger above which a fish is reported as "starving". */
+export const HUNGER_STARVING = 0.85;
 /** Avg hunger that warrants a feeding hint. */
 const HUNGER_FEED = 0.55;
 

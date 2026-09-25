@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { curesFor, deriveStats, deriveWater, hungerLabel, milestone,
-         SPARK_H, SPARK_SLOT_MS, SPARK_W, sparkColumns, sparkRow,
-         summaryText, trend, uptime } from "./statsmodel.js";
+import { curesFor, deriveStats, deriveWater, hungerLabel,
+         HUNGER_STARVING, milestone, SPARK_H, SPARK_SLOT_MS, SPARK_W,
+         sparkColumns, sparkRow, summaryText, trend, uptime }
+  from "./statsmodel.js";
 import { DAY_TICKS, Sim } from "../core/sim.js";
 import { HUNGER_SEEK } from "../core/tuning.js";
 
@@ -142,6 +143,9 @@ describe("labels", () => {
     // "peckish" starts where the sim's fish start looking for food.
     expect(hungerLabel(HUNGER_SEEK - 0.01)).toBe("full");
     expect(hungerLabel(HUNGER_SEEK)).toBe("peckish");
+    // Pin the starving edge the same way.
+    expect(hungerLabel(HUNGER_STARVING - 0.01)).toBe("hungry");
+    expect(hungerLabel(HUNGER_STARVING)).toBe("starving");
   });
   it("trend", () => {
     expect(trend(null, 0.5)).toBe("→");
@@ -306,5 +310,20 @@ describe("summaryText", () => {
       fish: [{ species: "Betta", hunger: 0.9, state: "seek" }],
     }));
     expect(text).toContain("Hungriest: Betta — starving");
+  });
+
+  it("pins the Hungriest seek edge against hungerLabel", () => {
+    // At exactly HUNGER_SEEK both comparisons must agree: the row
+    // appears and reads "peckish", not blank and not "full".
+    const text = summaryText(deriveStats({
+      ...base,
+      fish: [{ species: "Guppy", hunger: HUNGER_SEEK, state: "seek" }],
+    }));
+    expect(text).toContain("Hungriest: Guppy — peckish");
+    const under = summaryText(deriveStats({
+      ...base,
+      fish: [{ species: "Guppy", hunger: HUNGER_SEEK - 0.01, state: "drift" }],
+    }));
+    expect(under).toContain("Hungriest: —");
   });
 });
