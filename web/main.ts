@@ -799,7 +799,10 @@ function onTankLeave(e: PointerEvent): void {
   setFeedHover(false); // pointer is definitionally off the tank — clear now
   seePointer(null);
 }
-for (const el of [canvas, crtEl]) {
+// Under body.crt the #crt glass (a sibling of #tank) takes the pointer,
+// so every tank gesture listens on both surfaces, dblclick included.
+const tankSurfaces: readonly HTMLElement[] = [canvas, crtEl];
+for (const el of tankSurfaces) {
   el.addEventListener("pointerdown", onTankDown);
   el.addEventListener("pointermove", onTankMove);
   el.addEventListener("pointerleave", onTankLeave);
@@ -2440,7 +2443,9 @@ function setZen(on: boolean): boolean {
 // Touch devices have no Escape or menu bar: a double-tap on the water
 // leaves zen. Single taps still feed and tap the glass — zen is a
 // view mode, not a lock.
-canvas.addEventListener("dblclick", () => { if (zen) setZen(false); });
+for (const el of tankSurfaces) {
+  el.addEventListener("dblclick", () => { if (zen) setZen(false); });
+}
 // Chrome that opens on top of zen leaves it — the menu bar comes back
 // with the panel rather than the panel floating chrome-less.
 function openImport(): void {
