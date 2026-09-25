@@ -1,5 +1,6 @@
 import { makeRng } from "./rng.js";
-import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK } from "./tuning.js";
+import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
+  from "./tuning.js";
 import { demoLight, DUSK_LIGHT } from "./light.js";
 import { Aquarium } from "./aquarium/aquarium.js";
 import type { Resident } from "./aquarium/aquarium.js";
@@ -419,12 +420,21 @@ export class Sim {
     this.waterQuality = Math.max(0, Math.min(1 - a.oxygenDeficit(), clarity));
   }
 
-  addFish(fish: Partial<Fish> & { x: number; y: number }): Fish {
+  addFish(fish: Partial<Fish> & { x: number; y: number }): Fish;
+  /** `"enforce"` refuses a spawn at FISH_CAP (returns null) — the sim
+   * owns the cap so every spawn path enforces the same rule. A
+   * restored roster omits it: dropping a saved pet is worse than
+   * letting a hand-edited tank sit a fish over. */
+  addFish(fish: Partial<Fish> & { x: number; y: number },
+          cap: "enforce" | "bypass"): Fish | null;
+  addFish(fish: Partial<Fish> & { x: number; y: number },
+          cap: "enforce" | "bypass" = "bypass"): Fish | null {
+    if (cap === "enforce" && this.fish.length >= FISH_CAP) return null;
     const f: Fish = {
       id: this.nextId, species: "",
       facing: 1, heading: 0, phase: 0, latch: -1, peak: 0, cruise: 1,
       speed: 1, vy: 0, tx: 0, ty: 0, turnDir: 1, turnFrom: 1,
-      strokes: 0, bandY: 0, scale: 1, hunger: 0.2,
+      strokes: 0, bandY: 0, scale: 1, hunger: SPAWN_HUNGER,
       state: "drift", stateTicks: 0, startleLen: STARTLE_TICKS,
       panicHops: 0, ...fish,
     };

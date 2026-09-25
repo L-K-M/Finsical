@@ -3,7 +3,8 @@ import { BAND_HALF, BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, MARGIN,
          MAX_UNEATEN, NOTICE_RADIUS, PELLET_UNITS, Sim, SLEEP_LIGHT,
          SURFACE,
          TURN_TICKS, WAKE_LIGHT } from "./sim.js";
-import { HUNGER_SEEK, QUALITY_SEEK } from "./tuning.js";
+import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
+  from "./tuning.js";
 import { CLOCK_NIGHT_LIGHT } from "./light.js";
 import { pitch } from "./pose.js";
 
@@ -1133,6 +1134,26 @@ describe("Sim", () => {
     expect(a.state).not.toBe("seek");
     sim.tick();
     expect(b.state).not.toBe("seek");
+  });
+
+  it("spawns at SPAWN_HUNGER when the caller doesn't say", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 3);
+    // Just past the seek threshold — a fresh fish takes the first
+    // pellets it's offered instead of ignoring them for minutes.
+    expect(sim.addFish({ x: 50, y: 50 }).hunger).toBe(SPAWN_HUNGER);
+    expect(sim.addFish({ x: 50, y: 50, hunger: 0 }).hunger).toBe(0);
+  });
+
+  it("refuses a spawn at FISH_CAP, but restores still land", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 3);
+    for (let i = 0; i < FISH_CAP; i++) sim.addFish({ x: 50, y: 50 });
+    expect(sim.addFish({ x: 50, y: 50 }, "enforce")).toBeNull();
+    expect(sim.fish).toHaveLength(FISH_CAP);
+    // A saved roster keeps every pet — the cap governs spawns, not
+    // restoring what was already in the tank.
+    expect(sim.addFish({ x: 50, y: 50 })).toBeTruthy();
+    expect(sim.addFish({ x: 50, y: 50 }, "bypass")).toBeTruthy();
+    expect(sim.fish).toHaveLength(FISH_CAP + 2);
   });
 });
 

@@ -3,7 +3,7 @@ import { BOTTOM_PAD, DAY_TICKS, FOOD_ENTRY_Y, Sim,
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
-import { FISH_CAP, FOOD_CAP, HUNGER_SEEK, SPAWN_HUNGER, TANK_SIZE }
+import { FISH_CAP, FOOD_CAP, HUNGER_SEEK, TANK_SIZE }
   from "../core/tuning.js";
 import { planFrame } from "../core/loop.js";
 import { Aquarium } from "../core/aquarium/aquarium.js";
@@ -289,8 +289,8 @@ function applyLighting(raw: unknown): void {
 }
 const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
   [0, 1, 2, 3].map((i) =>
-    ({ x: 40 + i * 60, y: 50 + i * 30, facing: (i % 2 ? -1 : 1) as 1 | -1,
-       hunger: SPAWN_HUNGER }));
+    ({ x: 40 + i * 60, y: 50 + i * 30,
+       facing: (i % 2 ? -1 : 1) as 1 | -1 }));
 /** Saved fish fields are untrusted input: a corrupted hunger or
  * heading enters the sim (NaN hunger ⇒ fish can never seek food) and
  * then re-persists. Clamp each numeric field; keep x/y finite-or-drop
@@ -858,9 +858,9 @@ function fishRefusal(section: string): string | null {
  * Returns the new fish, or null when the tank is already full. */
 function spawnFish(sheetIdx: number, species: string, pack?: string,
                    cap: CapRule = "enforce", entry?: string): Fish | null {
-  if (cap === "enforce" && sim.fish.length >= FISH_CAP) return null;
   const facing = Math.random() < 0.5 ? 1 : -1;
   const x = 60 + Math.random() * (TANK.width - 120);
+  // addFish owns the cap refusal; SPAWN_HUNGER is its default too.
   const f = sim.addFish({
     x,
     // New fish enter through the surface, where the splash below lands
@@ -871,11 +871,11 @@ function spawnFish(sheetIdx: number, species: string, pack?: string,
     facing: facing as 1 | -1,
     heading: facing > 0 ? 0 : Math.PI,
     cruise: 1.1 + Math.random() * 0.7,
-    hunger: SPAWN_HUNGER,
     sheetIdx, species,
     ...(pack !== undefined ? { pack } : {}),
     ...(entry !== undefined ? { entry } : {}),
-  });
+  }, cap);
+  if (!f) return null;
   bindExtents(f);
   // A new fish enters through the surface — pair the splash sound
   // with droplets where it went in.
