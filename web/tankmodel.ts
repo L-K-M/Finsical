@@ -10,7 +10,7 @@
 /** An entry's display name: its file name without the folder or
  * extension ("angels/blackangel.fsh" -> "blackangel"). */
 export function entryStem(entry: string): string {
-  const base = entry.split("/").pop() ?? entry;
+  const base = entry.slice(entry.lastIndexOf("/") + 1);
   return base.replace(/\.[^.]+$/, "") || base;
 }
 
@@ -35,7 +35,7 @@ export function capRefusal(have: number, adding: number,
     return `The tank is full: ${cap} fish is plenty. ` +
            "Release one from Tank Overview first.";
   return `This add-on brings ${adding} fish, and the tank has room for ` +
-         `${room} more. Release some from Tank Overview first.`;
+         `${room} more. Release ${adding - room} from Tank Overview first.`;
 }
 
 /** sheetByEntry's key: an add-on URL and one of its entries. URLs can

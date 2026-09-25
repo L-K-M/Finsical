@@ -9,9 +9,9 @@
 - A fish add-on whose fish don't all fit in the tank is refused as a
   whole, with a note of how much room is left. It used to add as many
   as fit and report success.
-- A fish add-on that holds several fish names each after its own pack.
-  Adding angels.zip used to give two fish both called "angels"; they
-  are now "angel" and "blackangel".
+- A fish add-on that holds several fish now names each fish after its
+  own pack. Adding angels.zip used to give two fish both called
+  "angels"; they are now "angel" and "blackangel".
 - A pointer left resting over the tank loses the fish's interest after
   about 20 seconds, so the fish gathered to look at it swim off again
   instead of waiting there for hours. Moving the pointer brings them

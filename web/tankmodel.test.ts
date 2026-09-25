@@ -45,7 +45,7 @@ describe("capRefusal", () => {
   it("refuses a multi-pack add-on whole when only some would fit", () => {
     expect(capRefusal(11, 2, 12)).toBe(
       "This add-on brings 2 fish, and the tank has room for 1 more. " +
-      "Release some from Tank Overview first.");
+      "Release 1 from Tank Overview first.");
   });
 });
 
