@@ -409,7 +409,8 @@ export class Sim {
         }
       } else {
         f.hunger = hungerOf(l);
-        if (l.sick != null && !this.sickSeen.has(f)) {
+        if (l.sick == null) this.sickSeen.delete(f);
+        else if (!this.sickSeen.has(f)) {
           this.sickSeen.add(f);
           this.events.push({ type: "sick", fish: f });
         }

@@ -287,10 +287,16 @@ export class Aquarium {
     // the whole dose at once as an overdose. Here the dose dissolves
     // into the water, without its effect on the fish.
     if (med.kind === 1 && !catchUp) {
+      // The batching window is unconditional — a sub-threshold dose
+      // can still be topped up into an effective one. Past the window,
+      // only dissolve what can still reach an effective concentration;
+      // a dose too dilute to ever act drains away (into the water,
+      // harmlessly) instead of banking in doses[] forever.
       if (d.clock < 10) return "wait";
+      const maxC = Math.min(med.strength, 10) * d.ml / this.water.litres;
       const c = Math.min(med.strength, 10) * n / this.water.litres;
-      if (c < 1) return "wait";
-      for (const r of fish) this.dose(r, med.cures, c);
+      if (c < 1 && maxC >= 1) return "wait";
+      if (c >= 1) for (const r of fish) this.dose(r, med.cures, c);
     }
     for (const e of ELEMENTS) {
       const v = med.perMl[e];
