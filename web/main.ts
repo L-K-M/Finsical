@@ -33,7 +33,8 @@ import { backfillStarterSounds, showWelcome, wantsWelcome }
   from "./welcome.js";
 import { clampDecorCopies, decorCopyRoom, fetchAddon, installProblem,
          mountImportPanel, orphanedSounds, recordAddon,
-         qualifySoundItemName, isListed, isSavedAddon, usablePacks,
+         qualifySoundItemName, isListed, isSavedAddon, sceneryFix,
+         usablePacks,
          usableProblem, COLLECTIONS }
   from "./import.js";
 import { SWAY_BANDS, swayOffset } from "./sway.js";
@@ -181,7 +182,7 @@ function loadTank(): SavedTank | null {
   return s;
 }
 const saved = loadTank();
-const installedAddons: Importable[] = [...(saved?.addons ?? [])];
+const installedAddons: Importable[] = (saved?.addons ?? []).map(sceneryFix);
 
 // ---- startup parade (web/boot.ts) ---------------------------------------
 // A 90s-Mac boot over the first seconds: black, the smiling fishbowl

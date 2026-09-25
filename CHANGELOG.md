@@ -69,6 +69,11 @@
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.
+- Mekasia's G_Debris gravel lists under Gravel and lays a gravel bed.
+  It used to list under Accessories, where adding it dropped a big
+  textured block into the tank; a tank that added it that way gets the
+  gravel instead on its next launch. The Mekasia plant and accessory
+  lists now hold only plants and accessories.
 - A malformed sound file can no longer freeze the tank. A small crafted
   sound bank or resource fork could list one sound thousands of times
   and hold the tank up for seconds to minutes, then leave thousands of
