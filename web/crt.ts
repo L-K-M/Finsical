@@ -4,16 +4,19 @@
  * the display's device resolution through a shader emulating an
  * aperture-grille tube:
  *  - scanlines locked to logical game rows (they follow the warped,
- *    letterboxed image, not fixed screen stripes)
+ *    letterboxed image, not fixed screen stripes), drawn as a beam
+ *    whose spot swells with brightness: thin lines in the dark, full
+ *    rows in the highlights
  *  - horizontal beam smear (CRTs blur along the scan, not across lines)
  *  - phosphor bloom that over-emphasizes bright colors, plus wider
  *    glass halation, both smooth blurs
  *  - R/B misconvergence that grows toward the screen edges
  *  - RGB grille stripes at device-pixel pitch, so the mask is far finer
  *    than the game pixels
- *  - gentle barrel curvature, corner vignette, flicker + rolling band,
- *    faint grain
- *  - service-menu geometry: raster skew and a perspective keystone
+ *  - gentle barrel curvature with rounded, anti-aliased raster
+ *    corners, corner vignette, flicker + rolling band, faint grain
+ *  - service-menu geometry: raster position, skew and a perspective
+ *    keystone
  * The beam smear runs first, once per game row, into an offscreen
  * target as wide as the raster's device px, and the bloom and halation
  * blur the frame at game size or below; the tube pass then reads the
@@ -161,11 +164,20 @@ uniform float uHSize; // raster width pot (0.5 = neutral)
 uniform float uVSize; // raster height pot (0.5 = neutral)
 uniform float uSkew;  // raster shear pot (0.5 = square)
 uniform float uPersp; // horizontal keystone (0.5 = head-on)
+uniform float uHPos;  // raster position pots (0.5 = centered)
+uniform float uVPos;
 uniform float uRed;   // per-channel gain trims
 uniform float uGreen;
 uniform float uBlue;
 uniform float uPower; // 1 = settled; <1 = power-on/off in progress
 uniform float uDegauss; // degauss wobble amplitude (0 = settled)
+
+// How far the position pots slide the raster at either end, as a
+// share of the neutral raster's width or height.
+const float POS_RANGE = 0.10;
+
+// Corner radius of the raster, in game px.
+const float RASTER_CORNER = 6.0;
 
 // The smeared scanline signal at lp. Like gamePx, rows sample sharp:
 // the linear filter blends columns, and rows only across the one
@@ -177,6 +189,58 @@ vec3 rowPx(vec2 lp) {
   float y = sharpCoord(lp.y, uTank.y, pxScale.y);
   return texture2D(uRows, vec2(x / uColsMax, y / uTank.y)).rgb;
 }
+
+// One scanline's signal at lp: the smeared row, then the misconverged
+// red and blue guns. At a row center it reads that row alone.
+vec3 scanRow(vec2 lp, float conv) {
+  vec3 c = rowPx(lp);
+  if (conv > 0.001) {
+    // Blend, don't overwrite — a hard swap would strip the beam smear
+    // from r/b and leave them crisper than green.
+    float k = clamp(conv * 2.5, 0.0, 1.0);
+    c.r = mix(c.r, gamePx(lp - vec2(conv, 0.0)).r, k);
+    c.b = mix(c.b, gamePx(lp + vec2(conv, 0.0)).b, k);
+  }
+  return c;
+}
+
+// Beam spot sizes in rows (gaussian sigma) as vec2(black, full drive):
+// a dark row draws a thin line, a bright one a spot that nearly meets
+// its neighbors. SPOT_LINES is where the Scanlines slider's first 40%
+// fades in; SPOT_DEEP is the top of the slider. Keep every sigma under
+// about 0.35: the beam reads only the two rows bracketing a fragment,
+// so a wider spot would leak light into rows it never reads (0.8% of
+// its peak at 0.32, 4% at 0.40), and spotArea's overlap cap only
+// engages from 0.40.
+const vec2 SPOT_LINES = vec2(0.20, 0.32);
+const vec2 SPOT_DEEP = vec2(0.12, 0.24);
+
+// Spot variance for signal v: the spot grows with the drive (a hotter
+// beam blooms wider).
+vec3 spotVar(vec3 v, vec2 size) {
+  vec3 s = mix(vec3(size.x), vec3(size.y), clamp(v, 0.0, 1.0));
+  return s * s;
+}
+
+// Share of a row's light at distance d rows from its center: 1 on
+// the center line, falling off across the gap. The device pixel's
+// footprint variance fp2 blurs the spot so its profile is never finer
+// than the pixel grid can draw; the blur spreads the same light, so
+// the peak drops as the spot widens.
+vec3 spot(float d, vec3 var, float fp2) {
+  vec3 blurred = var + fp2;
+  return exp(-0.5 * d * d / blurred) * sqrt(var / blurred);
+}
+
+// A spot's light averaged over its row pitch (its area, capped where
+// neighboring spots overlap into a flat field).
+vec3 spotArea(vec3 var) { return min(sqrt(6.2831853 * var), 1.0); }
+
+// Spots of light add in linear light, not in signal space. The tube's
+// light is about the signal squared (a gamma of 2 instead of ~2.2,
+// close enough for how neighboring spots blend and far cheaper).
+vec3 toLight(vec3 v) { return v * v; }
+vec3 toSignal(vec3 l) { return sqrt(max(l, 0.0)); }
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -194,6 +258,12 @@ void main() {
   // gc is the position on the glass — vignette and misconvergence
   // follow the tube, not the raster.
   vec2 gc = uv * 2.0 - 1.0;
+  // Position pots slide the whole raster inside the glass, up to
+  // POS_RANGE of its neutral size either way. First, so the distance
+  // stays the same whatever the overscan and size pots do; the
+  // raster's warp and its matte edges travel with it, while the
+  // vignette and misconvergence (gc) stay where they are.
+  uv -= (vec2(uHPos, uVPos) - 0.5) * (2.0 * POS_RANGE);
   // Overscan: real sets run the raster slightly past the glass, so a
   // little crop is authentic. Crop in raster space, BEFORE the warp —
   // the crop stays uniform and the curved black corners survive.
@@ -245,19 +315,58 @@ void main() {
   // Logical game pixel under this output pixel (post-warp).
   vec2 lp = uv * uTank;
 
-  // The scanline, already smeared along the scan by the rows pass.
-  vec3 c = rowPx(lp);
+  // The raster's own edge: rounded corners, and coverage faded across
+  // the last device px instead of a 1-bit cut, so the bowed edges don't
+  // stair-step. sd is the distance outside the rounded rect, in game px.
+  vec2 q = abs(lp - 0.5 * uTank) - (0.5 * uTank - RASTER_CORNER);
+  float sd = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - RASTER_CORNER;
+  float edge = clamp(0.5 - sd * min(pxScale.x, pxScale.y), 0.0, 1.0);
+  if (edge <= 0.0) {
+    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    return;
+  }
 
   // Misconvergence: the outer electron guns never land perfectly —
   // red drifts left and blue right, growing from zero at the center
   // toward the edges. Green stays as the reference beam.
   float conv = (1.2 * uConv) * length(gc) * (1.0 + 6.0 * uDegauss);
-  if (conv > 0.001) {
-    // Blend, don't overwrite — a hard swap would strip the beam smear
-    // from r/b and leave them crisper than green.
-    float k = clamp(conv * 2.5, 0.0, 1.0);
-    c.r = mix(c.r, gamePx(lp - vec2(conv, 0.0)).r, k);
-    c.b = mix(c.b, gamePx(lp + vec2(conv, 0.0)).b, k);
+
+  // Scanlines: each row is a beam whose spot swells with its
+  // brightness, so dark rows thin to lines with deep gaps while bright
+  // rows nearly fill them and spill a little into their neighbors. A
+  // lone bright pixel glows as a dot instead of a sliver. Like
+  // Softening, the first 40% of the slider fades the lines in at a
+  // fixed spot size; beyond that the spots narrow and the gaps deepen.
+  float scan = clamp(uScan / 0.4, 0.0, 1.0);
+  vec3 c;
+  if (scan <= 0.0) {
+    c = scanRow(lp, conv); // flat rows, sampled sharp
+  } else {
+    // The two rows whose centers bracket this fragment, fy of the way
+    // from the lower to the upper one.
+    float p = lp.y - 0.5;
+    float row = floor(p);
+    float fy = p - row;
+    vec3 a = scanRow(vec2(lp.x, row + 0.5), conv);
+    vec3 b = scanRow(vec2(lp.x, row + 1.5), conv);
+    // The flat end, identical to the sharp read above: rows fade into
+    // each other over the same device px.
+    vec3 rows = mix(a, b, clamp((fy - 0.5) * pxScale.y + 0.5, 0.0, 1.0));
+    vec2 size = mix(SPOT_LINES, SPOT_DEEP,
+                    clamp((uScan - 0.4) / 0.6, 0.0, 1.0));
+    float fp2 = 1.0 / (12.0 * pxScale.y * pxScale.y);
+    // Past the first and last rows there is no beam: the clamped read
+    // would repeat the edge row and fill its outer half-row with light.
+    float inA = step(0.0, row);
+    float inB = step(row + 2.0, uTank.y);
+    vec3 beam = inA * toLight(a) * spot(fy, spotVar(a, size), fp2) +
+                inB * toLight(b) * spot(1.0 - fy, spotVar(b, size), fp2);
+    // Below ~3 device px per row the lines would beat against the
+    // pixel grid (moire), so they give way to their average light:
+    // small pictures lose the lines but keep the same brightness.
+    beam = mix(toLight(rows) * spotArea(spotVar(rows, size)), beam,
+               smoothstep(1.5, 3.0, pxScale.y));
+    c = toSignal(mix(toLight(rows), beam, scan));
   }
 
   // Phosphor bloom: bright areas bleed wider and overdrive, mostly
@@ -272,12 +381,6 @@ void main() {
   }
   c *= 1.0 + (0.60 * uOver) * smoothstep(0.5, 1.0, max(c.r, max(c.g, c.b)));
 
-  // Scanlines ride the logical-row phase: sin² dips at row boundaries.
-  // (pow() is undefined for negative bases — square explicitly.)
-  float scan = sin(3.14159265 * lp.y);
-  scan *= scan;
-  c *= mix(1.0 - uScan, 1.0, scan);
-
   // Aperture grille: one RGB channel per device-pixel column.
   float stripe = mod(floor(gl_FragCoord.x), 3.0);
   vec3 mask = vec3(0.72);
@@ -285,6 +388,8 @@ void main() {
   else if (stripe < 1.5) mask.g = 1.0;
   else mask.b = 1.0;
   c *= mix(vec3(1.0), mask * 1.18, uGrill); // 1.18 compensates dimming
+
+  c *= edge;
 
   // Glass vignette, faint flicker (plus a slow rolling brightness
   // band — the beam never sits perfectly in sync), and grain.
@@ -313,7 +418,9 @@ void main() {
 /** Tunable CRT traits, all normalized 0–1. The shader multiplies each
  * by a tuned ceiling, so 1.0 is "authentic" rather than "clipped". */
 export interface CrtConfig {
-  /** Darkness of the gaps between game-pixel rows. */
+  /** Darkness of the gaps between game-pixel rows. Bright rows swell
+   * to fill them, so the lines show most in the dark. Up to 0.4 the
+   * lines fade in; above, the beam narrows and the gaps deepen. */
   scanlines: number;
   /** How much the beam smears color sideways along each scan. Up to
    * 0.4 the smear fades in at a fixed width; above, it widens. */
@@ -349,6 +456,10 @@ export interface CrtConfig {
   /** Keystone warp, the raster swung about its vertical axis —
    * 0.5 faces the viewer. */
   perspective: number;
+  /** Raster position, left to right. 0.5 is centered. */
+  hpos: number;
+  /** Raster position, bottom to top. 0.5 is centered. */
+  vpos: number;
   /** Per-channel trims — 0.5 is neutral on each. */
   red: number;
   green: number;
@@ -361,6 +472,7 @@ export const CRT_DEFAULTS: Readonly<CrtConfig> = Object.freeze<CrtConfig>({
   flicker: 0.30, grain: 0.30,
   brightness: 0.50, contrast: 0.50, zoom: 0.0,
   hsize: 0.50, vsize: 0.50, skew: 0.50, perspective: 0.50,
+  hpos: 0.50, vpos: 0.50,
   red: 0.50, green: 0.50, blue: 0.50,
 });
 
@@ -400,7 +512,7 @@ export interface CrtPreset {
  * are the user's. Every other key is the tube itself. */
 export const PICTURE_KEYS: readonly (keyof CrtConfig)[] = Object.freeze([
   "brightness", "contrast", "zoom",
-  "hsize", "vsize", "skew", "perspective",
+  "hsize", "vsize", "skew", "perspective", "hpos", "vpos",
   "red", "green", "blue",
 ]);
 
@@ -690,7 +802,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     misconvergence: "uConv", grille: "uGrill", curvature: "uCurve",
     vignette: "uVig", flicker: "uFlick", grain: "uGrain",
     brightness: "uBright", contrast: "uContr", zoom: "uZoom",
-    hsize: "uHSize", vsize: "uVSize",
+    hsize: "uHSize", vsize: "uVSize", hpos: "uHPos", vpos: "uVPos",
     skew: "uSkew", perspective: "uPersp",
     red: "uRed", green: "uGreen", blue: "uBlue",
   };
@@ -718,7 +830,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   // devicePixelRatio read stays per-frame (a cheap number, no
   // layout) so browser-zoom DPR changes still resize the buffer.
   // DPR caps at 2: the grille mask is sub-game-pixel already there,
-  // and the ~5-read tube pass scales with buffer pixels.
+  // and the ~8-read tube pass scales with buffer pixels.
   // Lifetime: initCrt runs once per page load (module scope in
   // web/main.ts) and CrtFilter has no dispose path, so the observer
   // and window listener below live exactly as long as the page.

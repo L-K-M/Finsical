@@ -2538,13 +2538,24 @@ void (async () => {
     // to restore leaves whatever the chain picked, until a retry.
     applySceneryChoice();
     remapSheetIdx(); reconcileFish();
-    retryRestores(restoreFailed);
     backfillStarterSounds({
       welcomePending,
       hasSounds: storedSounds > 0 ||
         installedAddons.some((a) => a.section === "sounds"),
       install: (it) => installAddon(it, false),
     }).catch((e) => console.warn("starter sounds skipped:", e));
+  })
+  // A step above throwing used to end the chain silently: the tank
+  // came up missing art or fish, and the retry below — the whole
+  // reason a pack that failed to restore is kept in restoreFailed —
+  // never ran. Log it, repaint what did land, and retry regardless.
+  .catch((e) => {
+    console.warn("launch stopped before the tank was settled:", e);
+    requestPaint();
+  })
+  .finally(() => {
+    try { retryRestores(restoreFailed); }
+    catch (e) { console.warn("add-on restore retry failed to start:", e); }
   });
 
 // First launch: offer to stock the tank (web/welcome.ts). Accepting
