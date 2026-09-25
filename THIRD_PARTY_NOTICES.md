@@ -26,5 +26,5 @@ Add-ons), which carry its license header. Its readable source is that
 file in this repository, and `npm run build` rebuilds the bundles from
 it, so you can modify or replace the LGPL-covered decoder and relink
 it. The macOS app ships this file at
-`Finsical.app/Contents/Resources/core/data/mace.ts`, next to the
-license text in the same directory.
+`Finsical.app/Contents/Resources/core/data/mace.ts`, with the
+license text at `Finsical.app/Contents/Resources`.

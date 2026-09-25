@@ -39,9 +39,10 @@ jobs:
       - run: scripts/build.sh --clean --install
       - run: test -x /Applications/Finsical.app/Contents/MacOS/Finsical
       # The notices file promises the LGPL decoder's source ships in
-      # the bundle beside its license text, not only the compiled
-      # copy inside the JavaScript.
-      - run: test -f /Applications/Finsical.app/Contents/Resources/core/data/mace.ts
+      # the bundle (license text one directory up), not only the
+      # compiled copy inside the JavaScript. A byte compare, so a
+      # stale or wrong copy fails too.
+      - run: diff -u core/data/mace.ts /Applications/Finsical.app/Contents/Resources/core/data/mace.ts
       # Swift 6 language mode: its data-race checks cover Osmium UI's
       # window host too, which the app compiles in. Warnings fail the
       # build: a delegate method that only nearly matches its
