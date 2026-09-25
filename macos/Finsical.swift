@@ -632,7 +632,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             NSLog("Finsical: savePicture payload was not PNG data")
             return
         }
-        guard !picturePanelOpen else { return }
+        guard !picturePanelOpen else {
+            NSLog("Finsical: savePicture dropped — a save panel is open")
+            return
+        }
         let panel = NSSavePanel()
         // The page names the file; strip any path parts anyway.
         panel.nameFieldStringValue =
