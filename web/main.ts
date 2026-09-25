@@ -157,19 +157,25 @@ function parseTank(raw: unknown): SavedTank | null {
 }
 function loadTank(): SavedTank | null {
   let raw: string | null = null;
+  let s: SavedTank | null = null;
   try {
     raw = localStorage.getItem(SAVE_KEY);
-    const s = raw ? parseTank(JSON.parse(raw)) : null;
-    if (s || !raw) return s;
+    if (raw === null) return null;
+    const obj = JSON.parse(raw) as { addons?: unknown[] } | null;
+    s = parseTank(obj);
+    // Whole and intact: nothing to keep aside.
+    if (s && s.addons.length === obj?.addons?.length) return s;
   } catch { /* unreadable: handled below */ }
   if (raw === null) return null;
-  // The fresh tank that replaces it saves over SAVE_KEY on the first
-  // event or pagehide. Keep the unreadable save aside so a parser bug
-  // or a corrupt write doesn't destroy the user's tank for good.
-  console.warn("tank save unreadable; kept as", SAVE_KEY + ".unreadable");
+  // What loads here saves over SAVE_KEY on the first event or
+  // pagehide. Keep the original aside when any of it was unreadable,
+  // so a parser bug or a corrupt write can't destroy the user's tank
+  // (or some of its add-ons) for good.
+  console.warn("tank save not fully readable; kept as",
+               SAVE_KEY + ".unreadable");
   try { localStorage.setItem(SAVE_KEY + ".unreadable", raw); }
   catch { /* best-effort */ }
-  return null;
+  return s;
 }
 const saved = loadTank();
 const installedAddons: Importable[] = [...(saved?.addons ?? [])];

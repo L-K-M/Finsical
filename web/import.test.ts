@@ -583,5 +583,7 @@ describe("isSavedAddon", () => {
                        { ...ok, sounds: [1] }])
       expect(isSavedAddon(bad)).toBe(false);
     expect(isSavedAddon(ok)).toBe(true);
+    expect(isSavedAddon({ ...ok, section: "" })).toBe(true);
+    expect(isSavedAddon({ ...ok, sounds: [] })).toBe(true);
   });
 });

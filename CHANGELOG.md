@@ -4,7 +4,7 @@
 
 - A tank with any add-on installed comes back on launch again. 0.4.0
   read such a save as damaged and started a fresh default tank in its
-  place, which then saved over it. A save that can't be read is now
+  place, which then saved over it. A save that can't be fully read is
   also kept aside as `finsical:tank.unreadable` rather than lost.
 - A tank saved by 0.3.0 or earlier keeps the look of each fish from an
   add-on that holds several fish. The first launch after the update

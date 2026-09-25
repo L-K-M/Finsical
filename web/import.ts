@@ -516,8 +516,9 @@ export interface PackResult {
 }
 
 /** Catalog sections, plus "" for a listed pack not yet stamped. */
-export type PackSection = "" | "fish" | "gravel" | "backgrounds" |
-    "tanks" | "plants" | "accessories" | "sounds";
+const PACK_SECTIONS = ["", "fish", "gravel", "backgrounds", "tanks",
+                       "plants", "accessories", "sounds"] as const;
+export type PackSection = typeof PACK_SECTIONS[number];
 
 /** Which decoded packs would actually put something in the tank.
  * Each section counts only the art its renderer accepts: fish needs a
@@ -608,9 +609,6 @@ export function isListed(list: Importable[], it: Importable): boolean {
   return list.some((a) => a.url === it.url);
 }
 
-const PACK_SECTIONS: readonly string[] = ["", "fish", "gravel",
-  "backgrounds", "tanks", "plants", "accessories", "sounds"];
-
 /** Whether a saved add-on record (untrusted: localStorage or a .fins
  * file) has the shape the restore path relies on. `copies` needs no
  * check here: decorCopies() clamps it wherever it is read. */
@@ -619,7 +617,7 @@ export function isSavedAddon(raw: unknown): raw is Importable {
   return typeof a === "object" && a !== null &&
     typeof a.url === "string" && a.url !== "" &&
     typeof a.inner === "string" &&
-    typeof a.section === "string" && PACK_SECTIONS.includes(a.section) &&
+    typeof a.section === "string" && (PACK_SECTIONS as readonly string[]).includes(a.section) &&
     (a.sounds === undefined ||
      (Array.isArray(a.sounds) &&
       a.sounds.every((n) => typeof n === "string")));
