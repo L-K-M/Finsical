@@ -194,7 +194,7 @@ yet.
 
 | Window | What it does |
 | --- | --- |
-| Preferences | **Machine**: the computer case around the tank (Macintosh Plus, Performa 450, 20th Anniversary Mac, iMac G3 and G4 variants, or a bare tank). **Monitor**: the CRT effect, presets and its picture tube sliders. **Picture**: the monitor's front-panel controls. **Lighting**: the day and night cycle, a light timer that follows your Mac's clock, or lights always on, and the lamp. **Sound**: volume, mute, and switches for bubble sounds and the water ambience (see [Sounds](#sounds)). |
+| Preferences | **Machine**: the computer case around the tank (Macintosh Plus, Performa 450 and 5200, 20th Anniversary Mac, iMac G3 and G4, PowerBook G3, iBook, or a bare tank). **Monitor**: the CRT effect, presets and its picture tube sliders. **Picture**: the monitor's front-panel controls. **Lighting**: the day and night cycle, a light timer that follows your Mac's clock, or lights always on, and the lamp. **Sound**: volume, mute, and switches for bubble sounds and the water ambience (see [Sounds](#sounds)). |
 | Tank Overview | Everything in the tank as a sortable Name, Kind and Status list, with **Remove**, **Use** for scenery and **Empty Tank…** |
 | Import Add-ons | The archive.org add-on browser described above |
 | Tank Stats | Water quality and average hunger with recent history, the hungriest fish, fish and food counts, day or night, tank age, care hints, and **Change Water** |
@@ -209,8 +209,13 @@ Everything stays on your Mac:
   hides), the CRT switch and settings (`finsical:crt`,
   `finsical:crt-cfg`), the machine case (`finsical:machine`), lighting
   and sound settings (`finsical:lighting`, `finsical:sound`), whether
-  the tank is paused (`finsical:paused`), whether the first-run offer
-  was answered (`finsical:welcomed`), and the last Preferences pane and
+  the tank is paused (`finsical:paused`), the last water change
+  (`finsical:waterChange`), which tab owns the sim
+  (`finsical:tank-owner`), the Auto Feed, tap-the-glass sign and
+  startup-parade switches (`finsical:autofeed`, `finsical:scoldSign`,
+  `finsical:boot`), whether the first-run offer and its sound-effects
+  download were answered (`finsical:welcomed`,
+  `finsical:starterSounds`), and the last Preferences pane and
   add-on section (`finsical:prefsPane`, `finsical:addonSection`).
 - **IndexedDB** database `finsical`: downloaded add-on archives,
   thumbnails and archive.org listing pages, so installed add-ons restore

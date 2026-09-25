@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { curesFor, deriveStats, deriveWater, hungerLabel, milestone,
-         SPARK_H, SPARK_SLOT_MS, SPARK_W, sparkColumns, sparkRow,
-         summaryText, trend, uptime } from "./statsmodel.js";
+import { curesFor, deriveStats, deriveWater, hungerLabel,
+         HUNGER_STARVING, milestone, SPARK_H, SPARK_SLOT_MS, SPARK_W,
+         sparkColumns, sparkRow, summaryText, trend, uptime }
+  from "./statsmodel.js";
 import { DAY_TICKS, Sim } from "../core/sim.js";
-import { HUNGER_SEEK } from "../core/tuning.js";
+import { hourLabel } from "../core/light.js";
+import { HUNGER_SEEK, QUALITY_SEEK } from "../core/tuning.js";
 
 const base = {
   fish: [
@@ -67,6 +69,24 @@ describe("deriveStats", () => {
     expect(s.advice.join(" ")).not.toMatch(/rotting/);
   });
 
+  it("matches the sim at exactly QUALITY_SEEK: fish won't eat", () => {
+    // The sim refuses food at waterQuality <= QUALITY_SEEK, so at the
+    // boundary the advice must already say stop feeding — not invite
+    // a meal the fish will ignore.
+    const s = deriveStats({ ...base, waterQuality: QUALITY_SEEK,
+                            foodSettled: 2,
+                            fish: [{ hunger: 0.9, state: "seek" }] });
+    expect(s.advice.join(" ")).toMatch(/Stop feeding/);
+    expect(s.advice.join(" ")).not.toMatch(/hungry|rotting/);
+    // One step above the boundary the feeding and portion hints both
+    // come back — the shared gate re-enables every check at once.
+    const ok = deriveStats({ ...base,
+      waterQuality: QUALITY_SEEK + 0.01, foodSettled: 2,
+      fish: [{ hunger: 0.9, state: "seek" }] });
+    expect(ok.advice.join(" ")).toMatch(/hungry/);
+    expect(ok.advice.join(" ")).toMatch(/rotting/);
+  });
+
   it("advises feeding when the tank is hungry", () => {
     const s = deriveStats({
       ...base,
@@ -114,9 +134,9 @@ describe("deriveStats", () => {
   it("names the next switch under the light timer", () => {
     const timer = { mode: "timer", on: 8, off: 22 };
     expect(deriveStats({ ...base, light: 0.45, lighting: timer }).lightLabel)
-      .toBe("Night (lights on at 08:00)");
+      .toBe(`Night (lights on at ${hourLabel(8)})`);
     expect(deriveStats({ ...base, light: 1, lighting: timer }).lightLabel)
-      .toBe("Day (lights off at 22:00)");
+      .toBe(`Day (lights off at ${hourLabel(22)})`);
     for (const lighting of [undefined, { ...timer, mode: "demo" },
                             { ...timer, mode: "always" },
                             { ...timer, on: 9, off: 9 }])
@@ -130,14 +150,21 @@ describe("labels", () => {
     expect(uptime(0)).toBe("0m");
     expect(uptime(59)).toBe("59m");
     expect(uptime(90)).toBe("1h 30m");
+    // Past a day the hour count rolls over instead of running long.
+    expect(uptime(1440)).toBe("1d 0h");
+    expect(uptime(2943)).toBe("2d 1h");
   });
   it("hungerLabel", () => {
     expect(hungerLabel(0.1)).toBe("full");
     expect(hungerLabel(0.5)).toBe("peckish");
-    expect(hungerLabel(0.9)).toBe("hungry");
+    expect(hungerLabel(0.8)).toBe("hungry");
+    expect(hungerLabel(0.9)).toBe("starving");
     // "peckish" starts where the sim's fish start looking for food.
     expect(hungerLabel(HUNGER_SEEK - 0.01)).toBe("full");
     expect(hungerLabel(HUNGER_SEEK)).toBe("peckish");
+    // Pin the starving edge the same way.
+    expect(hungerLabel(HUNGER_STARVING - 0.01)).toBe("hungry");
+    expect(hungerLabel(HUNGER_STARVING)).toBe("starving");
   });
   it("trend", () => {
     expect(trend(null, 0.5)).toBe("→");
@@ -285,5 +312,37 @@ describe("summaryText", () => {
     expect(text.split("\n")[0]).toContain("0 fish");
     expect(text).toContain("no hunger data");
     expect(text).toContain("Hungriest: —");
+  });
+
+  it("leaves Hungriest blank when nobody is even peckish", () => {
+    // "Hungriest: Guppy — full" reads like an alarm on a fed tank.
+    const text = summaryText(deriveStats({
+      ...base,
+      fish: [{ species: "Guppy", hunger: 0.2, state: "drift" }],
+    }));
+    expect(text).toContain("Hungriest: —");
+  });
+
+  it("labels the starving band on the Hungriest line", () => {
+    const text = summaryText(deriveStats({
+      ...base,
+      fish: [{ species: "Betta", hunger: 0.9, state: "seek" }],
+    }));
+    expect(text).toContain("Hungriest: Betta — starving");
+  });
+
+  it("pins the Hungriest seek edge against hungerLabel", () => {
+    // At exactly HUNGER_SEEK both comparisons must agree: the row
+    // appears and reads "peckish", not blank and not "full".
+    const text = summaryText(deriveStats({
+      ...base,
+      fish: [{ species: "Guppy", hunger: HUNGER_SEEK, state: "seek" }],
+    }));
+    expect(text).toContain("Hungriest: Guppy — peckish");
+    const under = summaryText(deriveStats({
+      ...base,
+      fish: [{ species: "Guppy", hunger: HUNGER_SEEK - 0.01, state: "drift" }],
+    }));
+    expect(under).toContain("Hungriest: —");
   });
 });

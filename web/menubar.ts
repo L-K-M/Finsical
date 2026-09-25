@@ -9,6 +9,7 @@ import { MENU_SEPARATOR, mountMenuBar, mountWindow, pushButton,
          registerSprites } from "osmium-ui";
 import { ICON_PALETTE, ICON_SPRITES, MENU_GLYPH } from "./icons.js";
 import { inNativeShell } from "./bus.js";
+import { clockLabel } from "../core/light.js";
 import type { Menu } from "osmium-ui";
 
 const DONATE_URL = "https://archive.org/donate";
@@ -255,9 +256,7 @@ function mountClock(bar: HTMLElement): () => void {
   bar.append(el);
   const paint = () => {
     const d = new Date();
-    const h12 = d.getHours() % 12 || 12;
-    el.textContent = `${h12}:${String(d.getMinutes()).padStart(2, "0")} ` +
-      (d.getHours() < 12 ? "AM" : "PM");
+    el.textContent = clockLabel(d.getHours(), d.getMinutes());
   };
   paint();
   // Every second, not every 30: the minute must roll over the moment
