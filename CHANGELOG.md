@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- With the CRT effect on, clicks, hovering and feeding land where the
+  curved, shifted picture shows the tank. They used to follow the flat
+  tank underneath, so a click could miss by several pixels, and with a
+  raised Height or overscan the feeding strip could sit outside the
+  area that took the click.
+- At full Perspective the CRT picture's near edge now stays at the
+  frame and only the far edge shrinks back. The near edge used to
+  spill past the glass and hide the side of the tank.
+- The CRT gains a choice of phosphor mask in Preferences: the aperture
+  grille it had, a slot mask or a shadow mask. The strength slider,
+  which was called Shadow grille, is now Phosphor mask.
+- Bright CRT highlights now roll off smoothly instead of clipping to
+  flat white patches when bloom and Bright-color boost push them past
+  full brightness.
+- Screen readers now say which way the CRT's position pots move the
+  picture and by how much, such as "4% left" or "Centered", and the
+  Preferences caption shows the same.
 - A tank with any add-on installed comes back on launch again. 0.4.0
   read such a save as damaged and started a fresh default tank in its
   place, which then saved over it. A save that can't be fully read is
@@ -11,6 +28,22 @@
   reopens on the tab you used last. The first time it opens after this
   update it comes up centered at its new size, since the size you left
   it at was for the old single pane.
+- The CRT's scanlines now follow the picture's brightness, like a real
+  tube's beam. Dark rows thin to lines with deep gaps, while bright
+  rows swell to nearly fill them, so highlights look painted rather
+  than striped and a lone bright pixel glows as a dot. In a small
+  window the lines fade to their average brightness instead of
+  beating into moire patterns.
+- The CRT's bloom and glass halation are now smooth glows. Small
+  bright shapes such as bubbles used to cast sharp copies of
+  themselves a few pixels to each side.
+- The CRT's Softening blends colors the way a tube's light does, so
+  dithered patterns and the seams between two colors no longer come
+  out darker than they should.
+- The CRT picture's corners are rounded and its curved edges are
+  smooth instead of stair-stepped.
+- The CRT's Geometry group gains Horizontal and Vertical position
+  pots, which shift the picture left, right, up or down on the glass.
 - A tank saved by 0.3.0 or earlier keeps the look of each fish from an
   add-on that holds several fish. The first launch after the update
   would otherwise turn them all into the add-on's last fish: angels.zip
@@ -41,15 +74,28 @@
   and hold the tank up for seconds to minutes, then leave thousands of
   sounds that came back at every launch. Each sound in a file now
   imports once, at most 1,024 per file.
+- Fish go to sleep in a tank that opens in the dark. With the light
+  timer past its off hour, or the lamp left off, they used to swim all
+  night, because they only bedded down after seeing daylight first.
+  Fish also settle one at a time, each between 2 and 22 seconds after
+  dark, and wake one by one within 11 seconds of dawn, instead of all
+  on the same instant.
+- A hungry fish between two pellets picks one and eats it. Near the
+  midpoint it used to roll back and forth between them, sometimes for a
+  minute, while both sank and fouled the water.
+- Adding a big fish add-on stalls the tank for less time: decoding
+  the gup, discus and angel packs' sprites takes under a third as
+  long, which shortens the pause while one goes in.
 - At night, the pointer works as a torch. When you hover over the dark
   tank with a mouse or pen, a warm, soft circle of light shows the
   fish and plants under it in their daytime colors while the rest of
   the tank stays moonlit. The beam widens as the night deepens and
   follows the pointer even while the tank is paused.
-- The CRT's Geometry group gains two pots. Skew leans the whole
-  picture into a parallelogram, and Perspective swings it like the
-  tube turning on its stand — one edge looming large while the
-  other shrinks back.
+- The CRT's Geometry group gains three pots. Horizontal skew leans the
+  whole picture into a parallelogram, Vertical skew slopes it up or
+  down, and Perspective swings it like the tube turning on its stand —
+  one edge looming large while the other shrinks back. The Preferences
+  window is a little taller to fit them.
 - The CRT Softening control now smears only along each scanline, as
   its description says. The rows used to blend into each other at
   every setting, so the whole picture turned soft, and even Sharp and

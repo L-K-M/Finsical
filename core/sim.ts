@@ -4,11 +4,12 @@ import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
 import { demoLight, DUSK_LIGHT } from "./light.js";
 import { Aquarium } from "./aquarium/aquarium.js";
 import type { Resident } from "./aquarium/aquarium.js";
-import { hungerOf, newLife, stomachSize, vigorOf }
+import { hungerOf, newLife, randInt, stomachSize, vigorOf }
   from "./aquarium/life.js";
 import type { FishLife } from "./aquarium/life.js";
 import { DEFAULT_CARE } from "./data/species.js";
 import type { SpeciesCare } from "./data/species.js";
+import type { Cover } from "./depth.js";
 
 export interface Tank {
   width: number;
@@ -65,6 +66,15 @@ export interface Fish {
   turnFrom: 1 | -1;
   /** Preferred depth band the fish wanders around. */
   bandY: number;
+  /** Distance from the back glass, 0 (back) to 1 (front): where the
+   * fish sorts among the decor. `tz` is where it is heading. */
+  z: number;
+  tz: number;
+  /** Ticks left hovering before the next leg (runtime only). */
+  hover: number;
+  /** Ticks left hiding behind `hideIn` after a scare (runtime only). */
+  hideTicks: number;
+  hideIn?: Cover;
   /** Render scale — juveniles spawn small, meals grow toward adult. */
   scale: number;
   /** 0 = full, 1 = starving: how empty the stomach is. The life model
@@ -172,8 +182,12 @@ const GASP_QUALITY = 0.45;
 const STARTLE_RADIUS = 48;
 /** Length of a full-strength startle; weaker ones last down to half. */
 const STARTLE_TICKS = 30;
-/** Dart speed cap, px/tick: what a point-blank tap produces. */
-const STARTLE_MAX_SPEED = 3.5;
+/** Dart speed cap, px/tick: what a point-blank tap produces. The
+ * original only redirects a scared fish (Calc_Scat_Dest) onto a fresh
+ * swim ramp, so the dart stays close to a brisk cruise. */
+const STARTLE_MAX_SPEED = 2;
+/** Speed a scare adds over cruise at full strength. */
+const STARTLE_BOOST = 0.5;
 /** Speed kept when a startled fish bounces off a side wall. */
 const STARTLE_BOUNCE = 0.6;
 /** Reactions weaker than this read as frozen fish — trims the
@@ -182,27 +196,33 @@ const STARTLE_BOUNCE = 0.6;
 const MIN_STARTLE_STRENGTH = 0.05;
 /** How close a darting fish must pass to startle a neighbor. */
 const PROP_RADIUS = 32;
-/** Hops a panic wave may travel from the fish that was tapped. */
-const MAX_PANIC_HOPS = 2;
+/** Hops a panic wave may travel from the fish that was tapped: the
+ * original scatters only the fish near the click, so a darting fish
+ * spooks its close neighbors and no further. */
+const MAX_PANIC_HOPS = 1;
 /**
- * Movement budget per decision. The original runs 60 ticks/s and re-decides
- * every 64 ticks (~1.07 s); halved here for our 30 tps clock.
+ * Movement budget per stroke. The original steps its fish at most 10
+ * times a second (the Windows engine; 6.7 on the Mac) and gives each
+ * leg 64 steps (Init_Swim) before it re-aims at the same destination:
+ * ~6.4 s, 192 of our 30 tps ticks.
  */
-const MOVE_TICKS = 32;
+const MOVE_TICKS = 192;
 /**
  * Extra strokes a fish may spend on a far destination before picking a
- * new one. Wander targets are often two or three strokes away; cutting
- * each move short after one stroke made fish re-aim (and so roll)
- * about once a second.
+ * new one. The original re-aims at the same destination until it
+ * arrives (Go_To_Dest); the cap only frees a fish that can't get there.
  */
-const MAX_STROKES = 3;
-/** Stroke ramp divisor: speed = cruise·(phase+1)²/64 while accelerating. */
-const RAMP_DIV = 64;
+const MAX_STROKES = 8;
+/** Stroke ramp divisor: speed = cruise·(phase+1)²/900 while
+ * accelerating, so a fish takes a second to reach cruise (the
+ * original: 5 to 100 steps by the fish's character, 0.5 to 10 s). */
+const RAMP_DIV = 900;
 /** Per-tick speed kept while a new stroke's ramp is still below it:
  * the fish glides into the next stroke instead of stopping dead. */
 const GLIDE = 0.93;
-/** Brake decay divisor: speed = peak − (phase−latch)²·peak/128. */
-const BRAKE_DIV = 128;
+/** Brake decay divisor: speed = peak − (phase−latch)²·peak/500, a stop
+ * in ~22 ticks (the original brakes at 1.6× its acceleration). */
+const BRAKE_DIV = 500;
 /** Approach radius around the destination where the brake latches. */
 const BRAKE_DIST = 24;
 /** Heading steer rate, rad/tick — a 180° reversal takes ~19 ticks. */
@@ -211,10 +231,35 @@ const TURN_RATE = Math.PI / 20;
  * straight up or down, so a fish can close on a pellet it is just
  * overshooting without rolling. Anything steeper needs a roll. */
 const MAX_PITCH = Math.PI * 7 / 12;
+/** Steepest a wandering fish aims (35 degrees): the original swims
+ * mostly level, limiting climbs and dives by a per-species angle. Only
+ * a fish going for food pitches steeper. */
+const WANDER_PITCH = Math.PI * 35 / 180;
+/** How far a wander leg reaches, in body lengths across and px up or
+ * down: the original picks x within ±5 body widths (Calc_New_Dest) and
+ * y within ±80 of its 480 px (Get_Dest_In_Area), so fish potter about
+ * locally instead of crossing the tank on every leg. */
+const REACH_BODIES = 5;
+const REACH_Y = 34;
+/** Body length of a fish whose sprite size isn't known yet, px. */
+const DEFAULT_BODY = 20;
+/** On arriving, the chance a fish hovers before its next leg, and for
+ * how long: the original idles 40% of the times it doesn't swim on
+ * (Init_Idle), for 6 to 63 steps (0.6 to 6.3 s). */
+const HOVER_ODDS = 0.3;
+const HOVER_TICKS_MIN = 18;
+const HOVER_TICKS_RANGE = 171;
+/** Per-tick speed kept while hovering: the fish coasts to a stop. */
+const HOVER_DECAY = 0.9;
 /** How far behind the fish a target may sit and still be reached by
  * pitching over rather than rolling: about the turning circle at
  * cruise, so diving onto a pellet right below never rolls. */
 const TURN_SLACK = 12;
+/** Extra distance, px, a hungry fish counts for a pellet behind it:
+ * about what the roll to face it costs. A pellet ahead wins a near
+ * tie, and once a fish has rolled toward one pellet the other is the
+ * one behind it, so it commits instead of rolling back and forth. */
+const ROLL_COST = 32;
 /** Chance a new destination drawn behind the fish is mirrored ahead
  * of it instead: about 70% of moves carry on the way the fish faces,
  * so it rolls every few seconds rather than on most decisions. */
@@ -227,6 +272,24 @@ const MIRROR_MIN = 4;
 export const BAND_HALF = 24;
 /** Chance per decision of picking a new depth band. */
 const BAND_SHIFT = 0.2;
+/** Range of distances from the back glass fish wander through, and
+ * the chance per decision of heading for a new one. */
+const Z_MIN = 0.05;
+const Z_MAX = 0.9;
+const Z_SHIFT = 0.25;
+/** Depth change per tick: a calm fish takes ~7 s to cross the tank
+ * front to back, a scared one under a second. */
+const Z_RATE = 0.004;
+const Z_DART = 0.04;
+/** A scared fish makes for cover within this distance, behind decor at
+ * least this far from the back glass (room to get behind it). */
+const HIDE_RADIUS = 120;
+const HIDE_MIN_DEPTH = 0.25;
+/** How far behind its cover a hiding fish tucks in. */
+const HIDE_BEHIND = 0.15;
+/** Ticks a fish stays hidden after the dart: 3 to 8 s. */
+const HIDE_TICKS_MIN = 90;
+const HIDE_TICKS_RANGE = 150;
 /** Chance per decision a wander anchors on a schoolmate's
  * neighborhood instead of the open water. PR #154's longer strokes
  * dilute each anchor, so the pull is high enough to still read as a
@@ -250,10 +313,10 @@ const HIT_MIN = 8;
 /** This close to the pointer a noticed fish just hovers nearby. */
 const NOTICE_STANDOFF = 16;
 /**
- * Roll duration. The original's turn steps half the 32-pose ring
- * (~16 poses at 60 tps ≈ 0.27 s); ~10 ticks here at 30 tps.
+ * Roll duration. The original's turn steps half its 8-pose ring, a
+ * pose per step (Init_Turn): 4 steps, 0.4 s at 10 steps a second.
  */
-export const TURN_TICKS = 10;
+export const TURN_TICKS = 12;
 /** Juveniles spawn at 0.70–0.95 of adult size. Adult (1) is the art
  * scale the renderer draws a species at, so growth never makes a fish
  * bigger than its own art. */
@@ -275,18 +338,37 @@ export const DAY_TICKS = 24000;
  * fluttering between states. Exported for the sleep test. */
 export const SLEEP_LIGHT = DUSK_LIGHT;
 export const WAKE_LIGHT = 0.6;
-/** Two healthy, well-fed, grown fish of a species occasionally have a
- * fry — ~one birth per 10 min in a thriving tank. FRY_SCALE is the
- * juvenile minimum addFish clamps to, so a newborn reads visibly
- * smaller than its parents and grows up on its meals. */
-const BIRTH_HUNGER = 0.3;
-const BIRTH_SCALE = 0.9;
-const BIRTH_CHANCE = 1 / 18000;
+/** Breeding on tank time, as the original's Start_Coupling paces it:
+ * once a tank day each species with a pair of breeding age rolls
+ * BREED_ODDS in 100 to couple, and a coupling takes 50% of the time,
+ * so a thriving pair has young about every 13 tank days. Breeding age
+ * is the species' FsTI breedAge; the pair must be healthy (the
+ * original: health at least 0.75 of its maximum) and not sick.
+ * FRY_SCALE is the juvenile minimum addFish clamps to, so a newborn
+ * reads visibly smaller than its parents and grows up on its meals. */
+const MINUTES_PER_DAY = 24 * 60;
+const BREED_ODDS = 15;
+const CONCEIVE_ODDS = 50;
+const BREED_HEALTH = 75;
 const FRY_SCALE = SPAWN_SCALE_MIN;
 
-/** Pitch off the facing axis, limited to MAX_PITCH either way. */
-function clampPitch(p: number): number {
-  return Math.max(-MAX_PITCH, Math.min(MAX_PITCH, p));
+/** Each fish beds down this many ticks into the dark (2 to 22 s) and
+ * lies in this many into the light (under 11 s), by its id: the tank
+ * settles and stirs one fish at a time rather than all on one tick. */
+export const BEDTIME_MIN = 60, BEDTIME_SPREAD = 600;
+export const LIE_IN_MIN = 20, LIE_IN_SPREAD = 300;
+
+/** A well-spread 32-bit hash of an integer (murmur3's finalizer), so
+ * neighbouring ids get unrelated bedtimes. */
+function mix32(x: number): number {
+  x = Math.imul(x ^ (x >>> 16), 0x85ebca6b);
+  x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35);
+  return (x ^ (x >>> 16)) >>> 0;
+}
+
+/** Pitch off the facing axis, limited to `lim` either way. */
+function clampPitch(p: number, lim = MAX_PITCH): number {
+  return Math.max(-lim, Math.min(lim, p));
 }
 
 /** Fixed-step aquarium simulation. Advance with `tick()` — one step per call. */
@@ -295,6 +377,10 @@ export class Sim {
   readonly fish: Fish[] = [];
   readonly food: Food[] = [];
   readonly bubbles: Bubble[] = [];
+  /** The decor as the fish see it, set by the view whenever the decor
+   * changes: fish pass behind and in front of it, and hide behind it
+   * when scared. */
+  cover: readonly Cover[] = [];
   /** Spawn a bubble at a point — the view emits these for decor
    * (plants oxygenating); the lifecycle (rise, surface pop) is the
    * same as a gravel bubble's. */
@@ -336,15 +422,22 @@ export class Sim {
     return this.fish.some((f) => this.isBegging(f));
   }
   private rand: () => number;
+  /** Depth draws have their own stream, so the swim path for a seed
+   * stays what it was before fish had depth. */
+  private zRand: () => number;
   private nextId = 0;
-  /** Fish only bed down after the tank has seen daylight once — a
-   * sim created or restored mid-night keeps its fish awake until
-   * the first dawn rather than knocking them out on tick one. */
-  private seenDay = false;
+  /** Consecutive ticks below SLEEP_LIGHT, and at or above WAKE_LIGHT.
+   * Fish bed down and wake by these, each after its own delay, so a sim
+   * created or restored in the dark (a timer night, the lamp saved off)
+   * settles its fish over the first seconds: never on tick one, and
+   * not only after the next dawn either. */
+  private darkTicks = 0;
+  private brightTicks = 0;
 
   constructor(tank: Tank, seed = 1) {
     this.tank = tank;
     this.rand = makeRng(seed);
+    this.zRand = makeRng(seed ^ 0x2de9);
     this.aquarium = new Aquarium(makeRng(seed ^ 0x5eed));
   }
 
@@ -353,8 +446,12 @@ export class Sim {
   advanceLife(realSeconds: number): void {
     const a = this.aquarium;
     a.lightOn = this.light > SLEEP_LIGHT;
+    const day = Math.floor(a.minutes / MINUTES_PER_DAY);
     a.advance(realSeconds, this.residents());
     this.syncLife();
+    // A tank day turned over (once, however many passed while the tank
+    // was closed: a catch-up rolls each species' odds at most once).
+    if (Math.floor(a.minutes / MINUTES_PER_DAY) > day) this.maybeBirth();
   }
 
   /** The fish as the aquarium model sees them. */
@@ -435,7 +532,8 @@ export class Sim {
       id: this.nextId, species: "",
       facing: 1, heading: 0, phase: 0, latch: -1, peak: 0, cruise: 1,
       speed: 1, vy: 0, tx: 0, ty: 0, turnDir: 1, turnFrom: 1,
-      strokes: 0, bandY: 0, scale: 1, hunger: SPAWN_HUNGER,
+      strokes: 0, bandY: 0, z: 0, tz: 0, hover: 0, hideTicks: 0, scale: 1,
+      hunger: SPAWN_HUNGER,
       state: "drift", stateTicks: 0, startleLen: STARTLE_TICKS,
       panicHops: 0, ...fish,
     };
@@ -453,6 +551,9 @@ export class Sim {
     if (!Number.isFinite(fish.tx)) f.tx = f.x;
     if (!Number.isFinite(fish.ty)) f.ty = f.y;
     if (!Number.isFinite(fish.bandY)) f.bandY = f.y;
+    if (!Number.isFinite(fish.z) || f.z < 0 || f.z > 1)
+      f.z = Z_MIN + this.zRand() * (Z_MAX - Z_MIN);
+    if (!Number.isFinite(fish.tz) || f.tz < 0 || f.tz > 1) f.tz = f.z;
     // Saved/restored fish keep their size; new fish spawn as juveniles
     // of varying size so a school doesn't read as clones.
     if (fish.scale === undefined)
@@ -540,7 +641,9 @@ export class Sim {
 
   tick(): void {
     this.tickCount++;
-    if (this.light >= WAKE_LIGHT) this.seenDay = true;
+    const lt = this.light;
+    this.darkTicks = lt < SLEEP_LIGHT ? this.darkTicks + 1 : 0;
+    this.brightTicks = lt >= WAKE_LIGHT ? this.brightTicks + 1 : 0;
     // The hovered pointer is noticed by calm fish — only drifters
     // look up; seeking and startled fish have other business. A
     // watcher keeps watching while it stays in range (a roll to face
@@ -551,13 +654,15 @@ export class Sim {
       (f.x - n.x) ** 2 + (f.y - n.y) ** 2 < NOTICE_RADIUS * NOTICE_RADIUS;
     this._noticeFish = this._noticeFish.filter((f) =>
       this.fish.includes(f) && f.state !== "dead" && inRange(f) &&
-      (f.state === "drift" || f.state === "turn"));
+      f.hideTicks === 0 && (f.state === "drift" || f.state === "turn"));
     if (n && this._noticeFish.length < NOTICE_CAP) {
       // Fill the open slots with the nearest drifters not already
       // watching — a small crowd presses the glass, like the original.
       const cand: { f: Fish; d: number }[] = [];
       for (const f of this.fish) {
-        if (f.state !== "drift" || this._noticeFish.includes(f))
+        // A fish hiding from a knock stays in cover.
+        if (f.state !== "drift" || f.hideTicks > 0 ||
+            this._noticeFish.includes(f))
           continue;
         const d = (f.x - n.x) ** 2 + (f.y - n.y) ** 2;
         if (d < NOTICE_RADIUS * NOTICE_RADIUS) cand.push({ f, d });
@@ -569,7 +674,6 @@ export class Sim {
       }
     }
     for (const f of this.fish) this.tickFish(f);
-    this.maybeBirth();
     // Panic propagates: a freshly darting fish startles close
     // neighbors — fish-on-fish reaction on the same distance falloff.
     for (const a of this.fish) {
@@ -634,14 +738,19 @@ export class Sim {
     // the pellet (within NOTICE_DIST), at seek hunger any pellet
     // wakes it.
     const peckish = this.foodFor(f) !== null;
+    // Its own bedtime and lie-in, fixed by its id: no rand() draw, so
+    // seeded runs elsewhere don't shift. The +1 matters: mix32(0) is 0,
+    // which would make fish 0 first to bed and first up every night.
+    const h = mix32(f.id + 1);
     if (f.state === "sleep") {
-      if (this.light >= WAKE_LIGHT || peckish) {
+      if (this.brightTicks > LIE_IN_MIN + (h >>> 16) % LIE_IN_SPREAD ||
+          peckish) {
         this.setState(f, "drift");
         this.decide(f);
         this.maybeTurn(f); // like the startle exit: roll, don't pitch over
       }
-    } else if (f.state !== "startle" && this.seenDay &&
-               this.light < SLEEP_LIGHT && !peckish) {
+    } else if (f.state !== "startle" && !peckish &&
+               this.darkTicks > BEDTIME_MIN + h % BEDTIME_SPREAD) {
       this.setState(f, "sleep");
     }
 
@@ -701,7 +810,23 @@ export class Sim {
         f.phase = 0;
         f.latch = -1;
       }
+    } else if (f.hover > 0 && !peckish && !this._noticeFish.includes(f)) {
+      // Hovering: coast to a stop and hang there, level, fins going.
+      f.hover--;
+      f.speed = Math.max(f.speed * HOVER_DECAY, f.cruise * 0.04);
+      const level = wrapAngle((f.facing > 0 ? 0 : Math.PI) - f.heading);
+      f.heading = wrapAngle(f.heading +
+        Math.min(TURN_RATE, Math.max(-TURN_RATE, level)));
+      f.vy = Math.sin(f.heading) * f.speed * vigor;
+      f.x += Math.cos(f.heading) * f.speed * vigor;
+      f.y += f.vy;
+      if (f.hover === 0) {
+        this.decide(f);
+        this.maybeTurn(f);
+      }
     } else {
+      // Food or the pointer cuts a hover short.
+      f.hover = 0;
       const food = this.foodFor(f);
       let turning = false;
       if (food) {
@@ -745,14 +870,24 @@ export class Sim {
       if (!food && !turning && nd > standoff &&
           (f.phase >= MOVE_TICKS || dist < 4)) {
         if (dist >= BRAKE_DIST && f.strokes < MAX_STROKES) {
+          // Out of budget short of the destination: another stroke at
+          // the same one, carrying the speed it has.
           f.strokes++;
+          this.resumeStroke(f);
+        } else if (dist < BRAKE_DIST && f.hideTicks === 0 && rank < 0 &&
+                   this.rand() < HOVER_ODDS) {
+          // Arrived (not pressed to the glass): sometimes hang here.
+          f.hover = HOVER_TICKS_MIN +
+            Math.floor(this.rand() * HOVER_TICKS_RANGE);
+          f.tx = f.x; f.ty = f.y;
           f.phase = 0;
           f.latch = -1;
+          dist = 0;
         } else {
           this.decide(f);
           dist = Math.hypot(f.tx - f.x, f.ty - f.y);
         }
-        turning = this.maybeTurn(f);
+        turning = f.hover > 0 ? false : this.maybeTurn(f);
       }
       // A brake latched on an earlier target, or on a pellet that has
       // since sunk away, would leave the fish crawling after the food.
@@ -785,7 +920,8 @@ export class Sim {
       const axis = f.facing > 0 ? 0 : Math.PI;
       const cur = clampPitch(wrapAngle(f.heading - axis));
       const want = turning ? cur : clampPitch(
-        wrapAngle(Math.atan2(f.ty - f.y, f.tx - f.x) - axis));
+        wrapAngle(Math.atan2(f.ty - f.y, f.tx - f.x) - axis),
+        food ? MAX_PITCH : WANDER_PITCH);
       f.heading = wrapAngle(axis + cur +
         Math.min(TURN_RATE, Math.max(-TURN_RATE, want - cur)));
 
@@ -870,6 +1006,8 @@ export class Sim {
       }
     }
 
+    if (f.state !== "sleep") this.stepDepth(f);
+
     const { x0, x1, y0, y1 } = this.room(f);
     let hit = false;
     // Direction back into the tank from a side wall the fish reached.
@@ -910,6 +1048,8 @@ export class Sim {
     // edible from the boundary; a seeker pressed to the glass slides
     // to it rather than sticking.
     if (hit && f.state === "drift") {
+      // A hover that coasted into the glass ends there too.
+      f.hover = 0;
       f.phase = Math.max(f.phase, MOVE_TICKS);
       f.strokes = MAX_STROKES;
     }
@@ -964,8 +1104,37 @@ export class Sim {
    */
   private decide(f: Fish): void {
     const { x0, x1, y0, y1 } = this.room(f);
+    if (f.hideTicks > 0 && f.hideIn) {
+      // Hiding: potter about behind the cover, below its top.
+      const c = f.hideIn, m = Math.min(8, (c.x1 - c.x0) / 4);
+      if (f.z < c.depth) {
+        f.tx = Math.min(x1, Math.max(x0,
+          c.x0 + m + this.zRand() * Math.max(0, c.x1 - c.x0 - 2 * m)));
+      } else {
+        // Still in front of the art (the dart outran the depth change):
+        // swim clear of it on the side the fish faces, where it can
+        // slip behind without a roll, then go in.
+        const hw = Math.max(this.halfW(f), DEFAULT_BODY / 2);
+        const right = c.x1 + hw + 2, left = c.x0 - hw - 2;
+        const ahead = f.facing > 0 ? right : left;
+        f.tx = Math.min(x1, Math.max(x0,
+          ahead > x0 && ahead < x1 ? ahead : f.facing > 0 ? left : right));
+      }
+      const top = Math.min(y1, Math.max(y0, c.top + this.halfH(f)));
+      f.ty = top + this.zRand() * (y1 - top);
+      f.phase = 0;
+      f.latch = -1;
+      f.strokes = 0;
+      return;
+    }
     if (this.rand() < BAND_SHIFT) f.bandY = y0 + this.rand() * (y1 - y0);
-    f.tx = x0 + this.rand() * (x1 - x0);
+    const reach = REACH_BODIES * Math.max(DEFAULT_BODY, 2 * this.halfW(f));
+    // A draw past a wall bounces back off it, so a fish at the glass
+    // isn't handed the spot it is already pressed against.
+    let tx = f.x + (this.rand() - 0.5) * 2 * reach;
+    if (tx > x1) tx = 2 * x1 - tx;
+    if (tx < x0) tx = 2 * x0 - tx;
+    f.tx = Math.min(x1, Math.max(x0, tx));
     if ((f.tx - f.x) * f.facing < 0 && this.rand() < AHEAD_BIAS) {
       const mx = Math.min(x1, Math.max(x0, 2 * f.x - f.tx));
       if (Math.abs(mx - f.x) > MIRROR_MIN) f.tx = mx;
@@ -983,6 +1152,10 @@ export class Sim {
     const ceiling = y1 - gasp * (y1 - y0) + gasp * (f.id % 9);
     f.ty = Math.min(ceiling,
       Math.max(y0, f.bandY + (this.rand() - 0.5) * 2 * BAND_HALF));
+    // A leg climbs or dives only so far; a far band takes a few legs.
+    // Gasping and begging fish head for the surface in one go.
+    if (gasp === 0 && !begging)
+      f.ty = Math.min(f.y + REACH_Y, Math.max(f.y - REACH_Y, f.ty));
     // Schooling: a same-species wander sometimes anchors on a
     // schoolmate's neighborhood — loose grouping, not lockstep. Starter
     // fish share species "" but take sprite sheets round-robin, so they
@@ -1004,6 +1177,7 @@ export class Sim {
     // A sick fish keeps to the bottom of its range (Calc_New_Dest_Vert).
     if (f.life?.sick)
       f.ty = y0 + (y1 - y0) * (SICK_DEPTH + this.rand() * (1 - SICK_DEPTH));
+    if (this.zRand() < Z_SHIFT) f.tz = Z_MIN + this.zRand() * (Z_MAX - Z_MIN);
     f.phase = 0;
     f.latch = -1;
     f.strokes = 0;
@@ -1023,14 +1197,70 @@ export class Sim {
    * repeated taps from compounding. */
   private startle(f: Fish, dx: number, dy: number, d: number, k: number,
                   hops: number): void {
+    f.hover = 0;
     f.state = "startle";
     f.stateTicks = 0;
     f.startleLen = Math.round(STARTLE_TICKS * (0.5 + 0.5 * k));
     f.panicHops = hops;
     f.facing = dx >= 0 ? 1 : -1;
-    f.speed = Math.min(STARTLE_MAX_SPEED,
-                       Math.max(f.speed, f.cruise * (1 + 1.5 * k)));
+    // Never below cruise: a fish faster than the cap (a restored save
+    // may carry one) must not be braked by a scare.
+    f.speed = Math.max(f.cruise, Math.min(STARTLE_MAX_SPEED,
+      Math.max(f.speed, f.cruise * (1 + STARTLE_BOOST * k))));
     f.vy = (dy / d) * 2.5 * k;
+    this.seekCover(f);
+  }
+
+  /** A scared fish makes for the nearest decor it can get behind, and
+   * stays there a few seconds (the original's guide: accessories give
+   * "your shy fish a place to hide"). No cover in reach: it just darts. */
+  private seekCover(f: Fish): void {
+    let best: Cover | undefined, bd = HIDE_RADIUS;
+    for (const c of this.cover) {
+      if (c.depth < HIDE_MIN_DEPTH) continue;
+      // A fish already inside a piece's span can't slip behind it
+      // without passing through it, unless it is behind already.
+      const inside = f.x > c.x0 && f.x < c.x1;
+      if (inside && f.z >= c.depth) continue;
+      const d = inside ? 0 : Math.min(Math.abs(f.x - c.x0), Math.abs(f.x - c.x1));
+      if (d < bd) { bd = d; best = c; }
+    }
+    if (!best) return;
+    f.hideIn = best;
+    f.hideTicks = HIDE_TICKS_MIN + Math.floor(this.zRand() * HIDE_TICKS_RANGE);
+    f.tz = Math.max(0, best.depth - HIDE_BEHIND);
+  }
+
+  /** Move toward the target depth, never through a piece of decor the
+   * fish's body overlaps — that would pop it from behind the art to in
+   * front of it. It changes depth in open water, or above the art. */
+  private stepDepth(f: Fish): void {
+    if (f.hideTicks > 0 && f.state !== "startle") {
+      // Time up, or the decor changed (any add or removal re-spaces
+      // every piece, so the old cover is gone): back to open water.
+      if (!f.hideIn || !this.cover.includes(f.hideIn) || --f.hideTicks === 0) {
+        f.hideTicks = 0;
+        delete f.hideIn;
+        f.tz = Z_MIN + this.zRand() * (Z_MAX - Z_MIN);
+      }
+    }
+    const rate = f.hideTicks > 0 ? Z_DART : Z_RATE;
+    const nz = f.z + Math.max(-rate, Math.min(rate, f.tz - f.z));
+    if (nz === f.z) return;
+    const hw = this.halfW(f), hh = this.halfH(f);
+    for (const c of this.cover) {
+      if ((f.z < c.depth) === (nz < c.depth)) continue;
+      if (f.x + hw > c.x0 && f.x - hw < c.x1 && f.y + hh > c.top) return;
+    }
+    const was = f.z;
+    f.z = nz;
+    // Waiting beside its cover, the fish just got behind it: go in.
+    const c = f.hideIn;
+    if (c && f.hideTicks > 0 && was >= c.depth && nz < c.depth &&
+        f.state === "drift") {
+      this.decide(f);
+      this.maybeTurn(f);
+    }
   }
 
   /** A target behind the fish needs a reversal — the original plays
@@ -1073,32 +1303,40 @@ export class Sim {
              y1: Math.max(y0, h - Math.max(BOTTOM_PAD, ky)) };
   }
 
-  /** A thriving pair occasionally produces a fry — the original's
-   * quiet reward for a well-kept tank. One roll per eligible species
-   * per tick keeps a crowded healthy tank from baby-booming. */
+  /** A new tank day: each species with a healthy pair of breeding age
+   * may have a fry (Start_Coupling, End_Coupling). */
   private maybeBirth(): void {
-    if (this.fish.length >= FISH_CAP) return;
     const seen = new Set<string>();
     const parents = new Map<string, Fish>();
     for (const f of this.fish) {
-      if (!f.species || f.state === "dead" || f.life?.sick != null ||
-          f.hunger > BIRTH_HUNGER ||
-          f.scale < BIRTH_SCALE) continue;
+      const l = f.life;
+      if (!f.species || f.state === "dead" || !l || l.sick != null ||
+          l.health < BREED_HEALTH ||
+          l.age < this.careOf(f).breedAge * MINUTES_PER_DAY) continue;
       if (seen.has(f.species)) parents.set(f.species, f);
       seen.add(f.species);
     }
     for (const [species, parent] of parents) {
-      if (this.rand() >= BIRTH_CHANCE) continue;
+      if (this.fish.length >= FISH_CAP) return;
+      if (randInt(this.rand, 1, 100) > BREED_ODDS ||
+          randInt(this.rand, 1, 100) > CONCEIVE_ODDS) continue;
       const fry = this.addFish({
         species, x: parent.x,
         y: Math.min(parent.y + 10, this.tank.height - BOTTOM_PAD - 4),
         facing: parent.facing, heading: parent.heading,
         cruise: parent.cruise, hunger: 0.3, scale: FRY_SCALE,
+        z: parent.z,
         ...(parent.sheetIdx !== undefined ? { sheetIdx: parent.sheetIdx } : {}),
         ...(parent.pack !== undefined ? { pack: parent.pack } : {}),
       });
+      // Born today: a fry starts its life at age 0, not as the young
+      // adult a newly bought fish arrives as.
+      const care = this.careOf(fry);
+      const life = newLife(this.rand, care, 0);
+      life.stomach = stomachSize(this.weightOf(fry));
+      life.ate = Math.round(life.stomach * 0.7);
+      fry.life = life;
       this.events.push({ type: "birth", fish: fry });
-      return; // at most one birth per tick
     }
   }
 
@@ -1113,18 +1351,25 @@ export class Sim {
   private foodFor(f: Fish): Food | null {
     if (f.hunger <= HUNGER_SNACK || this.waterQuality <= QUALITY_SEEK)
       return null;
+    // A hungry fish goes looking, and weighs the roll; a peckish one
+    // only snaps up whatever drifts within reach.
+    if (f.hunger > HUNGER_SEEK) return this.nearestFood(f, ROLL_COST);
     const food = this.nearestFood(f);
-    if (!food || f.hunger > HUNGER_SEEK) return food;
+    if (!food) return null;
     const dx = food.x - f.x, dy = food.y - f.y;
     return dx * dx + dy * dy < NOTICE_DIST * NOTICE_DIST ? food : null;
   }
 
-  private nearestFood(f: Fish): Food | null {
+  /** The closest pellet, counting `rollCost` extra px for one more than
+   * TURN_SLACK behind the fish. An exact tie keeps the earlier pellet. */
+  private nearestFood(f: Fish, rollCost = 0): Food | null {
     let best: Food | null = null;
     let bd = Infinity;
     for (const fd of this.food) {
       if (fd.eaten) continue;
-      const d = (fd.x - f.x) ** 2 + (fd.y - f.y) ** 2;
+      const dx = fd.x - f.x, dy = fd.y - f.y;
+      const behind = -dx * f.facing > TURN_SLACK;
+      const d = Math.sqrt(dx * dx + dy * dy) + (behind ? rollCost : 0);
       if (d < bd) { bd = d; best = fd; }
     }
     return best;
