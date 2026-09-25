@@ -60,12 +60,38 @@ Add-ons.
 | Feed the fish | Click above the waterline, in the dark strip at the top of the tank (the pointer becomes a crosshair) |
 | Tap the glass | Click in the water; nearby fish startle |
 | See a fish's name | Point at it: a balloon names it and says what it is doing |
-| Get Info on a fish | Option-click it: a card follows it with its hunger and mood |
+| Get Info on a fish | Option-click it: a card follows it with its health, hunger and mood |
 | Move the window | In the app, drag the computer case around the tank, or the top edge of the window |
 
 A fish nearby comes over to look at the pointer while you hover over
 the tank, unless it is hungry or startled. At night the pointer also
 works as a torch, lighting a warm circle of the dark tank.
+
+### Keeping the tank
+
+The tank lives like the original AquaZone's, in real time: a fed fish
+gets hungry again after most of a day, and time passes while Finsical
+is closed (see [docs/ORIGINAL-SIM.md](docs/ORIGINAL-SIM.md) for the
+rules). Tank Stats shows the water, as mg per litre, and has the
+controls to keep it:
+
+- **Heater:** holds the water at the temperature you set.
+- **Filter:** aerates the water and, once it has some dirt in it,
+  breaks ammonia down into nitrate. Clean it a little at a time: a
+  spotless filter breaks nothing down.
+- **Water change:** replaces part of the water with tap water at the
+  temperature you pick. Tap water carries chlorine, so add Chlorine
+  Remover or let it gas off, and match the temperature, or the fish
+  get a shock.
+- **Medicine:** Green Remedy and Methylene Blue cure the common fish
+  diseases; the water treatments soften the water, raise or lower the
+  pH, and remove chlorine. A dose dissolves over a few hours.
+- **Time:** real time, or up to 100 times faster.
+
+Fish fall sick when poor water, hunger or shocks wear their health
+down, and a sick fish can pass its disease to the weakest fish in the
+tank. A fish that dies floats belly-up and then sinks; remove it from
+Tank Overview before it fouls the water.
 
 Menu commands in the app:
 
@@ -79,7 +105,7 @@ Menu commands in the app:
 | Tank Stats | Tank | Shift-Cmd-S |
 | Import Add-ons… | Tank | Cmd-I |
 | Feed Fish | Tank | Cmd-F |
-| Change Water | Tank | |
+| Change Water (the last change set in Tank Stats) | Tank | |
 | CRT Effect (checked while on) | Tank | Cmd-R |
 | Lamp On (checked while on) | Tank | Cmd-L |
 | Mute Sound (checked while muted) | Tank | Option-Cmd-S |
@@ -169,7 +195,7 @@ yet.
 
 | Window | What it does |
 | --- | --- |
-| Preferences | **Machine**: the computer case around the tank (Macintosh Plus, Performa 450, 20th Anniversary Mac, iMac G3 and G4 variants, or a bare tank). **Monitor**: the CRT effect, presets and its picture tube sliders. **Picture**: the monitor's front-panel controls. **Lighting**: the day and night cycle, a light timer that follows your Mac's clock, or lights always on, and the lamp. **Sound**: volume, mute, and switches for bubble sounds and the water ambience (see [Sounds](#sounds)). |
+| Preferences | **Machine**: the computer case around the tank (Macintosh Plus, Performa 450 and 5200, 20th Anniversary Mac, iMac G3 and G4, PowerBook G3, iBook, or a bare tank). **Monitor**: the CRT effect, presets and its picture tube sliders. **Picture**: the monitor's front-panel controls. **Lighting**: the day and night cycle, a light timer that follows your Mac's clock, or lights always on, and the lamp. **Sound**: volume, mute, and switches for bubble sounds and the water ambience (see [Sounds](#sounds)). |
 | Tank Overview | Everything in the tank as a sortable Name, Kind and Status list, with **Remove**, **Use** for scenery and **Empty Tank…** |
 | Import Add-ons | The archive.org add-on browser described above |
 | Tank Stats | Water quality and average hunger with recent history, the hungriest fish, fish and food counts, day or night, tank age, care hints, and **Change Water** |
@@ -184,8 +210,13 @@ Everything stays on your Mac:
   hides), the CRT switch and settings (`finsical:crt`,
   `finsical:crt-cfg`), the machine case (`finsical:machine`), lighting
   and sound settings (`finsical:lighting`, `finsical:sound`), whether
-  the tank is paused (`finsical:paused`), whether the first-run offer
-  was answered (`finsical:welcomed`), and the last Preferences pane and
+  the tank is paused (`finsical:paused`), the last water change
+  (`finsical:waterChange`), which tab owns the sim
+  (`finsical:tank-owner`), the Auto Feed, tap-the-glass sign and
+  startup-parade switches (`finsical:autofeed`, `finsical:scoldSign`,
+  `finsical:boot`), whether the first-run offer and its sound-effects
+  download were answered (`finsical:welcomed`,
+  `finsical:starterSounds`), and the last Preferences pane and
   add-on section (`finsical:prefsPane`, `finsical:addonSection`).
 - **IndexedDB** database `finsical`: downloaded add-on archives,
   thumbnails and archive.org listing pages, so installed add-ons restore
