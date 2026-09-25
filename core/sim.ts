@@ -1,13 +1,22 @@
 import { makeRng } from "./rng.js";
-import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK } from "./tuning.js";
+import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
+  from "./tuning.js";
 import { demoLight, DUSK_LIGHT } from "./light.js";
+import { Aquarium } from "./aquarium/aquarium.js";
+import type { Resident } from "./aquarium/aquarium.js";
+import { hungerOf, newLife, stomachSize, vigorOf }
+  from "./aquarium/life.js";
+import type { FishLife } from "./aquarium/life.js";
+import { DEFAULT_CARE } from "./data/species.js";
+import type { SpeciesCare } from "./data/species.js";
 
 export interface Tank {
   width: number;
   height: number;
 }
 
-export type FishState = "drift" | "seek" | "startle" | "turn" | "sleep";
+export type FishState =
+  "drift" | "seek" | "startle" | "turn" | "sleep" | "dead";
 
 export interface Fish {
   /** Stable identity — overview display and removal target. */
@@ -58,8 +67,16 @@ export interface Fish {
   bandY: number;
   /** Render scale — juveniles spawn small, meals grow toward adult. */
   scale: number;
-  /** 0 = full, 1 = starving */
+  /** 0 = full, 1 = starving: how empty the stomach is. The life model
+   * (core/aquarium) keeps it in step with `life`. */
   hunger: number;
+  /** Health, age, sickness: the original's physiology. Created with the
+   * fish when not given. */
+  life?: FishLife;
+  /** A dead fish's drift (the original's dying animation): it rises
+   * belly-up, floats for `deadTicks`, sinks, and rests on the gravel. */
+  corpse?: "rise" | "float" | "sink" | "rest";
+  deadTicks?: number;
   state: FishState;
   stateTicks: number;
   /** Ticks the current startle lasts; weak scares are brief flinches. */
@@ -74,15 +91,6 @@ export interface Fish {
    * enough for the fixed margins. */
   halfW?: number;
   halfH?: number;
-  /** Under sustained illness pressure (starving or foul water): the
-   * fish is listless, and dead if nothing improves. */
-  sick: boolean;
-  /** Ticks of accumulated illness pressure — decays when the cause
-   * clears, kills the fish at SICK_ONSET + DEATH_TICKS. */
-  sickTicks: number;
-  /** A corpse floats belly-up at the surface until it dissolves. */
-  dead: boolean;
-  deadTicks: number;
 }
 
 /** Lifecycle transitions queued for the renderer/audio to react to;
@@ -96,7 +104,7 @@ export interface Food {
   x: number;
   y: number;
   eaten: boolean;
-  /** ticks spent rotting on the gravel — fouls the water while it lasts */
+  /** ticks spent rotting on the gravel; then it breaks up into the water */
   settled: number;
   /** the rare golden pellet — a meal worth a victory roll */
   golden?: boolean;
@@ -122,9 +130,6 @@ export function wrapAngle(d: number): number {
   return ((d + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) -
     Math.PI;
 }
-/** Hunger rise per tick — a fish starves after ~20 min unfed (~1.5
- * demo day cycles), keeping Aquazone's once-a-day feeding rhythm. */
-const HUNGER_PER_TICK = 1 / (30 * 1200);
 /** Past this hunger a fish that isn't looking for food still takes a
  * pellet that drifts within NOTICE_DIST of it. */
 const HUNGER_SNACK = 0.1;
@@ -135,6 +140,23 @@ const FOOD_SINK = 0.35;
 const GOLDEN_ODDS = 1 / 50;
 /** Ticks a settled pellet takes to dissolve away (~45 s at 30 tps). */
 export const FOOD_ROT_TICKS = 30 * 45;
+/** Food units in a pellet. A fish's stomach holds 0.2 × its weight
+ * (about its sprite size in px): a pellet nearly fills a small fish,
+ * a big one takes a few. */
+export const PELLET_UNITS = 3;
+/** Weight of a fish whose sprite size isn't known yet. */
+const DEFAULT_WEIGHT = 20;
+/** Dissolved organics (mg/L) at which the water reads fully fouled:
+ * uneaten food clouds it until the filter traps it. */
+const MURK_ORGANICS = 5;
+/** Corpse drift, px/tick: rising belly-up, then sinking. */
+const CORPSE_RISE = 0.25;
+const CORPSE_SINK = 0.5;
+/** Longest a body floats at the surface before sinking, ticks (the
+ * original: random(0x7fff) frames). */
+const CORPSE_FLOAT_MAX = 0x7fff;
+/** Sick fish keep to the bottom fifth of their range. */
+const SICK_DEPTH = 0.8;
 /** Uneaten pellets the tank holds before dropFood refuses: past it a
  * feed only adds waste. Even at the cap, six rotting pellets drain
  * quality ~7x faster than the filter recovers it, so sustained
@@ -253,16 +275,6 @@ export const DAY_TICKS = 24000;
  * fluttering between states. Exported for the sleep test. */
 export const SLEEP_LIGHT = DUSK_LIGHT;
 export const WAKE_LIGHT = 0.6;
-/** Hunger or foul water at these levels pressures a fish toward
- * sickness — ~30 s of either brings it on, ~5 min untreated kills.
- * A fish recovers while neither holds; pressure decays twice as fast
- * as it builds, so one bad spell leaves it fragile for a while. */
-const SICK_HUNGER = 0.95;
-const SICK_QUALITY = 0.12;
-const SICK_ONSET = 900;
-const DEATH_TICKS = 9000;
-/** A corpse dissolves ~2 min after death unless flushed first. */
-export const CORPSE_TICKS = 3600;
 /** Two healthy, well-fed, grown fish of a species occasionally have a
  * fry — ~one birth per 10 min in a thriving tank. FRY_SCALE is the
  * juvenile minimum addFish clamps to, so a newborn reads visibly
@@ -290,8 +302,13 @@ export class Sim {
     this.bubbles.push({ x, y });
   }
   tickCount = 0;
-  /** 1 = clean, 0 = foul. Rotted food fouls it; filtration recovers it. */
+  /** 1 = clean, 0 = foul: the worse of oxygen and clarity, from the
+   * aquarium model (refreshed by advanceLife). */
   waterQuality = 1;
+  /** Water, equipment, food, medicine and fish physiology. */
+  aquarium: Aquarium;
+  /** A fish's species needs; the host maps packs to their FsTI. */
+  careOf: (f: Fish) => SpeciesCare = () => DEFAULT_CARE;
   /** Lifecycle transitions since the last drain (sound/UI hooks). */
   readonly events: SimEvent[] = [];
   /** Pointer position in tank px while the tank is hovered — the
@@ -310,7 +327,7 @@ export class Sim {
    * surface: starving, and water clean enough to keep an appetite. */
   isBegging(f: Fish): boolean {
     // A starved corpse keeps its last hunger — it is not begging.
-    return !f.dead && f.hunger > BEG_HUNGER &&
+    return f.state !== "dead" && f.hunger > BEG_HUNGER &&
       this.waterQuality > QUALITY_SEEK;
   }
 
@@ -328,17 +345,98 @@ export class Sim {
   constructor(tank: Tank, seed = 1) {
     this.tank = tank;
     this.rand = makeRng(seed);
+    this.aquarium = new Aquarium(makeRng(seed ^ 0x5eed));
   }
 
-  addFish(fish: Partial<Fish> & { x: number; y: number }): Fish {
+  /** Advance the aquarium's clock by real seconds (at its speed) and
+   * bring each fish's hunger and the water reading up to date. */
+  advanceLife(realSeconds: number): void {
+    const a = this.aquarium;
+    a.lightOn = this.light > SLEEP_LIGHT;
+    a.advance(realSeconds, this.residents());
+    this.syncLife();
+  }
+
+  /** The fish as the aquarium model sees them. */
+  residents(): Resident[] {
+    return this.fish.map((f) => this.resident(f));
+  }
+
+  private resident(f: Fish): Resident {
+    return { id: f.id, life: this.lifeOf(f), care: this.careOf(f),
+             weight: this.weightOf(f) };
+  }
+
+  /** The original's weight: the geometric mean of the drawn body's
+   * width and height, in px. */
+  private weightOf(f: Fish): number {
+    return f.halfW && f.halfH
+      ? Math.max(1, Math.trunc(Math.sqrt(4 * f.halfW * f.halfH) * f.scale))
+      : DEFAULT_WEIGHT;
+  }
+
+  private lifeOf(f: Fish): FishLife {
+    if (!f.life) {
+      const care = this.careOf(f);
+      // A new fish arrives young: a little before adulthood. Its
+      // stomach starts as full as its hunger says, so a fish from a
+      // save that predates the life model keeps its appetite.
+      const l = newLife(this.rand, care,
+                        care.adultAge * (0.4 + this.rand() * 0.5));
+      l.stomach = stomachSize(this.weightOf(f));
+      l.ate = Math.round(l.stomach * (1 - Math.min(1, Math.max(0, f.hunger))));
+      f.life = l;
+    }
+    return f.life;
+  }
+
+  /** Fish whose sickness has already fired a "sick" event — the life
+   * model carries the disease; the flag just debounces the hook. */
+  private sickSeen = new WeakSet<Fish>();
+
+  /** Copy the life model's state onto what the swim code reads. */
+  private syncLife(): void {
+    for (const f of this.fish) {
+      const l = this.lifeOf(f);
+      if (l.dead) {
+        if (f.state !== "dead") {
+          this.setState(f, "dead");
+          this.events.push({ type: "dead", fish: f });
+          // A fish that died while the tank was out of sight (over an
+          // hour of tank time ago) is found sinking to the gravel, like
+          // the original's catch-up deaths; one dying now rises first.
+          f.corpse ??= this.aquarium.minutes - l.dead.at > 60 ? "sink" : "rise";
+        }
+      } else {
+        f.hunger = hungerOf(l);
+        if (l.sick != null && !this.sickSeen.has(f)) {
+          this.sickSeen.add(f);
+          this.events.push({ type: "sick", fish: f });
+        }
+      }
+    }
+    const a = this.aquarium;
+    const clarity = 1 - Math.min(1, a.organics() / MURK_ORGANICS);
+    this.waterQuality = Math.max(0, Math.min(1 - a.oxygenDeficit(), clarity));
+  }
+
+  addFish(fish: Partial<Fish> & { x: number; y: number }): Fish;
+  /** `"enforce"` refuses a spawn at FISH_CAP (returns null) — the sim
+   * owns the cap so every spawn path enforces the same rule. A
+   * restored roster omits it: dropping a saved pet is worse than
+   * letting a hand-edited tank sit a fish over. */
+  addFish(fish: Partial<Fish> & { x: number; y: number },
+          cap: "enforce" | "bypass"): Fish | null;
+  addFish(fish: Partial<Fish> & { x: number; y: number },
+          cap: "enforce" | "bypass" = "bypass"): Fish | null {
+    if (cap === "enforce" && this.fish.length >= FISH_CAP) return null;
     const f: Fish = {
       id: this.nextId, species: "",
       facing: 1, heading: 0, phase: 0, latch: -1, peak: 0, cruise: 1,
       speed: 1, vy: 0, tx: 0, ty: 0, turnDir: 1, turnFrom: 1,
-      strokes: 0, bandY: 0, scale: 1, hunger: 0.2,
+      strokes: 0, bandY: 0, scale: 1, hunger: SPAWN_HUNGER,
       state: "drift", stateTicks: 0, startleLen: STARTLE_TICKS,
-      panicHops: 0, sick: false, sickTicks: 0, dead: false,
-      deadTicks: 0, ...fish,
+      panicHops: 0, ...fish,
     };
     // Steering keeps heading on the facing side. A fish given only a
     // facing, or saved mid-roll, would otherwise start swimming
@@ -363,15 +461,6 @@ export class Sim {
     else
       // Bad saves shouldn't render invisible or dwarf the tank.
       f.scale = Math.min(Math.max(f.scale, SPAWN_SCALE_MIN), MAX_SCALE);
-    // Lifecycle fields from a save sanitize like scale did: only a
-    // genuine `true` carries over (a corpse in a save dissolves on
-    // restore), bogus values can't fake an illness.
-    if (f.sick !== true) f.sick = false;
-    if (f.dead !== true) f.dead = false;
-    if (!Number.isFinite(f.sickTicks)) f.sickTicks = 0;
-    else f.sickTicks = Math.max(0, f.sickTicks);
-    if (!Number.isFinite(f.deadTicks)) f.deadTicks = 0;
-    else f.deadTicks = Math.max(0, f.deadTicks);
     this.fish.push(f);
     return f;
   }
@@ -397,21 +486,20 @@ export class Sim {
     return pellet;
   }
 
-  /** Partial water change: recovers `fraction` of the quality gap and
-   * siphons every settled pellet off the gravel — settled food is waste
-   * in this model (it drains quality from the first settled tick). */
-  changeWater(fraction = 0.6): void {
-    const f = Math.min(1, Math.max(0, fraction));
-    this.waterQuality += (1 - this.waterQuality) * f;
+  /** Replace `fraction` of the water with tap water at `temp` °C (the
+   * original's 1–90%), siphoning settled pellets off the gravel. */
+  changeWater(fraction: number, temp: number): void {
     for (let i = this.food.length - 1; i >= 0; i--)
       if (this.food[i]!.settled > 0) this.food.splice(i, 1);
+    this.aquarium.changeWater(fraction, temp, this.residents());
+    this.syncLife();
   }
 
   /** Knock on the glass: startle fish near (x, y), strength fading
    * with distance like the original's 1 − dist/radius falloff. */
   tap(x: number, y: number): void {
     for (const f of this.fish) {
-      if (f.dead) continue; // the dead do not startle
+      if (f.state === "dead") continue; // the dead do not startle
       const dx = f.x - x, dy = f.y - y;
       if (dx * dx + dy * dy < STARTLE_RADIUS * STARTLE_RADIUS) {
         const d = Math.max(Math.hypot(dx, dy), 1);
@@ -461,15 +549,14 @@ export class Sim {
     const inRange = (f: Fish): boolean => !!n &&
       (f.x - n.x) ** 2 + (f.y - n.y) ** 2 < NOTICE_RADIUS * NOTICE_RADIUS;
     this._noticeFish = this._noticeFish.filter((f) =>
-      this.fish.includes(f) && !f.dead && inRange(f) &&
+      this.fish.includes(f) && f.state !== "dead" && inRange(f) &&
       (f.state === "drift" || f.state === "turn"));
     if (n && this._noticeFish.length < NOTICE_CAP) {
       // Fill the open slots with the nearest drifters not already
       // watching — a small crowd presses the glass, like the original.
       const cand: { f: Fish; d: number }[] = [];
       for (const f of this.fish) {
-        if (f.dead || f.state !== "drift" ||
-            this._noticeFish.includes(f))
+        if (f.state !== "drift" || this._noticeFish.includes(f))
           continue;
         const d = (f.x - n.x) ** 2 + (f.y - n.y) ** 2;
         if (d < NOTICE_RADIUS * NOTICE_RADIUS) cand.push({ f, d });
@@ -481,18 +568,14 @@ export class Sim {
       }
     }
     for (const f of this.fish) this.tickFish(f);
-    // Corpses dissolve once their time at the surface is up.
-    for (let i = this.fish.length - 1; i >= 0; i--)
-      if (this.fish[i]!.dead && this.fish[i]!.deadTicks >= CORPSE_TICKS)
-        this.fish.splice(i, 1);
     this.maybeBirth();
     // Panic propagates: a freshly darting fish startles close
     // neighbors — fish-on-fish reaction on the same distance falloff.
     for (const a of this.fish) {
-      if (a.dead || a.state !== "startle" || a.stateTicks > 4 ||
+      if (a.state === "dead" || a.state !== "startle" || a.stateTicks > 4 ||
           a.panicHops >= MAX_PANIC_HOPS) continue;
       for (const b of this.fish) {
-        if (b === a || b.dead || b.state === "startle") continue;
+        if (b === a || b.state === "startle" || b.state === "dead") continue;
         const dx = b.x - a.x, dy = b.y - a.y;
         if (dx * dx + dy * dy >= PROP_RADIUS * PROP_RADIUS) continue;
         const d = Math.max(Math.hypot(dx, dy), 1);
@@ -508,12 +591,14 @@ export class Sim {
         fd.y += FOOD_SINK;
       } else {
         fd.settled++;
-        this.waterQuality -= WASTE_PER_TICK;
-        if (fd.settled >= FOOD_ROT_TICKS) this.food.splice(i, 1);
+        // Uneaten, it breaks up into the water (the aquarium model
+        // dissolves it into what clouds the water and feeds the filter).
+        if (fd.settled >= FOOD_ROT_TICKS) {
+          this.food.splice(i, 1);
+          this.aquarium.spoil(PELLET_UNITS);
+        }
       }
     }
-    this.waterQuality =
-      Math.min(1, Math.max(0, this.waterQuality + FILTER_PER_TICK));
     // Ambient: the odd bubble works loose from the gravel.
     if (this.rand() < AMBIENT_BUBBLE)
       this.bubbles.push({
@@ -530,50 +615,24 @@ export class Sim {
   private tickFish(f: Fish): void {
     f.stateTicks++;
     f.phase++;
-    // A corpse ignores hunger, panic and the sleep clock: it rides up
-    // to the surface belly-up, drifts, and dissolves at CORPSE_TICKS.
-    if (f.dead) {
-      f.deadTicks++;
-      f.y += (SURFACE + 3 - f.y) * 0.03;
-      f.x += 0.06 * f.facing;
-      if (f.x < MARGIN || f.x > this.tank.width - MARGIN)
-        f.facing = (-f.facing) as 1 | -1;
-      f.speed = 0; f.vy = 0;
-      return;
-    }
-    f.hunger = Math.min(1, f.hunger + HUNGER_PER_TICK);
-    // Illness pressure: sustained starvation or foul water makes a
-    // fish sick, and staying sick kills it. Relief decays pressure
-    // twice as fast as it builds — one bad spell leaves it fragile.
-    const ill = f.hunger >= SICK_HUNGER ||
-                this.waterQuality < SICK_QUALITY;
-    f.sickTicks = ill ? Math.min(f.sickTicks + 1, SICK_ONSET + DEATH_TICKS)
-                      : Math.max(0, f.sickTicks - 2);
-    if (f.sickTicks >= SICK_ONSET + DEATH_TICKS) {
-      f.dead = true;
-      f.sick = false;
-      f.deadTicks = 0;
-      this.events.push({ type: "dead", fish: f });
-      return;
-    }
-    if (!f.sick && f.sickTicks >= SICK_ONSET) {
-      f.sick = true;
-      this.events.push({ type: "sick", fish: f });
-    } else if (f.sick && f.sickTicks === 0) {
-      f.sick = false; // fed, or the water cleared
-    }
-    // Foul water makes fish sluggish; illness halves it again. Panic
-    // (startle) ignores it.
-    const vigor = (0.5 + 0.5 * this.waterQuality) * (f.sick ? 0.45 : 1);
+    // A corpse ignores hunger, panic and the sleep clock: the original's
+    // dying drift rides up belly-up, floats, sinks, and rests.
+    if (f.state === "dead") { this.tickCorpse(f); return; }
+    // A weakened fish swims slower (the original: 1% per health point
+    // below its species' sickness threshold); panic ignores it.
+    const vigor = f.life ? vigorOf(f.life, this.careOf(f)) : 1;
 
     // Night falls: any unpanicked fish beds down. A sleeping fish
     // wakes at dawn; a knock on the glass wakes it instantly (the
     // startle branch runs its course, then it beds back down while
     // it's still dark).
     // A hungry fish gets up for food dropped at night rather than
-    // starve until dawn with pellets rotting under its nose.
-    const peckish = f.hunger > HUNGER_SEEK &&
-      this.waterQuality > QUALITY_SEEK && this.nearestFood(f) !== null;
+    // starve until dawn with pellets rotting under its nose — the
+    // same bar the awake snack rule uses, so a well-fed fish short-
+    // circuits before the pellet scan: at snack hunger it must smell
+    // the pellet (within NOTICE_DIST), at seek hunger any pellet
+    // wakes it.
+    const peckish = this.foodFor(f) !== null;
     if (f.state === "sleep") {
       if (this.light >= WAKE_LIGHT || peckish) {
         this.setState(f, "drift");
@@ -729,59 +788,82 @@ export class Sim {
       f.heading = wrapAngle(axis + cur +
         Math.min(TURN_RATE, Math.max(-TURN_RATE, want - cur)));
 
-      // Stroke pulse — the original's "fin push": quadratic acceleration
-      // out of the decision, then quadratic braking once the destination
-      // region is reached (dart-and-glide, not linear cruise). A new
-      // stroke glides on the speed it still carries until the ramp
-      // catches up, so fish never stop dead between strokes.
-      if (f.latch < 0) {
-        if (dist < BRAKE_DIST) { f.latch = f.phase; f.peak = f.speed; }
-        else f.speed = Math.max(f.speed * GLIDE, Math.min(f.cruise,
-                                f.cruise * (f.phase + 1) ** 2 / RAMP_DIV));
-      } else {
-        const g = f.phase - f.latch;
-        // A seeking fish must still outswim the sinking pellet.
-        const floor = food
-          ? Math.min(f.cruise,
-                     Math.max(f.cruise * 0.15, FOOD_SINK * 1.5 / vigor))
-          : f.cruise * 0.15;
-        f.speed = Math.max(floor, f.peak - g * g * f.peak / BRAKE_DIV);
-      }
+      // A roll that began on this tick owns its own integration from
+      // the turn branch — running this branch's stroke pulse and step
+      // too would move the fish twice on the entry tick. The eat check
+      // sits inside the guard on purpose: the bite lands a tick later
+      // once the roll has committed, and eating now would setState out
+      // of the turn that was just entered.
+      if (!turning) {
+        // Stroke pulse — the original's "fin push": quadratic acceleration
+        // out of the decision, then quadratic braking once the destination
+        // region is reached (dart-and-glide, not linear cruise). A new
+        // stroke glides on the speed it still carries until the ramp
+        // catches up, so fish never stop dead between strokes.
+        if (f.latch < 0) {
+          if (dist < BRAKE_DIST) { f.latch = f.phase; f.peak = f.speed; }
+          else f.speed = Math.max(f.speed * GLIDE, Math.min(f.cruise,
+                                  f.cruise * (f.phase + 1) ** 2 / RAMP_DIV));
+        } else {
+          const g = f.phase - f.latch;
+          // A seeking fish keeps a brake floor near pellet-fall speed so
+          // it doesn't idle while food sinks past it. The floor is
+          // pre-vigor — dividing by vigor would cancel the slowdown a
+          // weakened fish is meant to suffer (the vx/vy multiply below
+          // restores it), so a very sick fish can indeed lose a pellet
+          // to the gravel. That's the point of the penalty.
+          const floor = food
+            ? Math.min(f.cruise,
+                       Math.max(f.cruise * 0.15, FOOD_SINK * 1.5))
+            : f.cruise * 0.15;
+          f.speed = Math.max(floor, f.peak - g * g * f.peak / BRAKE_DIV);
+        }
 
-      const vx = Math.cos(f.heading) * f.speed * vigor;
-      const vy = Math.sin(f.heading) * f.speed * vigor;
-      f.x += vx;
-      f.y += vy;
-      f.vy = vy;
+        const vx = Math.cos(f.heading) * f.speed * vigor;
+        const vy = Math.sin(f.heading) * f.speed * vigor;
+        f.x += vx;
+        f.y += vy;
+        f.vy = vy;
 
-      if (food) {
-        const d = Math.max(Math.hypot(food.x - f.x, food.y - f.y), 1);
-        // A big fish can't sink to a settled pellet's depth or press
-        // its centre against the side glass; it eats what comes within
-        // reach of its body. EDGE_KEEP matches room()'s floor clamp, so
-        // the reach spans the depth gap, and the pellet's distance
-        // outside room()'s sides is added to span the wall gap (at a
-        // corner the two gaps sum to more than their hypotenuse).
-        const { x0, x1 } = this.room(f);
-        const wallGap = Math.max(0, x0 - food.x, food.x - x1);
-        if (d < Math.max(EAT_DIST, this.halfH(f) * EDGE_KEEP) + wallGap) {
-          food.eaten = true;
-          // A gulped pellet lets a little air loose — one bubble rises
-          // from the meal and pops at the surface on its own clock.
-          this.bubbles.push({ x: food.x, y: food.y });
-          f.hunger = 0;
-          // A meal puts a little size on — asymptotic toward adult.
-          f.scale += (MAX_SCALE - f.scale) * GROWTH;
-          this.setState(f, "drift");
-          this.decide(f);
-          if (food.golden) {
-            // A golden meal earns a victory roll whether or not the
-            // next destination lies behind.
-            this.startTurn(f, this.rand() < 0.5 ? 1 : -1);
-          } else {
-            // The next destination may lie behind: roll to it now rather
-            // than pitching against the clamp until the next decision.
-            this.maybeTurn(f);
+        if (food) {
+          const d = Math.max(Math.hypot(food.x - f.x, food.y - f.y), 1);
+          // A big fish can't sink to a settled pellet's depth or press
+          // its centre against the side glass; it eats what comes within
+          // reach of its body. EDGE_KEEP matches room()'s floor clamp, so
+          // the reach spans the depth gap, and the pellet's distance
+          // outside room()'s sides is added to span the wall gap (at a
+          // corner the two gaps sum to more than their hypotenuse).
+          const { x0, x1 } = this.room(f);
+          const wallGap = Math.max(0, x0 - food.x, food.x - x1);
+          if (d < Math.max(EAT_DIST, this.halfH(f) * EDGE_KEEP) + wallGap) {
+            food.eaten = true;
+            // It eats until full; what it can't finish breaks up.
+            this.aquarium.spoil(this.aquarium.feed(this.resident(f), PELLET_UNITS));
+            f.hunger = hungerOf(this.lifeOf(f));
+            // A gulped pellet lets a little air loose — one bubble rises
+            // from the meal and pops at the surface on its own clock.
+            this.bubbles.push({ x: food.x, y: food.y });
+            // A meal puts a little size on — asymptotic toward adult.
+            f.scale += (MAX_SCALE - f.scale) * GROWTH;
+            // The stomach grows with the fish, or an adult keeps a
+            // juvenile appetite; preserve fill across the rescale.
+            const life = this.lifeOf(f);
+            const stomach = stomachSize(this.weightOf(f));
+            if (stomach !== life.stomach && life.stomach > 0) {
+              life.ate = Math.round(life.ate / life.stomach * stomach);
+              life.stomach = stomach;
+            }
+            this.setState(f, "drift");
+            this.decide(f);
+            if (food.golden) {
+              // A golden meal earns a victory roll whether or not the
+              // next destination lies behind.
+              this.startTurn(f, this.rand() < 0.5 ? 1 : -1);
+            } else {
+              // The next destination may lie behind: roll to it now rather
+              // than pitching against the clamp until the next decision.
+              this.maybeTurn(f);
+            }
           }
         }
       }
@@ -821,7 +903,11 @@ export class Sim {
     }
     // A hard clamp means the movement ran out of room — decide early.
     // Not while seeking: phase is also the brake's clock, and a fish
-    // waiting under the surface for a pellet would stall.
+    // waiting under the surface for a pellet would stall. Nor needed
+    // while seeking — the eat reach spans room()'s side gap plus
+    // EDGE_KEEP of body height, so a pellet beyond the walls is still
+    // edible from the boundary; a seeker pressed to the glass slides
+    // to it rather than sticking.
     if (hit && f.state === "drift") {
       f.phase = Math.max(f.phase, MOVE_TICKS);
       f.strokes = MAX_STROKES;
@@ -832,6 +918,41 @@ export class Sim {
     if (this.rand() < BUBBLE_CHANCE * (2 - this.waterQuality)) {
       this.bubbles.push({
         x: f.x + f.facing * Math.max(6, this.halfW(f) - 3), y: f.y - 3 });
+    }
+  }
+
+  /** A dead fish rolls belly-up and rises to the surface, floats there
+   * a while, then sinks and comes to rest on the gravel, where it stays
+   * until it is taken out (Do_Dieing_Event). */
+  private tickCorpse(f: Fish): void {
+    // A corpse isn't bound by the fish's living depth band: it floats
+    // just under the surface and finally rests on the gravel
+    // (Do_Dieing_Event), so use tank-wide bounds with a body margin.
+    const y0 = SURFACE + this.halfH(f);
+    const y1 = this.tank.height - this.halfH(f);
+    f.speed = 0;
+    f.vy = 0;
+    f.heading = f.facing > 0 ? 0 : Math.PI;
+    switch (f.corpse ?? "rise") {
+      case "rise":
+        f.y = Math.max(y0, f.y - CORPSE_RISE);
+        f.x = Math.min(this.tank.width, Math.max(0,
+          f.x + (this.rand() - 0.5) * 0.4));
+        if (f.y <= y0) {
+          f.corpse = "float";
+          f.deadTicks = Math.floor(this.rand() * CORPSE_FLOAT_MAX);
+        } else f.corpse = "rise";
+        break;
+      case "float":
+        f.deadTicks = (f.deadTicks ?? 0) - 1;
+        if (f.deadTicks <= 0) f.corpse = "sink";
+        break;
+      case "sink":
+        f.y = Math.min(y1, f.y + CORPSE_SINK);
+        if (f.y >= y1) f.corpse = "rest";
+        break;
+      case "rest":
+        break;
     }
   }
 
@@ -868,7 +989,7 @@ export class Sim {
     // A begging fish stays under the surface rather than follow a mate.
     if (f.species && !begging && this.rand() < SCHOOL_PULL) {
       const mates = this.fish.filter(
-        (m) => m !== f && m.species === f.species);
+        (m) => m !== f && m.species === f.species && m.state !== "dead");
       if (mates.length) {
         const m = mates[(this.rand() * mates.length) | 0]!;
         f.tx = Math.min(x1, Math.max(x0,
@@ -879,6 +1000,9 @@ export class Sim {
           m.y + (this.rand() - 0.5) * SCHOOL_RADIUS));
       }
     }
+    // A sick fish keeps to the bottom of its range (Calc_New_Dest_Vert).
+    if (f.life?.sick)
+      f.ty = y0 + (y1 - y0) * (SICK_DEPTH + this.rand() * (1 - SICK_DEPTH));
     f.phase = 0;
     f.latch = -1;
     f.strokes = 0;
@@ -956,7 +1080,8 @@ export class Sim {
     const seen = new Set<string>();
     const parents = new Map<string, Fish>();
     for (const f of this.fish) {
-      if (!f.species || f.dead || f.sick || f.hunger > BIRTH_HUNGER ||
+      if (!f.species || f.state === "dead" || f.life?.sick != null ||
+          f.hunger > BIRTH_HUNGER ||
           f.scale < BIRTH_SCALE) continue;
       if (seen.has(f.species)) parents.set(f.species, f);
       seen.add(f.species);

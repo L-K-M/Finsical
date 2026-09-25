@@ -1,7 +1,8 @@
 import { openBus } from "./bus.js";
 import { CRT_DEFAULTS, CRT_PRESETS, presetTube, sanitizeCrtConfig }
   from "./crt.js";
-import { MACHINES, previewMarkup } from "./machines.js";
+import { MACHINES, previewMarkup, savedMachineId }
+  from "./machines.js";
 import type { CrtConfig, CrtPreset } from "./crt.js";
 import { centerText, hostWindow, mountList, mountPopup, pushButton,
          registerSprites, setEnabled, trackHighlight, trackPress }
@@ -177,6 +178,10 @@ const dragging = new Set<keyof CrtConfig>();
 // times out so a dropped post can't wedge the checkbox.
 let onTouched = false;
 let onTouchTimer: ReturnType<typeof setTimeout> | undefined;
+// The tank reports whether the CRT effect can run at all. While it
+// can't, the switch and everything hanging off it stay dimmed and the
+// pane caption explains why.
+let crtAvail = true;
 // Machine picks latch the same way: pushes already in flight still
 // carry the previous case and would snap the list back mid-browse.
 let machinePending: string | null = null;
@@ -207,6 +212,8 @@ const bus = openBus((m) => {
   const firstState = !greeted;
   greeted = true;
   const crt = (m.crt ?? {}) as CrtSnap;
+  const availChanged = crtAvail !== (crt.available !== false);
+  crtAvail = crt.available !== false;
   if (firstState || !onTouched || crt.available === false ||
       (crt.on === true) === onBox.checked) {
     onTouched = false;
@@ -215,7 +222,14 @@ const bus = openBus((m) => {
   }
   // Only warn when the tank explicitly reports the effect can't run —
   // a missing field just means an older page build.
-  warnEl.hidden = crt.available !== false;
+  warnEl.hidden = crtAvail;
+  setEnabled(onBox, crtAvail);
+  // The warning sits in the flow where the preset row would draw over
+  // it; hide the presets while they can't apply anyway.
+  presetHost.hidden = !crtAvail;
+  // Refresh the pane caption on a transition only — every push would
+  // wipe a live slider's hover text on the other panes.
+  if (availChanged) describe(null);
   if (crt.cfg !== undefined) cfg = sanitizeCrtConfig(crt.cfg);
   if (m.sound !== undefined) takeSound(sanitizeSoundConfig(m.sound));
   const mc = m.machine as { id?: unknown } | undefined;
@@ -276,7 +290,9 @@ function describe(spec: SliderSpec | LightSpec | SoundItem | null,
   // switch they depend on, not some other pane's.
   const p = PANES.find((x) => x.id === pane)!;
   if (!spec) {
-    descEl.textContent = !onBox.checked && p.offHint ? p.offHint : p.hint;
+    descEl.textContent = !crtAvail && p.offHint
+      ? "This Mac can't show the CRT effect. Settings are kept."
+      : !onBox.checked && p.offHint ? p.offHint : p.hint;
     return;
   }
   // A dimmed tube slider explains the switch instead of showing a
@@ -287,7 +303,7 @@ function describe(spec: SliderSpec | LightSpec | SoundItem | null,
       valueText: (spec.fmt ?? pct)(cfg[spec.key]),
       blurb: spec.blurb,
       offHint: p.offHint,
-      crtOn: onBox.checked,
+      crtOn: onBox.checked && crtAvail,
     });
     if (c.label === "") descEl.textContent = c.tail;
     else descEl.append(el("span", "osm-label", c.label), c.tail);
@@ -317,6 +333,7 @@ function showPane(id: PaneId, focus = false): void {
   defaultsBtn.hidden = id === "machine";
   document.getElementById("pffoot")!
     .classList.toggle("pfdefaults", !defaultsBtn.hidden);
+  syncEnabled();
   describe(null);
   try { localStorage.setItem(PANE_KEY, id); } catch { /* unavailable */ }
 }
@@ -556,10 +573,18 @@ syncControls();
 // The sliders only act through the CRT effect: they dim while it's off,
 // the way Mac OS 8 dims controls that depend on an off switch.
 function syncEnabled(): void {
-  for (const input of sliders.values()) setEnabled(input, onBox.checked);
-  for (const btn of presetBtns) btn.disabled = !onBox.checked;
+  // A stored "on" can echo back while the effect can't run (WebGL
+  // gone): the box stays checked as a kept setting, but nothing that
+  // acts through the tube may come live.
+  const live = crtAvail && onBox.checked;
+  for (const input of sliders.values()) setEnabled(input, live);
+  for (const btn of presetBtns) btn.disabled = !live;
+  // Defaults only resets CRT sliders — dim it where none are live
+  // (it still resets Sound on that pane, CRT or not).
+  defaultsBtn.disabled = !live &&
+    PANES.find((p) => p.id === pane)!.keys.length > 0;
   document.getElementById("pfpanes")!
-    .classList.toggle("pfcrtoff", !onBox.checked);
+    .classList.toggle("pfcrtoff", !live);
   // A preset caption is only useful while the effect can take it —
   // fall back to the pane hint (which switches to offHint when off).
   if (describedPreset) describe(null);
@@ -838,6 +863,14 @@ try {
 showPane(initial);
 // The machine list takes the arrow keys as soon as the window opens.
 if (initial === "machine") machineList.element.focus({ preventScroll: true });
+
+// Seed the pane from the tank's own choice. Without a tank — or before
+// the first state push — showMachine() never runs and the list shows no
+// selection with a blank preview well. The first push overwrites this;
+// select(..., false) keeps the seed from posting a machine change.
+// savedMachineId owns the storage try/catch, so a render failure can't
+// be mistaken for blocked storage.
+showMachine(savedMachineId());
 
 // The tank page may still be loading when the window opens — retry the
 // hello until a state push arrives.

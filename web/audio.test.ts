@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FEEDBACK_MAX_S, panFor, SOUND_DEFAULTS, sanitizeSoundConfig,
+import { FEEDBACK_MAX_S, gainForVolume, loadSoundConfig, panFor,
+         SOUND_DEFAULTS, sanitizeSoundConfig,
          TankAudio } from "./audio.js";
 import type { AzpackManifest } from "../core/data/azpack.js";
 
@@ -109,18 +110,36 @@ beforeEach(() => {
 });
 // restoreAllMocks too: a spy (console.warn in the load test) would
 // otherwise stay mocked for every later test in the file.
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => {
+  vi.unstubAllGlobals(); vi.restoreAllMocks();
+  delete (navigator as { userActivation?: unknown }).userActivation;
+});
+
+// Shadow only userActivation on the real navigator — stubGlobal would
+// blank every other navigator property for the test's duration.
+const stubActivation = (isActive: boolean): void => {
+  Object.defineProperty(navigator, "userActivation",
+    { configurable: true, get: () => ({ isActive }) });
+};
+
+describe("gainForVolume", () => {
+  it("is quadratic over the slider range", () => {
+    expect(gainForVolume(0)).toBe(0);
+    expect(gainForVolume(1)).toBe(1);
+    expect(gainForVolume(0.5)).toBe(0.25);
+  });
+});
 
 describe("TankAudio master gain", () => {
   it("routes every sound through the master and maps the volume", async () => {
     const { audio, ac, master } = await tank({ bubble: 1, drop: 1 });
-    expect(master.gain.value).toBe(SOUND_DEFAULTS.volume);
+    expect(master.gain.value).toBe(gainForVolume(SOUND_DEFAULTS.volume));
     audio.bubble();
     audio.feed();
     expect(ac.sources).toHaveLength(2);
     for (const s of ac.sources) expect(sinkOf(s)).toBe(master);
-    audio.setVolume(0.25);
-    expect(level(master.gain)).toBe(0.25);
+    audio.setVolume(0.5);
+    expect(level(master.gain)).toBe(0.25); // quadratic: -12 dB at 50%
     audio.setVolume(3);
     expect(level(master.gain)).toBe(1);
   });
@@ -132,7 +151,8 @@ describe("TankAudio master gain", () => {
     await audio.addWavs([{ name: "bubble", wav: wav(1) }]);
     expect(FakeContext.last!.gains[0]!.gain.value).toBe(0);
     audio.setMuted(false);
-    expect(level(FakeContext.last!.gains[0]!.gain)).toBe(0.4);
+    expect(level(FakeContext.last!.gains[0]!.gain))
+      .toBe(gainForVolume(0.4));
   });
 
   it("mute sets the master to 0 and unmute restores the volume", async () => {
@@ -143,7 +163,7 @@ describe("TankAudio master gain", () => {
     audio.setVolume(0.9); // adjusting while muted stays silent
     expect(level(master.gain)).toBe(0);
     audio.setMuted(false);
-    expect(level(master.gain)).toBe(0.9);
+    expect(level(master.gain)).toBe(gainForVolume(0.9));
   });
 
   it("glides a live level change instead of stepping it", async () => {
@@ -362,6 +382,89 @@ describe("TankAudio install feedback", () => {
     ac.state = "running";
     await Promise.resolve();
     expect(ac.sources).toHaveLength(0);
+  });
+
+  it("waits out the lock when the install gesture is still held",
+     async () => {
+    // The Add-to-Tank click/drop is a user activation: the cue it
+    // triggered must resume and play, not drop on the locked context.
+    const { audio, ac } = await tank({ a: 1 });
+    ac.state = "suspended";
+    stubActivation(true);
+    audio.playImported("a");
+    await flush();
+    expect(ac.sources).toHaveLength(1);
+  });
+
+  it("rides an unlock() resume already in flight after the gesture " +
+     "lapses", async () => {
+    // The drop handler unlocks during the gesture; the WAV decode can
+    // finish after isActive lapses — the cue must still land.
+    const { audio, ac } = await tank({ a: 1 });
+    ac.state = "suspended";
+    audio.unlock(); // gesture's resume: pending, no activation needed
+    audio.playImported("a"); // decode landing late
+    await flush();
+    expect(ac.sources).toHaveLength(1);
+  });
+
+  it("a pack load kills a feedback cue still waiting on resume",
+     async () => {
+    const { audio, ac } = await tank({ a: 1 });
+    ac.state = "suspended";
+    stubActivation(true);
+    audio.playImported("a"); // deferred behind the locked context
+    await audio.load(async () => wav(1), {
+      format: "azpack/1", tag: "T", version: 1, chunks: [], names: [],
+      sounds: [{ name: "b", file: "s/b.wav" }],
+    });
+    await flush();
+    expect(ac.sources).toHaveLength(0); // superseded — must not play
+  });
+
+  it("a live gesture starts a fresh resume rather than riding a " +
+     "parked one", async () => {
+    const { audio, ac } = await tank({ a: 1 });
+    ac.state = "suspended";
+    // A gesture-less unlock() resume can stay pending forever on an
+    // autoplay-blocked context.
+    ac.resume = () => new Promise<void>(() => {});
+    audio.unlock();
+    // The gesture arrives with the decode — the cue must not wait on
+    // the parked promise.
+    ac.resume = () =>
+      Promise.resolve().then(() => { ac.state = "running"; });
+    stubActivation(true);
+    audio.playImported("a");
+    await flush();
+    expect(ac.sources).toHaveLength(1);
+  });
+
+  it("drops the cue rather than looping when resume leaves the " +
+     "context suspended", async () => {
+    const { audio, ac } = await tank({ a: 1 });
+    ac.state = "suspended";
+    let resumes = 0;
+    // A quirky embedder can resolve resume() without running.
+    ac.resume = () => { resumes++; return Promise.resolve(); };
+    stubActivation(true);
+    audio.playImported("a");
+    await flush();
+    expect(ac.sources).toHaveLength(0);
+    expect(resumes).toBe(1); // retried once, then dropped — no loop
+  });
+
+  it("a pack load stops the previous pack's feedback", async () => {
+    // load() merges sound tables; the old pack's feedback must not
+    // overlap the new one's install cue.
+    const { audio, ac } = await tank({ a: 1 });
+    audio.playImported("a");
+    await audio.load(async () => wav(1), {
+      format: "azpack/1", tag: "T", version: 1, chunks: [], names: [],
+      sounds: [{ name: "b", file: "s/b.wav" }],
+    });
+    expect(ac.sources[0]!.stops).toHaveLength(1);
+    expect(ac.sources).toHaveLength(1); // load decodes nothing live
   });
 });
 
@@ -634,7 +737,7 @@ describe("TankAudio behind a locked context", () => {
      async () => {
     const { audio, ac } = await tank({ "center": 1 });
     ac.state = "suspended";
-    vi.stubGlobal("navigator", { userActivation: { isActive: true } });
+    stubActivation(true);
     audio.tap(160, 100, 320, 200); // the click that unlocks also taps
     await flush();
     expect(ac.sources).toHaveLength(1);
@@ -766,22 +869,64 @@ describe("sanitizeSoundConfig", () => {
   });
 
   it("keeps valid values and drops unknown keys", () => {
-    const c = sanitizeSoundConfig({ volume: 0.3, muted: true, bogus: 1 });
+    const c = sanitizeSoundConfig(
+      { volume: 0.3, muted: true, bogus: 1, v: 2 });
     expect(c).toEqual({ ...SOUND_DEFAULTS, volume: 0.3, muted: true });
     expect("bogus" in c).toBe(false);
   });
 
   it("clamps the volume and rejects wrong types", () => {
-    expect(sanitizeSoundConfig({ volume: 5 }).volume).toBe(1);
-    expect(sanitizeSoundConfig({ volume: -1 }).volume).toBe(0);
+    expect(sanitizeSoundConfig({ volume: 5, v: 2 }).volume).toBe(1);
+    expect(sanitizeSoundConfig({ volume: -1, v: 2 }).volume).toBe(0);
     const c = sanitizeSoundConfig({
       volume: NaN, muted: "yes", bubbles: 0, ambient: null,
     });
     expect(c).toEqual(SOUND_DEFAULTS);
   });
 
+  it("maps a pre-quadratic volume to the slider that replays it", () => {
+    // Before v: 2 the saved number was the gain itself; under the new
+    // curve the same level sits at sqrt(volume).
+    const c = loadSoundConfig({ volume: 0.49 });
+    expect(c.volume).toBeCloseTo(0.7, 10);
+    expect(c.v).toBe(2);
+    // Idempotent: re-loading the migrated config does not move it.
+    expect(loadSoundConfig(c).volume).toBeCloseTo(0.7, 10);
+    // A missing or non-numeric volume doesn't migrate the default.
+    expect(loadSoundConfig({ muted: true }).volume)
+      .toBe(SOUND_DEFAULTS.volume);
+  });
+
+  it("migrates an explicit v: 1 marker, but never v: 2 or newer", () => {
+    const mig = loadSoundConfig({ volume: 0.49, v: 1 });
+    expect(mig.volume).toBeCloseTo(0.7, 10);
+    // The output must carry the current marker — copying r.v through
+    // would re-migrate an already-quadratic volume on the next load.
+    expect(mig.v).toBe(2);
+    // A future or malformed marker keeps the volume verbatim — sqrt
+    // on an already-quadratic value would be a silent drift.
+    for (const v of [2, 3, "2", null])
+      expect(loadSoundConfig({ volume: 0.49, v }).volume)
+        .toBe(0.49);
+    // An integer marker newer than this build survives the round-trip;
+    // string/null and non-integer markers normalize to the schema.
+    expect(loadSoundConfig({ volume: 0.49, v: 3 }).v).toBe(3);
+    for (const v of ["2", 2.5, Infinity])
+      expect(loadSoundConfig({ volume: 0.49, v }).v).toBe(2);
+  });
+
+  it("never migrates a v-less bus partial", () => {
+    // A { volume } update from the Sound pane carries no marker; the
+    // sanitizer must treat it as the current schema, not a legacy
+    // save — only loadSoundConfig rewrites volumes.
+    const c = sanitizeSoundConfig({ volume: 0.49 });
+    expect(c.volume).toBe(0.49);
+    expect(c.v).toBe(2);
+  });
+
   it("round-trips a full config as a copy", () => {
-    const off = { volume: 0, muted: true, bubbles: false, ambient: false };
+    const off = { volume: 0, muted: true, bubbles: false,
+                  ambient: false, v: 2 };
     expect(sanitizeSoundConfig(off)).toEqual(off);
     const c = sanitizeSoundConfig(SOUND_DEFAULTS);
     expect(c).toEqual(SOUND_DEFAULTS);

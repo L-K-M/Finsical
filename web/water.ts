@@ -180,8 +180,13 @@ export function drawBubbles(ctx: CanvasRenderingContext2D,
 
 /** Most pellets one feed drops. */
 export const PINCH_MAX = 5;
-/** Horizontal scatter of a pinch around the drop x, px. */
+/** Horizontal scatter of a pinch around its center, px. */
 export const PINCH_SPREAD = 24;
+/** Most centers one pinch may split across. */
+export const PINCH_CENTERS_MAX = 3;
+/** How far a multi-center pinch's centers may sit from the drop x, px.
+ * A one-center pinch keeps it — a lone pellet still lands where fed. */
+export const PINCH_CENTER_SPREAD = 48;
 /** Delay between pellets of one pinch, ms: they rain in, not as a row. */
 const PINCH_STAGGER_MS = 110;
 
@@ -199,10 +204,15 @@ export interface PinchPellet {
 export function feedPinch(rand: () => number,
                           hungry: number): PinchPellet[] {
   const n = Math.min(PINCH_MAX, Math.max(1, Math.floor(hungry)));
+  const centers = Math.min(PINCH_CENTERS_MAX, Math.ceil(n / 2));
+  const at: number[] = centers === 1 ? [0] : [];
+  for (let c = at.length; c < centers; c++)
+    at.push(Math.round((rand() * 2 - 1) * PINCH_CENTER_SPREAD));
   const out: PinchPellet[] = [];
   for (let i = 0; i < n; i++) {
     out.push({
-      dx: Math.round((rand() * 2 - 1) * PINCH_SPREAD),
+      dx: at[i % centers]!
+        + Math.round((rand() * 2 - 1) * PINCH_SPREAD),
       delay: i === 0
         ? 0 : Math.round(i * PINCH_STAGGER_MS * (0.6 + rand() * 0.8)),
     });
@@ -429,6 +439,13 @@ export function drawRefraction(ctx: CanvasRenderingContext2D,
     const dx = refractShift(Math.max(top + r, SURFACE + 1), t);
     if (dx === 0) continue;
     ctx.drawImage(refractScratch, 0, r, W, 1, dx, top + r, W, 1);
+    // Clamp-fill the sliver the shift leaves bare so no unshifted
+    // pixels survive at the tank's edges.
+    if (dx > 0)
+      ctx.drawImage(refractScratch, 0, r, 1, 1, 0, top + r, dx, 1);
+    else
+      ctx.drawImage(refractScratch, W - 1, r, 1, 1,
+                    W + dx, top + r, -dx, 1);
   }
 }
 

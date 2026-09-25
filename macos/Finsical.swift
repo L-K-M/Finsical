@@ -1,4 +1,5 @@
 import Cocoa
+import UniformTypeIdentifiers
 import WebKit
 
 /// Serves the bundled web app (Resources/web/) on the `finsical` scheme so
@@ -145,12 +146,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         frameKey: "FinsicalAddons", size: NSSize(width: 621, height: 441),
         minSize: NSSize(width: 441, height: 301)))
     /// The stats page clips rather than scrolls (Mac OS 8 windows
-    /// without scroll bars), so its minimum keeps every field and two
-    /// care hints visible.
+    /// without scroll bars), so its minimum keeps the water readings,
+    /// two care hints and the Keeping controls visible.
     private lazy var stats = host.add(OsmiumWindowSpec(
         url: page("stats.html"), title: "Tank Stats",
-        frameKey: "FinsicalStats", size: NSSize(width: 360, height: 320),
-        minSize: NSSize(width: 300, height: 250)))
+        frameKey: "FinsicalStats", size: NSSize(width: 380, height: 640),
+        minSize: NSSize(width: 340, height: 560)))
 
     private func page(_ name: String) -> URL {
         URL(string: "\(WebHandler.scheme)://app/\(name)")!
@@ -495,6 +496,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 OsmiumWindowHost.drag(window, firstResponder: webView)
                 return
             }
+            // WKWebView ignores <a download>: Take a Picture posts the
+            // PNG over the bus for a real NSSavePanel instead.
+            if body["op"] as? String == "savePicture",
+               message.webView === webView,
+               let name = body["name"] as? String,
+               let png = body["png"] as? String {
+                savePicturePng(png, suggestedName: name)
+                return
+            }
             // Tank state carries the Tank menu's live toggles and the
             // machine's viewBox aspect. Falls through: clients still
             // need the push.
@@ -610,6 +620,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         }
     }
 
+    /// Set while a Take a Picture save panel is up — repeated menu
+    /// clicks must not stack overlapping NSSavePanels.
+    private var picturePanelOpen = false
+
+    /// Take a Picture's save: decode the base64 PNG the page posted and
+    /// offer it to a real save panel (WKWebView ignores <a download>).
+    private func savePicturePng(_ base64: String, suggestedName: String) {
+        guard let data = Data(base64Encoded: base64),
+              data.starts(with: [0x89, 0x50, 0x4E, 0x47]) else {
+            NSLog("Finsical: savePicture payload was not PNG data")
+            return
+        }
+        guard !picturePanelOpen else {
+            NSLog("Finsical: savePicture dropped — a save panel is open")
+            return
+        }
+        let panel = NSSavePanel()
+        // The page names the file; strip any path parts anyway.
+        panel.nameFieldStringValue =
+            (suggestedName as NSString).lastPathComponent
+        panel.allowedContentTypes = [.png]
+        panel.canCreateDirectories = true
+        picturePanelOpen = true
+        panel.begin { [self] response in
+            picturePanelOpen = false
+            guard response == .OK, let url = panel.url else { return }
+            do { try data.write(to: url, options: .atomic) }
+            catch {
+                NSLog("Finsical: Take a Picture save failed: "
+                      + "\(error.localizedDescription)")
+            }
+        }
+    }
+
+    @objc func takePicture() {
+        let js = "window.finsical?.takePicture ? window.finsical.takePicture()" +
+                 " : (() => { throw new Error('window.finsical.takePicture missing') })()"
+        webView?.evaluateJavaScript(js) { _, error in
+            if let error { NSLog("Finsical: takePicture JS failed: \(error.localizedDescription)") }
+        }
+    }
+
     @objc func toggleLights() {
         let js = "window.finsical?.toggleLights ? window.finsical.toggleLights()" +
                  " : (() => { throw new Error('window.finsical.toggleLights missing') })()"
@@ -710,7 +762,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         window.collectionBehavior = defaults.bool(forKey: WindowPref.allSpaces)
             ? [.canJoinAllSpaces, .fullScreenAuxiliary]
             : [.managed, .participatesInCycle]
-        for hw in host.windows { hw.window?.level = window.level }
+        // Client windows and lifted panels track the tank both ways —
+        // an About left floating after Float turns off would cover
+        // every other app.
+        for w in NSApp.windows where w !== window && w.sheetParent == nil {
+            w.level = window.level
+        }
     }
 
     /// Checkmarks for the toggles. CRT Effect is disabled where the
@@ -844,6 +901,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             WindowPref.float: true, WindowPref.allSpaces: true,
         ])
         applyWindowPrefs() // on top and on every Space by default
+        // A normal-level window can never order above the floating
+        // tank, so the About panel (and any later non-modal panel)
+        // would open behind the case and look lost. Any window that
+        // becomes key below the tank's level takes it — sheets are
+        // excluded (they ride their parent's level).
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil, queue: .main) { note in
+            // The observer closure is @Sendable; hop to the main actor
+            // to touch AppKit windows. Carry the notified window across
+            // — re-reading keyWindow inside the task can miss it or hit
+            // a window that became key since.
+            guard let w = note.object as? NSWindow else { return }
+            Task { @MainActor [weak self] in
+                guard let self, w !== self.window, w.sheetParent == nil,
+                      w.level.rawValue < self.window.level.rawValue
+                else { return }
+                w.level = self.window.level
+            }
+        }
         window.contentAspectRatio = NSSize(width: 320, height: 200)
         window.contentView = webView
         window.delegate = self
@@ -964,6 +1041,9 @@ enum FinsicalApp {
                                  action: #selector(AppDelegate.togglePause),
                                  keyEquivalent: "p") // ⌘P — no Print menu here
         delegate.setPauseMenuItem(pause)
+        tankMenu.addItem(withTitle: "Take a Picture",
+                         action: #selector(AppDelegate.takePicture),
+                         keyEquivalent: "")
         tankMenu.addItem(.separator())
         tankMenu.addItem(withTitle: "Support the Internet Archive",
                          action: #selector(AppDelegate.supportArchive),
