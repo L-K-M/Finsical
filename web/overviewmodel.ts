@@ -74,8 +74,11 @@ const USABLE = new Set(["gravel", "backgrounds", "tanks"]);
  * transient enough that the row shouldn't flash "Turning", and an
  * unknown bus state gets the same neutral label. */
 export function stateLabel(state: string): string {
-  return state === "turn" ? "Swimming"
-    : STATES[state as FishState] ?? "Swimming";
+  // typeof, not ??: a hostile string like "constructor" resolves to
+  // an inherited Object.prototype member, which is never nullish.
+  const known = STATES[state as FishState];
+  if (state === "turn" || typeof known !== "string") return "Swimming";
+  return known;
 }
 
 // Status-column ordering: hunger band first (hungrier sorts earlier),
@@ -94,6 +97,13 @@ const STATE_ORDER: Record<FishState, number> = {
   // a malformed bus frame that reports state "dead" with no timestamp.
   dead: 0,
 };
+
+// typeof, not ??: indexing with an inherited key ("constructor")
+// returns a function, which is never nullish.
+function stateRank(state: string): number {
+  const rank = STATE_ORDER[state as FishState];
+  return typeof rank === "number" ? rank : 3;
+}
 
 /** The Finder-style header line: "8 fish, 3 add-ons, water 96%, up
  * 2h 3m" (the sim ticks 30 times a second). */
@@ -127,8 +137,7 @@ export function itemsOf(s: TankState): Item[] {
       // Ailing rows lead the list, Dead before Sick — a corpse needs
       // attention before a patient does.
       statusKey: ailing ? [typeof f.dead === "number" ? 0 : 1]
-        : [2, hungerBand(f.hunger),
-           STATE_ORDER[f.state as FishState] ?? 3],
+        : [2, hungerBand(f.hunger), stateRank(f.state)],
     };
   });
   const showing = new Set(

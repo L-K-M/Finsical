@@ -106,6 +106,14 @@ describe("sortItems", () => {
     expect(sortItems(both, "status").map((i) => i.name))
       .toEqual(["Angelfish", "Clownfish"]); // name tiebreak, stable
   });
+  it("a hostile state string falls back to Swimming", () => {
+    // "constructor" resolves to an inherited Object.prototype member —
+    // a function, not nullish — so a ?? guard alone can't catch it.
+    const rows = itemsOf({ ...STATE, addons: [], fish: [
+      { id: 1, species: "Clownfish", hunger: 0.2, state: "constructor" },
+    ] });
+    expect(rows[0]!.status).toBe("Swimming, full");
+  });
   it("a startle can't outrank a hungrier calm fish", () => {
     const rows = sortItems(itemsOf({ ...STATE, addons: [], fish: [
       { id: 1, species: "Zebra", hunger: 0.9, state: "drift" },
@@ -137,6 +145,7 @@ describe("sortItems", () => {
     ] }), "status");
     expect(rows.map((i) => i.name))
       .toEqual(["Peckish", "Negative", "Notanum", "Overflow"]);
+    expect(rows[0]!.status).toBe("Swimming, peckish");
     for (const r of rows.slice(1))
       expect(r.status).toBe("Swimming, full");
   });
