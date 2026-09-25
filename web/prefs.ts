@@ -1,7 +1,8 @@
 import { openBus } from "./bus.js";
 import { CRT_DEFAULTS, CRT_PRESETS, presetTube, sanitizeCrtConfig }
   from "./crt.js";
-import { MACHINES, previewMarkup } from "./machines.js";
+import { DEFAULT_MACHINE, MACHINE_KEY, machineById, MACHINES,
+         previewMarkup } from "./machines.js";
 import type { CrtConfig, CrtPreset } from "./crt.js";
 import { centerText, hostWindow, mountList, mountPopup, pushButton,
          registerSprites, setEnabled, trackHighlight, trackPress }
@@ -838,6 +839,15 @@ try {
 showPane(initial);
 // The machine list takes the arrow keys as soon as the window opens.
 if (initial === "machine") machineList.element.focus({ preventScroll: true });
+
+// Seed the pane from the tank's own choice. Without a tank — or before
+// the first state push — showMachine() never runs and the list shows no
+// selection with a blank preview well. The first push overwrites this;
+// select(..., false) keeps the seed from posting a machine change.
+try {
+  const saved = localStorage.getItem(MACHINE_KEY) ?? "";
+  showMachine(machineById(saved) ? saved : DEFAULT_MACHINE);
+} catch { showMachine(DEFAULT_MACHINE); }
 
 // The tank page may still be loading when the window opens — retry the
 // hello until a state push arrives.

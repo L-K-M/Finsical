@@ -311,6 +311,9 @@ export const MACHINES: readonly Machine[] =
    bondi, bondi2, strawberry, strawberry2, flowerPower, flowerPower2,
    powerbookG3, ibook, imacg4, bare];
 export const DEFAULT_MACHINE = "plus";
+/** Where the tank page persists its case choice. Shared because
+ * Preferences seeds its list from it before the first state push. */
+export const MACHINE_KEY = "finsical:machine";
 export function machineById(id: string): Machine | undefined {
   return MACHINES.find((m) => m.id === id);
 }
