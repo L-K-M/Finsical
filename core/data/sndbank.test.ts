@@ -50,6 +50,27 @@ describe("bankSounds", () => {
     expect(bankSounds(bank).map((s) => s.name)).toEqual(["SIDE"]);
   });
 
+  it("ignores the attribute byte in a ref's data offset", () => {
+    const bank = buildBank(
+      [{ tag: "snd ", res: [{ id: 1000, body: wav(1) }] }]);
+    const v = new DataView(bank.buffer);
+    // Ref list starts past the one 8-byte type entry; the offset's
+    // high byte carries attributes real maps set.
+    const ref = v.getUint32(4, true) + 30 + 8;
+    v.setUint8(ref + 7, 0x01);
+    expect(bankSounds(bank).map((s) => s.name)).toEqual(["CENTER*"]);
+  });
+
+  it("reads only the first 'snd ' type entry", () => {
+    // Real maps list a type once; a duplicate entry is crafted chaff
+    // that would re-scan every ref (quadratic on a hostile file).
+    const bank = buildBank([
+      { tag: "snd ", res: [{ id: 1000, body: wav(1) }] },
+      { tag: "snd ", res: [{ id: 1001, body: wav(2) }] },
+    ]);
+    expect(bankSounds(bank).map((s) => s.name)).toEqual(["CENTER*"]);
+  });
+
   it("returns nothing for data that isn't a pack", () => {
     expect(bankSounds(wav(1))).toEqual([]);
     expect(bankSounds(new Uint8Array(0x200))).toEqual([]);

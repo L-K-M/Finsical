@@ -126,6 +126,33 @@ function spriteOf(art: readonly string[]): HTMLCanvasElement {
 
 let bubbleSprites: HTMLCanvasElement[] | null = null;
 let popSprites: HTMLCanvasElement[] | null = null;
+function popPair(): HTMLCanvasElement[] {
+  return [spriteOf(POP_ART_INNER), spriteOf(POP_ART)];
+}
+
+/** One pop ring drawn at a point — for a tap-pop mid-water, where the
+ * surface's drawn-line path can't show it. */
+export function drawBubblePop(ctx: CanvasRenderingContext2D,
+                              x: number, y: number): void {
+  popSprites ??= popPair();
+  const p = popSprites[Math.round(x) & 1]!; // same alternation as surface pops
+  ctx.drawImage(p, Math.round(x) - 2, Math.round(y) - 2);
+}
+
+/** Index of the bubble whose drawn body (plus a finger's worth of
+ * slop) is nearest to (px, py), or -1 if the point misses them all.
+ * Lives here so the hit test can't drift from the drawn footprint. */
+export function tapBubble(bubbles: readonly Bubble[], px: number,
+                          py: number): number {
+  let bi = -1, bd = Infinity;
+  for (let i = 0; i < bubbles.length; i++) {
+    const b = bubbles[i]!;
+    const r = bubbleSize(b.y) / 2 + 4;
+    const d = (b.x + bubbleOffset(b.x, b.y) - px) ** 2 + (b.y - py) ** 2;
+    if (d < r * r && d < bd) { bd = d; bi = i; }
+  }
+  return bi;
+}
 
 /** `line` is the drawn waterline (see surfaceLine): a bubble pops
  * where the moving surface is, not at its resting row. */
@@ -133,7 +160,7 @@ export function drawBubbles(ctx: CanvasRenderingContext2D,
                             bubbles: readonly Bubble[],
                             line?: Int16Array): void {
   bubbleSprites ??= BUBBLE_ART.map(spriteOf);
-  popSprites ??= [spriteOf(POP_ART_INNER), spriteOf(POP_ART)];
+  popSprites ??= popPair();
   for (const b of bubbles) {
     const x = Math.round(b.x + bubbleOffset(b.x, b.y));
     if (bubblePops(b.y)) {
@@ -153,8 +180,13 @@ export function drawBubbles(ctx: CanvasRenderingContext2D,
 
 /** Most pellets one feed drops. */
 export const PINCH_MAX = 5;
-/** Horizontal scatter of a pinch around the drop x, px. */
+/** Horizontal scatter of a pinch around its center, px. */
 export const PINCH_SPREAD = 24;
+/** Most centers one pinch may split across. */
+export const PINCH_CENTERS_MAX = 3;
+/** How far a multi-center pinch's centers may sit from the drop x, px.
+ * A one-center pinch keeps it — a lone pellet still lands where fed. */
+export const PINCH_CENTER_SPREAD = 48;
 /** Delay between pellets of one pinch, ms: they rain in, not as a row. */
 const PINCH_STAGGER_MS = 110;
 
@@ -172,10 +204,15 @@ export interface PinchPellet {
 export function feedPinch(rand: () => number,
                           hungry: number): PinchPellet[] {
   const n = Math.min(PINCH_MAX, Math.max(1, Math.floor(hungry)));
+  const centers = Math.min(PINCH_CENTERS_MAX, Math.ceil(n / 2));
+  const at: number[] = centers === 1 ? [0] : [];
+  for (let c = at.length; c < centers; c++)
+    at.push(Math.round((rand() * 2 - 1) * PINCH_CENTER_SPREAD));
   const out: PinchPellet[] = [];
   for (let i = 0; i < n; i++) {
     out.push({
-      dx: Math.round((rand() * 2 - 1) * PINCH_SPREAD),
+      dx: at[i % centers]!
+        + Math.round((rand() * 2 - 1) * PINCH_SPREAD),
       delay: i === 0
         ? 0 : Math.round(i * PINCH_STAGGER_MS * (0.6 + rand() * 0.8)),
     });
@@ -203,6 +240,9 @@ export function pelletShape(x: number, y: number, settled: boolean):
 
 const PELLET = "#c9a227";
 const PELLET_SHADE = "#8a6a14";
+// The rare golden pellet reads brighter than the everyday flake.
+const PELLET_GOLD = "#ffe066";
+const PELLET_GOLD_SHADE = "#e0a800";
 
 export function drawFood(ctx: CanvasRenderingContext2D,
                          food: readonly Food[]): void {
@@ -213,14 +253,15 @@ export function drawFood(ctx: CanvasRenderingContext2D,
     const x = Math.round(fd.x + pelletDrift(fd.x, fd.y));
     const y = Math.round(fd.y);
     const shape = pelletShape(fd.x, fd.y, fd.settled > 0);
-    ctx.fillStyle = PELLET;
+    const shade = fd.golden ? PELLET_GOLD_SHADE : PELLET_SHADE;
+    ctx.fillStyle = fd.golden ? PELLET_GOLD : PELLET;
     if (shape === "nugget") {
       ctx.fillRect(x - 1, y - 1, 2, 2);
-      ctx.fillStyle = PELLET_SHADE;
+      ctx.fillStyle = shade;
       ctx.fillRect(x, y, 1, 1);
     } else if (shape === "flakeFlat") {
       ctx.fillRect(x - 1, y, 1, 1);
-      ctx.fillStyle = PELLET_SHADE;
+      ctx.fillStyle = shade;
       ctx.fillRect(x, y, 1, 1);
     } else {
       ctx.fillRect(x, y - 1, 1, 2);
@@ -398,6 +439,13 @@ export function drawRefraction(ctx: CanvasRenderingContext2D,
     const dx = refractShift(Math.max(top + r, SURFACE + 1), t);
     if (dx === 0) continue;
     ctx.drawImage(refractScratch, 0, r, W, 1, dx, top + r, W, 1);
+    // Clamp-fill the sliver the shift leaves bare so no unshifted
+    // pixels survive at the tank's edges.
+    if (dx > 0)
+      ctx.drawImage(refractScratch, 0, r, 1, 1, 0, top + r, dx, 1);
+    else
+      ctx.drawImage(refractScratch, W - 1, r, 1, 1,
+                    W + dx, top + r, -dx, 1);
   }
 }
 
