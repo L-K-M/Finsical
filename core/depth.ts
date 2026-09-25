@@ -23,7 +23,7 @@ export interface Cover {
 const DEPTH_BANDS: readonly { maxH: number; lo: number; hi: number }[] = [
   { maxH: 0.25, lo: 0.65, hi: 0.95 },
   { maxH: 0.55, lo: 0.35, hi: 0.7 },
-  { maxH: Infinity, lo: 0.05, hi: 0.4 },
+  { maxH: Infinity, lo: 0.2, hi: 0.45 },
 ];
 
 /** Depth for a standalone decor piece `h` px tall in a `tankH` tank,

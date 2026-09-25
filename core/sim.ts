@@ -269,8 +269,8 @@ export const BAND_HALF = 24;
 const BAND_SHIFT = 0.2;
 /** Range of distances from the back glass fish wander through, and
  * the chance per decision of heading for a new one. */
-const Z_MIN = 0.15;
-const Z_MAX = 0.85;
+const Z_MIN = 0.05;
+const Z_MAX = 0.9;
 const Z_SHIFT = 0.25;
 /** Depth change per tick: a calm fish takes ~7 s to cross the tank
  * front to back, a scared one under a second. */
