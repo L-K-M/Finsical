@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fish no longer waggle rapidly up and down after swimming past the
+  spot they were heading for. They now level out and carry on until
+  they turn around.
 - The alert that says the tank is full of uneaten food is now a hint
   you turn on with Tank > Turn Hints On. It no longer interrupts
   feeding by default; a refused feed is silent unless hints are on.
