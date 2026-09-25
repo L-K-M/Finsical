@@ -3,7 +3,7 @@
 // a note alert, then shows each download's progress in the same alert.
 // Failures end in a caution alert with Try Again, never silently. The
 // offer lasts until it is answered, and a stocking that doesn't finish
-// is offered once more on the next launch.
+// is offered again on each launch until it completes or is turned down.
 import { showAlert } from "./alert.js";
 import type { Alert, AlertButton } from "./alert.js";
 import { listAddons, loadProblem } from "./import.js";

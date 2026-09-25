@@ -5,8 +5,9 @@
 - If you close Finsical before answering the offer to stock your tank,
   the next launch asks again. The offer used to be lost for good, and
   the game's sounds then downloaded without asking. If stocking the
-  tank fails or you stop it, the next launch offers the rest once more;
-  choosing Not Now there ends it.
+  tank fails or you stop it, the next launch offers the rest, and each
+  launch after that does too until the rest arrives or you choose Not
+  Now or Stop.
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.

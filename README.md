@@ -52,8 +52,8 @@ background and the game's sound effects from the Internet Archive
 (about 2 MB). Choose **Not Now**
 to keep the stand-ins; you can add the same things later from Import
 Add-ons. If you close Finsical before answering, it asks again next
-time; if stocking the tank doesn't finish, the next launch offers the
-rest once more.
+time. If stocking the tank doesn't finish, later launches offer the
+rest until it arrives or you choose **Not Now** or **Stop**.
 
 ## Using Finsical
 

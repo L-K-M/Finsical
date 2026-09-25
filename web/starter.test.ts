@@ -97,7 +97,7 @@ describe("welcomeOffer", () => {
       expect(welcomeOffer({ answer: "pending", pristine })).toBe("welcome");
   });
 
-  it("offers the rest once after stocking didn't finish", () => {
+  it("offers the rest after stocking didn't finish", () => {
     for (const pristine of [true, false])
       expect(welcomeOffer({ answer: "retry", pristine })).toBe("retry");
   });
