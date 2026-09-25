@@ -52,6 +52,9 @@
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.
+- A hungry fish between two pellets picks one and eats it. Near the
+  midpoint it used to roll back and forth between them, sometimes for a
+  minute, while both sank and fouled the water.
 - Adding a big fish add-on stalls the tank for less time: decoding
   the gup, discus and angel packs' sprites takes under a third as
   long, which shortens the pause while one goes in.

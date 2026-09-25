@@ -255,6 +255,11 @@ const HOVER_DECAY = 0.9;
  * pitching over rather than rolling: about the turning circle at
  * cruise, so diving onto a pellet right below never rolls. */
 const TURN_SLACK = 12;
+/** Extra distance, px, a hungry fish counts for a pellet behind it:
+ * about what the roll to face it costs. A pellet ahead wins a near
+ * tie, and once a fish has rolled toward one pellet the other is the
+ * one behind it, so it commits instead of rolling back and forth. */
+const ROLL_COST = 32;
 /** Chance a new destination drawn behind the fish is mirrored ahead
  * of it instead: about 70% of moves carry on the way the fish faces,
  * so it rolls every few seconds rather than on most decisions. */
@@ -1322,18 +1327,25 @@ export class Sim {
   private foodFor(f: Fish): Food | null {
     if (f.hunger <= HUNGER_SNACK || this.waterQuality <= QUALITY_SEEK)
       return null;
+    // A hungry fish goes looking, and weighs the roll; a peckish one
+    // only snaps up whatever drifts within reach.
+    if (f.hunger > HUNGER_SEEK) return this.nearestFood(f, ROLL_COST);
     const food = this.nearestFood(f);
-    if (!food || f.hunger > HUNGER_SEEK) return food;
+    if (!food) return null;
     const dx = food.x - f.x, dy = food.y - f.y;
     return dx * dx + dy * dy < NOTICE_DIST * NOTICE_DIST ? food : null;
   }
 
-  private nearestFood(f: Fish): Food | null {
+  /** The closest pellet, counting `rollCost` extra px for one more than
+   * TURN_SLACK behind the fish. An exact tie keeps the earlier pellet. */
+  private nearestFood(f: Fish, rollCost = 0): Food | null {
     let best: Food | null = null;
     let bd = Infinity;
     for (const fd of this.food) {
       if (fd.eaten) continue;
-      const d = (fd.x - f.x) ** 2 + (fd.y - f.y) ** 2;
+      const dx = fd.x - f.x, dy = fd.y - f.y;
+      const behind = -dx * f.facing > TURN_SLACK;
+      const d = Math.sqrt(dx * dx + dy * dy) + (behind ? rollCost : 0);
       if (d < bd) { bd = d; best = fd; }
     }
     return best;
