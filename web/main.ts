@@ -884,12 +884,13 @@ function spawnFish(sheetIdx: number, species: string, pack?: string,
 /** A drop-time spawn: splash on success, say why on refusal — after
  * the idx guard, spawnFish only declines a full tank. Drops have no
  * panel to ack, so the explanation goes to the console. */
-function spawnFromDrop(idx: number, species: string): void {
-  if (idx < 0) return;
+function spawnFromDrop(idx: number, species: string): Fish | null {
+  if (idx < 0) return null;
   const f = spawnFish(idx, species);
   if (f) audio.splash(panFor(f.x, TANK.width));
   else console.warn(`Tank is full — ${FISH_CAP} fish max. ` +
     "Release one from Tank Overview first.");
+  return f;
 }
 
 // Biggest pack image large enough to matter becomes the tank backdrop —
@@ -2536,6 +2537,27 @@ window.addEventListener("drop", (e) => {
 // Right-click surfaces WebKit's generic menu (Reload etc.) — nothing
 // in it applies to the tank, and the native window has no chrome.
 window.addEventListener("contextmenu", (e) => e.preventDefault());
+// A drop has no panel to ack into — say what happened on the glass
+// itself, the way the "Drop to add" cue speaks from the same place.
+const dropMsg = document.createElement("div");
+dropMsg.id = "dropmsg";
+// A polite live region — the result reaches screen readers too.
+dropMsg.setAttribute("role", "status");
+dropMsg.hidden = true;
+document.getElementById("screen")!.appendChild(dropMsg);
+let dropMsgTimer: ReturnType<typeof setTimeout> | undefined;
+function dropSay(text: string): void {
+  // A live region only announces a change — an identical repeat (two
+  // bad drops in a row) needs a cleared frame between writes to speak.
+  dropMsg.textContent = "";
+  requestAnimationFrame(() => { dropMsg.textContent = text; });
+  dropMsg.hidden = false;
+  clearTimeout(dropMsgTimer);
+  dropMsgTimer = setTimeout(() => {
+    dropMsg.hidden = true;
+    dropMsg.textContent = ""; // invisible, so stale text leaves the tree
+  }, 4000);
+}
 window.addEventListener("drop", (e) => {
   e.preventDefault();
   // Entries must be read before the handler returns — items invalidate.
@@ -2581,7 +2603,7 @@ window.addEventListener("drop", (e) => {
     if (flat.has("manifest.json")) {
       const pack = await loadAzpack(readFile);
       const idx = usePack(pack, readFile);
-      spawnFromDrop(idx, pack.manifest.tag);
+      const spawn = spawnFromDrop(idx, pack.manifest.tag);
       const imgs: IndexedImage[] = [];
       for (const c of pack.manifest.chunks) {
         if (!c.image) continue;
@@ -2589,6 +2611,9 @@ window.addEventListener("drop", (e) => {
         catch { /* keep going without that image */ }
       }
       pickBackdrop(imgs);
+      dropSay(idx >= 0 && !spawn
+        ? fishRefusal("fish") ?? "The tank is full."
+        : `Added ${pack.manifest.tag?.trim() || "the add-on"}.`);
       console.info(`azpack imported: ${flat.size} files`);
       return;
     }
@@ -2622,10 +2647,18 @@ window.addEventListener("drop", (e) => {
     if (sndSkipped)
       console.warn(`drop: ${sndSkipped} files skipped — ` +
                    `${DROP_SOUNDS_MAX} sounds per drop is plenty`);
+    const notes: string[] = [];
     // A bad audio file mustn't abort the raw-pack pass below.
-    if (recs.length)
-      await handleSounds(recs)
-        .catch((e) => console.warn("sound import failed:", e));
+    if (recs.length) {
+      const ok = await handleSounds(recs)
+        .then(() => true)
+        .catch((e) => { console.warn("sound import failed:", e);
+                        return false; });
+      if (ok)
+        notes.push(`Added ${recs.length} ` +
+                   `sound${recs.length === 1 ? "" : "s"}.`);
+      else notes.push("Couldn't save the sounds.");
+    }
     // Not an .azpack folder — every dropped pack file imports, not
     // just the first (web/drop.ts, tested there). One file at a time:
     // an unreadable file costs only itself, and a folder drop never
@@ -2633,6 +2666,7 @@ window.addEventListener("drop", (e) => {
     // extension like remote installs' collections: a .fsh fish adds
     // no scenery, so its catalog art can't take the backdrop.
     let imported = 0;
+    let packName = "";
     for (const [name, file] of packFiles) {
       let data: Uint8Array;
       try { data = new Uint8Array(await file.arrayBuffer()); }
@@ -2660,6 +2694,7 @@ window.addEventListener("drop", (e) => {
       const refusal = p.sheets.size ? fishRefusal("fish") : null;
       if (refusal) {
         console.warn(`drop: ${name}: ${refusal}`);
+        if (!notes.includes(refusal)) notes.push(refusal);
         continue;
       }
       // A dropped pack has no home URL — mint a local: identity so the
@@ -2707,11 +2742,25 @@ window.addEventListener("drop", (e) => {
         recordInstall({ section: p.sheets.size ? "fish" : p.section,
                         inner: p.name, url });
       imported++;
+      if (!packName) packName = p.name || name;
       console.info(`${name}: pack imported${stored ? "" : " (session only)"}`);
     }
+    if (imported)
+      notes.push(imported === 1 ? `Added ${packName}.`
+                                : `Added ${imported} add-ons.`);
+    if (notes.length) dropSay(notes.join(" "));
+    // Sounds push a note on either outcome, so nothing said yet means
+    // the drop had nothing usable at all.
+    else
+      dropSay(`Finsical can't use ${flat.size === 1 ? "that file" :
+        "those files"} — drop an AquaZone .fsh or .azpack, ` +
+        "or a sound file.");
     if (!imported && !recs.length)
       console.warn("drop: no manifest.json, pack file, or 'snd ' found");
-  })().catch((e) => console.warn("azpack import failed:", e));
+  })().catch((e) => {
+    console.warn("drop failed:", e);
+    dropSay("Couldn't finish the drop — the file may be damaged or unsupported.");
+  });
 });
 
 // Aquazone fish art is stored vertical (profiles in groups 0 and
