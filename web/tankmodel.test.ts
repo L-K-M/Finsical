@@ -40,6 +40,9 @@ describe("capRefusal", () => {
     expect(capRefusal(12, 1, 12)).toMatch(/^The tank is full: 12 fish/);
     // A healed pre-cap roster can sit above the cap.
     expect(capRefusal(14, 1, 12)).toMatch(/^The tank is full/);
+    // A multi-pack add-on asks for room for all of its fish.
+    expect(capRefusal(12, 2, 12)).toBe("The tank is full: 12 fish is " +
+      "plenty. Release 2 from Tank Overview first.");
   });
 
   it("refuses a multi-pack add-on whole when only some would fit", () => {

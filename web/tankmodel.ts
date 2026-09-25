@@ -32,8 +32,8 @@ export function capRefusal(have: number, adding: number,
   const room = cap - have;
   if (adding <= 0 || adding <= room) return null;
   if (room <= 0)
-    return `The tank is full: ${cap} fish is plenty. ` +
-           "Release one from Tank Overview first.";
+    return `The tank is full: ${cap} fish is plenty. Release ` +
+           `${adding === 1 ? "one" : adding} from Tank Overview first.`;
   return `This add-on brings ${adding} fish, and the tank has room for ` +
          `${room} more. Release ${adding - room} from Tank Overview first.`;
 }
