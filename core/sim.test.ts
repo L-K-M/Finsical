@@ -130,7 +130,7 @@ describe("Sim", () => {
   it("turns around at the walls", () => {
     const sim = new Sim({ width: 100, height: 100 }, 3);
     sim.addFish({ x: 76, y: 50, facing: 1, speed: 2 });
-    for (let i = 0; i < 25; i++) sim.tick();
+    for (let i = 0; i < 40; i++) sim.tick();
     expect(sim.fish[0]!.facing).toBe(-1);
   });
 
@@ -395,7 +395,7 @@ describe("Sim", () => {
     const b = sim.addFish({ x: 200, y: 110, hunger: 0, halfW: 80 });
     const c = sim.addFish({ x: 150, y: 150, hunger: 0, halfW: 80 });
     sim.notice = { x: 160, y: 100 };
-    for (let i = 0; i < 400; i++) sim.tick();
+    for (let i = 0; i < 900; i++) sim.tick();
     const ds = [a, b, c].map((f) => Math.hypot(f.x - 160, f.y - 100));
     for (const d of ds) expect(d).toBeLessThan(NOTICE_RADIUS);
     expect(Math.abs(ds[1]! - ds[0]!)).toBeGreaterThan(2);
@@ -483,23 +483,27 @@ describe("Sim", () => {
   });
 
   it("a weakened fish swims slower", () => {
-    const well = new Sim({ width: 300, height: 200 }, 11);
-    const weak = new Sim({ width: 300, height: 200 }, 11);
-    well.addFish({ x: 150, y: 100, speed: 1 });
-    weak.addFish({ x: 150, y: 100, speed: 1 });
-    well.advanceLife(1);
-    weak.advanceLife(1);
-    well.fish[0]!.life!.health = 90;
-    // Health 1 is 24 below the stand-in species' threshold of 25.
-    weak.fish[0]!.life!.health = 1;
+    // Summed over seeds: hovers and leg lengths are random, so one
+    // pair's paths diverge too much to compare on their own.
     let dc = 0, df = 0;
-    let pc = { x: 150, y: 100 }, pf = { x: 150, y: 100 };
-    for (let i = 0; i < 1000; i++) {
-      well.tick(); weak.tick();
-      const c = well.fish[0]!, f = weak.fish[0]!;
-      dc += Math.hypot(c.x - pc.x, c.y - pc.y);
-      df += Math.hypot(f.x - pf.x, f.y - pf.y);
-      pc = { x: c.x, y: c.y }; pf = { x: f.x, y: f.y };
+    for (let seed = 1; seed <= 8; seed++) {
+      const well = new Sim({ width: 300, height: 200 }, seed);
+      const weak = new Sim({ width: 300, height: 200 }, seed);
+      well.addFish({ x: 150, y: 100, speed: 1 });
+      weak.addFish({ x: 150, y: 100, speed: 1 });
+      well.advanceLife(1);
+      weak.advanceLife(1);
+      well.fish[0]!.life!.health = 90;
+      // Health 1 is 24 below the stand-in species' threshold of 25.
+      weak.fish[0]!.life!.health = 1;
+      let pc = { x: 150, y: 100 }, pf = { x: 150, y: 100 };
+      for (let i = 0; i < 3000; i++) {
+        well.tick(); weak.tick();
+        const c = well.fish[0]!, f = weak.fish[0]!;
+        dc += Math.hypot(c.x - pc.x, c.y - pc.y);
+        df += Math.hypot(f.x - pf.x, f.y - pf.y);
+        pc = { x: c.x, y: c.y }; pf = { x: f.x, y: f.y };
+      }
     }
     expect(df).toBeLessThan(dc * 0.9);
   });
@@ -699,11 +703,13 @@ describe("Sim", () => {
     // Pin a distant target so the whole tick is the acceleration stroke.
     f.tx = 300; f.ty = 100; f.phase = 0; f.latch = -1;
     const speeds = [f.speed];
-    for (let i = 0; i < 10; i++) { sim.tick(); speeds.push(f.speed); }
-    // Quadratic ramp: deltas grow early, then the cruise cap flattens it.
-    expect(speeds[4]! - speeds[3]!).toBeGreaterThan(speeds[2]! - speeds[1]!);
+    for (let i = 0; i < 40; i++) { sim.tick(); speeds.push(f.speed); }
+    // Quadratic ramp: deltas grow early, then the cruise cap flattens it
+    // after about a second (30 ticks).
+    expect(speeds[8]! - speeds[7]!).toBeGreaterThan(speeds[2]! - speeds[1]!);
+    expect(speeds[20]!).toBeLessThan(1.4);
     expect(Math.max(...speeds)).toBeLessThanOrEqual(1.4 + 1e-9);
-    expect(speeds[10]).toBeCloseTo(1.4, 5);
+    expect(speeds[40]).toBeCloseTo(1.4, 5);
   });
 
   it("latches the brake and glides into its destination", () => {
@@ -731,7 +737,7 @@ describe("Sim", () => {
     expect(f.facing).toBe(1);
     // Steering never carries the heading round to the other side; only
     // a roll turns the fish to face the target.
-    for (let i = 0; i < 40 && f.state === "drift"; i++) {
+    for (let i = 0; i < 400 && f.state === "drift"; i++) {
       sim.tick();
       if (f.state === "drift") {
         expect(f.facing).toBe(1);
@@ -745,15 +751,17 @@ describe("Sim", () => {
   it("strokes on toward a far target, then re-decides", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const f = sim.addFish({ x: 60, y: 100 });
+    // Slow enough (cruise 0.5) to be short of it after one stroke.
+    f.cruise = 0.5;
     f.tx = 300; f.ty = 30; f.phase = 0; f.latch = -1;
-    for (let i = 0; i < 40; i++) sim.tick();
-    // After 32 ticks the phase wrapped: a new stroke, same destination.
-    expect(f.phase).toBeLessThan(32);
+    for (let i = 0; i < 200; i++) sim.tick();
+    // After 192 ticks the stroke's budget ran out: a new stroke, same
+    // destination, carrying the speed it had.
     expect(f.strokes).toBe(1);
     expect(f.tx).toBe(300);
-    // Out of strokes before arriving (~130 ticks at cruise 1 for ~250
-    // px), the fish picks a new destination.
-    for (let i = 0; i < 100; i++) sim.tick();
+    expect(f.speed).toBeGreaterThan(0.4);
+    // Arrived (~500 ticks for ~250 px), it moves on.
+    for (let i = 0; i < 600; i++) sim.tick();
     expect(f.tx).not.toBe(300);
   });
 
@@ -769,13 +777,13 @@ describe("Sim", () => {
     for (let i = 0; i < 10 && bystander.state !== "startle"; i++)
       sim.tick();
     expect(bystander.state).toBe("startle"); // panic propagated
-    // Propagated darts are capped at half tap strength (3.5 * 0.5);
-    // the bystander is outside the tap radius, so only propagation
-    // could have startled it.
-    expect(bystander.speed).toBeLessThanOrEqual(1.75);
+    // Propagated darts are at most half tap strength; the bystander
+    // is outside the tap radius, so only propagation could have
+    // startled it.
+    expect(bystander.speed).toBeLessThanOrEqual(1 * (1 + 0.5 * 0.5));
   });
 
-  it("caps panic propagation at two hops", () => {
+  it("caps panic propagation at one hop", () => {
     const sim = new Sim({ width: 400, height: 100 }, 5);
     // The tap radius (48px) directly startles the first two fish (hop 0);
     // every fish beyond that is one more hop, 24px apart (< PROP_RADIUS 32).
@@ -783,9 +791,8 @@ describe("Sim", () => {
                                      // point so the dart direction
                                      // is well-defined)
     sim.addFish({ x: 84, y: 50 });   // hop 0 (direct — inside tap radius)
-    sim.addFish({ x: 108, y: 50 });              // hop 1
-    const hop2 = sim.addFish({ x: 132, y: 50 }); // hop 2 — last allowed
-    const far = sim.addFish({ x: 156, y: 50 });  // hop 3 — beyond the cap
+    const hop2 = sim.addFish({ x: 108, y: 50 }); // hop 1 — last allowed
+    const far = sim.addFish({ x: 132, y: 50 });  // hop 2 — beyond the cap
     sim.tap(60, 50);
     let everStartled = false;
     let waveReachedCap = false;
@@ -810,19 +817,22 @@ describe("Sim", () => {
 
   it("starter fish (species \"\") don't school", () => {
     // Without schooling they sit as far apart as strangers: per seed
-    // the difference is noise (about -12 to 21 px); schooling starters
-    // would sit 27-60 px closer on every seed.
+    // the difference is noise (about -50 to 55 px with local wander
+    // legs, averaging near 5 over twelve seeds); schooling starters
+    // would sit 27-100 px closer on almost every seed.
     let gap = 0;
-    for (let seed = 1; seed <= 6; seed++)
+    for (let seed = 1; seed <= 12; seed++)
       gap += pairDistance(seed, "a", "b") - pairDistance(seed, "", "");
-    expect(gap / 6).toBeLessThan(15);
+    expect(gap / 12).toBeLessThan(15);
   });
 
   it("rolls through a turn when the destination is behind it", () => {
     const sim = new Sim({ width: 300, height: 100 }, 7);
     // At the right wall facing right — every wander target is behind.
     const f = sim.addFish({ x: 284, y: 50, facing: 1, heading: 0 });
-    f.tx = 284; f.ty = 50; f.phase = 32; // decide fires on this tick
+    // Out of budget and strokes, pressed to the glass: decide fires
+    // on this tick (no hover — it hasn't arrived anywhere).
+    f.tx = 250; f.ty = 50; f.phase = 1000; f.strokes = 99;
     sim.tick();
     expect(f.state).toBe("turn");
     const seen = new Set<number>();
@@ -842,7 +852,9 @@ describe("Sim", () => {
     for (let seed = 1; seed <= 40; seed++) {
       const sim = new Sim({ width: 300, height: 100 }, seed);
       const f = sim.addFish({ x: 284, y: 50, facing: 1, heading: 0 });
-      f.tx = 284; f.ty = 50; f.phase = 32; // decide fires on this tick
+      // Out of budget and strokes, pressed to the glass: decide fires
+    // on this tick (no hover — it hasn't arrived anywhere).
+    f.tx = 250; f.ty = 50; f.phase = 1000; f.strokes = 99;
       sim.tick();
       expect(f.tx).toBeLessThan(284);
     }
@@ -1067,7 +1079,9 @@ describe("Sim", () => {
     const fd = sim.food[0]!;
     for (let i = 0; i < 200 && !fd.eaten; i++) {
       sim.tick();
-      expect(f.state).not.toBe("turn");
+      // After the bite its next leg may lie behind it; that roll is
+      // not one for the pellet.
+      if (!fd.eaten) expect(f.state).not.toBe("turn");
     }
     expect(fd.eaten).toBe(true);
   });

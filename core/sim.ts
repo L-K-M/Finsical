@@ -70,6 +70,8 @@ export interface Fish {
    * fish sorts among the decor. `tz` is where it is heading. */
   z: number;
   tz: number;
+  /** Ticks left hovering before the next leg (runtime only). */
+  hover: number;
   /** Ticks left hiding behind `hideIn` after a scare (runtime only). */
   hideTicks: number;
   hideIn?: Cover;
@@ -180,8 +182,12 @@ const GASP_QUALITY = 0.45;
 const STARTLE_RADIUS = 48;
 /** Length of a full-strength startle; weaker ones last down to half. */
 const STARTLE_TICKS = 30;
-/** Dart speed cap, px/tick: what a point-blank tap produces. */
-const STARTLE_MAX_SPEED = 3.5;
+/** Dart speed cap, px/tick: what a point-blank tap produces. The
+ * original only redirects a scared fish (Calc_Scat_Dest) onto a fresh
+ * swim ramp, so the dart stays close to a brisk cruise. */
+const STARTLE_MAX_SPEED = 2;
+/** Speed a scare adds over cruise at full strength. */
+const STARTLE_BOOST = 0.5;
 /** Speed kept when a startled fish bounces off a side wall. */
 const STARTLE_BOUNCE = 0.6;
 /** Reactions weaker than this read as frozen fish — trims the
@@ -190,27 +196,33 @@ const STARTLE_BOUNCE = 0.6;
 const MIN_STARTLE_STRENGTH = 0.05;
 /** How close a darting fish must pass to startle a neighbor. */
 const PROP_RADIUS = 32;
-/** Hops a panic wave may travel from the fish that was tapped. */
-const MAX_PANIC_HOPS = 2;
+/** Hops a panic wave may travel from the fish that was tapped: the
+ * original scatters only the fish near the click, so a darting fish
+ * spooks its close neighbors and no further. */
+const MAX_PANIC_HOPS = 1;
 /**
- * Movement budget per decision. The original runs 60 ticks/s and re-decides
- * every 64 ticks (~1.07 s); halved here for our 30 tps clock.
+ * Movement budget per stroke. The original steps its fish at most 10
+ * times a second (the Windows engine; 6.7 on the Mac) and gives each
+ * leg 64 steps (Init_Swim) before it re-aims at the same destination:
+ * ~6.4 s, 192 of our 30 tps ticks.
  */
-const MOVE_TICKS = 32;
+const MOVE_TICKS = 192;
 /**
  * Extra strokes a fish may spend on a far destination before picking a
- * new one. Wander targets are often two or three strokes away; cutting
- * each move short after one stroke made fish re-aim (and so roll)
- * about once a second.
+ * new one. The original re-aims at the same destination until it
+ * arrives (Go_To_Dest); the cap only frees a fish that can't get there.
  */
-const MAX_STROKES = 3;
-/** Stroke ramp divisor: speed = cruise·(phase+1)²/64 while accelerating. */
-const RAMP_DIV = 64;
+const MAX_STROKES = 8;
+/** Stroke ramp divisor: speed = cruise·(phase+1)²/900 while
+ * accelerating, so a fish takes a second to reach cruise (the
+ * original: 5 to 100 steps by the fish's character, 0.5 to 10 s). */
+const RAMP_DIV = 900;
 /** Per-tick speed kept while a new stroke's ramp is still below it:
  * the fish glides into the next stroke instead of stopping dead. */
 const GLIDE = 0.93;
-/** Brake decay divisor: speed = peak − (phase−latch)²·peak/128. */
-const BRAKE_DIV = 128;
+/** Brake decay divisor: speed = peak − (phase−latch)²·peak/500, a stop
+ * in ~22 ticks (the original brakes at 1.6× its acceleration). */
+const BRAKE_DIV = 500;
 /** Approach radius around the destination where the brake latches. */
 const BRAKE_DIST = 24;
 /** Heading steer rate, rad/tick — a 180° reversal takes ~19 ticks. */
@@ -219,6 +231,26 @@ const TURN_RATE = Math.PI / 20;
  * straight up or down, so a fish can close on a pellet it is just
  * overshooting without rolling. Anything steeper needs a roll. */
 const MAX_PITCH = Math.PI * 7 / 12;
+/** Steepest a wandering fish aims (35 degrees): the original swims
+ * mostly level, limiting climbs and dives by a per-species angle. Only
+ * a fish going for food pitches steeper. */
+const WANDER_PITCH = Math.PI * 35 / 180;
+/** How far a wander leg reaches, in body lengths across and px up or
+ * down: the original picks x within ±5 body widths (Calc_New_Dest) and
+ * y within ±80 of its 480 px (Get_Dest_In_Area), so fish potter about
+ * locally instead of crossing the tank on every leg. */
+const REACH_BODIES = 5;
+const REACH_Y = 34;
+/** Body length of a fish whose sprite size isn't known yet, px. */
+const DEFAULT_BODY = 20;
+/** On arriving, the chance a fish hovers before its next leg, and for
+ * how long: the original idles 40% of the times it doesn't swim on
+ * (Init_Idle), for 6 to 63 steps (0.6 to 6.3 s). */
+const HOVER_ODDS = 0.3;
+const HOVER_TICKS_MIN = 18;
+const HOVER_TICKS_RANGE = 171;
+/** Per-tick speed kept while hovering: the fish coasts to a stop. */
+const HOVER_DECAY = 0.9;
 /** How far behind the fish a target may sit and still be reached by
  * pitching over rather than rolling: about the turning circle at
  * cruise, so diving onto a pellet right below never rolls. */
@@ -276,10 +308,10 @@ const HIT_MIN = 8;
 /** This close to the pointer a noticed fish just hovers nearby. */
 const NOTICE_STANDOFF = 16;
 /**
- * Roll duration. The original's turn steps half the 32-pose ring
- * (~16 poses at 60 tps ≈ 0.27 s); ~10 ticks here at 30 tps.
+ * Roll duration. The original's turn steps half its 8-pose ring, a
+ * pose per step (Init_Turn): 4 steps, 0.4 s at 10 steps a second.
  */
-export const TURN_TICKS = 10;
+export const TURN_TICKS = 12;
 /** Juveniles spawn at 0.70–0.95 of adult size. Adult (1) is the art
  * scale the renderer draws a species at, so growth never makes a fish
  * bigger than its own art. */
@@ -315,9 +347,9 @@ const CONCEIVE_ODDS = 50;
 const BREED_HEALTH = 75;
 const FRY_SCALE = SPAWN_SCALE_MIN;
 
-/** Pitch off the facing axis, limited to MAX_PITCH either way. */
-function clampPitch(p: number): number {
-  return Math.max(-MAX_PITCH, Math.min(MAX_PITCH, p));
+/** Pitch off the facing axis, limited to `lim` either way. */
+function clampPitch(p: number, lim = MAX_PITCH): number {
+  return Math.max(-lim, Math.min(lim, p));
 }
 
 /** Fixed-step aquarium simulation. Advance with `tick()` — one step per call. */
@@ -478,7 +510,7 @@ export class Sim {
       id: this.nextId, species: "",
       facing: 1, heading: 0, phase: 0, latch: -1, peak: 0, cruise: 1,
       speed: 1, vy: 0, tx: 0, ty: 0, turnDir: 1, turnFrom: 1,
-      strokes: 0, bandY: 0, z: 0, tz: 0, hideTicks: 0, scale: 1,
+      strokes: 0, bandY: 0, z: 0, tz: 0, hover: 0, hideTicks: 0, scale: 1,
       hunger: SPAWN_HUNGER,
       state: "drift", stateTicks: 0, startleLen: STARTLE_TICKS,
       panicHops: 0, ...fish,
@@ -749,7 +781,23 @@ export class Sim {
         f.phase = 0;
         f.latch = -1;
       }
+    } else if (f.hover > 0 && !peckish && !this._noticeFish.includes(f)) {
+      // Hovering: coast to a stop and hang there, level, fins going.
+      f.hover--;
+      f.speed = Math.max(f.speed * HOVER_DECAY, f.cruise * 0.04);
+      const level = wrapAngle((f.facing > 0 ? 0 : Math.PI) - f.heading);
+      f.heading = wrapAngle(f.heading +
+        Math.min(TURN_RATE, Math.max(-TURN_RATE, level)));
+      f.vy = Math.sin(f.heading) * f.speed * vigor;
+      f.x += Math.cos(f.heading) * f.speed * vigor;
+      f.y += f.vy;
+      if (f.hover === 0) {
+        this.decide(f);
+        this.maybeTurn(f);
+      }
     } else {
+      // Food or the pointer cuts a hover short.
+      f.hover = 0;
       const food = this.foodFor(f);
       let turning = false;
       if (food) {
@@ -793,14 +841,24 @@ export class Sim {
       if (!food && !turning && nd > standoff &&
           (f.phase >= MOVE_TICKS || dist < 4)) {
         if (dist >= BRAKE_DIST && f.strokes < MAX_STROKES) {
+          // Out of budget short of the destination: another stroke at
+          // the same one, carrying the speed it has.
           f.strokes++;
+          this.resumeStroke(f);
+        } else if (dist < BRAKE_DIST && f.hideTicks === 0 && rank < 0 &&
+                   this.rand() < HOVER_ODDS) {
+          // Arrived (not pressed to the glass): sometimes hang here.
+          f.hover = HOVER_TICKS_MIN +
+            Math.floor(this.rand() * HOVER_TICKS_RANGE);
+          f.tx = f.x; f.ty = f.y;
           f.phase = 0;
           f.latch = -1;
+          dist = 0;
         } else {
           this.decide(f);
           dist = Math.hypot(f.tx - f.x, f.ty - f.y);
         }
-        turning = this.maybeTurn(f);
+        turning = f.hover > 0 ? false : this.maybeTurn(f);
       }
       // A brake latched on an earlier target, or on a pellet that has
       // since sunk away, would leave the fish crawling after the food.
@@ -833,7 +891,8 @@ export class Sim {
       const axis = f.facing > 0 ? 0 : Math.PI;
       const cur = clampPitch(wrapAngle(f.heading - axis));
       const want = turning ? cur : clampPitch(
-        wrapAngle(Math.atan2(f.ty - f.y, f.tx - f.x) - axis));
+        wrapAngle(Math.atan2(f.ty - f.y, f.tx - f.x) - axis),
+        food ? MAX_PITCH : WANDER_PITCH);
       f.heading = wrapAngle(axis + cur +
         Math.min(TURN_RATE, Math.max(-TURN_RATE, want - cur)));
 
@@ -960,6 +1019,8 @@ export class Sim {
     // edible from the boundary; a seeker pressed to the glass slides
     // to it rather than sticking.
     if (hit && f.state === "drift") {
+      // A hover that coasted into the glass ends there too.
+      f.hover = 0;
       f.phase = Math.max(f.phase, MOVE_TICKS);
       f.strokes = MAX_STROKES;
     }
@@ -1027,7 +1088,13 @@ export class Sim {
       return;
     }
     if (this.rand() < BAND_SHIFT) f.bandY = y0 + this.rand() * (y1 - y0);
-    f.tx = x0 + this.rand() * (x1 - x0);
+    const reach = REACH_BODIES * Math.max(DEFAULT_BODY, 2 * this.halfW(f));
+    // A draw past a wall bounces back off it, so a fish at the glass
+    // isn't handed the spot it is already pressed against.
+    let tx = f.x + (this.rand() - 0.5) * 2 * reach;
+    if (tx > x1) tx = 2 * x1 - tx;
+    if (tx < x0) tx = 2 * x0 - tx;
+    f.tx = Math.min(x1, Math.max(x0, tx));
     if ((f.tx - f.x) * f.facing < 0 && this.rand() < AHEAD_BIAS) {
       const mx = Math.min(x1, Math.max(x0, 2 * f.x - f.tx));
       if (Math.abs(mx - f.x) > MIRROR_MIN) f.tx = mx;
@@ -1045,6 +1112,10 @@ export class Sim {
     const ceiling = y1 - gasp * (y1 - y0) + gasp * (f.id % 9);
     f.ty = Math.min(ceiling,
       Math.max(y0, f.bandY + (this.rand() - 0.5) * 2 * BAND_HALF));
+    // A leg climbs or dives only so far; a far band takes a few legs.
+    // Gasping and begging fish head for the surface in one go.
+    if (gasp === 0 && !begging)
+      f.ty = Math.min(f.y + REACH_Y, Math.max(f.y - REACH_Y, f.ty));
     // Schooling: a same-species wander sometimes anchors on a
     // schoolmate's neighborhood — loose grouping, not lockstep. Starter
     // fish share species "" but take sprite sheets round-robin, so they
@@ -1086,13 +1157,14 @@ export class Sim {
    * repeated taps from compounding. */
   private startle(f: Fish, dx: number, dy: number, d: number, k: number,
                   hops: number): void {
+    f.hover = 0;
     f.state = "startle";
     f.stateTicks = 0;
     f.startleLen = Math.round(STARTLE_TICKS * (0.5 + 0.5 * k));
     f.panicHops = hops;
     f.facing = dx >= 0 ? 1 : -1;
     f.speed = Math.min(STARTLE_MAX_SPEED,
-                       Math.max(f.speed, f.cruise * (1 + 1.5 * k)));
+                       Math.max(f.speed, f.cruise * (1 + STARTLE_BOOST * k)));
     f.vy = (dy / d) * 2.5 * k;
     this.seekCover(f);
   }
