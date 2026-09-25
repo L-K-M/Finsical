@@ -69,6 +69,11 @@
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.
+- A malformed sound file can no longer freeze the tank. A small crafted
+  sound bank or resource fork could list one sound thousands of times
+  and hold the tank up for seconds to minutes, then leave thousands of
+  sounds that came back at every launch. Each sound in a file now
+  imports once, at most 1,024 per file.
 - Fish go to sleep in a tank that opens in the dark. With the light
   timer past its off hour, or the lamp left off, they used to swim all
   night, because they only bedded down after seeing daylight first.
