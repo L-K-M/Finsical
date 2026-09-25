@@ -136,4 +136,11 @@ describe("sanitizeLighting", () => {
     expect(hourLabel(8)).toBe("08:00");
     expect(hourLabel(22)).toBe("22:00");
   });
+
+  it("clamps out-of-range hours instead of printing nonsense", () => {
+    expect(hourLabel(8.5)).toBe("08:00");
+    expect(hourLabel(NaN)).toBe("00:00");
+    expect(hourLabel(25)).toBe("23:00");
+    expect(hourLabel(-3)).toBe("00:00");
+  });
 });

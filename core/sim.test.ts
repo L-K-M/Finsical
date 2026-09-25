@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BAND_HALF, BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, MARGIN,
-         NOTICE_RADIUS, Sim, SLEEP_LIGHT, SURFACE, TURN_TICKS,
-         WAKE_LIGHT } from "./sim.js";
+         MAX_UNEATEN, NOTICE_RADIUS, Sim, SLEEP_LIGHT, SURFACE,
+         TURN_TICKS, WAKE_LIGHT } from "./sim.js";
 import { QUALITY_SEEK } from "./tuning.js";
 import { CLOCK_NIGHT_LIGHT } from "./light.js";
 import { pitch } from "./pose.js";
@@ -140,10 +140,10 @@ describe("Sim", () => {
 
   it("drops food off the side glass and says where it went in", () => {
     const sim = new Sim({ width: 320, height: 200 });
-    const pellet = sim.dropFood(2);
+    const pellet = sim.dropFood(2)!;
     expect(pellet).toBe(sim.food[0]);
     expect(pellet.x).toBeGreaterThan(2); // clamped away from the wall
-    expect(sim.dropFood(160).x).toBe(160);
+    expect(sim.dropFood(160)!.x).toBe(160);
   });
 
   it("sinks food to the gravel", () => {
@@ -160,7 +160,7 @@ describe("Sim", () => {
     let gold = 0;
     for (let i = 0; i < 500; i++) {
       sim.food.length = 0; // keep the tank clear; only the flag matters
-      if (sim.dropFood(160).golden) gold++;
+      if (sim.dropFood(160)!.golden) gold++;
     }
     expect(gold).toBeGreaterThan(2);
     expect(gold).toBeLessThan(30);
@@ -169,7 +169,7 @@ describe("Sim", () => {
   it("a golden meal earns a victory roll", () => {
     const sim = new Sim({ width: 200, height: 100 }, 5);
     const f = sim.addFish({ x: 40, y: 50, hunger: 0.9 });
-    const pellet = sim.dropFood(120);
+    const pellet = sim.dropFood(120)!;
     pellet.golden = true;
     for (let i = 0; i < 2000 && sim.food.length; i++) sim.tick();
     expect(sim.food.length).toBe(0);
@@ -205,6 +205,29 @@ describe("Sim", () => {
     for (let i = 0; i < 2000 && sim.food.length; i++) sim.tick();
     expect(sim.food.length).toBe(0);
     expect(f.hunger).toBeLessThan(0.2);
+  });
+
+  it("puffs a bubble where a fish gulps a pellet", () => {
+    // The gulp bubble marks the meal — it should appear at the
+    // pellet's position the tick it's eaten, not just anywhere.
+    const sim = new Sim({ width: 200, height: 100 }, 5);
+    sim.addFish({ x: 40, y: 50, hunger: 0.9 });
+    const fd = sim.dropFood(120)!;
+    sim.bubbles.length = 0; // ambient spawns would muddy the position check
+    let puff: { x: number; y: number } | undefined;
+    for (let i = 0; i < 2000 && !fd.eaten; i++) {
+      // Identity, not index: a same-tick pop would shift the array and
+      // hide a bubble born at the eat.
+      const before = new Set(sim.bubbles);
+      sim.tick();
+      // Only bubbles born on the eat tick count — an ambient drifter
+      // passing the pellet mustn't satisfy the check.
+      if (fd.eaten)
+        puff = sim.bubbles.find(
+          (b) => !before.has(b) &&
+                 Math.abs(b.x - fd.x) < 2 && Math.abs(b.y - fd.y) < 2);
+    }
+    expect(puff).toBeDefined();
   });
 
   it("full fish ignores food", () => {
@@ -256,6 +279,35 @@ describe("Sim", () => {
     for (let i = 0; i < 8; i++) sim.dropFood(20 + i * 30);
     for (let i = 0; i < FOOD_ROT_TICKS + 600; i++) sim.tick();
     expect(sim.waterQuality).toBeGreaterThanOrEqual(0);
+  });
+
+  it("refuses pellets past the uneaten cap, and eating frees a slot",
+      () => {
+    const sim = new Sim({ width: 320, height: 200 }, 1);
+    for (let i = 0; i < MAX_UNEATEN; i++)
+      expect(sim.dropFood(30 + i * 40)).not.toBeNull();
+    expect(sim.dropFood(160)).toBeNull();
+    expect(sim.food).toHaveLength(MAX_UNEATEN);
+    sim.food[0]!.eaten = true; // eaten this tick frees a slot at once
+    expect(sim.dropFood(160)).not.toBeNull();
+  });
+
+  it("a feeding spree can't foul the water fast", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 1);
+    for (let i = 0; i < 20; i++) sim.dropFood(20 + i * 15);
+    for (let i = 0; i < 30 * 60; i++) sim.tick(); // a minute of rot
+    expect(sim.waterQuality).toBeGreaterThanOrEqual(0.25);
+  });
+
+  it("one scatter feeds most of a hungry school", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 5);
+    for (let i = 0; i < 5; i++)
+      sim.addFish({ x: 40 + i * 60, y: 100, hunger: 1 });
+    for (let i = 0; i < 5; i++) sim.dropFood(40 + i * 60);
+    for (let i = 0; i < 1200; i++) sim.tick();
+    // Eaten pellets reset hunger to 0; unfed fish sit near 1.
+    expect(sim.fish.filter((f) => f.hunger < 0.5).length)
+      .toBeGreaterThanOrEqual(3);
   });
 
   it("a starving fish begs near the surface", () => {
@@ -376,7 +428,7 @@ describe("Sim", () => {
     const f = sim.addFish({ x: 160, y: 100, facing: 1, heading: 0,
                             hunger: 0.9 });
     sim.notice = { x: 120, y: 100 };
-    const fd = sim.dropFood(250);
+    const fd = sim.dropFood(250)!;
     let rolled = false;
     for (let i = 0; i < 300 && !fd.eaten; i++) {
       sim.tick();

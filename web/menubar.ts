@@ -26,6 +26,13 @@ export function openClientWindow(page: string): void {
   const target = `finsical-${page}`;
   const url = new URL(`${page}.html`, location.href).href;
   const existing = window.open("", target);
+  // Both opens can return null under a strict popup blocker — leave a
+  // trace so the failure isn't silent.
+  const open = () => {
+    if (!window.open(url, target))
+      console.warn(`Finsical: could not open the ${page} window — ` +
+                   "check the popup blocker");
+  };
   try {
     if (existing && !existing.closed &&
         existing.location.pathname.endsWith(`/${page}.html`)) {
@@ -34,14 +41,14 @@ export function openClientWindow(page: string): void {
       existing.location.assign(url);
       existing.focus();
     } else {
-      window.open(url, target);
+      open();
     }
   } catch {
     if (existing) {
       existing.location.href = url;
       existing.focus();
     } else {
-      window.open(url, target);
+      open();
     }
   }
 }

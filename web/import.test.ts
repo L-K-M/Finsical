@@ -88,8 +88,33 @@ const outerZip = buildZip([
   { name: MACZIP_NAME, data: innerZip },
 ]);
 
+// The legacy accessory format: length-prefixed records starting
+// `22 00 25 00`, not the 9003 pack container (B-44).
+const LEGACY_BLOB = new Uint8Array(
+  [0x22, 0x00, 0x25, 0x00, 0, 0, 0, 0, 0, 0x25, 0x00, 0x08]);
+const legacyZip = buildZip([
+  { name: "FOSSIL1.ACC", data: LEGACY_BLOB }]);
+
+/** A structurally valid pack carrying no chunks — isPack only. */
+const PACK_BLOB = (() => {
+  const d = new Uint8Array(0x104);
+  new DataView(d.buffer).setUint32(0, 0x100, true); // magic
+  new DataView(d.buffer).setUint32(4, 0x100, true); // empty dir
+  return d;
+})();
+const mixedZip = buildZip([
+  { name: "FOSSIL1.ACC", data: LEGACY_BLOB },
+  { name: "ok.fsh", data: PACK_BLOB }]);
+
 vi.stubGlobal("fetch", async (u: string | URL) => {
   const s = String(u);
+  const zip = s.endsWith("legacy.zip") ? legacyZip
+            : s.endsWith("mixed.zip") ? mixedZip : null;
+  if (zip)
+    return { ok: true,
+             arrayBuffer: async () =>
+               zip.buffer.slice(zip.byteOffset,
+                                zip.byteOffset + zip.byteLength) };
   if (s.endsWith(".zip"))
     return { ok: true,
              arrayBuffer: async () =>
@@ -160,6 +185,20 @@ describe("archive.org nested collections", () => {
     const rs = await importAddon(snd.url);
     expect(rs).toHaveLength(1);
     expect(rs[0]!.sounds).toEqual([{ name: "Macinfish", wav: MP3_BYTES }]);
+  });
+
+  it("a zip of only legacy-format accessories reads as unreadable",
+     async () => {
+    await expect(importAddon(
+      "https://archive.org/download/x/legacy.zip"))
+      .rejects.toThrow("unreadable legacy pack");
+  });
+
+  it("a legacy entry inside a readable zip doesn't block the rest",
+     async () => {
+    await expect(importAddon(
+      "https://archive.org/download/x/mixed.zip"))
+      .resolves.toHaveLength(1); // the real pack, legacy skipped
   });
 
   it("delivers each collection's items before the whole list resolves",
@@ -387,7 +426,8 @@ const fakeImage = (w: number, h: number): IndexedImage =>
   ({ w, h, palette: [] as [number, number, number][],
      idx: new Uint8Array(w * h) });
 const res = (over: Partial<PackResult>): PackResult =>
-  ({ sheets: new Map(), images: new Map(), sounds: [], ...over });
+  ({ entry: "e", sheets: new Map(), images: new Map(), sounds: [],
+     ...over });
 
 describe("usablePacks", () => {
   it("rejects a fish pack whose sheets can't draw", () => {
@@ -471,6 +511,8 @@ describe("loadProblem", () => {
       .toBe("archive.org answered with error 404.");
   });
   it("explains a download without an add-on", () => {
+    expect(loadProblem(new Error("unreadable legacy pack")))
+      .toContain("can't read");
     expect(loadProblem(new Error("no pack inside")))
       .toBe("The download has no add-on in it.");
   });
