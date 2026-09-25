@@ -14,6 +14,8 @@ import { ownBytes } from "../core/data/bytes.js";
 import { zipEntries, zipRead } from "../core/data/zip.js";
 import { fshToSheets, isLegacyPack, isPack, packImages }
   from "../core/data/fsh.js";
+import { packSpeciesCare } from "../core/data/species.js";
+import type { SpeciesCare } from "../core/data/species.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
 import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
 import { bankSounds } from "../core/data/sndbank.js";
@@ -509,6 +511,8 @@ export interface PackResult {
   /** Sound records — `wav` is the encoded payload (literal WAV for
    * 'snd ' decodes, the compressed stream for audio files). */
   sounds: { name: string; wav: Uint8Array }[];
+  /** The species' care needs (FsTI), for fish packs that carry them. */
+  care?: SpeciesCare | null;
 }
 
 /** Catalog sections, plus "" for a listed pack not yet stamped. */
@@ -635,7 +639,7 @@ export async function importAddon(url: string): Promise<PackResult[]> {
     // sound records — dropped loose audio already persisted via
     // handleSounds/sndsPut at drop time.
     return [{ entry: url, sheets: fshToSheets(d), images: packImages(d),
-              sounds: [] }];
+              sounds: [], care: packSpeciesCare(d) }];
   }
   const blobs = await fetchInnerBlobs(url);
   const out: PackResult[] = [];
@@ -648,7 +652,8 @@ export async function importAddon(url: string): Promise<PackResult[]> {
       // A sound bank (AZ_WAVES.REZ) has WAVs and no art. A pack with
       // art brings no sounds: one kind of content per add-on.
       const sounds = sheets.size || images.size ? [] : bankSounds(b.data);
-      out.push({ entry: b.name, sheets, images, sounds });
+      out.push({ entry: b.name, sheets, images, sounds,
+                 care: sheets.size ? packSpeciesCare(b.data) : null });
     } else if (isBmp(b.data)) {
       const img = decodeBmp(b.data);
       if (img) out.push({ entry: b.name, sheets: new Map(), sounds: [],
@@ -726,7 +731,8 @@ export interface ImportHandlers {
    * is the pack's own name inside the add-on — fish bind to (url, entry)
    * so a multi-pack add-on can't collapse its fish onto the last entry. */
   onSheets(sheets: Map<string, SpriteSheet>, name: string, url: string,
-           section: string, live: boolean, entry?: string): void;
+           section: string, live: boolean, care?: SpeciesCare | null,
+           entry?: string): void;
   /** `live` as for onSheets: a restore must not change the choice of
    * scenery on display. `count` is the persisted decor copy count —
    * 1 on a live install, `copies` on restore. */
@@ -1556,7 +1562,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     const soundNames: string[] = [];
     for (const r of usable) {
       if (r.sheets.size)
-        h.onSheets(r.sheets, it.inner, it.url, it.section, live, r.entry);
+        h.onSheets(r.sheets, it.inner, it.url, it.section, live,
+                   r.care, r.entry);
       if (r.images.size)
         h.onImages(r.images.values(), it.url, it.section, live,
                    live ? 1 : decorCopies(it));
