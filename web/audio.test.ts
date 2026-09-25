@@ -412,6 +412,24 @@ describe("TankAudio install feedback", () => {
     expect(ac.sources).toHaveLength(0); // superseded — must not play
   });
 
+  it("a live gesture starts a fresh resume rather than riding a " +
+     "parked one", async () => {
+    const { audio, ac } = await tank({ a: 1 });
+    ac.state = "suspended";
+    // A gesture-less unlock() resume can stay pending forever on an
+    // autoplay-blocked context.
+    ac.resume = () => new Promise<void>(() => {});
+    audio.unlock();
+    // The gesture arrives with the decode — the cue must not wait on
+    // the parked promise.
+    ac.resume = () =>
+      Promise.resolve().then(() => { ac.state = "running"; });
+    stubActivation(true);
+    audio.playImported("a");
+    await flush();
+    expect(ac.sources).toHaveLength(1);
+  });
+
   it("drops the cue rather than looping when resume leaves the " +
      "context suspended", async () => {
     const { audio, ac } = await tank({ a: 1 });

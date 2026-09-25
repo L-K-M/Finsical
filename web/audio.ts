@@ -366,12 +366,13 @@ export class TankAudio {
     // the cue drops rather than firing long after the install.
     if (!buf || !this.ctx || this.hidden) return;
     if (this.ctx.state === "suspended") {
-      // A resume already in flight — the install gesture's unlock() —
-      // can carry this cue even once the activation has lapsed; only a
-      // live gesture may start a fresh resume.
-      const r = this.resuming ??
-        (gestureActive()
-          ? (this.resuming = this.ctx.resume()) : null);
+      // A live gesture always starts a fresh resume — a parked one
+      // (a gesture-less unlock() can stay pending forever on an
+      // autoplay-blocked context) would never carry the cue. Only
+      // without a gesture does the cue ride an in-flight resume.
+      const r = gestureActive()
+        ? (this.resuming = this.ctx.resume())
+        : this.resuming;
       if (!r) return;
       const gen = this.feedbackGen;
       void r.then(() => {
