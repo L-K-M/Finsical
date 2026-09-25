@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CARE, packSpeciesCare, parseFsti, parseSusceptibility,
-         sanitizeCare } from "./species.js";
+import { DEFAULT_CARE, DEFAULT_SUSCEPTIBLE, packSpeciesCare, parseFsti,
+         parseSusceptibility, sanitizeCare } from "./species.js";
 import { buildPack } from "./rsrc.fixture.js";
 
 /** An FsTI record: the tolerance table in thousandths, max before min. */
@@ -89,5 +89,23 @@ describe("packSpeciesCare", () => {
       { type: "SuS#", id: 600, payload: [1, 0, 3, 0] },
     ]);
     expect(packSpeciesCare(d)!.susceptible).toEqual([3]);
+  });
+
+  it("keeps the fallback for a pack with one shared SuS#", () => {
+    const d = buildPack([
+      { type: "FsTI", id: 600, payload: [...fsti()] },
+      { type: "SuS#", id: 999, payload: [1, 0, 5, 0] },
+    ]);
+    expect(packSpeciesCare(d)!.susceptible).toEqual([5]);
+  });
+
+  it("guesses no list when several SuS# records match no FsTI id", () => {
+    // Rather than handing species 600 whichever list comes first.
+    const d = buildPack([
+      { type: "FsTI", id: 600, payload: [...fsti()] },
+      { type: "SuS#", id: 701, payload: [1, 0, 7, 0] },
+      { type: "SuS#", id: 702, payload: [1, 0, 3, 0] },
+    ]);
+    expect(packSpeciesCare(d)!.susceptible).toEqual(DEFAULT_SUSCEPTIBLE);
   });
 });
