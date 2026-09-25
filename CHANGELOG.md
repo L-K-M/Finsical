@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- In a browser, Preferences, Tank Overview and Tank Stats open in
+  small windows beside the tank, at the size the app gives them. They
+  used to open as full-size tabs that stretched their panes and sent
+  the tank's tab to the background, where the fish stop and the sound
+  pauses, so a change made in Preferences couldn't be seen.
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.

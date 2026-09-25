@@ -22,16 +22,19 @@ $(OSMIUM)/%:
 	@echo "$@ is missing: run npm install in the repository root" >&2; exit 1
 
 $(APP): bundle $(SOURCES) Info.plist Finsical.icns \
-        ../LICENSE ../THIRD_PARTY_NOTICES.md ../LICENSES/LGPL-2.1.txt
+        ../LICENSE ../THIRD_PARTY_NOTICES.md ../LICENSES/LGPL-2.1.txt \
+        ../core/data/mace.ts
 	rm -rf $(APP).staging
-	mkdir -p $(APP).staging/Contents/MacOS $(APP).staging/Contents/Resources/web
+	mkdir -p $(APP).staging/Contents/MacOS $(APP).staging/Contents/Resources/web \
+	         $(APP).staging/Contents/Resources/core/data
 	cp Info.plist $(APP).staging/Contents/
 	cp Finsical.icns $(APP).staging/Contents/Resources/
-	# The bundles compile in LGPL code (core/data/mace.ts): ship its
-	# notice and license text with the app, which is all a release zip
-	# contains.
+	# The bundles compile in LGPL code (core/data/mace.ts): ship that
+	# source and the license text with the app. The notices file names
+	# both paths, and a release zip carries only what is in here.
 	cp ../LICENSE ../THIRD_PARTY_NOTICES.md ../LICENSES/LGPL-2.1.txt \
 	   $(APP).staging/Contents/Resources/
+	cp ../core/data/mace.ts $(APP).staging/Contents/Resources/core/data/
 	cp ../web/index.html ../web/overview.html ../web/addons.html \
 	   ../web/prefs.html ../web/stats.html ../web/app.css \
 	   $(OSMIUM)/osmium.css \
