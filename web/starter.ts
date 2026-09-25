@@ -86,7 +86,9 @@ export async function runStarter(
     for (const it of items)
       if (it.section === "sounds")
         soundJobs.set(it, Promise.resolve().then(() => hooks.install(it))
-          .then(() => null, (e: unknown) => e));
+          .then(() => null,
+                // A null rejection mustn't read as success.
+                (e: unknown) => e ?? new Error("install failed")));
   };
   for (const [i, it] of items.entries()) {
     if (it.section === "sounds") continue;

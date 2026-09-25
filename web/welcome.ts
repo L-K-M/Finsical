@@ -116,7 +116,11 @@ async function stock(alert: Alert, hooks: StarterHooks,
   const { failed, problem } = await runStarter(items, {
     install: (it) => hooks.install(it),
     progress: (i, it) => alert.progress(
-      `Adding ${i + 1} of ${items.length}: ${it.inner}…`,
+      it.section === "sounds"
+        // The bank started early — by now it is usually mid-flight or
+        // done, so "Adding N of M" would lie about what is happening.
+        ? `Adding the sound effects (${i + 1} of ${items.length})…`
+        : `Adding ${i + 1} of ${items.length}: ${it.inner}…`,
       i / items.length),
     fishArrived: () => hooks.fishArrived(),
     stopped: () => stopped,
