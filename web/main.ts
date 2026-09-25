@@ -1100,10 +1100,14 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
   sheetBySpecies.set(name, idx);
   if (entry !== undefined) sheetByEntry.set(entryKey(url, entry), idx);
   // A reinstall can rebind the url to a new slot — drop the old
-  // reverse entry so the two maps stay exact inverses.
-  const prior = sheetByPack.get(url);
-  if (prior !== undefined && prior !== idx) packBySheet.delete(prior);
-  sheetByPack.set(url, idx);
+  // reverse entry so the two maps stay exact inverses. Once a
+  // whole-pack slot exists it owns the URL binding: an entry retry
+  // must not repoint it at partial art.
+  if (entry === undefined || !wholePackUrls.has(url)) {
+    const prior = sheetByPack.get(url);
+    if (prior !== undefined && prior !== idx) packBySheet.delete(prior);
+    sheetByPack.set(url, idx);
+  }
   packBySheet.set(idx, url);
   if (entry === undefined) wholePackUrls.add(url);
   // A live fish-pack install adds a real fish; restores replay sheets
