@@ -113,6 +113,29 @@ export function coverCrop(srcW: number, srcH: number,
   return { sx: (srcW - sw) / 2, sy: (srcH - sh) / 2, sw, sh };
 }
 
+/** The gravel-strip rule: at least 4:1 wide and at least half the
+ * tank's width (AquaZone .grv beds are ~6:1; 4:1 keeps margin below
+ * that so panoramic backdrops around 3:1 are not misfiled as gravel).
+ * Anything squarer is backdrop or decor art, anything smaller an
+ * icon. Shared so install validation applies the same rule the tank
+ * renders with. */
+export function isGravelImage(img: { w: number; h: number },
+                              tankW: number): boolean {
+  return img.w >= img.h * 4 && img.w >= tankW / 2;
+}
+
+/** The backdrop rule: a gravel strip never serves as one, and a scene
+ * must have each dim at least half the tank's (which also bounds the
+ * area to a quarter) — anything smaller is an icon or decor art.
+ * Shared so install validation applies the same rule pickBackdrop
+ * renders with. */
+export function isBackdropImage(
+    img: { w: number; h: number },
+    tank: { width: number; height: number }): boolean {
+  return !isGravelImage(img, tank.width) &&
+         img.w >= tank.width / 2 && img.h >= tank.height / 2;
+}
+
 export function swimCanvas(sheet: SpriteSheet, f: number,
                            facing: 1 | -1, group = 0,
                            scale = 1): HTMLCanvasElement {

@@ -381,6 +381,10 @@ setInterval(() => {
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) bus.post({ op: "hello" });
 });
+// Right-click inside a borderless WebKit window surfaces WebKit's
+// generic menu (Reload etc.) — nothing in it applies to a desk
+// accessory, so swallow it like the tank page does.
+window.addEventListener("contextmenu", (e) => e.preventDefault());
 // Closing the window must not leave a fish spotlighted forever —
 // but a bfcache pagehide keeps the DOM's selection, so only a real
 // unload lifts it, and a restore re-asserts it.

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FEEDBACK_MAX_S, SOUND_DEFAULTS, sanitizeSoundConfig, TankAudio }
-  from "./audio.js";
+import { FEEDBACK_MAX_S, panFor, SOUND_DEFAULTS, sanitizeSoundConfig,
+         TankAudio } from "./audio.js";
 import type { AzpackManifest } from "../core/data/azpack.js";
 
 // A minimal stand-in for WebAudio: records connections, gain values,
@@ -18,6 +18,7 @@ class FakeNode {
   connect<T extends FakeNode>(n: T): T { this.out.push(n); return n; }
 }
 class FakeGain extends FakeNode { gain = new FakeParam(); }
+class FakePanner extends FakeNode { pan = new FakeParam(); }
 class FakeBuffer {
   readonly numberOfChannels = 1;
   constructor(readonly duration: number,
@@ -30,6 +31,7 @@ class FakeBuffer {
 class FakeSource extends FakeNode {
   buffer: FakeBuffer | null = null;
   loop = false;
+  playbackRate = new FakeParam();
   onended: (() => void) | null = null;
   starts = 0;
   stops: (number | undefined)[] = [];
@@ -48,6 +50,12 @@ class FakeContext {
     const g = new FakeGain();
     this.gains.push(g);
     return g;
+  }
+  panners: FakePanner[] = [];
+  createStereoPanner(): FakePanner {
+    const p = new FakePanner();
+    this.panners.push(p);
+    return p;
   }
   createBufferSource(): FakeSource {
     const s = new FakeSource();
@@ -564,6 +572,22 @@ describe("TankAudio event sounds", () => {
     expect(played(ac)).toEqual([5]);
   });
 
+  it("a song can't take the glass-tap sound", async () => {
+    const { audio, ac } = await tank({
+      "Centerfold": 1, "CENTER*": 7, "SIDE": 8,
+    });
+    audio.tap(160, 100, 320, 200); // middle of the glass -> center
+    audio.tap(10, 100, 320, 200); // near the edge -> side
+    expect(played(ac)).toEqual([7, 8]);
+  });
+
+  it("stays silent on tap with only a song installed", async () => {
+    const { audio, ac } = await tank({ "Centerfold": 1 });
+    audio.tap(160, 100, 320, 200);
+    audio.tap(10, 100, 320, 200);
+    expect(ac.sources).toHaveLength(0);
+  });
+
   // The original game's sound bank ships these names (sndbank.ts) —
   // the ones TankAudio has events for each resolve through their own
   // event, and the unexercised ones prove nothing hijacks a needle
@@ -693,6 +717,44 @@ describe("TankAudio bubbles, as the original plays them", () => {
     audio.unlock();
     await flush();
     expect(FakeContext.last!.sources).toHaveLength(0);
+  });
+});
+
+describe("TankAudio stereo placement", () => {
+  it("panFor maps tank x to ±0.8 and clamps outside it", () => {
+    expect(panFor(0, 320)).toBe(-0.8);
+    expect(panFor(160, 320)).toBe(0);
+    expect(panFor(320, 320)).toBe(0.8);
+    expect(panFor(-50, 320)).toBe(-0.8);
+    expect(panFor(999, 320)).toBe(0.8);
+    expect(panFor(10, 0)).toBe(0); // degenerate width, centered
+  });
+
+  it("a tap near an edge plays through a panner at that edge",
+     async () => {
+    const { audio, ac } = await tank({ side: 1, center: 2 });
+    audio.tap(10, 100, 320, 200);
+    const src = ac.sources[0]!;
+    const panner = src.out[0]! as FakePanner;
+    expect(panner).toBeInstanceOf(FakePanner);
+    expect(panner.pan.value).toBeCloseTo(-0.75, 5);
+    expect(panner.out[0]!.out[0]).toBe(ac.gains[0]); // into the master
+  });
+
+  it("a centre tap keeps the direct path — no panner at all",
+     async () => {
+    const { audio, ac } = await tank({ center: 1 });
+    audio.tap(160, 100, 320, 200);
+    expect(ac.panners).toHaveLength(0);
+    expect(ac.sources[0]!.out[0]).toBeInstanceOf(FakeGain);
+  });
+
+  it("bubbles get a small random pitch", async () => {
+    const { audio, ac } = await tank({ "bubble pop": 2 });
+    audio.bubble(0.5);
+    const rate = ac.sources[0]!.playbackRate.value;
+    expect(rate).toBeGreaterThanOrEqual(0.94);
+    expect(rate).toBeLessThanOrEqual(1.06);
   });
 });
 

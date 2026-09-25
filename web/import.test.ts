@@ -2,8 +2,10 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { browserGeometry, DECOR_COPIES_MAX, decorCopyRoom, fragDecode,
          fragEncode, importAddon, installProblem, listAddons,
          loadProblem, transientFailure, isListed, orphanedSounds,
-         qualifySoundItemName, recordAddon } from "./import.js";
-import type { Importable } from "./import.js";
+         qualifySoundItemName, recordAddon, usablePacks, usableProblem }
+  from "./import.js";
+import type { Importable, PackResult } from "./import.js";
+import type { IndexedImage, SpriteSheet } from "../core/data/azpack.js";
 
 const enc = new TextEncoder();
 
@@ -371,7 +373,7 @@ describe("isListed", () => {
 });
 
 describe("orphanedSounds", () => {
-  const addon = (url: string, sounds?: string[]) =>
+  const addon = (url: string, sounds?: string[]): Importable =>
     ({ section: "sounds", inner: url, url, ...(sounds ? { sounds } : {}) });
   it("returns names only the leaving add-ons owned", () => {
     expect(orphanedSounds(
@@ -408,6 +410,97 @@ describe("browserGeometry", () => {
   });
   it("drops a preview too short to be worth a well", () => {
     expect(browserGeometry(560, 220).previewH).toBeNull();
+  });
+});
+
+// A sheet stub: meta enough for pickSwimSheet, frame() returning one
+// cell that is either opaque or blank — the drawable test's whole world.
+const fakeSheet = (opaque: boolean): SpriteSheet => ({
+  meta: { image: "", groups: 1, framesPerGroup: 1, cellW: 4, cellH: 4,
+          dims: [[0, 0, 4, 4]] },
+  frame: () => ({ w: 4, h: 4, palette: [] as [number, number, number][],
+                  idx: new Uint8Array([opaque ? 1 : 0, 0, 0, 0, 0, 0, 0,
+                                       0, 0, 0, 0, 0, 0, 0, 0, 0]) }),
+} as unknown as SpriteSheet);
+const fakeImage = (w: number, h: number): IndexedImage =>
+  ({ w, h, palette: [] as [number, number, number][],
+     idx: new Uint8Array(w * h) });
+const res = (over: Partial<PackResult>): PackResult =>
+  ({ entry: "e", sheets: new Map(), images: new Map(), sounds: [],
+     ...over });
+
+describe("usablePacks", () => {
+  it("rejects a fish pack whose sheets can't draw", () => {
+    const rs = [res({ sheets: new Map([["s", fakeSheet(false)]]) })];
+    expect(usablePacks(rs, "fish")).toEqual([]);
+    expect(usableProblem("fish")).toBe("no drawable fish inside");
+  });
+  it("keeps a fish pack with a drawable sheet", () => {
+    const rs = [res({ sheets: new Map([["s", fakeSheet(true)]]) })];
+    expect(usablePacks(rs, "fish")).toEqual(rs);
+  });
+  it("rejects a gravel add-on with no strip-shaped image", () => {
+    const rs = [res({ images: new Map([["i", fakeImage(100, 50)]]) })];
+    expect(usablePacks(rs, "gravel")).toEqual([]);
+    expect(usableProblem("gravel")).toBe("no gravel art inside");
+  });
+  it("keeps gravel art that fits the strip", () => {
+    const rs = [res({ images: new Map([["i", fakeImage(320, 60)]]) })];
+    expect(usablePacks(rs, "gravel")).toEqual(rs);
+  });
+  it("doesn't count a fish pack's portraits as usable art", () => {
+    const rs = [res({ images: new Map([["i", fakeImage(320, 200)]]) })];
+    expect(usablePacks(rs, "fish")).toEqual([]);
+  });
+  it("rejects a backdrop too small to read as a scene", () => {
+    // An icon-sized image in a "backgrounds" pack would install
+    // successfully and change nothing — same dead end as blank fish.
+    const rs = [res({ images: new Map([["i", fakeImage(100, 50)]]) })];
+    expect(usablePacks(rs, "backgrounds")).toEqual([]);
+    expect(usablePacks(rs, "tanks")).toEqual([]);
+  });
+  it("keeps a scene-sized backdrop", () => {
+    const rs = [res({ images: new Map([["i", fakeImage(320, 200)]]) })];
+    expect(usablePacks(rs, "backgrounds")).toEqual(rs);
+  });
+  it("counts a gravel strip a backgrounds pack would still install", () => {
+    // pickBackdrop picks gravel art out of the same image set — a pack
+    // with only a strip puts gravel in the tank, not a dead install.
+    const rs = [res({ images: new Map([["i", fakeImage(320, 60)]]) })];
+    expect(usablePacks(rs, "backgrounds")).toEqual(rs);
+    expect(usablePacks(rs, "tanks")).toEqual(rs);
+  });
+  it("counts decor art for plants and accessories", () => {
+    const art = fakeImage(40, 30);
+    art.idx.fill(1); // 1 keys transparent at the corners...
+    art.idx[15 * 40 + 20] = 7; // ...with a non-key pixel inside
+    const rs = [res({ images: new Map([["i", art]]) })];
+    expect(usablePacks(rs, "plants")).toEqual(rs);
+    expect(usablePacks(rs, "accessories")).toEqual(rs);
+  });
+  it("rejects decor that is nothing but its transparent key", () => {
+    const rs = [res({ images: new Map([["i", fakeImage(40, 30)]]) })];
+    expect(usablePacks(rs, "plants")).toEqual([]);
+    expect(usablePacks(rs, "accessories")).toEqual([]);
+  });
+  it("doesn't count sheets a non-fish section can't render", () => {
+    // handleSheets only registers art for fish — sheets in a decor or
+    // backdrop pack install nothing, so they must not pass validation.
+    const rs = [res({ sheets: new Map([["s", fakeSheet(true)]]) })];
+    expect(usablePacks(rs, "plants")).toEqual([]);
+    expect(usablePacks(rs, "backgrounds")).toEqual([]);
+  });
+  it("counts sounds for any section", () => {
+    const rs = [res({ sounds: [{ name: "a", wav: new Uint8Array(1) }] })];
+    expect(usablePacks(rs, "fish")).toEqual(rs);
+    expect(usablePacks(rs, "gravel")).toEqual(rs);
+  });
+  it("names the missing piece for scenery sections", () => {
+    expect(usablePacks([res({})], "backgrounds")).toEqual([]);
+    expect(usableProblem("backgrounds")).toBe("no scenery art inside");
+    expect(usableProblem("tanks")).toBe("no scenery art inside");
+    expect(usableProblem("plants")).toBe("no decor art inside");
+    expect(usableProblem("accessories")).toBe("no decor art inside");
   });
 });
 

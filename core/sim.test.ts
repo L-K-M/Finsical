@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BAND_HALF, BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, MARGIN,
-         MAX_UNEATEN, NOTICE_RADIUS, Sim, SLEEP_LIGHT, SURFACE,
+         MAX_UNEATEN, NOTICE_RADIUS, PELLET_UNITS, Sim, SLEEP_LIGHT,
+         SURFACE,
          TURN_TICKS, WAKE_LIGHT } from "./sim.js";
 import { QUALITY_SEEK } from "./tuning.js";
 import { CLOCK_NIGHT_LIGHT } from "./light.js";
@@ -87,18 +88,15 @@ describe("Sim", () => {
       const sim = new Sim({ width: 320, height: 200 }, 5);
       const f = sim.addFish({ x: 60, y: 120, hunger: 0, scale: 1,
                               halfW: 50, halfH });
-      sim.dropFood(200);
+      const pellet = sim.dropFood(200)!;
       // Sated until the pellet has settled on the gravel.
       let wait = 0;
       while (!sim.food[0]?.settled && ++wait < 5000) sim.tick();
       expect(wait, `halfH ${halfH}: pellet settled`).toBeLessThan(5000);
       f.hunger = 1;
-      let eaten = false;
-      for (let i = 0; i < 3000 && !eaten; i++) {
-        sim.tick();
-        eaten = sim.food.length === 0 && sim.fish[0]!.hunger < 0.5;
-      }
-      expect(eaten, `halfH ${halfH}`).toBe(true);
+      for (let i = 0; i < 3000 && !pellet.eaten; i++) sim.tick();
+      expect(pellet.eaten, `halfH ${halfH}`).toBe(true);
+      expect(f.hunger, `halfH ${halfH}`).toBeLessThan(1);
     }
   });
 
@@ -109,13 +107,9 @@ describe("Sim", () => {
       const sim = new Sim({ width: 320, height: 200 }, 5);
       sim.addFish({ x: 160, y: 100, hunger: 1, scale: 1,
                     halfW: 90, halfH: 30 });
-      sim.dropFood(drop);
-      let eaten = false;
-      for (let i = 0; i < 3000 && !eaten; i++) {
-        sim.tick();
-        eaten = sim.food.length === 0 && sim.fish[0]!.hunger < 0.5;
-      }
-      expect(eaten, `drop at ${drop}`).toBe(true);
+      const pellet = sim.dropFood(drop)!;
+      for (let i = 0; i < 3000 && !pellet.eaten; i++) sim.tick();
+      expect(pellet.eaten, `drop at ${drop}`).toBe(true);
     }
   });
 
@@ -155,6 +149,18 @@ describe("Sim", () => {
     expect(sim.food[0]!.y).toBeLessThan(100 - 12 + 0.4);
   });
 
+  it("a full stomach empties over 18 hours of tank time", () => {
+    const sim = new Sim({ width: 200, height: 100 }, 5);
+    const f = sim.addFish({ x: 40, y: 50, hunger: 0 });
+    sim.advanceLife(60);                 // one minute at speed 1
+    const l = f.life!;
+    l.ate = l.stomach = 5;
+    sim.advanceLife(60 * 60);
+    expect(f.hunger).toBeLessThan(0.3);
+    for (let h = 0; h < 18; h++) sim.advanceLife(60 * 60);
+    expect(f.hunger).toBe(1);
+  });
+
   it("drops a golden pellet about one time in fifty", () => {
     const sim = new Sim({ width: 320, height: 200 }, 9);
     let gold = 0;
@@ -189,22 +195,37 @@ describe("Sim", () => {
     expect((f.x - f.tx) * f.facing).toBeLessThanOrEqual(12);
   });
 
-  it("hunger builds over ~20 minutes, not seconds", () => {
-    const sim = new Sim({ width: 200, height: 100 }, 5);
-    const f = sim.addFish({ x: 40, y: 50, hunger: 0 });
-    for (let i = 0; i < 30 * 60; i++) sim.tick(); // one minute
-    expect(f.hunger).toBeLessThan(0.1);
-    for (let i = 0; i < 30 * 1200; i++) sim.tick(); // ~20 more
-    expect(f.hunger).toBeGreaterThanOrEqual(1);
-  });
-
   it("hungry fish seeks and eats food", () => {
     const sim = new Sim({ width: 200, height: 100 }, 5);
     const f = sim.addFish({ x: 40, y: 50, hunger: 0.9 });
     sim.dropFood(120);
     for (let i = 0; i < 2000 && sim.food.length; i++) sim.tick();
     expect(sim.food.length).toBe(0);
-    expect(f.hunger).toBeLessThan(0.2);
+    // A pellet nearly fills a small fish's stomach.
+    expect(f.hunger).toBeLessThan(0.5);
+  });
+
+  it("puffs a bubble where a fish gulps a pellet", () => {
+    // The gulp bubble marks the meal — it should appear at the
+    // pellet's position the tick it's eaten, not just anywhere.
+    const sim = new Sim({ width: 200, height: 100 }, 5);
+    sim.addFish({ x: 40, y: 50, hunger: 0.9 });
+    const fd = sim.dropFood(120)!;
+    sim.bubbles.length = 0; // ambient spawns would muddy the position check
+    let puff: { x: number; y: number } | undefined;
+    for (let i = 0; i < 2000 && !fd.eaten; i++) {
+      // Identity, not index: a same-tick pop would shift the array and
+      // hide a bubble born at the eat.
+      const before = new Set(sim.bubbles);
+      sim.tick();
+      // Only bubbles born on the eat tick count — an ambient drifter
+      // passing the pellet mustn't satisfy the check.
+      if (fd.eaten)
+        puff = sim.bubbles.find(
+          (b) => !before.has(b) &&
+                 Math.abs(b.x - fd.x) < 2 && Math.abs(b.y - fd.y) < 2);
+    }
+    expect(puff).toBeDefined();
   });
 
   it("full fish ignores food", () => {
@@ -227,28 +248,21 @@ describe("Sim", () => {
     expect(near.state).toBe("drift"); // calms down
   });
 
-  it("uneaten food rots on the gravel, fouling then losing the pellet", () => {
+  it("uneaten food rots on the gravel and breaks up into the water", () => {
     const sim = new Sim({ width: 200, height: 100 }, 1);
-    sim.dropFood(50);
-    let minQ = 1;
-    for (let i = 0; i < FOOD_ROT_TICKS + 600; i++) {
-      sim.tick();
-      minQ = Math.min(minQ, sim.waterQuality);
-    }
-    expect(sim.food.length).toBe(0); // fully dissolved
-    expect(minQ).toBeLessThan(1);    // rotting drained quality
-    // filtration already recovering by the time the pellet is gone
-    expect(sim.waterQuality).toBeGreaterThan(minQ);
-  });
-
-  it("filtration recovers water quality toward 1", () => {
-    const sim = new Sim({ width: 100, height: 100 }, 1);
-    sim.waterQuality = 0.2;
-    for (let i = 0; i < 1200; i++) sim.tick();
-    expect(sim.waterQuality).toBeCloseTo(0.3, 5); // +1/12000 per tick
-    sim.waterQuality = 1;
-    sim.tick();
-    expect(sim.waterQuality).toBeLessThanOrEqual(1); // clamped
+    sim.fish.length = 0;
+    for (let i = 0; i < 20; i++) sim.dropFood(20 + i * 8);
+    for (let i = 0; i < FOOD_ROT_TICKS + 600; i++) sim.tick();
+    expect(sim.food.length).toBe(0);
+    // The uneaten cap refused all but MAX_UNEATEN of the 20 drops.
+    expect(sim.aquarium.food).toBe(MAX_UNEATEN * PELLET_UNITS);
+    // Dissolving over a few hours clouds the water...
+    sim.advanceLife(3 * 3600);
+    const cloudy = sim.waterQuality;
+    expect(cloudy).toBeLessThan(1);
+    // ...until the filter has trapped it.
+    for (let d = 0; d < 20; d++) sim.advanceLife(24 * 3600);
+    expect(sim.waterQuality).toBeGreaterThan(cloudy);
   });
 
   it("keeps quality >= 0 under heavy rot", () => {
@@ -418,15 +432,17 @@ describe("Sim", () => {
     expect(fd.eaten).toBe(true);
   });
 
-  it("a water change recovers quality and siphons settled food", () => {
+  it("a water change dilutes the water and siphons settled food", () => {
     const sim = new Sim({ width: 200, height: 100 }, 1);
+    sim.fish.length = 0;
     sim.dropFood(50);
-    for (let i = 0; i < 400; i++) sim.tick(); // pellet settles, fouls the water
+    for (let i = 0; i < 400; i++) sim.tick(); // pellet settles
     expect(sim.food[0]!.settled).toBeGreaterThan(0);
-    sim.waterQuality = 0.2;
-    sim.changeWater();
-    expect(sim.waterQuality).toBeCloseTo(0.68, 5); // 0.2 + 0.8*0.6
-    expect(sim.food.length).toBe(0);               // siphoned
+    sim.aquarium.water.protein = 400;         // 4 mg/L of organics
+    sim.changeWater(0.5, 26);
+    expect(sim.aquarium.water.protein).toBeCloseTo(200);
+    expect(sim.waterQuality).toBeCloseTo(0.6, 5);
+    expect(sim.food.length).toBe(0);          // siphoned
   });
 
   it("finds the fish whose body covers a point", () => {
@@ -464,22 +480,58 @@ describe("Sim", () => {
     expect(sim.food.length).toBe(1);
   });
 
-  it("fish move slower in foul water", () => {
-    const clean = new Sim({ width: 300, height: 200 }, 11);
-    const foul = new Sim({ width: 300, height: 200 }, 11);
-    clean.addFish({ x: 150, y: 100, speed: 1 });
-    foul.addFish({ x: 150, y: 100, speed: 1 });
+  it("a weakened fish swims slower", () => {
+    const well = new Sim({ width: 300, height: 200 }, 11);
+    const weak = new Sim({ width: 300, height: 200 }, 11);
+    well.addFish({ x: 150, y: 100, speed: 1 });
+    weak.addFish({ x: 150, y: 100, speed: 1 });
+    well.advanceLife(1);
+    weak.advanceLife(1);
+    well.fish[0]!.life!.health = 90;
+    // Health 1 is 24 below the stand-in species' threshold of 25.
+    weak.fish[0]!.life!.health = 1;
     let dc = 0, df = 0;
     let pc = { x: 150, y: 100 }, pf = { x: 150, y: 100 };
     for (let i = 0; i < 1000; i++) {
-      clean.tick(); foul.tick();
-      foul.waterQuality = 0; // pin low — filtration would creep it up
-      const c = clean.fish[0]!, f = foul.fish[0]!;
+      well.tick(); weak.tick();
+      const c = well.fish[0]!, f = weak.fish[0]!;
       dc += Math.hypot(c.x - pc.x, c.y - pc.y);
       df += Math.hypot(f.x - pf.x, f.y - pf.y);
       pc = { x: c.x, y: c.y }; pf = { x: f.x, y: f.y };
     }
-    expect(df).toBeLessThan(dc * 0.7); // vigor 0.5 vs 1.0
+    expect(df).toBeLessThan(dc * 0.9);
+  });
+
+  it("a dead fish rises, floats, then sinks to the gravel and stays", () => {
+    const sim = new Sim({ width: 300, height: 200 }, 3);
+    const f = sim.addFish({ x: 150, y: 120 });
+    sim.advanceLife(1);
+    f.life!.dead = { cause: 12, at: 0 };
+    sim.advanceLife(60);
+    expect(f.state).toBe("dead");
+    let top = f.y;
+    // The rise runs to just under the surface whatever band the fish
+    // lived in — bound the wait, then confirm it reached the top.
+    for (let i = 0; i < 2000 && f.corpse !== "float"; i++)
+      { sim.tick(); top = Math.min(top, f.y); }
+    expect(f.corpse).toBe("float");
+    expect(top).toBeLessThan(40);
+    f.deadTicks = 1; // skip the rest of the float
+    for (let i = 0; i < 1000; i++) sim.tick();
+    expect(f.corpse).toBe("rest");
+    expect(f.y).toBeGreaterThan(170);
+    sim.tap(f.x, f.y);
+    expect(f.state).toBe("dead");
+  });
+
+  it("a sick fish keeps to the bottom of the tank", () => {
+    const sim = new Sim({ width: 300, height: 200 }, 4);
+    const f = sim.addFish({ x: 150, y: 50, hunger: 0 });
+    sim.advanceLife(1);
+    f.life!.sick = { disease: 0, amount: 20 };
+    let low = 0;
+    for (let i = 0; i < 3000; i++) { sim.tick(); if (i > 1500 && f.y > 140) low++; }
+    expect(low).toBeGreaterThan(1200);
   });
 
   it("ambient bubbles rise from the gravel on their own", () => {
@@ -1068,54 +1120,23 @@ describe("Sim", () => {
   });
 });
 
+describe("deaths out of sight", () => {
+  it("a fish that died during catch-up sinks rather than rising", () => {
+    const sim = new Sim({ width: 300, height: 200 }, 6);
+    const f = sim.addFish({ x: 150, y: 100 });
+    sim.advanceLife(1);
+    f.life!.ate = 0;
+    f.life!.health = 1;
+    sim.advanceLife(40 * 24 * 3600); // starves while the app is closed
+    expect(f.state).toBe("dead");
+    expect(f.corpse).toBe("sink");
+  });
+});
+
 describe("lifecycle", () => {
-  it("a starving fish sickens, then dies", () => {
-    const sim = new Sim({ width: 320, height: 200 }, 7);
-    const f = sim.addFish({ x: 160, y: 100, hunger: 0.96 });
-    for (let i = 0; i < 900; i++) sim.tick();
-    expect(f.sick).toBe(true);
-    expect(sim.events.some((e) => e.type === "sick")).toBe(true);
-    for (let i = 0; i < 9000; i++) sim.tick();
-    expect(f.dead).toBe(true);
-    expect(sim.events.some((e) => e.type === "dead")).toBe(true);
-  });
-
-  it("foul water alone can sicken a fed fish", () => {
-    const sim = new Sim({ width: 200, height: 100 }, 3);
-    const f = sim.addFish({ x: 50, y: 50, hunger: 0 });
-    sim.waterQuality = 0;
-    for (let i = 0; i < 950; i++) sim.tick();
-    expect(f.sick).toBe(true);
-  });
-
-  it("feeding a sick fish cures it", () => {
-    const sim = new Sim({ width: 320, height: 200 }, 7);
-    const f = sim.addFish({ x: 160, y: 100, hunger: 0.96 });
-    for (let i = 0; i < 900; i++) sim.tick();
-    expect(f.sick).toBe(true);
-    // A meal (or clean water) decays the pressure; hunger falls below
-    // the ill threshold and the fish recovers.
-    f.hunger = 0.1;
-    for (let i = 0; i < 600 && f.sick; i++) sim.tick();
-    expect(f.sick).toBe(false);
-    expect(f.dead).toBe(false);
-  });
-
-  it("a corpse rides to the surface and dissolves", () => {
-    const sim = new Sim({ width: 320, height: 200 }, 7);
-    const f = sim.addFish({ x: 160, y: 150, hunger: 0.96 });
-    for (let i = 0; i < 9900; i++) sim.tick();
-    expect(f.dead).toBe(true);
-    for (let i = 0; i < 200; i++) sim.tick();
-    expect(f.y).toBeLessThan(30); // floated up
-    const n = sim.fish.length;
-    for (let i = 0; i < 4000 && sim.fish.length === n; i++) sim.tick();
-    expect(sim.fish.length).toBe(0); // dissolved
-  });
-
   it("the dead do not startle", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
-    const f = sim.addFish({ x: 160, y: 100, dead: true });
+    const f = sim.addFish({ x: 160, y: 100, state: "dead" });
     sim.tap(160, 100);
     expect(f.state).not.toBe("startle");
   });
@@ -1157,12 +1178,4 @@ describe("lifecycle", () => {
     expect(sim.events.every((e) => e.type !== "birth")).toBe(true);
   });
 
-  it("sanitizes lifecycle flags from a bad save", () => {
-    const sim = new Sim({ width: 200, height: 100 }, 1);
-    const f = sim.addFish({ x: 50, y: 50, sick: "yes" as unknown as boolean,
-                            sickTicks: NaN, deadTicks: -5 });
-    expect(f.sick).toBe(false);
-    expect(f.sickTicks).toBe(0);
-    expect(f.deadTicks).toBe(0);
-  });
 });
