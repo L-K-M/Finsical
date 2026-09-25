@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Finsical</string>
+
+    <string name="webview_missing">Finsical runs in Android System WebView, which is missing or being updated on this device. Install or update “Android System WebView” from the Play Store, then open Finsical again.</string>
+    <!-- %1$d: the device's WebView major version; %2$d: the minimum. -->
+    <string name="webview_too_old">Finsical needs Android System WebView %2$d or later, and this device has version %1$d. Update “Android System WebView” (or Google Chrome, if your device uses it as its WebView) from the Play Store, then open Finsical again.</string>
+
+    <string name="picture_saved">Picture saved.</string>
+    <string name="picture_failed">Couldn’t save the picture.</string>
+    <string name="picture_lost">The picture was lost while you chose where to save it. Take it again.</string>
+    <string name="picture_no_app">No app on this device can save files, so the picture can’t be saved.</string>
+    <string name="link_no_app">No app on this device can open web links.</string>
+</resources>
