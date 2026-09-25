@@ -1100,9 +1100,11 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
   sheetBySpecies.set(name, idx);
   if (entry !== undefined) sheetByEntry.set(entryKey(url, entry), idx);
   // A reinstall can rebind the url to a new slot — drop the old
-  // reverse entry so the two maps stay exact inverses. Once a
+  // reverse entry so each slot names at most one pack. Once a
   // whole-pack slot exists it owns the URL binding: an entry retry
-  // must not repoint it at partial art.
+  // must not repoint it at partial art. packBySheet may then hold
+  // several slots for the URL — every slot rendering the pack's art
+  // should map back to it so species-bound fish can migrate.
   if (entry === undefined || !wholePackUrls.has(url)) {
     const prior = sheetByPack.get(url);
     if (prior !== undefined && prior !== idx) packBySheet.delete(prior);
@@ -1668,12 +1670,13 @@ function removeAddon(url: string, opts: { persist?: boolean } = {}): void {
   for (const s of orphaned) sheetBySpecies.delete(s);
   for (const k of [...sheetByEntry.keys()])
     if (k.startsWith(`${url}\n`)) sheetByEntry.delete(k);
-  const slot = sheetByPack.get(url);
-  // Only delete the reverse entry it still owns — a rebind may have
-  // handed the slot to a different pack since.
-  if (slot !== undefined && packBySheet.get(slot) === url)
-    packBySheet.delete(slot);
+  // Drop every reverse entry still naming this pack — whole-pack and
+  // entry slots alike. A slot a rebind handed to another pack maps to
+  // that URL instead and is left alone.
+  for (const [k, v] of packBySheet)
+    if (v === url) packBySheet.delete(k);
   sheetByPack.delete(url);
+  wholePackUrls.delete(url);
   // A dropped pack's stored bytes are the only copy — uninstall
   // deletes them (archive packs keep their cache entries).
   if (isLocalPack(url)) void packDelete(url)
