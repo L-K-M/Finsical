@@ -10,6 +10,16 @@ import type { ListScroll } from "osmium-ui";
 // it pushes and posts intents (removeFish, removeAddon, wantThumbs).
 // In a browser it talks to an index.html tab over BroadcastChannel.
 
+// A file dropped on this window must not navigate it to the file —
+// only the tank page and the Add-ons window accept drops.
+window.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  // Reject file drops with the OS "no drop" cursor instead of a copy cursor.
+  if (e.dataTransfer?.types.includes("Files"))
+    e.dataTransfer.dropEffect = "none";
+});
+window.addEventListener("drop", (e) => e.preventDefault());
+
 /** Row pitch: 31px rows (for the 38 x 28 thumbnails) and a white rule. */
 const ROW_H = 32;
 const THUMB_W = 38, THUMB_H = 28;

@@ -13,6 +13,16 @@ import type { StatsInput, TankStats } from "./statsmodel.js";
 // it pushes (same contract as the other client windows). The window
 // chrome goes through Osmium UI's hostWindow.
 
+// A file dropped on this window must not navigate it to the file —
+// only the tank page and the Add-ons window accept drops.
+window.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  // Reject file drops with the OS "no drop" cursor instead of a copy cursor.
+  if (e.dataTransfer?.types.includes("Files"))
+    e.dataTransfer.dropEffect = "none";
+});
+window.addEventListener("drop", (e) => e.preventDefault());
+
 const win = document.getElementById("swin")!;
 const rowsEl = document.getElementById("srows")!;
 const careEl = document.getElementById("scare")!;
