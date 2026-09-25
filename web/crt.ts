@@ -137,7 +137,8 @@ const FRAG = COMMON + `
 uniform sampler2D uRows; // the rows pass's smeared scanlines
 uniform sampler2D uBloomTex; // bright pass, blurred: phosphor bloom
 uniform sampler2D uHaloTex;  // whole frame, blurred wider: halation
-uniform vec2 uCols;   // columns drawn, and the rows texture's width
+uniform float uCols;  // columns drawn
+uniform float uColsMax; // the rows texture's width
 uniform vec4 uRect;   // letterboxed tank rect in buffer px, y-up
 // Flicker, rolling-band and grain phases, each pre-wrapped on the CPU
 // (mod 2π for the sin() args, mod 1 for the hash). Wrapping the raw
@@ -170,9 +171,11 @@ uniform float uDegauss; // degauss wobble amplitude (0 = settled)
 // the linear filter blends columns, and rows only across the one
 // device px where they meet.
 vec3 rowPx(vec2 lp) {
-  float x = clamp(lp.x * uCols.x / uTank.x, 0.5, uCols.x - 0.5);
+  // Divide before scaling up: lp.x * uCols alone can pass mediump's
+  // 2^14 range where highp is missing.
+  float x = clamp(lp.x / uTank.x * uCols, 0.5, uCols - 0.5);
   float y = sharpCoord(lp.y, uTank.y, pxScale.y);
-  return texture2D(uRows, vec2(x / uCols.y, y / uTank.y)).rgb;
+  return texture2D(uRows, vec2(x / uColsMax, y / uTank.y)).rgb;
 }
 
 float hash(vec2 p) {
@@ -676,6 +679,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   gl.uniform1i(gl.getUniformLocation(prog, "uBloomTex"), 2);
   gl.uniform1i(gl.getUniformLocation(prog, "uHaloTex"), 3);
   gl.uniform1i(gl.getUniformLocation(prog, "uRows"), 1);
+  gl.uniform1f(gl.getUniformLocation(prog, "uColsMax"), colsMax);
   gl.uniform1f(uPower, 1);
   gl.uniform1f(uDegauss, 0);
 
@@ -858,7 +862,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, out.width, out.height);
       gl.useProgram(prog);
-      gl.uniform2f(uCols, cols, colsMax);
+      gl.uniform1f(uCols, cols);
       gl.uniform4f(uRect, ...rect);
       // Each shader phase arrives pre-wrapped mod its period, so the
       // sin() args are identical modulo 2π at every point in time —
