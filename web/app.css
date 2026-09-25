@@ -232,6 +232,11 @@ body.crt canvas#tank { opacity: 0; }
    this pane's own stylesheet finishes the job. */
 .pfslider .osm-slider.osm-disabled::after { opacity: .45; }
 .pflabel { display: block; padding-left: 4px; margin-bottom: 5px; }
+/* A pop-up in a slider's caption row (the mask type over its
+   strength): as wide as the track, with just room for "Aperture
+   grille", and no taller than the row. */
+.pftitlepop { padding-left: 0; margin: -3px 0 1px; }
+.pftitlepop .osm-popup { width: 100%; padding-right: 0; }
 .pfends { display: flex; justify-content: space-between; margin-top: 2px; padding: 0 1px 0 3px; }
 /* CRT off: the sliders and preset buttons are disabled and their
    captions dim with them. */
