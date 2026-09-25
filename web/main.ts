@@ -2285,14 +2285,20 @@ function openImport(): void {
 }
 // Only what the native menu actually calls — Swift's Import Add-ons
 // opens its own window, and Auto Feed, Degauss and Zen have no menu
-// item to reach them through here.
-(window as unknown as { finsical?: unknown }).finsical =
-  { feedFish, changeWater, toggleLights, takePicture,
-    // Menu clicks land here via evaluateJavaScript — not always a
-    // user activation, but unlock() is harmless if resume is blocked.
-    toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute,
-    // Returns the new flag, so the native menu retitles at once.
-    togglePause: () => setPaused(!paused) };
+// item to reach them through here. The named type keeps the Swift
+// side's evaluateJavaScript strings honest: a member removed here
+// stops being nameable there too.
+const finsicalBridge = {
+  feedFish, changeWater, toggleLights, takePicture,
+  // Menu clicks land here via evaluateJavaScript — not always a
+  // user activation, but unlock() is harmless if resume is blocked.
+  toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute,
+  // Returns the new flag, so the native menu retitles at once.
+  togglePause: () => setPaused(!paused),
+};
+type FinsicalBridge = typeof finsicalBridge;
+(window as unknown as { finsical?: FinsicalBridge }).finsical =
+  finsicalBridge;
 
 // Keyboard entry point — the native Tank menu (⌘I / Ctrl+I) is the primary
 // path. Touch fallback: hover-less devices have no keyboard or native menu.
