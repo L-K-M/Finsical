@@ -13,7 +13,7 @@ describe("clientWindowFeatures", () => {
     expect(parse(clientWindowFeatures("stats", AT)))
       .toMatchObject({ width: 380, height: 360 });
     expect(parse(clientWindowFeatures("prefs", AT)))
-      .toMatchObject({ width: 565, height: 457 });
+      .toMatchObject({ width: 565, height: 518 });
     expect(parse(clientWindowFeatures("overview", AT)))
       .toMatchObject({ width: 521, height: 381 });
     expect(parse(clientWindowFeatures("addons", AT)))
@@ -29,7 +29,7 @@ describe("clientWindowFeatures", () => {
     const f = parse(clientWindowFeatures("prefs",
       { ...AT, screenX: 1300, screenY: 800 }));
     expect(f.left).toBe(1440 - 565);
-    expect(f.top).toBe(25 + 875 - 40 - 457); // title bar kept clear
+    expect(f.top).toBe(25 + 875 - 40 - 518); // title bar kept clear
   });
 
   it("pins to the screen's corner when the window is bigger than it", () => {

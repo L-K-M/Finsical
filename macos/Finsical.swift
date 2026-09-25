@@ -136,7 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         })
     private lazy var prefs = host.add(OsmiumWindowSpec(
         url: page("prefs.html"), title: "Preferences",
-        frameKey: "FinsicalPrefs", size: NSSize(width: 565, height: 457)))
+        frameKey: "FinsicalPrefs", size: NSSize(width: 565, height: 518)))
     private lazy var overview = host.add(OsmiumWindowSpec(
         url: page("overview.html"), title: "Tank Overview",
         frameKey: "FinsicalOverview", size: NSSize(width: 521, height: 381),
