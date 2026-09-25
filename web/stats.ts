@@ -175,9 +175,15 @@ pushButton(document.getElementById("schange") as HTMLButtonElement,
 const copyBtn = document.getElementById("scopy") as HTMLButtonElement;
 pushButton(copyBtn, () => {
   const st = lastStats;
+  let copyTimer: ReturnType<typeof setTimeout> | undefined;
   const done = (label: string): void => {
     copyBtn.textContent = label;
-    setTimeout(() => { copyBtn.textContent = "Copy Summary"; }, 1500);
+    // A re-click inside the window restarts the feedback, not just
+    // the label — a stale reset must not erase the newer one early.
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => {
+      copyBtn.textContent = "Copy Summary";
+    }, 1500);
   };
   if (!st) { done("No data yet"); return; }
   const text = summaryText(st);
