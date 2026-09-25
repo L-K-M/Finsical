@@ -88,7 +88,8 @@ export async function runStarter(
         soundJobs.set(it, Promise.resolve().then(() => hooks.install(it))
           .then(() => null,
                 // A null rejection mustn't read as success.
-                (e: unknown) => e ?? new Error("install failed")));
+                (e: unknown) =>
+                  e ?? new Error(`couldn't add ${it.inner}`)));
   };
   for (const [i, it] of items.entries()) {
     if (it.section === "sounds") continue;
@@ -100,8 +101,9 @@ export async function runStarter(
       console.warn(`starter set: couldn't add ${it.inner}:`, e);
       failed.push(it);
       // A bare Promise.reject() leaves e nullish — the modal's retry
-      // still needs a real error to report.
-      problem ??= e ?? new Error("install failed");
+      // still needs a real error to report, and it should name the
+      // item that failed.
+      problem ??= e ?? new Error(`couldn't add ${it.inner}`);
       continue;
     }
     if (it.section === "fish") {
