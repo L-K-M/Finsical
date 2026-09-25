@@ -2163,12 +2163,48 @@ function takePicture(): void {
   c.drawImage(canvas, 0, 0, out.width, out.height);
   const d = new Date();
   const pad = (n: number): string => String(n).padStart(2, "0");
-  const a = document.createElement("a");
-  a.href = out.toDataURL("image/png");
-  a.download = `finsical-${d.getFullYear()}${pad(d.getMonth() + 1)}` +
+  const name = `finsical-${d.getFullYear()}${pad(d.getMonth() + 1)}` +
     `${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}` +
     `${pad(d.getSeconds())}.png`;
-  a.click();
+  // A detached anchor's click() is ignored by some browsers — append
+  // it for the click, then remove.
+  const save = (href: string, revoke = false): void => {
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = name;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    // Revoking in the same tick can abort the download where blob
+    // saves start asynchronously (Safari, Firefox).
+    if (revoke) setTimeout(() => URL.revokeObjectURL(href), 5000);
+  };
+  const saveBlob = (blob: Blob | null): void => {
+    if (!blob) { save(out.toDataURL("image/png")); return; }
+    // WKWebView ignores <a download> entirely — hand the PNG bytes to
+    // the shell, which answers with a real NSSavePanel.
+    if (inNativeShell()) {
+      const r = new FileReader();
+      r.onload = () => {
+        const url = typeof r.result === "string" ? r.result : "";
+        bus.post({ op: "savePicture", name,
+                   png: url.slice(url.indexOf(",") + 1) });
+      };
+      // Without this the picture just vanishes — try the anchor as a
+      // last resort (ignored by WKWebView, harmless elsewhere).
+      r.onerror = () => {
+        console.warn("takePicture: FileReader failed:", r.error);
+        save(URL.createObjectURL(blob), true);
+      };
+      r.readAsDataURL(blob);
+      return;
+    }
+    save(URL.createObjectURL(blob), true);
+  };
+  // toBlob encodes off the critical path where supported; toDataURL
+  // (synchronous on the main thread) is the fallback.
+  if (typeof out.toBlob === "function") out.toBlob(saveBlob, "image/png");
+  else save(out.toDataURL("image/png"));
 }
 // ---- keeping the tank --------------------------------------------------
 // The water change, filter, heater, medicine and speed controls live in
@@ -2246,7 +2282,7 @@ function openImport(): void {
 }
 (window as unknown as { finsical?: unknown }).finsical =
   { openImport, feedFish, changeWater, toggleLights,
-    toggleAutoFeed,
+    toggleAutoFeed, takePicture,
     // Menu clicks land here via evaluateJavaScript — not always a
     // user activation, but unlock() is harmless if resume is blocked.
     toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute,
