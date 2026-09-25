@@ -1080,8 +1080,9 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
   // A restore retry or an Add Again re-registers the same art — reuse
   // the pack's existing slot instead of leaking a fishSheets entry
   // (slots are kept forever to preserve sheetIdx bindings).
-  const known = entry !== undefined ? sheetByEntry.get(entryKey(url, entry))
-                                    : sheetByPack.get(url);
+  const known = (entry !== undefined
+                   ? sheetByEntry.get(entryKey(url, entry))
+                   : undefined) ?? sheetByPack.get(url);
   const idx = known ?? usePack({ sheets });
   if (idx < 0) {
     // A sheet that can't draw is not an install — usePack refused it.
