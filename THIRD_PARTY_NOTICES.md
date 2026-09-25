@@ -25,5 +25,6 @@ JavaScript bundles (`bundle.js` for the tank, `addons.js` for Import
 Add-ons), which carry its license header. Its readable source is that
 file in this repository, and `npm run build` rebuilds the bundles from
 it, so you can modify or replace the LGPL-covered decoder and relink
-it. The macOS app ships this file and the license text in
-`Finsical.app/Contents/Resources`.
+it. The macOS app ships this file at
+`Finsical.app/Contents/Resources/core/data/mace.ts`, with the
+license text (`LGPL-2.1.txt`) at `Finsical.app/Contents/Resources`.

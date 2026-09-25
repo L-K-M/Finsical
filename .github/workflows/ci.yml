@@ -38,6 +38,11 @@ jobs:
           persist-credentials: false
       - run: scripts/build.sh --clean --install
       - run: test -x /Applications/Finsical.app/Contents/MacOS/Finsical
+      # The notices file promises the LGPL decoder's source ships in
+      # the bundle (license text one directory up), not only the
+      # compiled copy inside the JavaScript. A byte compare, so a
+      # stale or wrong copy fails too.
+      - run: diff -u core/data/mace.ts /Applications/Finsical.app/Contents/Resources/core/data/mace.ts
       # Launch the app: --smoke-test loads the tank page, checks that its
       # script ran and the case art went in, and exits 0 (1 broken page,
       # 2 load failed, 3 timed out after 30 s). The /private/tmp copy runs
