@@ -164,10 +164,28 @@ function syncRemove(): void {
   removeBtn.disabled = tankGone || !it;
   useBtn.disabled = tankGone || !it?.use;
 }
+// A double-click's second press lands before the tank's state push
+// moves the selection, so without a floor one gesture could remove
+// the row and then its successor.
+const REMOVE_FLOOR_MS = 350;
+let lastRemovedAt = -Infinity;
+let statusTimer = 0;
 const removeSelected = (): void => {
   const it = items[list.selected];
   if (!it) return;
-  removeStatus.textContent = "Removed.";
+
+  const now = performance.now();
+  if (now - lastRemovedAt < REMOVE_FLOOR_MS) return;
+  lastRemovedAt = now;
+
+  // Live regions announce only changes: two removals of same-named
+  // fish would write identical text and the second would be silent,
+  // so clear first and set on the next task.
+  removeStatus.textContent = "";
+  window.clearTimeout(statusTimer);
+  statusTimer = window.setTimeout(() => {
+    removeStatus.textContent = `Removed ${it.name}.`;
+  }, 0);
   bus.post(it.remove);
 };
 pushButton(removeBtn, removeSelected);
