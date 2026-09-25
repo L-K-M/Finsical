@@ -90,6 +90,14 @@ describe("sortItems", () => {
   it("sorts by status", () => {
     expect(sortItems(items, "status")[0]!.status).toBe("In tank");
   });
+  it("defaults to ascending, as a first click on a column does", () => {
+    expect(sortItems(items, "name")).toEqual(sortItems(items, "name", 1));
+  });
+  it("reverses a whole column, tie-breakers and all, when it flips", () => {
+    for (const by of ["name", "kind", "status"] as const)
+      expect(sortItems(items, by, -1).map((i) => i.name))
+        .toEqual(sortItems(items, by).map((i) => i.name).reverse());
+  });
 });
 
 describe("summary", () => {
