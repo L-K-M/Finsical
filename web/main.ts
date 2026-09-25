@@ -571,8 +571,8 @@ function placeTip(e: { clientX: number; clientY: number }): void {
 }
 
 canvas.addEventListener("pointermove", (e) => {
+  if (!e.isPrimary) return; // one pointer drives hover and curiosity
   lastClient = { x: e.clientX, y: e.clientY };
-  if (!e.isPrimary) return; // one pointer drives curiosity
   const p = tankPoint(e.clientX, e.clientY);
   sim.notice = p;
   if (e.pointerType === "touch") return; // no hover on touch
@@ -583,11 +583,14 @@ canvas.addEventListener("pointermove", (e) => {
   placeTip(e);
 });
 canvas.addEventListener("pointerleave", (e) => {
+  // A second finger lifting must not clear the primary pointer's hover:
+  // lastClient and the feed crosshair follow the primary only, and
+  // syncFeedHover() re-reads lastClient every frame.
+  if (!e.isPrimary) return;
   lastClient = null;
   lastHover = null;
   fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
-  if (!e.isPrimary) return; // don't clear the primary's curiosity
   sim.notice = null;
 });
 
