@@ -309,7 +309,9 @@ export class Sim {
   /** The same condition decide() uses to send a fish begging at the
    * surface: starving, and water clean enough to keep an appetite. */
   isBegging(f: Fish): boolean {
-    return f.hunger > BEG_HUNGER && this.waterQuality > QUALITY_SEEK;
+    // A starved corpse keeps its last hunger — it is not begging.
+    return !f.dead && f.hunger > BEG_HUNGER &&
+      this.waterQuality > QUALITY_SEEK;
   }
 
   /** True while any fish is begging — the dinner-bell predicate. */
@@ -459,14 +461,15 @@ export class Sim {
     const inRange = (f: Fish): boolean => !!n &&
       (f.x - n.x) ** 2 + (f.y - n.y) ** 2 < NOTICE_RADIUS * NOTICE_RADIUS;
     this._noticeFish = this._noticeFish.filter((f) =>
-      this.fish.includes(f) && inRange(f) &&
+      this.fish.includes(f) && !f.dead && inRange(f) &&
       (f.state === "drift" || f.state === "turn"));
     if (n && this._noticeFish.length < NOTICE_CAP) {
       // Fill the open slots with the nearest drifters not already
       // watching — a small crowd presses the glass, like the original.
       const cand: { f: Fish; d: number }[] = [];
       for (const f of this.fish) {
-        if (f.state !== "drift" || this._noticeFish.includes(f))
+        if (f.dead || f.state !== "drift" ||
+            this._noticeFish.includes(f))
           continue;
         const d = (f.x - n.x) ** 2 + (f.y - n.y) ** 2;
         if (d < NOTICE_RADIUS * NOTICE_RADIUS) cand.push({ f, d });

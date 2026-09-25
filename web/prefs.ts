@@ -12,6 +12,7 @@ import { hourLabel, LIGHTING_DEFAULTS, sanitizeLighting }
 import type { Lighting, LightMode } from "../core/light.js";
 import { SOUND_DEFAULTS, sanitizeSoundConfig } from "./audio.js";
 import type { SoundConfig } from "./audio.js";
+import { tubeCaption } from "./caption.js";
 
 // Preferences window: a Mac OS 8 control panel with five panes: the
 // machine case, the CRT tube effect, the monitor's picture controls,
@@ -268,17 +269,34 @@ function describe(spec: SliderSpec | LightSpec | SoundItem | null,
       return;
     }
   }
+  // `pane` is a closed PaneId union and PANES covers every pane, so
+  // this lookup cannot miss; both hint paths below share it. Only the
+  // Monitor and Picture panes mount "key" sliders, both define offHint,
+  // and syncEnabled dims exactly those sliders while off — onBox is the
+  // switch they depend on, not some other pane's.
+  const p = PANES.find((x) => x.id === pane)!;
   if (!spec) {
-    const p = PANES.find((x) => x.id === pane)!;
     descEl.textContent = !onBox.checked && p.offHint ? p.offHint : p.hint;
     return;
   }
-  const [label, blurb] = "key" in spec
-    ? [`${spec.label}: ${(spec.fmt ?? pct)(cfg[spec.key])}`, spec.blurb]
-    : "input" in spec
-      ? [spec.value ? `${spec.label}: ${spec.value()}` : spec.label,
-         spec.blurb]
-      : [`${spec.label}: ${spec.value()}`, spec.blurb()];
+  // A dimmed tube slider explains the switch instead of showing a
+  // value that cannot apply (tubeCaption pins the wording).
+  if ("key" in spec) {
+    const c = tubeCaption({
+      label: spec.label,
+      valueText: (spec.fmt ?? pct)(cfg[spec.key]),
+      blurb: spec.blurb,
+      offHint: p.offHint,
+      crtOn: onBox.checked,
+    });
+    if (c.label === "") descEl.textContent = c.tail;
+    else descEl.append(el("span", "osm-label", c.label), c.tail);
+    return;
+  }
+  const [label, blurb] = "input" in spec
+    ? [spec.value ? `${spec.label}: ${spec.value()}` : spec.label,
+       spec.blurb]
+    : [`${spec.label}: ${spec.value()}`, spec.blurb()];
   descEl.append(el("span", "osm-label", label), ` — ${blurb}`);
 }
 
