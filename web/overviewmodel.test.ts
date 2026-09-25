@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { itemsOf, sortItems, summary } from "./overviewmodel.js";
+import type { TankState } from "./overviewmodel.js";
 
-const STATE = {
+const STATE: TankState = {
   op: "state",
   fish: [
     { id: 1, species: "Clownfish", hunger: 0.2, state: "drift",
@@ -52,7 +53,7 @@ describe("itemsOf", () => {
     expect(blue.use).toBeUndefined();
     // A second scenery pack not on display can be swapped in.
     const more = itemsOf({ ...STATE,
-      addons: [...STATE.addons,
+      addons: [...STATE.addons ?? [],
         { section: "gravel", inner: "Slate.grv", url: "u:slate" }],
       scenery: { gravel: "u:blue" } });
     const slate = more[4]!;
@@ -62,7 +63,7 @@ describe("itemsOf", () => {
 
   it("never offers Use on fish or decor packs", () => {
     const items = itemsOf({ ...STATE,
-      addons: [...STATE.addons,
+      addons: [...STATE.addons ?? [],
         { section: "plants", inner: "Kelp.pl", url: "u:kelp" }] });
     const tang = items.find((i) => i.name === "tang.fsh");
     expect(tang).toBeDefined();
@@ -77,7 +78,7 @@ describe("sortItems", () => {
   const items = itemsOf(STATE);
   it("sorts by kind alphabetically, like the Finder, names breaking ties",
      () => {
-    const more = itemsOf({ ...STATE, addons: [...STATE.addons,
+    const more = itemsOf({ ...STATE, addons: [...STATE.addons ?? [],
       { section: "backgrounds", inner: "Reef.bg", url: "u:reef" }] });
     expect(sortItems(more, "kind").map((i) => i.name))
       .toEqual(["Reef.bg", "Angelfish", "Clownfish", "tang.fsh", "Blue.grv"]);
