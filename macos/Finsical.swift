@@ -134,9 +134,12 @@ final class TankWindow: NSWindow {
 /// `--smoke-test`: print the verdict as one JSON line for CI (error
 /// text can hold quotes, so it is serialized, not interpolated) and exit.
 private func smokeExit(_ report: [String: String], _ code: Int32) -> Never {
+    // A fixed line keeps the output valid JSON should serialization
+    // ever fail; the exit code still carries the verdict.
+    let fallback = #"{"smoke":"unserializable report"}"#
     let json = try? JSONSerialization.data(withJSONObject: report,
                                            options: [.sortedKeys])
-    print(String(decoding: json ?? Data(), as: UTF8.self))
+    print(json.map { String(decoding: $0, as: UTF8.self) } ?? fallback)
     exit(code)
 }
 
