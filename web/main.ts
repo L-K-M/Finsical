@@ -1069,6 +1069,9 @@ const entryKey = (url: string, entry: string): string =>
 // Reverse of sheetByPack — which pack owns a slot, for migrating
 // species-bound fish onto the URL binding of the sheet they render.
 const packBySheet = new Map<number, string>();
+// URLs installed whole — their slots hold every entry's art, the only
+// pack-level slots an entry-scoped re-add may reuse.
+const wholePackUrls = new Set<string>();
 function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
                       url: string, section: string, live: boolean,
                       care?: SpeciesCare | null, entry?: string): void {
@@ -1079,10 +1082,15 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
   if (care) careByPack.set(url, care);
   // A restore retry or an Add Again re-registers the same art — reuse
   // the pack's existing slot instead of leaking a fishSheets entry
-  // (slots are kept forever to preserve sheetIdx bindings).
+  // (slots are kept forever to preserve sheetIdx bindings). An entry
+  // may also reuse the URL's whole-pack slot, which holds every
+  // entry's art — but never another entry's slot, and a whole-pack
+  // install must not collapse onto an entry's partial art either.
+  const wholeSlot = wholePackUrls.has(url) ? sheetByPack.get(url)
+                                           : undefined;
   const known = (entry !== undefined
                    ? sheetByEntry.get(entryKey(url, entry))
-                   : undefined) ?? sheetByPack.get(url);
+                   : undefined) ?? wholeSlot;
   const idx = known ?? usePack({ sheets });
   if (idx < 0) {
     // A sheet that can't draw is not an install — usePack refused it.
@@ -1097,6 +1105,7 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
   if (prior !== undefined && prior !== idx) packBySheet.delete(prior);
   sheetByPack.set(url, idx);
   packBySheet.set(idx, url);
+  if (entry === undefined) wholePackUrls.add(url);
   // A live fish-pack install adds a real fish; restores replay sheets
   // only — the saved roster already carries those fish.
   if (live) {
