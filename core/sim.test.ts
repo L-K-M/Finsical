@@ -1207,12 +1207,9 @@ describe("B-57 drift steering", () => {
     const f = sim.addFish({ x: 60, y: 150, facing: -1, hunger: 1,
                             halfW: 50, halfH: 30, scale: 1 });
     sim.dropFood(16);
-    let ate = false;
-    for (let i = 0; i < 400 && !ate; i++) {
-      sim.tick();
-      ate = f.hunger === 0;
-    }
-    expect(ate).toBe(true);
+    const pellet = sim.food[0]!;
+    for (let i = 0; i < 400 && !pellet.eaten; i++) sim.tick();
+    expect(pellet.eaten).toBe(true);
   });
 });
 
