@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>Preferences</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="stylesheet" href="osmium.css" />
   <link rel="stylesheet" href="app.css" />
 </head>
@@ -27,10 +28,68 @@
           <div class="osm-caption" id="crt-warn" hidden>This Mac can't show
             the effect (WebGL is unavailable or the graphics context was
             lost). Settings are kept for later.</div>
+          <div id="pfpresets" role="group" aria-label="Picture presets"></div>
           <div id="pftraits"></div>
         </section>
         <section id="pane-picture" class="pfpane" role="tabpanel" hidden>
           <div id="pfpicture"></div>
+        </section>
+        <section id="pane-lighting" class="pfpane" role="tabpanel" hidden>
+          <div class="osm-group pfgroup" id="pflights" role="group"
+               aria-label="Lights">
+            <div class="osm-group-title">Lights</div>
+            <div class="pflrow">
+              <span class="pflctl" id="plc-mode">
+                <label class="osm-popup-title" for="pl-mode">Lighting:</label>
+                <button type="button" class="osm-popup" id="pl-mode"></button>
+              </span>
+            </div>
+            <div class="pflrow">
+              <span class="pflctl" id="plc-on">
+                <label class="osm-popup-title" for="pl-on">Lights on at:</label>
+                <button type="button" class="osm-popup pfhour" id="pl-on"></button>
+              </span>
+              <span class="pflctl" id="plc-off">
+                <label class="osm-popup-title" for="pl-off">Off at:</label>
+                <button type="button" class="osm-popup pfhour" id="pl-off"></button>
+              </span>
+            </div>
+            <div class="pflrow">
+              <label class="osm-checkbox" id="pflamp">
+                <input type="checkbox" id="pl-lamp" />Lamp on
+              </label>
+            </div>
+          </div>
+        </section>
+        <!-- Laid out like Monitors & Sound's Sound section: the volume
+             with its Mute box, then the tank's own sounds. -->
+        <section id="pane-sound" class="pfpane" role="tabpanel" hidden>
+          <div class="osm-group pfgroup" role="group" aria-label="Volume">
+            <div class="osm-group-title">Volume</div>
+            <div class="pfrow">
+              <div class="pfslider" id="pfvol">
+                <div class="osm-slider">
+                  <input type="range" id="snd-volume" min="0" max="100"
+                         step="1" aria-label="Volume" />
+                </div>
+                <div class="osm-caption pfends" aria-hidden="true">
+                  <span>Off</span><span>Loud</span>
+                </div>
+              </div>
+              <label class="osm-checkbox" id="pfmute">
+                <input type="checkbox" id="snd-mute" />Mute
+              </label>
+            </div>
+          </div>
+          <div class="osm-group pfgroup" role="group" aria-label="Tank Sounds">
+            <div class="osm-group-title">Tank Sounds</div>
+            <label class="osm-checkbox" id="pfbubbles">
+              <input type="checkbox" id="snd-bubbles" />Bubble sounds
+            </label>
+            <label class="osm-checkbox" id="pfambient">
+              <input type="checkbox" id="snd-ambient" />Water ambience
+            </label>
+          </div>
         </section>
         <div id="pffoot">
           <div class="osm-separator"></div>

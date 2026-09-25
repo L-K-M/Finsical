@@ -10,6 +10,8 @@ Nothing is committed to the repo — output lands in packs/ (gitignored).
 .ZIP is unpacked in memory; .ISO is walked via tools.az.iso9660; anything
 that looks like a pack (.fsh/.acc/.plt/.azn/.REZ) or a resource fork with
 'snd ' resources becomes an .azpack via the normal emitters.
+
+Python 3.9+, stdlib only.
 """
 from __future__ import annotations
 import argparse
