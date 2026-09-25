@@ -193,7 +193,12 @@ body.crt canvas#tank { opacity: 0; }
 
 /* Machine: the cases in a list box beside a preview well. */
 #pfmachines { position: absolute; left: 0; top: 0; width: 190px; height: 383px; }
-#pfmachines .osm-row { padding-left: 4px; font: var(--osm-font-system); }
+/* Names fit the 190 px list (the Performas drop "Macintosh"); a longer
+   one ends in an ellipsis rather than cut through a glyph. */
+#pfmachines .osm-row {
+  padding-left: 4px; font: var(--osm-font-system);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
 #pfpreview {
   position: absolute; left: 204px; right: 0; top: 0; height: 383px;
   display: flex; align-items: center; justify-content: center;

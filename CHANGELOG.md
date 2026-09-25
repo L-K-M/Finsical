@@ -69,6 +69,10 @@
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.
+- In the Machine list the Performas drop "Macintosh" from their names,
+  so "Performa 5200 (Black)" and "Performa 450 (II)" are no longer cut
+  off mid-letter; a name still too long for the list ends in an
+  ellipsis.
 - Mekasia's G_Debris gravel lists under Gravel and lays a gravel bed.
   It used to list under Accessories, where adding it dropped a big
   textured block into the tank; a tank that added it that way gets the
