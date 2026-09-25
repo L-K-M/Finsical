@@ -3,11 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Finsical is a retro virtual aquarium for macOS, in the spirit of the 90s Mac classic AquaZone." />
+  <meta name="theme-color" content="#000000" />
+  <meta name="color-scheme" content="dark" />
+  <meta property="og:title" content="Finsical" />
+  <meta property="og:description" content="A retro virtual aquarium in the spirit of the 90s Mac classic AquaZone." />
+  <meta property="og:type" content="website" />
   <title>Finsical</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="stylesheet" href="osmium.css" />
   <link rel="stylesheet" href="app.css" />
 </head>
 <body class="tankpage">
+  <noscript><p>Finsical needs JavaScript to run the aquarium.</p><style>#screen,#machine,#screenback{display:none}</style></noscript>
   <!-- Three layers: the dark screen backplate under the aquarium, then
        the machine art on top so its glass and reflections overlay the
        water. #machine is pointer-events:none — clicks fall through to

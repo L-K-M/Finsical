@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_FRAME_MS, planFrame } from "./loop.js";
+import { ABSOLUTE_MAX_TICKS, MAX_FRAME_MS, planFrame } from "./loop.js";
 
 const STEP = 1000 / 30;
 
@@ -50,5 +50,27 @@ describe("planFrame", () => {
 
   it("ignores a timestamp that runs backwards", () => {
     expect(planFrame(5, -20, STEP)).toEqual({ ticks: 0, acc: 5 });
+  });
+
+  it("never hangs on a non-positive or NaN step", () => {
+    for (const step of [0, -STEP, NaN]) {
+      expect(planFrame(5, 16.7, step)).toEqual({ ticks: 0, acc: 5 });
+    }
+  });
+
+  it("treats a NaN accumulator or dt as no time", () => {
+    // A poisoned accumulator restarts from zero; this frame's dt still
+    // counts. A NaN dt counts as no time and keeps the accumulator.
+    expect(planFrame(NaN, 16.7, STEP)).toEqual({ ticks: 0, acc: 16.7 });
+    expect(planFrame(5, NaN, STEP)).toEqual({ ticks: 0, acc: 5 });
+    // Infinity is non-finite too: dropped, not clamped to MAX_FRAME_MS.
+    expect(planFrame(5, Infinity, STEP)).toEqual({ ticks: 0, acc: 5 });
+  });
+
+  it("caps ticks so a huge acc or tiny step can't stall the frame", () => {
+    const cap = Math.ceil(MAX_FRAME_MS / STEP) + 1;
+    expect(planFrame(1e12, 16.7, STEP)).toEqual({ ticks: cap, acc: 0 });
+    const tiny = planFrame(5, 16.7, 1e-9);
+    expect(tiny).toEqual({ ticks: ABSOLUTE_MAX_TICKS, acc: 0 });
   });
 });

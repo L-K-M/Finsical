@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,5 +49,31 @@ describe("standalone web build", () => {
     expect(existsSync(output), m.image).toBe(true);
     expect(readFileSync(output).equals(readFileSync(join(root, "web", m.image))))
       .toBe(true);
+  });
+
+  it("keeps the MACE LGPL notice in every bundle that ships the decoder", () => {
+    // The /*! legal comment in core/data/mace.ts is the shipped LGPL
+    // notice; esbuild drops /* comments, so one character or a
+    // --legal-comments flag could strip it from every bundle. Key on
+    // the decoder's own table so a new bundle compiling MACE in is
+    // covered too — and assert the tables are really there so the
+    // check can't pass vacuously.
+    // The marker is read out of the source constant, not copied — a
+    // regenerated table must fail loudly here, not just look absent.
+    const maceSrc = readFileSync(join(root, "core/data/mace.ts"), "utf8");
+    const maceMark =
+      /MACE_TAB2_B64\s*=\s*"([A-Za-z0-9+/=]{16})/.exec(maceSrc)?.[1];
+    expect(maceMark, "MACE_TAB2_B64 marker in mace.ts").toBeTruthy();
+    const dist = join(fixture, "dist");
+    const bundles = readdirSync(dist)
+      .filter((f) => /\.[cm]?js$/.test(f));
+    const withMace = bundles.filter((f) =>
+      readFileSync(join(dist, f), "utf8").includes(maceMark));
+    expect(withMace.sort()).toEqual(["addons.js", "bundle.js"]);
+    for (const f of withMace) {
+      const js = readFileSync(join(dist, f), "utf8");
+      expect(js, f).toContain("SPDX-License-Identifier: LGPL-2.1-or-later");
+      expect(js, f).toContain("Laszlo Torok");
+    }
   });
 });
