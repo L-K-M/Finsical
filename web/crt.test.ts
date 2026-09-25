@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  CRT_DEFAULTS, CRT_PRESETS, PICTURE_KEYS, crtRasterRect, presetTube,
-  sanitizeCrtConfig,
+  CRT_DEFAULTS, CRT_PRESETS, DEGAUSS_MS, PICTURE_KEYS, crtRasterRect,
+  degaussAmp, presetTube, sanitizeCrtConfig,
 } from "./crt.js";
 import type { CrtConfig } from "./crt.js";
 
@@ -130,5 +130,31 @@ describe("crtRasterRect", () => {
     expect(r[0]).toBeCloseTo(0);
     // Box spans top-down 20..120, so y-up 80..180; centered: +18.75.
     expect(r[1]).toBeCloseTo(80 + 18.75);
+  });
+});
+
+describe("degaussAmp", () => {
+  it("starts at full swing and settles inside DEGAUSS_MS", () => {
+    expect(degaussAmp(0)).toBe(1);
+    expect(degaussAmp(DEGAUSS_MS)).toBe(0);
+    // Strictly decreasing across the whole ring — two interior
+    // samples would miss a mid-decay wiggle — then floored at zero
+    // once the exponential clips.
+    let prev = degaussAmp(0);
+    let settled = false;
+    for (let ms = 50; ms < DEGAUSS_MS; ms += 50) {
+      const amp = degaussAmp(ms);
+      if (settled) { expect(amp).toBe(0); continue; }
+      if (amp === 0) { settled = true; continue; }
+      expect(amp).toBeLessThan(prev);
+      prev = amp;
+    }
+    expect(settled).toBe(true); // it does reach the floor inside
+  });
+
+  it("reads settled before it ever fires (and for bad inputs)", () => {
+    expect(degaussAmp(-1)).toBe(0);
+    expect(degaussAmp(Infinity)).toBe(0); // degaussT0 = -Infinity
+    expect(degaussAmp(NaN)).toBe(0);
   });
 });

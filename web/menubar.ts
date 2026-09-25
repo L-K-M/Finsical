@@ -49,17 +49,25 @@ export function openClientWindow(page: string): void {
 export interface TankMenuActions {
   feed(): void;
   changeWater(): void;
+  toggleAutoFeed(): void;
   importAddons(): void;
   takePicture(): void;
+  exportTank(): void;
+  importTank(): void;
   toggleCrt(): void;
+  degauss(): void;
   toggleLamp(): void;
   toggleMute(): void;
   togglePause(): void;
+  toggleZen(): void;
+  toggleScold(): void;
+  toggleBoot(): void;
   /** Live state, read each time a menu opens. Osmium's items have no
    * checkmark, so toggles name the action they would take instead,
    * like System 8's Show Balloons / Hide Balloons. */
-  state(): { crtUsable: boolean; crtOn: boolean; lampOn: boolean;
-             muted: boolean; paused: boolean };
+  state(): { autoFeed: boolean; crtUsable: boolean; crtOn: boolean;
+             lampOn: boolean; muted: boolean; paused: boolean;
+             zen: boolean; scoldOn: boolean; bootOn: boolean };
 }
 
 /** True while a pull-down menu is open — the tank page's bare-key
@@ -286,6 +294,9 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
         return [
           { title: "Feed Fish", action: a.feed },
           { title: "Change Water", action: a.changeWater },
+          { title: s.autoFeed ? "Turn Auto-Feeder Off"
+                             : "Turn Auto-Feeder On",
+            action: a.toggleAutoFeed },
           MENU_SEPARATOR,
           { title: s.paused ? "Resume Simulation" : "Pause Simulation",
             action: a.togglePause },
@@ -293,11 +304,24 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
             action: a.toggleLamp },
           { title: s.muted ? "Unmute Sound" : "Mute Sound",
             action: a.toggleMute },
+          { title: s.scoldOn ? "Turn Tap Sign Off" : "Turn Tap Sign On",
+            action: a.toggleScold },
+          { title: s.bootOn ? "Turn Startup Screen Off"
+                            : "Turn Startup Screen On",
+            action: a.toggleBoot },
           // Dimmed (no action) where the page has no usable WebGL.
           { title: s.crtOn ? "Turn CRT Effect Off" : "Turn CRT Effect On",
             ...(s.crtUsable ? { action: a.toggleCrt } : {}) },
+          // Dimmed while the tube is off or dead — nothing to degauss.
+          { title: "Degauss",
+            ...(s.crtOn && s.crtUsable ? { action: a.degauss } : {}) },
+          MENU_SEPARATOR,
+          { title: s.zen ? "Leave Zen Mode" : "Enter Zen Mode",
+            action: a.toggleZen },
           MENU_SEPARATOR,
           { title: "Take a Picture", action: a.takePicture },
+          { title: "Export Tank…", action: a.exportTank },
+          { title: "Import Tank…", action: a.importTank },
           { title: "Import Add-ons…", action: a.importAddons },
         ];
       },

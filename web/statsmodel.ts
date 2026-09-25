@@ -127,6 +127,30 @@ function advice(st: TankStats, water: number): string[] {
   return out.slice(0, 2);
 }
 
+/** A paste-ready one-glance summary — the window's rows, compressed
+ * to a few lines of plain text. */
+export function summaryText(st: TankStats): string {
+  const fish = `${st.fishCount} fish` +
+    (st.seeking ? `, ${st.seeking} seeking food` : "") +
+    (st.startled ? `, ${st.startled} startled` : "");
+  const hunger = st.avgHunger === null ? "no hunger data"
+    : `avg hunger ${Math.round(st.avgHunger * 100)}%`;
+  const food = st.food
+    ? `${st.food} pellet${st.food > 1 ? "s" : ""}` +
+      (st.foodSettled ? `, ${st.foodSettled} rotting` : "")
+    : "none";
+  const lines = [
+    `Tank Stats — ${fish}; water ${Math.round(st.waterPct)}%; ${hunger}; ` +
+      `up ${uptime(st.uptimeMin)}`,
+    `Hungriest: ${st.hungriest
+      ? `${st.hungriest.name} — ${hungerLabel(st.hungriest.hunger)}`
+      : "—"}`,
+    `Food: ${food} · Light: ${st.lightLabel}`,
+  ];
+  if (st.advice.length) lines.push(`Care: ${st.advice.join(" · ")}`);
+  return lines.join("\n");
+}
+
 /** "1h 23m" / "45m" — matches the panel overview's uptime format. */
 export function uptime(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;

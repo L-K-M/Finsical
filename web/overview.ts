@@ -72,6 +72,13 @@ removeStatus.style.cssText = "position:absolute;width:1px;height:1px;" +
 removeBtn.after(removeStatus);
 
 let tankBoot: string | undefined;
+// Identifies this page instance to the tank's focus lease — two
+// Overviews can be open, and only the claim holder may renew or lift.
+// randomUUID is secure-context-only; on a plain-HTTP origin a throw
+// here would break the whole module, and uniqueness is all the lease
+// needs — not crypto strength.
+const pageId = crypto.randomUUID?.() ??
+  `o-${Date.now()}-${Math.random()}`;
 const bus = openBus((m) => {
   if (m.op === "state") {
     greeted = true;
@@ -138,7 +145,16 @@ const list = mountList(listEl, {
   label: "Tank contents",
   // A selection move disarms Remove — the armed button pointed at the
   // previous row, not the new one.
-  onSelect: () => { disarmRemove("Removal cancelled."); syncRemove(); },
+  onSelect: () => {
+    disarmRemove("Removal cancelled.");
+    syncRemove();
+    // Picking a fish spotlights it in the tank — like double-clicking
+    // a Finder item to see it. Add-on rows and a cleared selection
+    // lift the marker. The page id claims the lease, so a second
+    // Overview's heartbeats can't steal it.
+    const it = items[list.selected];
+    bus.post({ op: "focusFish", id: it?.fishId ?? null, from: pageId });
+  },
 });
 // Until the first state push lands, blank is "not heard yet", not
 // "empty" — render() swaps in the empty-tank text once it knows.
@@ -345,3 +361,25 @@ setInterval(() => {
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) bus.post({ op: "hello" });
 });
+// Closing the window must not leave a fish spotlighted forever —
+// but a bfcache pagehide keeps the DOM's selection, so only a real
+// unload lifts it, and a restore re-asserts it.
+window.addEventListener("pagehide", (e) => {
+  if (!e.persisted)
+    bus.post({ op: "focusFish", id: null, from: pageId });
+});
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted)
+    bus.post({ op: "focusFish",
+               id: items[list.selected]?.fishId ?? null, from: pageId });
+});
+// A bfcache eviction fires no event and BroadcastChannel has no
+// disconnect — the spotlight is a lease: keep re-asserting it and the
+// tank lets a silent overview's focus lapse. keepAlive marks the beat
+// as a renewal, so it can't steal another Overview's claim.
+setInterval(() => {
+  const it = items[list.selected];
+  if (it?.fishId != null)
+    bus.post({ op: "focusFish", id: it.fishId, from: pageId,
+               keepAlive: true });
+}, 10_000);

@@ -47,6 +47,20 @@ const LEVEL_GLIDE_S = 0.01;
 /** The filter's bubbling: the one sound the original loops, under all
  * the others. */
 const FILTER_BUBBLING = "az bubble 9003";
+
+/** Identity key for a decoded clip. name+duration alone can't tell a
+ * same-length re-encode from the original, so the key FNV-1a-hashes
+ * every sample of every channel — exact content identity, so nothing
+ * can slip between probe points. Runs once per load/ambient start. */
+function bufferKey(name: string, buf: AudioBuffer): string {
+  let h = 0x811c9dc5;
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < d.length; i++)
+      h = Math.imul(h ^ (((d[i] ?? 0) * 32768) | 0), 0x01000193);
+  }
+  return `${name}:${buf.sampleRate}:${buf.duration}:${h >>> 0}`;
+}
 /** Played once as an aquarium opens. */
 const OPENING = "aqua";
 /** The bubbling's own level is close to the effects', so it loops at
@@ -70,7 +84,10 @@ export class TankAudio {
   // only swaps manifest sounds, never user-supplied ones.
   private imported = new Map<string, AudioBuffer>();
   private ambientSrc: AudioBufferSourceNode | null = null;
-  private ambientBuf: AudioBuffer | null = null;
+  // Name:duration of the buffer the ambient loop plays — content
+  // identity, so re-decoding the same file doesn't restart it (each
+  // decode mints a fresh AudioBuffer object for identical bytes).
+  private ambientKey = "";
   private ambientWanted = false;
   // Bumped by each startAmbient so a stale pending resume() retry can
   // tell it lost the race instead of starting a second loop.
@@ -81,35 +98,42 @@ export class TankAudio {
   // set has one, and played as soon as audio runs.
   private openingDue = false;
 
+  /** Merge a pack's manifest sounds into the table — a later pack
+   * replaces only its same-named entries instead of wiping an earlier
+   * pack's bindings. The ambient loop restarts when the bubbling pick
+   * changed (addWavs' rule); callers still run startAmbient() for the
+   * not-yet-playing case. */
   async load(read: (path: string) => Promise<Uint8Array>,
              manifest: AzpackManifest): Promise<void> {
-    if (this.ambientSrc) {
-      try { this.ambientSrc.stop(); } catch { /* already ended */ }
-      this.ambientSrc = null;
-    }
-    this.ambientBuf = null;
-    this.ambientWanted = false;
-    this.buffers.clear();
     const sounds = manifest.sounds ?? [];
-    if (!sounds.length) return;
-    // context(), not a bare AudioContext: it also builds the master
-    // gain every play() connects to.
-    const ac = this.context();
-    // Decode concurrently — sequential awaits made a 25-sound set
-    // ~25x slower than the decoders allow. Each entry still fails
-    // alone so one bad file keeps the rest.
-    const decoded = await Promise.all(sounds.map(async (s) => {
-      try {
-        const raw = await read(s.file);
-        // A copy: decodeAudioData detaches the buffer it is given.
-        return { name: s.name,
-                 data: await ac.decodeAudioData(raw.slice().buffer) };
-      } catch (e) {
-        console.warn(`audio skip ${s.file}:`, e);
-        return null; // undecodable entry — keep the rest
+    if (sounds.length) {
+      // context(), not a bare AudioContext: it also builds the master
+      // gain every play() connects to.
+      const ac = this.context();
+      // Decode concurrently — sequential awaits made a 25-sound set
+      // ~25x slower than the decoders allow. Each entry still fails
+      // alone so one bad file keeps the rest.
+      const decoded = await Promise.all(sounds.map(async (s) => {
+        try {
+          const raw = await read(s.file);
+          // A copy: decodeAudioData detaches the buffer it is given.
+          return { name: s.name,
+                   data: await ac.decodeAudioData(raw.slice().buffer) };
+        } catch (e) {
+          console.warn(`audio skip ${s.file}:`, e);
+          return null; // undecodable entry — keep the rest
+        }
+      }));
+      for (const d of decoded) if (d) this.buffers.set(d.name, d.data);
+    }
+    const now = this.ambientPick();
+    if (this.ambientWanted && now !== "" && now !== this.ambientKey) {
+      if (this.ambientSrc) {
+        try { this.ambientSrc.stop(); } catch { /* already ended */ }
+        this.ambientSrc = null;
       }
-    }));
-    for (const d of decoded) if (d) this.buffers.set(d.name, d.data);
+      this.startAmbient();
+    }
   }
 
   /** Merge decoded WAVs (e.g. from a dropped .rsrc) under their resource
@@ -133,8 +157,8 @@ export class TankAudio {
     // A dropped bubbling sound can replace what's looping (or supply the
     // loop an earlier startAmbient found missing) — restart when the
     // buffer that would play now differs from the one currently selected.
-    const now = this.named(FILTER_BUBBLING);
-    if (this.ambientWanted && now !== null && now !== this.ambientBuf) {
+    const now = this.ambientPick();
+    if (this.ambientWanted && now !== "" && now !== this.ambientKey) {
       if (this.ambientSrc) {
         try { this.ambientSrc.stop(); } catch { /* already ended */ }
         this.ambientSrc = null;
@@ -255,8 +279,8 @@ export class TankAudio {
    * rule as addWavs. */
   removeWavs(names: Iterable<string>): void {
     for (const n of names) this.imported.delete(n);
-    const now = this.named(FILTER_BUBBLING);
-    if (this.ambientWanted && now !== this.ambientBuf) {
+    // No non-empty guard here: deleting the loop's own sound must stop it.
+    if (this.ambientWanted && this.ambientPick() !== this.ambientKey) {
       if (this.ambientSrc) {
         try { this.ambientSrc.stop(); } catch { /* already ended */ }
         this.ambientSrc = null;
@@ -318,12 +342,23 @@ export class TankAudio {
   /** Exact-name lookup (case-insensitive) for the original game's event
    * sounds. find()'s substring pass would let an unrelated import, a
    * song called "Switchfoot" say, stand in for the lamp's click. */
-  private named(name: string): AudioBuffer | null {
+  private namedEntry(name: string): { name: string; buf: AudioBuffer } |
+      null {
     const want = name.toLowerCase();
     for (const map of [this.imported, this.buffers])
       for (const [n, buf] of map)
-        if (n.toLowerCase() === want) return buf;
+        if (n.toLowerCase() === want) return { name: n, buf };
     return null;
+  }
+
+  private named(name: string): AudioBuffer | null {
+    return this.namedEntry(name)?.buf ?? null;
+  }
+
+  /** Content key of whichever buffer would loop as ambience now, or
+   * "" when the bank has no bubbling at all. */
+  private ambientPick(e = this.namedEntry(FILTER_BUBBLING)): string {
+    return e ? bufferKey(e.name, e.buf) : "";
   }
 
   private play(buf: AudioBuffer | null, gain = 0.8, loop = false,
@@ -389,6 +424,33 @@ export class TankAudio {
     this.play(this.named("letoutwater"), 0.7);
   }
 
+  /** Lifecycle events — the original's own event sounds, when a sound
+   * set carrying them is installed. */
+  sick(): void {
+    this.play(this.named("eventsick"), 0.7);
+  }
+  dead(): void {
+    this.play(this.named("eventdead"), 0.8);
+  }
+  birth(): void {
+    this.play(this.named("eventbirth"), 0.8);
+  }
+
+  /** Fish are begging — the original's timer chime as a dinner bell.
+   * Returns false only while audio can't sound, so the caller keeps
+   * waiting through a suspended context; a running context latches
+   * even if the sample is absent, since a missing buffer isn't worth
+   * a per-frame lookup for the whole episode. */
+  dinnerBell(): boolean {
+    if (!this.ctx || this.ctx.state !== "running") return false;
+    const chime = this.named("timeronoff");
+    // A missing buffer never appears mid-episode — latch without it.
+    if (!chime) return true;
+    // Otherwise report whether it actually sounded, so a transient
+    // play() decline retries next tick instead of muting the episode.
+    return this.play(chime, 0.45) !== null;
+  }
+
   /** Tap sounds are positional in the original app. */
   tap(x: number, y: number, w: number, h: number): void {
     const dx = Math.min(x, w - x), dy = Math.min(y, h - y);
@@ -400,11 +462,49 @@ export class TankAudio {
     this.play(this.find([sub]) ?? this.find(["center", "side"]), 0.8);
   }
 
+  /** The auto-feeder's timer tripped — the original's TimerOnOff
+   * chime, decoded but unused until now. */
+  feederChime(): void {
+    this.play(this.named("timeronoff"), 0.45);
+  }
+
   /** A bubble rising. The original has no sound for one, so this plays
    * a short bubble sound the user added, never the filter's loop. */
   bubble(): void {
     if (!this.bubblesOn) return;
     this.play(this.find(["bubble"], FILTER_BUBBLING), 0.4);
+  }
+
+  /** The degauss coil's BWONG — synthesized, not a bank sound: a 55 Hz
+   * thump under a whine that sweeps down through a lowpass as the
+   * field dies. Silent unless the context is already running — a
+   * degauss the user can't hear shouldn't spend a resume(). */
+  degauss(): void {
+    if (!this.ctx || !this.master || this.hidden ||
+        this.ctx.state !== "running") return;
+    const t = this.ctx.currentTime;
+    const thump = this.ctx.createOscillator();
+    thump.type = "sine";
+    thump.frequency.value = 55;
+    const tg = this.ctx.createGain();
+    tg.gain.setValueAtTime(0.5, t);
+    tg.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    thump.connect(tg).connect(this.master);
+    thump.start(t);
+    thump.stop(t + 0.3);
+    const whine = this.ctx.createOscillator();
+    whine.type = "sawtooth";
+    whine.frequency.setValueAtTime(900, t);
+    whine.frequency.exponentialRampToValueAtTime(300, t + 0.5);
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 300;
+    const wg = this.ctx.createGain();
+    wg.gain.setValueAtTime(0.12, t);
+    wg.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+    whine.connect(lp).connect(wg).connect(this.master);
+    whine.start(t);
+    whine.stop(t + 0.7);
   }
 
   /** The tank has opened with its saved sounds loaded: start the
@@ -428,8 +528,13 @@ export class TankAudio {
   startAmbient(): void {
     if (!this.ambientOn || this.ambientSrc) return; // off, or already live
     this.ambientWanted = true;
-    this.ambientBuf = this.named(FILTER_BUBBLING);
+    // One lookup feeds both the key and the source — two independent
+    // picks could disagree if tie-breaking ever diverged.
+    const e = this.namedEntry(FILTER_BUBBLING);
+    // Default params fire on explicit undefined too — guard so an
+    // empty bank doesn't trigger a second namedEntry lookup.
+    this.ambientKey = e ? this.ambientPick(e) : "";
     this.ambientGen++; // stale pending starts abort in play()
-    this.ambientSrc = this.play(this.ambientBuf, AMBIENT_GAIN, true);
+    this.ambientSrc = this.play(e?.buf ?? null, AMBIENT_GAIN, true);
   }
 }

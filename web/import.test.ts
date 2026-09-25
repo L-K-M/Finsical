@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { browserGeometry, importAddon, installProblem, listAddons,
-         loadProblem, transientFailure,
-         isListed, orphanedSounds, qualifySoundItemName, recordAddon }
-  from "./import.js";
+import { browserGeometry, DECOR_COPIES_MAX, decorCopyRoom, fragDecode,
+         fragEncode, importAddon, installProblem, listAddons,
+         loadProblem, transientFailure, isListed, orphanedSounds,
+         qualifySoundItemName, recordAddon } from "./import.js";
 import type { Importable } from "./import.js";
 
 const enc = new TextEncoder();
@@ -75,6 +75,9 @@ const innerZip = buildZip([
   { name: MP3_LEAF, data: MP3_BYTES },
   { name: "dup.mp3", data: MP3_BYTES },
   { name: "sub/dup.mp3", data: MP3_BYTES },
+  // A literal '#' in an entry name — must not break the URL's
+  // fragment chain.
+  { name: "hash#tag.mp3", data: MP3_BYTES },
 ]);
 const outerZip = buildZip([
   { name: "dir/", data: new Uint8Array(0) },
@@ -100,12 +103,12 @@ describe("archive.org nested collections", () => {
   it("lists sounds two zips deep and fish in subdirectories", async () => {
     const items = await listAddons();
     const sounds = items.filter((i) => i.section === "sounds");
-    expect(sounds).toHaveLength(3);
+    expect(sounds).toHaveLength(4);
     expect(sounds[0]!.inner).toBe("Macinfish");
     // Same-stem leaves in different subdirs must not alias — the
     // colliding one keeps its path-qualified name.
     expect(sounds.map((i) => i.inner).sort())
-      .toEqual(["Macinfish", "dup", "sub/dup"]);
+      .toEqual(["Macinfish", "dup", "hash#tag", "sub/dup"]);
     // zipUrl#innerMacZip#leaf — the entry chain is the identity.
     expect(sounds[0]!.url.split("#")).toHaveLength(3);
     expect(sounds[0]!.url).toContain(
@@ -120,7 +123,33 @@ describe("archive.org nested collections", () => {
     // dir/notreally.zip matches `inside` but can't parse — it must be
     // skipped, not sink the collection's whole listing.
     const items = await listAddons();
-    expect(items.filter((i) => i.section === "sounds")).toHaveLength(3);
+    expect(items.filter((i) => i.section === "sounds")).toHaveLength(4);
+  });
+
+  it("round-trips an entry name containing a '#'", async () => {
+    const items = await listAddons();
+    const snd = items.find((i) => i.inner === "hash#tag")!;
+    // The escaped name keeps the fragment chain at three parts.
+    expect(snd.url.split("#")).toHaveLength(3);
+    expect(snd.url).toContain("hash%23tag.mp3");
+    const rs = await importAddon(snd.url);
+    expect(rs[0]!.sounds).toEqual([{ name: "hash#tag", wav: MP3_BYTES }]);
+  });
+
+  it("keeps non-escaped names raw so stored URLs stay identical", () => {
+    // The URL is the add-on's persisted identity — names without # or
+    // % must mint the same string installs recorded before escaping.
+    for (const raw of ["マッキンフィッシュ（MAC専用）.zip", "a b.mp3",
+                       "dup.mp3"]) {
+      expect(fragEncode(raw)).toBe(raw);
+      expect(fragDecode(raw)).toBe(raw);
+    }
+    // Round-trips through the escape.
+    expect(fragEncode("a#b.mp3")).toBe("a%23b.mp3");
+    expect(fragDecode("a%23b.mp3")).toBe("a#b.mp3");
+    // A literal %23 encodes to %2523 and back — order matters.
+    expect(fragEncode("a%23b.mp3")).toBe("a%2523b.mp3");
+    expect(fragDecode("a%2523b.mp3")).toBe("a%23b.mp3");
   });
 
   it("imports the nested mp3 as a sound record", async () => {
@@ -129,6 +158,56 @@ describe("archive.org nested collections", () => {
     const rs = await importAddon(snd.url);
     expect(rs).toHaveLength(1);
     expect(rs[0]!.sounds).toEqual([{ name: "Macinfish", wav: MP3_BYTES }]);
+  });
+
+  it("delivers each collection's items before the whole list resolves",
+     async () => {
+    // Progressive listing: the panel shows rows per landed collection
+    // rather than waiting on the slowest one.
+    const batches: Importable[][] = [];
+    let resolved = false;
+    const p = listAddons(undefined, (items) => {
+      expect(resolved).toBe(false); // fires before the promise settles
+      batches.push(items);
+    }).then((items) => { resolved = true; return items; });
+    const items = await p;
+    expect(batches.length).toBeGreaterThan(0);
+    expect(batches.flat().map((i) => i.url).sort())
+      .toEqual(items.map((i) => i.url).sort());
+    // Every delivered item carries its collection's section.
+    expect(batches.flat().every((i) => i.section !== "")).toBe(true);
+  });
+
+  it("keeps the listing when the progressive callback throws", async () => {
+    // A throwing UI callback must not reject Promise.all — that would
+    // void every collection's items and masquerade as a fetch failure.
+    let calls = 0;
+    const items = await listAddons(undefined, () => {
+      // Throw on every call: a regression that swallows the callback
+      // inside the fetch try must void every collection, not just the
+      // first — a single throw could miss that.
+      calls++;
+      throw new Error("ui bug");
+    });
+    expect(calls).toBeGreaterThan(0);
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.some((i) => i.section === "sounds")).toBe(true);
+  });
+
+  it("keeps the listing when the callback returns a rejecting thenable",
+     async () => {
+    // A void-typed callback can still hand back a rejected promise at
+    // runtime; a custom thenable covers the non-native-Promise case.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const items = await listAddons(undefined, () => ({
+      then: (_ok: unknown, err: (e: unknown) => void) =>
+        err(new Error("async ui bug")),
+    }) as unknown as void);
+    // Flush so a genuine unhandled rejection would have fired.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(items.length).toBeGreaterThan(0);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
 
@@ -188,6 +267,54 @@ describe("recordAddon", () => {
     // Removed while its restore was downloading: it stays removed.
     expect(recordAddon(list, it0("gone.zip"), ["z"], "refresh")).toBe(false);
     expect(list).toHaveLength(1);
+  });
+  it("counts Add Again copies on decor sections only", () => {
+    const plant = (url: string): Importable =>
+      ({ url, inner: url, section: "plants" });
+    const list: Importable[] = [];
+    recordAddon(list, plant("a.plt"), [], "install");
+    recordAddon(list, plant("a.plt"), [], "install");
+    recordAddon(list, plant("a.plt"), [], "install");
+    expect(list[0]!.copies).toBe(3);
+    // A restore refreshes the record — it isn't another copy.
+    recordAddon(list, plant("a.plt"), [], "refresh");
+    expect(list[0]!.copies).toBe(3);
+    // Fish and sound packs never carry a count.
+    recordAddon(list, it0("s.rez"), [], "install");
+    recordAddon(list, it0("s.rez"), [], "install");
+    expect(list[1]!.copies).toBeUndefined();
+  });
+  it("strips a caller-supplied copies field on first install", () => {
+    const list: Importable[] = [];
+    recordAddon(list, { url: "a.plt", inner: "a.plt",
+                        section: "plants", copies: 99 }, [], "install");
+    expect(list[0]!.copies).toBeUndefined();
+  });
+  it("caps the copy count and clamps corrupt values", () => {
+    const plant = (url: string): Importable =>
+      ({ url, inner: url, section: "plants" });
+    const list: Importable[] = [];
+    for (let i = 0; i < DECOR_COPIES_MAX + 2; i++)
+      recordAddon(list, plant("a.plt"), [], "install");
+    expect(list[0]!.copies).toBe(DECOR_COPIES_MAX);
+    // A corrupt persisted count can't grow the record past the cap.
+    list[0]!.copies = -7;
+    recordAddon(list, plant("a.plt"), [], "install");
+    expect(list[0]!.copies).toBe(2);
+  });
+});
+
+describe("decorCopyRoom", () => {
+  it("counts placed copies by pack and floors at zero", () => {
+    const decors = Array.from({ length: DECOR_COPIES_MAX },
+                              () => ({ pack: "p.plt" }));
+    expect(decorCopyRoom(decors, "p.plt")).toBe(0);
+    expect(decorCopyRoom(decors, "other.plt")).toBe(DECOR_COPIES_MAX);
+    expect(decorCopyRoom([{ pack: "p.plt" }], "p.plt"))
+      .toBe(DECOR_COPIES_MAX - 1);
+    // More placed than the cap can't go negative.
+    expect(decorCopyRoom([...decors, { pack: "p.plt" }], "p.plt"))
+      .toBe(0);
   });
 });
 

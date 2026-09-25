@@ -1,5 +1,5 @@
 import { makeRng } from "./rng.js";
-import { HUNGER_SEEK, QUALITY_SEEK } from "./tuning.js";
+import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK } from "./tuning.js";
 import { demoLight, DUSK_LIGHT } from "./light.js";
 
 export interface Tank {
@@ -70,6 +70,22 @@ export interface Fish {
    * enough for the fixed margins. */
   halfW?: number;
   halfH?: number;
+  /** Under sustained illness pressure (starving or foul water): the
+   * fish is listless, and dead if nothing improves. */
+  sick: boolean;
+  /** Ticks of accumulated illness pressure — decays when the cause
+   * clears, kills the fish at SICK_ONSET + DEATH_TICKS. */
+  sickTicks: number;
+  /** A corpse floats belly-up at the surface until it dissolves. */
+  dead: boolean;
+  deadTicks: number;
+}
+
+/** Lifecycle transitions queued for the renderer/audio to react to;
+ * the caller drains the array each tick. */
+export interface SimEvent {
+  type: "sick" | "dead" | "birth";
+  fish: Fish;
 }
 
 export interface Food {
@@ -78,6 +94,8 @@ export interface Food {
   eaten: boolean;
   /** ticks spent rotting on the gravel — fouls the water while it lasts */
   settled: number;
+  /** the rare golden pellet — a meal worth a victory roll */
+  golden?: boolean;
 }
 
 export interface Bubble {
@@ -109,6 +127,8 @@ const HUNGER_SNACK = 0.1;
 const NOTICE_DIST = 24;
 const EAT_DIST = 6;
 const FOOD_SINK = 0.35;
+/** One pellet in fifty drops gold — a meal worth a victory roll. */
+const GOLDEN_ODDS = 1 / 50;
 /** Ticks a settled pellet takes to dissolve away (~45 s at 30 tps). */
 export const FOOD_ROT_TICKS = 30 * 45;
 /** Quality drained per tick per rotting pellet (~0.2 over a full rot). */
@@ -186,7 +206,14 @@ const SCHOOL_RADIUS = 42;
 /** Above this hunger a fish begs near the surface between meals. */
 const BEG_HUNGER = 0.75;
 /** The hovered pointer is noticed inside this radius. */
-const NOTICE_RADIUS = 80;
+export const NOTICE_RADIUS = 80;
+/** How many calm fish may gather at the pointer at once — the
+ * original let a small crowd press the glass; a hard cap keeps a
+ * full tank from emptying onto the cursor. */
+const NOTICE_CAP = 4;
+/** Extra standoff per watcher rank so a gathered crowd fans out
+ * instead of stacking on one point. */
+const NOTICE_STAGGER = 10;
 /** Smallest half-size of a fish's pick box, in tank px (fishAt). */
 const HIT_MIN = 8;
 /** This close to the pointer a noticed fish just hovers nearby. */
@@ -217,6 +244,24 @@ export const DAY_TICKS = 24000;
  * fluttering between states. Exported for the sleep test. */
 export const SLEEP_LIGHT = DUSK_LIGHT;
 export const WAKE_LIGHT = 0.6;
+/** Hunger or foul water at these levels pressures a fish toward
+ * sickness — ~30 s of either brings it on, ~5 min untreated kills.
+ * A fish recovers while neither holds; pressure decays twice as fast
+ * as it builds, so one bad spell leaves it fragile for a while. */
+const SICK_HUNGER = 0.95;
+const SICK_QUALITY = 0.12;
+const SICK_ONSET = 900;
+const DEATH_TICKS = 9000;
+/** A corpse dissolves ~2 min after death unless flushed first. */
+export const CORPSE_TICKS = 3600;
+/** Two healthy, well-fed, grown fish of a species occasionally have a
+ * fry — ~one birth per 10 min in a thriving tank. FRY_SCALE is the
+ * juvenile minimum addFish clamps to, so a newborn reads visibly
+ * smaller than its parents and grows up on its meals. */
+const BIRTH_HUNGER = 0.3;
+const BIRTH_SCALE = 0.9;
+const BIRTH_CHANCE = 1 / 18000;
+const FRY_SCALE = SPAWN_SCALE_MIN;
 
 /** Pitch off the facing axis, limited to MAX_PITCH either way. */
 function clampPitch(p: number): number {
@@ -229,18 +274,39 @@ export class Sim {
   readonly fish: Fish[] = [];
   readonly food: Food[] = [];
   readonly bubbles: Bubble[] = [];
+  /** Spawn a bubble at a point — the view emits these for decor
+   * (plants oxygenating); the lifecycle (rise, surface pop) is the
+   * same as a gravel bubble's. */
+  spawnBubble(x: number, y: number): void {
+    this.bubbles.push({ x, y });
+  }
   tickCount = 0;
   /** 1 = clean, 0 = foul. Rotted food fouls it; filtration recovers it. */
   waterQuality = 1;
+  /** Lifecycle transitions since the last drain (sound/UI hooks). */
+  readonly events: SimEvent[] = [];
   /** Pointer position in tank px while the tank is hovered — the
    * nearest calm fish notices it and drifts over. null when it
    * leaves. */
   notice: { x: number; y: number } | null = null;
-  /** The calm fish currently watching the pointer — the drift-state
-   * fish closest to `notice`, picked once per tick in tick().
-   * Read-only view: tick() owns the pick. */
-  get noticeFish(): Fish | null { return this._noticeFish; }
-  private _noticeFish: Fish | null = null;
+  /** The senior calm fish watching the pointer — the first of up to
+   * NOTICE_CAP watchers to join, kept while it stays in range.
+   * Read-only view: tick() owns the picks. */
+  get noticeFish(): Fish | null { return this._noticeFish[0] ?? null; }
+  /** The watchers in join order — up to NOTICE_CAP calm fish gather
+   * at the pointer, each holding its rank so the crowd fans out. */
+  private _noticeFish: Fish[] = [];
+
+  /** The same condition decide() uses to send a fish begging at the
+   * surface: starving, and water clean enough to keep an appetite. */
+  isBegging(f: Fish): boolean {
+    return f.hunger > BEG_HUNGER && this.waterQuality > QUALITY_SEEK;
+  }
+
+  /** True while any fish is begging — the dinner-bell predicate. */
+  get anyBegging(): boolean {
+    return this.fish.some((f) => this.isBegging(f));
+  }
   private rand: () => number;
   private nextId = 0;
   /** Fish only bed down after the tank has seen daylight once — a
@@ -260,7 +326,8 @@ export class Sim {
       speed: 1, vy: 0, tx: 0, ty: 0, turnDir: 1, turnFrom: 1,
       strokes: 0, bandY: 0, scale: 1, hunger: 0.2,
       state: "drift", stateTicks: 0, startleLen: STARTLE_TICKS,
-      panicHops: 0, ...fish,
+      panicHops: 0, sick: false, sickTicks: 0, dead: false,
+      deadTicks: 0, ...fish,
     };
     // Steering keeps heading on the facing side. A fish given only a
     // facing, or saved mid-roll, would otherwise start swimming
@@ -285,6 +352,15 @@ export class Sim {
     else
       // Bad saves shouldn't render invisible or dwarf the tank.
       f.scale = Math.min(Math.max(f.scale, SPAWN_SCALE_MIN), MAX_SCALE);
+    // Lifecycle fields from a save sanitize like scale did: only a
+    // genuine `true` carries over (a corpse in a save dissolves on
+    // restore), bogus values can't fake an illness.
+    if (f.sick !== true) f.sick = false;
+    if (f.dead !== true) f.dead = false;
+    if (!Number.isFinite(f.sickTicks)) f.sickTicks = 0;
+    else f.sickTicks = Math.max(0, f.sickTicks);
+    if (!Number.isFinite(f.deadTicks)) f.deadTicks = 0;
+    else f.deadTicks = Math.max(0, f.deadTicks);
     this.fish.push(f);
     return f;
   }
@@ -301,7 +377,8 @@ export class Sim {
    * gravel. Returns the pellet, so callers can mark where it went in. */
   dropFood(x: number): Food {
     const cx = Math.min(Math.max(x, MARGIN), this.tank.width - MARGIN);
-    const pellet = { x: cx, y: FOOD_ENTRY_Y, eaten: false, settled: 0 };
+    const pellet = { x: cx, y: FOOD_ENTRY_Y, eaten: false, settled: 0,
+                     golden: this.rand() < GOLDEN_ODDS };
     this.food.push(pellet);
     return pellet;
   }
@@ -320,6 +397,7 @@ export class Sim {
    * with distance like the original's 1 − dist/radius falloff. */
   tap(x: number, y: number): void {
     for (const f of this.fish) {
+      if (f.dead) continue; // the dead do not startle
       const dx = f.x - x, dy = f.y - y;
       if (dx * dx + dy * dy < STARTLE_RADIUS * STARTLE_RADIUS) {
         const d = Math.max(Math.hypot(dx, dy), 1);
@@ -360,35 +438,46 @@ export class Sim {
   tick(): void {
     this.tickCount++;
     if (this.light >= WAKE_LIGHT) this.seenDay = true;
-    // The hovered pointer is noticed by the closest calm fish — only
-    // drifters look up; seeking and startled fish have other business.
-    // The watcher keeps watching while it stays in range (a roll to
-    // face the pointer is part of watching), so one fish comes over
-    // instead of a new pick every tick drawing two or three.
+    // The hovered pointer is noticed by calm fish — only drifters
+    // look up; seeking and startled fish have other business. A
+    // watcher keeps watching while it stays in range (a roll to face
+    // the pointer is part of watching), so the crowd is stable instead
+    // of a new pick every tick re-drawing the members.
     const n = this.notice;
-    const w = this._noticeFish;
     const inRange = (f: Fish): boolean => !!n &&
       (f.x - n.x) ** 2 + (f.y - n.y) ** 2 < NOTICE_RADIUS * NOTICE_RADIUS;
-    if (!w || !this.fish.includes(w) || !inRange(w) ||
-        (w.state !== "drift" && w.state !== "turn")) {
-      this._noticeFish = null;
-      if (n) {
-        let bd = NOTICE_RADIUS * NOTICE_RADIUS;
-        for (const f of this.fish) {
-          if (f.state !== "drift") continue;
-          const d = (f.x - n.x) ** 2 + (f.y - n.y) ** 2;
-          if (d < bd) { bd = d; this._noticeFish = f; }
-        }
+    this._noticeFish = this._noticeFish.filter((f) =>
+      this.fish.includes(f) && inRange(f) &&
+      (f.state === "drift" || f.state === "turn"));
+    if (n && this._noticeFish.length < NOTICE_CAP) {
+      // Fill the open slots with the nearest drifters not already
+      // watching — a small crowd presses the glass, like the original.
+      const cand: { f: Fish; d: number }[] = [];
+      for (const f of this.fish) {
+        if (f.state !== "drift" || this._noticeFish.includes(f))
+          continue;
+        const d = (f.x - n.x) ** 2 + (f.y - n.y) ** 2;
+        if (d < NOTICE_RADIUS * NOTICE_RADIUS) cand.push({ f, d });
+      }
+      cand.sort((a, b) => a.d - b.d);
+      for (const c of cand) {
+        if (this._noticeFish.length >= NOTICE_CAP) break;
+        this._noticeFish.push(c.f);
       }
     }
     for (const f of this.fish) this.tickFish(f);
+    // Corpses dissolve once their time at the surface is up.
+    for (let i = this.fish.length - 1; i >= 0; i--)
+      if (this.fish[i]!.dead && this.fish[i]!.deadTicks >= CORPSE_TICKS)
+        this.fish.splice(i, 1);
+    this.maybeBirth();
     // Panic propagates: a freshly darting fish startles close
     // neighbors — fish-on-fish reaction on the same distance falloff.
     for (const a of this.fish) {
-      if (a.state !== "startle" || a.stateTicks > 4 ||
+      if (a.dead || a.state !== "startle" || a.stateTicks > 4 ||
           a.panicHops >= MAX_PANIC_HOPS) continue;
       for (const b of this.fish) {
-        if (b === a || b.state === "startle") continue;
+        if (b === a || b.dead || b.state === "startle") continue;
         const dx = b.x - a.x, dy = b.y - a.y;
         if (dx * dx + dy * dy >= PROP_RADIUS * PROP_RADIUS) continue;
         const d = Math.max(Math.hypot(dx, dy), 1);
@@ -426,9 +515,41 @@ export class Sim {
   private tickFish(f: Fish): void {
     f.stateTicks++;
     f.phase++;
+    // A corpse ignores hunger, panic and the sleep clock: it rides up
+    // to the surface belly-up, drifts, and dissolves at CORPSE_TICKS.
+    if (f.dead) {
+      f.deadTicks++;
+      f.y += (SURFACE + 3 - f.y) * 0.03;
+      f.x += 0.06 * f.facing;
+      if (f.x < MARGIN || f.x > this.tank.width - MARGIN)
+        f.facing = (-f.facing) as 1 | -1;
+      f.speed = 0; f.vy = 0;
+      return;
+    }
     f.hunger = Math.min(1, f.hunger + HUNGER_PER_TICK);
-    // Foul water makes fish sluggish; panic (startle) ignores it.
-    const vigor = 0.5 + 0.5 * this.waterQuality;
+    // Illness pressure: sustained starvation or foul water makes a
+    // fish sick, and staying sick kills it. Relief decays pressure
+    // twice as fast as it builds — one bad spell leaves it fragile.
+    const ill = f.hunger >= SICK_HUNGER ||
+                this.waterQuality < SICK_QUALITY;
+    f.sickTicks = ill ? Math.min(f.sickTicks + 1, SICK_ONSET + DEATH_TICKS)
+                      : Math.max(0, f.sickTicks - 2);
+    if (f.sickTicks >= SICK_ONSET + DEATH_TICKS) {
+      f.dead = true;
+      f.sick = false;
+      f.deadTicks = 0;
+      this.events.push({ type: "dead", fish: f });
+      return;
+    }
+    if (!f.sick && f.sickTicks >= SICK_ONSET) {
+      f.sick = true;
+      this.events.push({ type: "sick", fish: f });
+    } else if (f.sick && f.sickTicks === 0) {
+      f.sick = false; // fed, or the water cleared
+    }
+    // Foul water makes fish sluggish; illness halves it again. Panic
+    // (startle) ignores it.
+    const vigor = (0.5 + 0.5 * this.waterQuality) * (f.sick ? 0.45 : 1);
 
     // Night falls: any unpanicked fish beds down. A sleeping fish
     // wakes at dawn; a knock on the glass wakes it instantly (the
@@ -491,6 +612,13 @@ export class Sim {
         // Facing already flipped mid-roll; head for the target on that
         // side. The roll bled off most of the speed, and the new stroke
         // builds it back from there.
+        // A forced roll (the golden pellet's) can leave a freshly
+        // decided target behind the new facing — mirror it across the
+        // fish rather than pitch against the clamp swimming away.
+        if ((f.x - f.tx) * f.facing > TURN_SLACK) {
+          const { x0, x1 } = this.room(f);
+          f.tx = Math.min(x1, Math.max(x0, 2 * f.x - f.tx));
+        }
         const axis = f.facing > 0 ? 0 : Math.PI;
         f.heading = wrapAngle(axis + clampPitch(
           wrapAngle(Math.atan2(f.ty - f.y, f.tx - f.x) - axis)));
@@ -516,10 +644,27 @@ export class Sim {
         turning = this.maybeTurn(f);
       }
       let dist = Math.hypot(f.tx - f.x, f.ty - f.y);
-      const n = f === this.noticeFish ? this.notice : null;
+      const rank = this._noticeFish.indexOf(f);
+      const n = rank >= 0 ? this.notice : null;
       const nd = n ? Math.hypot(n.x - f.x, n.y - f.y) : Infinity;
-      // A big fish stops with its nose, not its middle, by the pointer.
-      const standoff = NOTICE_STANDOFF + this.halfW(f);
+      // A big fish stops with its nose, not its middle, by the
+      // pointer; later arrivals stop a step farther out so a gathered
+      // crowd reads as a loose arc, not a stack. The clamp keeps a
+      // large fish's hold point inside the notice radius — outside it
+      // the watcher would drop out of range, drift back in, and
+      // flap between watching and wandering.
+      // The cap is per-rank: a lower rank's ceiling sits one stagger
+      // inside the next rank's, so capped watchers still fan out
+      // instead of collapsing onto the same ring. The floor is
+      // rank-staggered for the same reason — a flat floor would
+      // collapse every floored rank onto one ring after a retune.
+      const cap = Math.max(
+        NOTICE_STANDOFF + Math.max(0, rank) * NOTICE_STAGGER,
+        NOTICE_RADIUS - 4 -
+          (NOTICE_CAP - 1 - Math.max(0, rank)) * NOTICE_STAGGER);
+      const standoff = Math.min(cap,
+        NOTICE_STANDOFF + this.halfW(f) +
+        Math.max(0, rank) * NOTICE_STAGGER);
       // A fish watching the pointer from inside the standoff holds
       // there instead of re-deciding.
       if (!food && !turning && nd > standoff &&
@@ -611,9 +756,15 @@ export class Sim {
           f.scale += (MAX_SCALE - f.scale) * GROWTH;
           this.setState(f, "drift");
           this.decide(f);
-          // The next destination may lie behind: roll to it now rather
-          // than pitching against the clamp until the next decision.
-          this.maybeTurn(f);
+          if (food.golden) {
+            // A golden meal earns a victory roll whether or not the
+            // next destination lies behind.
+            this.startTurn(f, this.rand() < 0.5 ? 1 : -1);
+          } else {
+            // The next destination may lie behind: roll to it now rather
+            // than pitching against the clamp until the next decision.
+            this.maybeTurn(f);
+          }
         }
       }
     }
@@ -681,8 +832,7 @@ export class Sim {
     }
     // A starving fish begs where the food lands — while the water is
     // still clean enough to keep an appetite (the seek gate).
-    const begging =
-      f.hunger > BEG_HUNGER && this.waterQuality > QUALITY_SEEK;
+    const begging = this.isBegging(f);
     if (begging) f.bandY = Math.min(f.bandY, y0 + BAND_HALF);
     // Gasping: foul water shrinks the usable depth toward the surface,
     // so fish hang just under it until filtration recovers. A little
@@ -750,13 +900,19 @@ export class Sim {
     const want = Math.atan2(f.ty - f.y, f.tx - f.x);
     if (back > TURN_SLACK ||
         Math.abs(wrapAngle(want - (f.facing > 0 ? 0 : Math.PI))) > MAX_PITCH) {
-      this.setState(f, "turn");
-      f.turnFrom = f.facing;
       // Both half-rings reach the opposite profile; pick randomly.
-      f.turnDir = this.rand() < 0.5 ? 1 : -1;
+      this.startTurn(f, this.rand() < 0.5 ? 1 : -1);
       return true;
     }
     return false;
+  }
+
+  /** Enter the roll-through-edge-on turn: resets the roll clock and
+   * remembers the entry profile so the mid-roll flip can fire once. */
+  private startTurn(f: Fish, dir: 1 | -1): void {
+    this.setState(f, "turn");
+    f.turnFrom = f.facing;
+    f.turnDir = dir;
   }
 
   /** Half the body's drawn width and height at its current growth. */
@@ -772,6 +928,34 @@ export class Sim {
     const y0 = Math.min(SURFACE + Math.max(MARGIN, ky), h / 2);
     return { x0, x1: w - x0, y0,
              y1: Math.max(y0, h - Math.max(BOTTOM_PAD, ky)) };
+  }
+
+  /** A thriving pair occasionally produces a fry — the original's
+   * quiet reward for a well-kept tank. One roll per eligible species
+   * per tick keeps a crowded healthy tank from baby-booming. */
+  private maybeBirth(): void {
+    if (this.fish.length >= FISH_CAP) return;
+    const seen = new Set<string>();
+    const parents = new Map<string, Fish>();
+    for (const f of this.fish) {
+      if (!f.species || f.dead || f.sick || f.hunger > BIRTH_HUNGER ||
+          f.scale < BIRTH_SCALE) continue;
+      if (seen.has(f.species)) parents.set(f.species, f);
+      seen.add(f.species);
+    }
+    for (const [species, parent] of parents) {
+      if (this.rand() >= BIRTH_CHANCE) continue;
+      const fry = this.addFish({
+        species, x: parent.x,
+        y: Math.min(parent.y + 10, this.tank.height - BOTTOM_PAD - 4),
+        facing: parent.facing, heading: parent.heading,
+        cruise: parent.cruise, hunger: 0.3, scale: FRY_SCALE,
+        ...(parent.sheetIdx !== undefined ? { sheetIdx: parent.sheetIdx } : {}),
+        ...(parent.pack !== undefined ? { pack: parent.pack } : {}),
+      });
+      this.events.push({ type: "birth", fish: fry });
+      return; // at most one birth per tick
+    }
   }
 
   private setState(f: Fish, s: FishState): void {

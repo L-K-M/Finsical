@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deriveStats, hungerLabel, SPARK_H, SPARK_SLOT_MS, SPARK_W,
-         sparkColumns, sparkRow, trend, uptime } from "./statsmodel.js";
+         sparkColumns, sparkRow, summaryText, trend, uptime } from "./statsmodel.js";
 import { DAY_TICKS, Sim } from "../core/sim.js";
 import { HUNGER_SEEK } from "../core/tuning.js";
 
@@ -198,5 +198,27 @@ describe("sparkline", () => {
       { t: now - SPARK_SLOT_MS, v: null }, { t: now, v: 0.5 },
     ], now);
     expect(cols[SPARK_W - 2]).toBeNull();
+  });
+});
+
+describe("summaryText", () => {
+  it("compresses the window rows into a few plain-text lines", () => {
+    const text = summaryText(deriveStats({
+      ...base, food: 3, foodSettled: 1, waterQuality: 0.5,
+    }));
+    const lines = text.split("\n");
+    expect(lines[0]).toBe(
+      "Tank Stats — 2 fish, 1 seeking food; water 50%; " +
+      "avg hunger 40%; up 1h 30m");
+    expect(lines[1]).toBe("Hungriest: Angel — peckish");
+    expect(lines[2]).toBe("Food: 3 pellets, 1 rotting · Light: Day");
+    expect(lines[3]).toMatch(/^Care: /);
+  });
+
+  it("handles an empty tank", () => {
+    const text = summaryText(deriveStats({ fish: [], tickCount: 0 }));
+    expect(text.split("\n")[0]).toContain("0 fish");
+    expect(text).toContain("no hunger data");
+    expect(text).toContain("Hungriest: —");
   });
 });

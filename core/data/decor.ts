@@ -142,16 +142,22 @@ export function decorFrame(tick: number, n: number, phase: number): number {
   return (Math.floor(tick / DECOR_TICKS_PER_FRAME) + phase) % n;
 }
 
-/** The first frame (0 to n-1) the `copy`th installed copy of pack `src`
- * shows: an FNV-1a hash of the URL, stepped by the golden ratio per
- * copy, so neither different packs nor Add Again copies of one pack
- * sway in lockstep. Stable across relaunches for the same tank. */
-export function decorPhase(src: string, copy: number, n: number): number {
+/** The `copy`th installed copy of pack `src`'s hash fraction in [0,1):
+ * an FNV-1a hash of the URL stepped by the golden ratio per copy, so
+ * neither different packs nor Add Again copies share a phase. Stable
+ * across relaunches for the same tank. */
+export function decorPhaseFrac(src: string, copy: number): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < src.length; i++)
     h = Math.imul(h ^ src.charCodeAt(i), 0x01000193);
-  const t = (h >>> 0) / 2 ** 32 + copy * 0.6180339887;
-  return Math.floor((t % 1) * n);
+  return ((h >>> 0) / 2 ** 32 + copy * 0.6180339887) % 1;
+}
+
+/** The first frame (0 to n-1) the `copy`th installed copy of pack `src`
+ * shows. Built on decorPhaseFrac so frame starts and sway phases stay
+ * in lockstep-free agreement. */
+export function decorPhase(src: string, copy: number, n: number): number {
+  return Math.floor(decorPhaseFrac(src, copy) * n);
 }
 
 /**
