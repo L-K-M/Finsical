@@ -63,8 +63,8 @@ import { bubbleOffset, bubblePops, drawAir, drawBubblePop,
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
   from "./surface.js";
 import {
-  DEFAULT_MACHINE, glassRect, machineById, rasterInGlass, SCREENBACK_HOLE_PAD,
-  shellMarkup,
+  glassRect, machineById, MACHINE_KEY, rasterInGlass,
+  savedMachineId, SCREENBACK_HOLE_PAD, shellMarkup,
 } from "./machines.js";
 import type { CrtConfig } from "./crt.js";
 import type { WaterMotion } from "./water.js";
@@ -1940,14 +1940,10 @@ function applyCrtConfig(raw: unknown): void {
 // section — setCrt below calls postState() during module eval, and a
 // let/TDZ read would throw (silently, inside that try) before a later
 // declaration ran.
-const MACHINE_KEY = "finsical:machine";
 // localStorage access itself can throw where storage is blocked — a
-// bare read here would abort module eval entirely.
-let machine: Machine =
-  (() => { try {
-    return machineById(localStorage.getItem(MACHINE_KEY) ?? "");
-  } catch { return undefined; } })()
-  ?? machineById(DEFAULT_MACHINE)!;
+// bare read here would abort module eval entirely; savedMachineId
+// owns the catch and always returns a valid id.
+let machine: Machine = machineById(savedMachineId())!;
 
 // ---- sound settings ------------------------------------------------------
 // Volume, mute and the bubble/ambience switches. Declared before the

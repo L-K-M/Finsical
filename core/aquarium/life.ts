@@ -362,8 +362,11 @@ export function sanitizeLife(raw: unknown): FishLife | undefined {
     sick: disease === null ? null
       : { disease, amount: num(sick?.amount, 0, 100) ?? 1,
           progress: num(sick?.progress, 0, 1) ?? 0 },
-    dead: cause === null ? null
-      : { cause, at: num(dead?.at, 0, Number.MAX_SAFE_INTEGER) ?? 0 },
+    // A dead record that is present but corrupt stays dead — mapping
+    // an unreadable cause to null would resurrect the fish on load.
+    dead: dead ? { cause: cause ?? Cause.oldAge,
+                   at: num(dead.at, 0, Number.MAX_SAFE_INTEGER) ?? 0 }
+               : null,
     clock: {
       hunger: num(c.hunger, 0, 1e6) ?? 0, age: num(c.age, 0, 1e6) ?? 0,
       health: num(c.health, 0, 1e6) ?? 0, sick: num(c.sick, 0, 1e6) ?? 0,
