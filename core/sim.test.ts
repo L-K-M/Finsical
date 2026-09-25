@@ -3,7 +3,7 @@ import { BAND_HALF, BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, MARGIN,
          MAX_UNEATEN, NOTICE_RADIUS, PELLET_UNITS, Sim, SLEEP_LIGHT,
          SURFACE,
          TURN_TICKS, WAKE_LIGHT } from "./sim.js";
-import { QUALITY_SEEK } from "./tuning.js";
+import { HUNGER_SEEK, QUALITY_SEEK } from "./tuning.js";
 import { CLOCK_NIGHT_LIGHT } from "./light.js";
 import { pitch } from "./pose.js";
 
@@ -1178,4 +1178,60 @@ describe("lifecycle", () => {
     expect(sim.events.every((e) => e.type !== "birth")).toBe(true);
   });
 
+});
+
+describe("B-58 hunger and vigor", () => {
+  it("brakes a weakened seeker — the floor is pre-vigor", () => {
+    // A latched brake past its decay lands on the floor; a fish whose
+    // vigor is down (ill or worn by foul water) must cross that floor
+    // proportionally instead of having the division cancel it out.
+    const step = (health: number): number => {
+      const sim = new Sim({ width: 320, height: 200 }, 5);
+      const f = sim.addFish({ x: 100, y: 100, hunger: 1, facing: 1,
+                              state: "seek", latch: 0, peak: 1,
+                              phase: 30, speed: 0.6 });
+      sim.advanceLife(1);
+      f.life!.health = health;
+      sim.food.push({ x: 108, y: 100, eaten: false, settled: 1 });
+      sim.tick();
+      return Math.hypot(f.x - 100, f.y - 100);
+    };
+    const well = step(90);
+    const weak = step(1);
+    expect(weak).toBeLessThan(well * 0.9);
+    // The pin that separates old from new: a weakened seeker must end
+    // up slower than the pellet sinks (FOOD_SINK * 1.5 = 0.525 px).
+    // The old /vigor floor cancelled the penalty and gave 0.525.
+    expect(weak).toBeLessThan(0.525);
+  });
+
+  it("wakes a sleeper for a pellet inside NOTICE_DIST at snack hunger", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 4);
+    sim.setLight(0); // night
+    const f = sim.addFish({ x: 100, y: 184, hunger: HUNGER_SEEK - 0.01,
+                            state: "sleep" });
+    sim.dropFood(115); // sinks to the gravel 15 px from the sleeper
+    let woke = false;
+    for (let i = 0; i < 700 && !woke; i++) {
+      // Pin hunger just under HUNGER_SEEK so the wake can only come
+      // through the snack-smell path, never the any-pellet seek path.
+      f.hunger = HUNGER_SEEK - 0.01;
+      sim.tick();
+      woke = f.state !== "sleep";
+    }
+    expect(woke).toBe(true);
+    expect(f.hunger).toBeLessThan(HUNGER_SEEK);
+  });
+
+  it("keeps a snack-hungry sleeper down for a distant pellet", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 4);
+    sim.setLight(0);
+    const f = sim.addFish({ x: 100, y: 184, hunger: 0.2,
+                            state: "sleep" });
+    sim.dropFood(300); // 200 px away — too far to smell at 0.2
+    for (let i = 0; i < 600; i++) {
+      sim.tick();
+      expect(f.state).toBe("sleep");
+    }
+  });
 });
