@@ -462,6 +462,9 @@ function fishAtPoint(p: { x: number; y: number }): Fish | null {
 // per frame instead of per move.
 let overFeedZone = false;
 let lastClient: { x: number; y: number } | null = null;
+// The mouse's last position, kept separately so a lifting touch can
+// hand hover back to a mouse that never moved.
+let mouseClient: { x: number; y: number } | null = null;
 function setFeedHover(on: boolean): void {
   if (on === overFeedZone) return;
   overFeedZone = on;
@@ -571,11 +574,15 @@ function placeTip(e: { clientX: number; clientY: number }): void {
 }
 
 canvas.addEventListener("pointermove", (e) => {
-  if (!e.isPrimary) return; // one pointer drives hover and curiosity
+  // Primary-only invariant: lastClient, hover, and curiosity follow the
+  // primary pointer. Any other handler that writes lastClient must apply
+  // the same guard, since pointerleave ignores non-primary pointers.
+  if (!e.isPrimary) return;
   lastClient = { x: e.clientX, y: e.clientY };
   const p = tankPoint(e.clientX, e.clientY);
   sim.notice = p;
   if (e.pointerType === "touch") return; // no hover on touch
+  mouseClient = lastClient;
   lastHover = p;
   const tip = p && tipForPoint(p);
   if (!tip) { fishTip.style.display = "none"; return; }
@@ -587,6 +594,15 @@ canvas.addEventListener("pointerleave", (e) => {
   // lastClient and the feed crosshair follow the primary only, and
   // syncFeedHover() re-reads lastClient every frame.
   if (!e.isPrimary) return;
+  // isPrimary is per pointer *type*: on hybrids the mouse and the first
+  // touch are both primary at once, so a finger lifting must not wipe
+  // the mouse's hover — restore its position instead.
+  if (e.pointerType === "touch") {
+    lastClient = mouseClient;
+    sim.notice = mouseClient && tankPoint(mouseClient.x, mouseClient.y);
+    return;
+  }
+  mouseClient = null;
   lastClient = null;
   lastHover = null;
   fishTip.style.display = "none";
