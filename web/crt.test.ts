@@ -58,6 +58,13 @@ describe("sanitizeCrtConfig", () => {
     expect(c.hsize).toBe(0.8);
   });
 
+  it("squares the picture for a config saved before vertical skew", () => {
+    const c = sanitizeCrtConfig({ skew: 0.8 });
+    expect(c.vskew).toBe(0.5);
+    expect(c.skew).toBe(0.8);
+    expect(sanitizeCrtConfig({ vskew: 0.2 }).vskew).toBe(0.2);
+  });
+
   it("round-trips a full config", () => {
     const c = sanitizeCrtConfig(CRT_DEFAULTS);
     expect(c).toEqual(CRT_DEFAULTS);

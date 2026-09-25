@@ -24,7 +24,7 @@ export type ClientPage = "prefs" | "overview" | "addons" | "stats";
 /** Each client page's size, as the app's windows open it
  * (macos/Finsical.swift): its layout is built for that box. */
 const CLIENT_SIZES: Readonly<Record<ClientPage, { w: number; h: number }>> = {
-  prefs: { w: 565, h: 457 },
+  prefs: { w: 565, h: 518 },
   overview: { w: 521, h: 381 },
   addons: { w: 621, h: 441 },
   stats: { w: 380, h: 640 },

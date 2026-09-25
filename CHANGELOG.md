@@ -27,10 +27,11 @@
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.
-- The CRT's Geometry group gains two pots. Skew leans the whole
-  picture into a parallelogram, and Perspective swings it like the
-  tube turning on its stand — one edge looming large while the
-  other shrinks back.
+- The CRT's Geometry group gains three pots. Horizontal skew leans the
+  whole picture into a parallelogram, Vertical skew slopes it up or
+  down, and Perspective swings it like the tube turning on its stand —
+  one edge looming large while the other shrinks back. The Preferences
+  window is a little taller to fit them.
 - The CRT Softening control now smears only along each scanline, as
   its description says. The rows used to blend into each other at
   every setting, so the whole picture turned soft, and even Sharp and

@@ -15,8 +15,8 @@
  *    than the game pixels
  *  - gentle barrel curvature with rounded, anti-aliased raster
  *    corners, corner vignette, flicker + rolling band, faint grain
- *  - service-menu geometry: raster position, skew and a perspective
- *    keystone
+ *  - service-menu geometry: raster position, horizontal and vertical
+ *    skew and a perspective keystone
  * The beam smear runs first, once per game row, into an offscreen
  * target as wide as the raster's device px, and the bloom and halation
  * blur the frame at game size or below; the tube pass then reads the
@@ -167,7 +167,8 @@ uniform float uContr; // picture contrast around mid level
 uniform float uZoom;  // overscan crop (0 = full raster)
 uniform float uHSize; // raster width pot (0.5 = neutral)
 uniform float uVSize; // raster height pot (0.5 = neutral)
-uniform float uSkew;  // raster shear pot (0.5 = square)
+uniform float uSkew;  // raster shear pots (0.5 = square)
+uniform float uVSkew;
 uniform float uPersp; // horizontal keystone (0.5 = head-on)
 uniform float uHPos;  // raster position pots (0.5 = centered)
 uniform float uVPos;
@@ -254,8 +255,8 @@ float hash(vec2 p) {
 void main() {
   vec2 uv = (gl_FragCoord.xy - uRect.xy) / uRect.zw;
   // Overscan and the size pots below scale the raster up; the
-  // keystone corrects this per fragment below, while skew (a pure
-  // shear — area-preserving), curvature and the warm-up squeeze are
+  // keystone corrects this per fragment below, while skew (pure
+  // shears — area-preserving), curvature and the warm-up squeeze are
   // left out of the estimate. crtRowColumns() mirrors the x term.
   pxScale = uRect.zw / uTank * (1.0 + 0.12 * uZoom) *
             vec2(0.75 + 0.5 * uHSize, 0.75 + 0.5 * uVSize);
@@ -280,11 +281,13 @@ void main() {
                          0.75 + 0.5 * uVSize) + 0.5;
   // Geometry pots, still in raster space so the warped matte edges
   // bow with the tube. Skew slides the top edge sideways, leaning
-  // the raster into a parallelogram. Perspective is a horizontal
+  // the raster into a parallelogram, and vertical skew slides the
+  // right edge up or down, sloping it. Perspective is a horizontal
   // keystone — the sample window compresses toward the receding
   // edge and opens toward the looming one, so the raster reads as
-  // swung on its stand. Both are centered: 0.5 leaves uv alone.
+  // swung on its stand. All are centered: 0.5 leaves uv alone.
   uv.x -= (uSkew - 0.5) * 0.5 * (uv.y - 0.5);
+  uv.y -= (uVSkew - 0.5) * 0.5 * (uv.x - 0.5);
   float depth = 1.0 - (uPersp - 0.5) * 1.2 * (uv.x - 0.5);
   uv = (uv - 0.5) / depth + 0.5;
   // The keystone magnifies texels per axis: y by depth, and x by
@@ -458,6 +461,8 @@ export interface CrtConfig {
   vsize: number;
   /** Sideways lean of the raster — 0.5 is square. */
   skew: number;
+  /** Up-or-down slope of the raster — 0.5 is square. */
+  vskew: number;
   /** Keystone warp, the raster swung about its vertical axis —
    * 0.5 faces the viewer. */
   perspective: number;
@@ -476,7 +481,7 @@ export const CRT_DEFAULTS: Readonly<CrtConfig> = Object.freeze<CrtConfig>({
   misconvergence: 0.35, grille: 1.0, curvature: 0.45, vignette: 0.35,
   flicker: 0.30, grain: 0.30,
   brightness: 0.50, contrast: 0.50, zoom: 0.0,
-  hsize: 0.50, vsize: 0.50, skew: 0.50, perspective: 0.50,
+  hsize: 0.50, vsize: 0.50, skew: 0.50, vskew: 0.50, perspective: 0.50,
   hpos: 0.50, vpos: 0.50,
   red: 0.50, green: 0.50, blue: 0.50,
 });
@@ -517,7 +522,7 @@ export interface CrtPreset {
  * are the user's. Every other key is the tube itself. */
 export const PICTURE_KEYS: readonly (keyof CrtConfig)[] = Object.freeze([
   "brightness", "contrast", "zoom",
-  "hsize", "vsize", "skew", "perspective", "hpos", "vpos",
+  "hsize", "vsize", "skew", "vskew", "perspective", "hpos", "vpos",
   "red", "green", "blue",
 ]);
 
@@ -808,7 +813,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     vignette: "uVig", flicker: "uFlick", grain: "uGrain",
     brightness: "uBright", contrast: "uContr", zoom: "uZoom",
     hsize: "uHSize", vsize: "uVSize", hpos: "uHPos", vpos: "uVPos",
-    skew: "uSkew", perspective: "uPersp",
+    skew: "uSkew", vskew: "uVSkew", perspective: "uPersp",
     red: "uRed", green: "uGreen", blue: "uBlue",
   };
   const traitKeys = Object.keys(TRAIT_UNIFORMS) as (keyof CrtConfig)[];
