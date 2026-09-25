@@ -49,9 +49,9 @@ const offset = (v: number): string => {
 
 const SPECS: SliderSpec[] = [
   { key: "scanlines", label: "Scanlines", ends: ["Off", "Deep"],
-    blurb: "Dark gaps between the picture's rows — the most " +
-      "recognizable CRT trait. The lines stay locked to the game's " +
-      "own pixel rows at any window size." },
+    blurb: "Dark gaps between the picture's rows. The beam swells on " +
+      "bright colors, so the lines show in the shadows, melt into the " +
+      "highlights, and fade out on very small pictures." },
   { key: "softening", label: "Softening", ends: ["Sharp", "Soft"],
     blurb: "A tube's beam smears color along each scan, never between " +
       "rows — horizontal edges soften while the scanlines stay crisp." },
