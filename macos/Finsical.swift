@@ -814,6 +814,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             decisionHandler(.cancel)
             return
         }
+        // A dropped file or a stray blob:/data: anchor targets the main
+        // frame: WebKit's default is to load it, and the borderless Mac
+        // OS 8 window has no drawn way back — the webview stays broken
+        // until relaunch. Only the app's own pages may replace the frame.
+        // A real click is different: external links (the bundled pages
+        // use _blank, but a same-frame target or a mailto: would land
+        // here) belong in the default browser, not a dead click. Drops
+        // and programmatic loads arrive as .other and stay blocked.
+        if action.targetFrame?.isMainFrame == true,
+           action.request.url?.scheme?.lowercased()
+               != WebHandler.scheme {
+            if action.navigationType == .linkActivated,
+               let url = action.request.url {
+                NSWorkspace.shared.open(url)
+            }
+            NSLog("Finsical: blocked main-frame navigation to "
+                  + "\(action.request.url?.absoluteString ?? "nil")")
+            decisionHandler(.cancel)
+            return
+        }
         decisionHandler(.allow)
     }
 
