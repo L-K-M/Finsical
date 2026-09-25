@@ -4,19 +4,23 @@
  * the display's device resolution through a shader emulating an
  * aperture-grille tube:
  *  - scanlines locked to logical game rows (they follow the warped,
- *    letterboxed image, not fixed screen stripes)
+ *    letterboxed image, not fixed screen stripes), drawn as a beam
+ *    whose spot swells with brightness: thin lines in the dark, full
+ *    rows in the highlights
  *  - horizontal beam smear (CRTs blur along the scan, not across lines)
  *  - phosphor bloom that over-emphasizes bright colors, plus wider
- *    glass halation
+ *    glass halation, both smooth blurs
  *  - R/B misconvergence that grows toward the screen edges
  *  - RGB grille stripes at device-pixel pitch, so the mask is far finer
  *    than the game pixels
- *  - gentle barrel curvature, corner vignette, flicker + rolling band,
- *    faint grain
- *  - service-menu geometry: raster skew and a perspective keystone
+ *  - gentle barrel curvature with rounded, anti-aliased raster
+ *    corners, corner vignette, flicker + rolling band, faint grain
+ *  - service-menu geometry: raster position, skew and a perspective
+ *    keystone
  * The beam smear runs first, once per game row, into an offscreen
- * target as wide as the raster's device px; the tube pass then reads
- * finished rows instead of re-smearing every device px.
+ * target as wide as the raster's device px, and the bloom and halation
+ * blur the frame at game size or below; the tube pass then reads the
+ * finished rows and glow instead of recomputing them every device px.
  * WebGL setup failure returns null and the plain pixelated path stays.
  */
 
@@ -97,8 +101,45 @@ void main() {
 }
 `;
 
+// Glow passes: one direction of a separable gaussian blur of the tank
+// frame, at game resolution or below. The tube pass reads the result
+// once per device px as the phosphor bloom and the glass halation.
+const GLOW_FRAG = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform sampler2D uSrc;
+uniform vec2 uSrcSize;  // source size in texels
+uniform float uScale;   // source texels per target texel (2 = halved)
+uniform vec2 uStep;     // source texels between taps, along the blur
+uniform float uSigma;   // gaussian sigma, in taps
+// 1 weights each texel by its brightest channel before blurring, so
+// only bright colors bloom (the bloom's bright pass); 0 blurs as is.
+uniform float uBrightPass;
+
+void main() {
+  // At uScale 2 the target texel center lands on the corner of a 2x2
+  // block, so the linear filter averages the block as it downsamples.
+  vec2 p = gl_FragCoord.xy * uScale;
+  vec3 sum = vec3(0.0);
+  float total = 0.0;
+  for (int i = -8; i <= 8; i++) {
+    float w = exp(-0.5 * float(i * i) / (uSigma * uSigma));
+    vec3 s = texture2D(uSrc, (p + uStep * float(i)) / uSrcSize).rgb;
+    s *= mix(1.0, max(s.r, max(s.g, s.b)), uBrightPass);
+    sum += s * w;
+    total += w;
+  }
+  gl_FragColor = vec4(sum / total, 1.0);
+}
+`;
+
 const FRAG = COMMON + `
 uniform sampler2D uRows; // the rows pass's smeared scanlines
+uniform sampler2D uBloomTex; // bright pass, blurred: phosphor bloom
+uniform sampler2D uHaloTex;  // whole frame, blurred wider: halation
 uniform float uCols;  // columns drawn
 uniform float uColsMax; // the rows texture's width
 uniform vec4 uRect;   // letterboxed tank rect in buffer px, y-up
@@ -123,11 +164,20 @@ uniform float uHSize; // raster width pot (0.5 = neutral)
 uniform float uVSize; // raster height pot (0.5 = neutral)
 uniform float uSkew;  // raster shear pot (0.5 = square)
 uniform float uPersp; // horizontal keystone (0.5 = head-on)
+uniform float uHPos;  // raster position pots (0.5 = centered)
+uniform float uVPos;
 uniform float uRed;   // per-channel gain trims
 uniform float uGreen;
 uniform float uBlue;
 uniform float uPower; // 1 = settled; <1 = power-on/off in progress
 uniform float uDegauss; // degauss wobble amplitude (0 = settled)
+
+// How far the position pots slide the raster at either end, as a
+// share of the neutral raster's width or height.
+const float POS_RANGE = 0.10;
+
+// Corner radius of the raster, in game px.
+const float RASTER_CORNER = 6.0;
 
 // The smeared scanline signal at lp. Like gamePx, rows sample sharp:
 // the linear filter blends columns, and rows only across the one
@@ -139,6 +189,58 @@ vec3 rowPx(vec2 lp) {
   float y = sharpCoord(lp.y, uTank.y, pxScale.y);
   return texture2D(uRows, vec2(x / uColsMax, y / uTank.y)).rgb;
 }
+
+// One scanline's signal at lp: the smeared row, then the misconverged
+// red and blue guns. At a row center it reads that row alone.
+vec3 scanRow(vec2 lp, float conv) {
+  vec3 c = rowPx(lp);
+  if (conv > 0.001) {
+    // Blend, don't overwrite — a hard swap would strip the beam smear
+    // from r/b and leave them crisper than green.
+    float k = clamp(conv * 2.5, 0.0, 1.0);
+    c.r = mix(c.r, gamePx(lp - vec2(conv, 0.0)).r, k);
+    c.b = mix(c.b, gamePx(lp + vec2(conv, 0.0)).b, k);
+  }
+  return c;
+}
+
+// Beam spot sizes in rows (gaussian sigma) as vec2(black, full drive):
+// a dark row draws a thin line, a bright one a spot that nearly meets
+// its neighbors. SPOT_LINES is where the Scanlines slider's first 40%
+// fades in; SPOT_DEEP is the top of the slider. Keep every sigma under
+// about 0.35: the beam reads only the two rows bracketing a fragment,
+// so a wider spot would leak light into rows it never reads (0.8% of
+// its peak at 0.32, 4% at 0.40), and spotArea's overlap cap only
+// engages from 0.40.
+const vec2 SPOT_LINES = vec2(0.20, 0.32);
+const vec2 SPOT_DEEP = vec2(0.12, 0.24);
+
+// Spot variance for signal v: the spot grows with the drive (a hotter
+// beam blooms wider).
+vec3 spotVar(vec3 v, vec2 size) {
+  vec3 s = mix(vec3(size.x), vec3(size.y), clamp(v, 0.0, 1.0));
+  return s * s;
+}
+
+// Share of a row's light at distance d rows from its center: 1 on
+// the center line, falling off across the gap. The device pixel's
+// footprint variance fp2 blurs the spot so its profile is never finer
+// than the pixel grid can draw; the blur spreads the same light, so
+// the peak drops as the spot widens.
+vec3 spot(float d, vec3 var, float fp2) {
+  vec3 blurred = var + fp2;
+  return exp(-0.5 * d * d / blurred) * sqrt(var / blurred);
+}
+
+// A spot's light averaged over its row pitch (its area, capped where
+// neighboring spots overlap into a flat field).
+vec3 spotArea(vec3 var) { return min(sqrt(6.2831853 * var), 1.0); }
+
+// Spots of light add in linear light, not in signal space. The tube's
+// light is about the signal squared (a gamma of 2 instead of ~2.2,
+// close enough for how neighboring spots blend and far cheaper).
+vec3 toLight(vec3 v) { return v * v; }
+vec3 toSignal(vec3 l) { return sqrt(max(l, 0.0)); }
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -156,6 +258,12 @@ void main() {
   // gc is the position on the glass — vignette and misconvergence
   // follow the tube, not the raster.
   vec2 gc = uv * 2.0 - 1.0;
+  // Position pots slide the whole raster inside the glass, up to
+  // POS_RANGE of its neutral size either way. First, so the distance
+  // stays the same whatever the overscan and size pots do; the
+  // raster's warp and its matte edges travel with it, while the
+  // vignette and misconvergence (gc) stay where they are.
+  uv -= (vec2(uHPos, uVPos) - 0.5) * (2.0 * POS_RANGE);
   // Overscan: real sets run the raster slightly past the glass, so a
   // little crop is authentic. Crop in raster space, BEFORE the warp —
   // the crop stays uniform and the curved black corners survive.
@@ -207,38 +315,71 @@ void main() {
   // Logical game pixel under this output pixel (post-warp).
   vec2 lp = uv * uTank;
 
-  // The scanline, already smeared along the scan by the rows pass.
-  vec3 c = rowPx(lp);
+  // The raster's own edge: rounded corners, and coverage faded across
+  // the last device px instead of a 1-bit cut, so the bowed edges don't
+  // stair-step. sd is the distance outside the rounded rect, in game px.
+  vec2 q = abs(lp - 0.5 * uTank) - (0.5 * uTank - RASTER_CORNER);
+  float sd = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - RASTER_CORNER;
+  float edge = clamp(0.5 - sd * min(pxScale.x, pxScale.y), 0.0, 1.0);
+  if (edge <= 0.0) {
+    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    return;
+  }
 
   // Misconvergence: the outer electron guns never land perfectly —
   // red drifts left and blue right, growing from zero at the center
   // toward the edges. Green stays as the reference beam.
   float conv = (1.2 * uConv) * length(gc) * (1.0 + 6.0 * uDegauss);
-  if (conv > 0.001) {
-    // Blend, don't overwrite — a hard swap would strip the beam smear
-    // from r/b and leave them crisper than green.
-    float k = clamp(conv * 2.5, 0.0, 1.0);
-    c.r = mix(c.r, gamePx(lp - vec2(conv, 0.0)).r, k);
-    c.b = mix(c.b, gamePx(lp + vec2(conv, 0.0)).b, k);
+
+  // Scanlines: each row is a beam whose spot swells with its
+  // brightness, so dark rows thin to lines with deep gaps while bright
+  // rows nearly fill them and spill a little into their neighbors. A
+  // lone bright pixel glows as a dot instead of a sliver. Like
+  // Softening, the first 40% of the slider fades the lines in at a
+  // fixed spot size; beyond that the spots narrow and the gaps deepen.
+  float scan = clamp(uScan / 0.4, 0.0, 1.0);
+  vec3 c;
+  if (scan <= 0.0) {
+    c = scanRow(lp, conv); // flat rows, sampled sharp
+  } else {
+    // The two rows whose centers bracket this fragment, fy of the way
+    // from the lower to the upper one.
+    float p = lp.y - 0.5;
+    float row = floor(p);
+    float fy = p - row;
+    vec3 a = scanRow(vec2(lp.x, row + 0.5), conv);
+    vec3 b = scanRow(vec2(lp.x, row + 1.5), conv);
+    // The flat end, identical to the sharp read above: rows fade into
+    // each other over the same device px.
+    vec3 rows = mix(a, b, clamp((fy - 0.5) * pxScale.y + 0.5, 0.0, 1.0));
+    vec2 size = mix(SPOT_LINES, SPOT_DEEP,
+                    clamp((uScan - 0.4) / 0.6, 0.0, 1.0));
+    float fp2 = 1.0 / (12.0 * pxScale.y * pxScale.y);
+    // Past the first and last rows there is no beam: the clamped read
+    // would repeat the edge row and fill its outer half-row with light.
+    float inA = step(0.0, row);
+    float inB = step(row + 2.0, uTank.y);
+    vec3 beam = inA * toLight(a) * spot(fy, spotVar(a, size), fp2) +
+                inB * toLight(b) * spot(1.0 - fy, spotVar(b, size), fp2);
+    // Below ~3 device px per row the lines would beat against the
+    // pixel grid (moire), so they give way to their average light:
+    // small pictures lose the lines but keep the same brightness.
+    beam = mix(toLight(rows) * spotArea(spotVar(rows, size)), beam,
+               smoothstep(1.5, 3.0, pxScale.y));
+    c = toSignal(mix(toLight(rows), beam, scan));
   }
 
-  // Phosphor bloom: bright areas bleed wider and overdrive.
-  vec3 glow =
-    (gamePx(lp - vec2(3.5, 0.0)) + gamePx(lp + vec2(3.5, 0.0))) * 0.5;
-  c += glow * max(glow.r, max(glow.g, glow.b)) * (0.60 * uBloom);
-  // Halation: light scattered inside the faceplate glass reaches
-  // further than the phosphor bloom — a wider, fainter halo.
-  vec3 halo =
-    (gamePx(lp - vec2(7.0, 0.0)) + gamePx(lp + vec2(7.0, 0.0)) +
-     gamePx(lp - vec2(0.0, 5.0)) + gamePx(lp + vec2(0.0, 5.0))) * 0.25;
-  c += halo * (0.10 * uBloom);
+  // Phosphor bloom: bright areas bleed wider and overdrive, mostly
+  // along the scan. Halation: light scattered inside the faceplate
+  // glass reaches further, a wider, fainter halo all around. Both are
+  // smooth blurs from the glow passes, so a small bright shape glows
+  // rather than casting sharp copies of itself.
+  if (uBloom > 0.0) {
+    vec2 t = lp / uTank;
+    c += texture2D(uBloomTex, t).rgb * (0.60 * uBloom);
+    c += texture2D(uHaloTex, t).rgb * (0.10 * uBloom);
+  }
   c *= 1.0 + (0.60 * uOver) * smoothstep(0.5, 1.0, max(c.r, max(c.g, c.b)));
-
-  // Scanlines ride the logical-row phase: sin² dips at row boundaries.
-  // (pow() is undefined for negative bases — square explicitly.)
-  float scan = sin(3.14159265 * lp.y);
-  scan *= scan;
-  c *= mix(1.0 - uScan, 1.0, scan);
 
   // Aperture grille: one RGB channel per device-pixel column.
   float stripe = mod(floor(gl_FragCoord.x), 3.0);
@@ -247,6 +388,8 @@ void main() {
   else if (stripe < 1.5) mask.g = 1.0;
   else mask.b = 1.0;
   c *= mix(vec3(1.0), mask * 1.18, uGrill); // 1.18 compensates dimming
+
+  c *= edge;
 
   // Glass vignette, faint flicker (plus a slow rolling brightness
   // band — the beam never sits perfectly in sync), and grain.
@@ -275,7 +418,9 @@ void main() {
 /** Tunable CRT traits, all normalized 0–1. The shader multiplies each
  * by a tuned ceiling, so 1.0 is "authentic" rather than "clipped". */
 export interface CrtConfig {
-  /** Darkness of the gaps between game-pixel rows. */
+  /** Darkness of the gaps between game-pixel rows. Bright rows swell
+   * to fill them, so the lines show most in the dark. Up to 0.4 the
+   * lines fade in; above, the beam narrows and the gaps deepen. */
   scanlines: number;
   /** How much the beam smears color sideways along each scan. Up to
    * 0.4 the smear fades in at a fixed width; above, it widens. */
@@ -311,6 +456,10 @@ export interface CrtConfig {
   /** Keystone warp, the raster swung about its vertical axis —
    * 0.5 faces the viewer. */
   perspective: number;
+  /** Raster position, left to right. 0.5 is centered. */
+  hpos: number;
+  /** Raster position, bottom to top. 0.5 is centered. */
+  vpos: number;
   /** Per-channel trims — 0.5 is neutral on each. */
   red: number;
   green: number;
@@ -323,6 +472,7 @@ export const CRT_DEFAULTS: Readonly<CrtConfig> = Object.freeze<CrtConfig>({
   flicker: 0.30, grain: 0.30,
   brightness: 0.50, contrast: 0.50, zoom: 0.0,
   hsize: 0.50, vsize: 0.50, skew: 0.50, perspective: 0.50,
+  hpos: 0.50, vpos: 0.50,
   red: 0.50, green: 0.50, blue: 0.50,
 });
 
@@ -362,7 +512,7 @@ export interface CrtPreset {
  * are the user's. Every other key is the tube itself. */
 export const PICTURE_KEYS: readonly (keyof CrtConfig)[] = Object.freeze([
   "brightness", "contrast", "zoom",
-  "hsize", "vsize", "skew", "perspective",
+  "hsize", "vsize", "skew", "perspective", "hpos", "vpos",
   "red", "green", "blue",
 ]);
 
@@ -439,6 +589,14 @@ export function crtRasterRect(bufW: number, bufH: number,
 /** Widest rows-pass target, in texels: past this the rows are
  * resampled up, which only softens the sharp end of Softening. */
 const ROW_COLS_MAX = 4096;
+
+/** Glow blur widths in game px (gaussian sigma): the phosphor bloom
+ * spreads mostly along the scan, the glass halation wider and evenly.
+ * They stand in for fixed taps at ±3.5 px and ±7/±5 px, which left
+ * sharp copies of small bright shapes instead of a glow. */
+const BLOOM_SIGMA_X = 3;
+const BLOOM_SIGMA_Y = 1.5;
+const HALO_SIGMA = 4.5;
 
 /** How many columns the rows pass draws: the raster's width in device
  * px once overscan and the width pot have magnified it (mirrors FRAG's
@@ -533,8 +691,9 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     return p;
   };
   const rowsProg = link(ROWS_FRAG);
+  const glowProg = link(GLOW_FRAG);
   const prog = link(FRAG);
-  if (!rowsProg || !prog) return null;
+  if (!rowsProg || !glowProg || !prog) return null;
 
   // Fullscreen triangle.
   const buf = gl.createBuffer();
@@ -544,15 +703,42 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   gl.enableVertexAttribArray(0);
   gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
-  // The tank frame, on texture unit 0. Linear filtering gives the
-  // smear's taps a smooth beam; gamePx() samples rows sharp, so they
-  // never blend into each other.
-  const tex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  // Every texture keeps its own unit, so no pass ever samples the
+  // texture it draws into. Unit 0 stays active: texSubImage2D in
+  // render() targets it.
+  const unitTexture = (unit: number): WebGLTexture => {
+    const t = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return t;
+  };
+  // An offscreen target on `unit`, or null if the GPU can't draw into
+  // it (the plain path stays, as for a shader that won't compile).
+  const target = (unit: number, w: number, h: number):
+      WebGLFramebuffer | null => {
+    const t = unitTexture(unit);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0,
+      gl.RGBA, gl.UNSIGNED_BYTE, null);
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D, t, 0);
+    const ok =
+      gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.activeTexture(gl.TEXTURE0);
+    if (!ok) console.warn("crt: an offscreen target is incomplete");
+    return ok ? fbo : null;
+  };
+
+  // The tank frame, on unit 0. Linear filtering gives the smear's taps
+  // a smooth beam; gamePx() samples rows sharp, so they never blend
+  // into each other.
+  unitTexture(0);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1); // gl_FragCoord y is up
   // Allocate storage once — render() updates it in place.
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA,
@@ -564,27 +750,33 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   const colsMax = Math.min(ROW_COLS_MAX,
     gl.getParameter(gl.MAX_TEXTURE_SIZE) as number,
     (gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array)[0]!);
-  const rowTex = gl.createTexture();
-  gl.activeTexture(gl.TEXTURE1);
-  gl.bindTexture(gl.TEXTURE_2D, rowTex);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, colsMax, src.height, 0,
-    gl.RGBA, gl.UNSIGNED_BYTE, null);
-  gl.activeTexture(gl.TEXTURE0); // texSubImage2D in render() targets unit 0
-  const rowFbo = gl.createFramebuffer();
-  gl.bindFramebuffer(gl.FRAMEBUFFER, rowFbo);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
-    gl.TEXTURE_2D, rowTex, 0);
-  const rowsReady =
-    gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  if (!rowsReady) {
-    console.warn("crt: the rows target is incomplete");
-    return null;
-  }
+  const rowFbo = target(1, colsMax, src.height);
+  if (!rowFbo) return null;
+
+  // The glow passes, in order: each blurs one direction into its unit,
+  // reading the unit named by `from`. The bloom blurs a bright pass of
+  // the frame at game size into unit 2; the halation blurs the whole
+  // frame at half size, wider, into unit 3. Units 4 and 5 hold the
+  // halfway results. Sigmas are in taps; a tap is `step` source texels.
+  const full: [number, number] = [src.width, src.height];
+  const half: [number, number] =
+    [Math.ceil(src.width / 2), Math.ceil(src.height / 2)];
+  const glowPasses = [
+    { unit: 4, size: full, from: 0, fromSize: full, scale: 1,
+      step: [1, 0], sigma: BLOOM_SIGMA_X, brightPass: 1 },
+    { unit: 2, size: full, from: 4, fromSize: full, scale: 1,
+      step: [0, 1], sigma: BLOOM_SIGMA_Y, brightPass: 0 },
+    { unit: 5, size: half, from: 0, fromSize: full, scale: 2,
+      step: [2, 0], sigma: HALO_SIGMA / 2, brightPass: 0 },
+    { unit: 3, size: half, from: 5, fromSize: half, scale: 1,
+      step: [0, 1], sigma: HALO_SIGMA / 2, brightPass: 0 },
+  ].map((g) => ({ ...g, fbo: target(g.unit, ...g.size) }));
+  if (glowPasses.some((g) => !g.fbo)) return null;
+  const glowLoc = (name: string) => gl.getUniformLocation(glowProg, name);
+  const uGlowSrc = glowLoc("uSrc"), uGlowSrcSize = glowLoc("uSrcSize");
+  const uGlowScale = glowLoc("uScale"), uGlowStep = glowLoc("uStep");
+  const uGlowSigma = glowLoc("uSigma");
+  const uGlowBright = glowLoc("uBrightPass");
 
   for (const p of [rowsProg, prog]) {
     gl.useProgram(p);
@@ -596,6 +788,8 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   const uPhase = gl.getUniformLocation(prog, "uPhase");
   const uPower = gl.getUniformLocation(prog, "uPower");
   const uDegauss = gl.getUniformLocation(prog, "uDegauss");
+  gl.uniform1i(gl.getUniformLocation(prog, "uBloomTex"), 2);
+  gl.uniform1i(gl.getUniformLocation(prog, "uHaloTex"), 3);
   gl.uniform1i(gl.getUniformLocation(prog, "uRows"), 1);
   gl.uniform1f(gl.getUniformLocation(prog, "uColsMax"), colsMax);
   gl.uniform1f(uPower, 1);
@@ -608,7 +802,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     misconvergence: "uConv", grille: "uGrill", curvature: "uCurve",
     vignette: "uVig", flicker: "uFlick", grain: "uGrain",
     brightness: "uBright", contrast: "uContr", zoom: "uZoom",
-    hsize: "uHSize", vsize: "uVSize",
+    hsize: "uHSize", vsize: "uVSize", hpos: "uHPos", vpos: "uVPos",
     skew: "uSkew", perspective: "uPersp",
     red: "uRed", green: "uGreen", blue: "uBlue",
   };
@@ -636,7 +830,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   // devicePixelRatio read stays per-frame (a cheap number, no
   // layout) so browser-zoom DPR changes still resize the buffer.
   // DPR caps at 2: the grille mask is sub-game-pixel already there,
-  // and the ~9-tap tube pass scales with buffer pixels.
+  // and the ~8-read tube pass scales with buffer pixels.
   // Lifetime: initCrt runs once per page load (module scope in
   // web/main.ts) and CrtFilter has no dispose path, so the observer
   // and window listener below live exactly as long as the page.
@@ -752,14 +946,31 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA,
         gl.UNSIGNED_BYTE, src);
 
-      // Pass 1: smear each scanline once, into the rows target.
+      // Glow passes: blur the frame for the bloom and the halation.
+      // Bloom at 0 adds nothing, so they are skipped.
+      if (cfg.bloom > 0) {
+        gl.useProgram(glowProg);
+        for (const g of glowPasses) {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, g.fbo);
+          gl.viewport(0, 0, ...g.size);
+          gl.uniform1i(uGlowSrc, g.from);
+          gl.uniform2f(uGlowSrcSize, ...g.fromSize);
+          gl.uniform1f(uGlowScale, g.scale);
+          gl.uniform2f(uGlowStep, g.step[0]!, g.step[1]!);
+          gl.uniform1f(uGlowSigma, g.sigma);
+          gl.uniform1f(uGlowBright, g.brightPass);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+        }
+      }
+
+      // Smear each scanline once, into the rows target.
       gl.bindFramebuffer(gl.FRAMEBUFFER, rowFbo);
       gl.viewport(0, 0, cols, src.height);
       gl.useProgram(rowsProg);
       gl.uniform1f(uRowCols, cols);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-      // Pass 2: the tube, at device resolution.
+      // The tube, at device resolution.
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, out.width, out.height);
       gl.useProgram(prog);

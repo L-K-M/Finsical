@@ -50,9 +50,9 @@ const offset = (v: number): string => {
 
 const SPECS: SliderSpec[] = [
   { key: "scanlines", label: "Scanlines", ends: ["Off", "Deep"],
-    blurb: "Dark gaps between the picture's rows — the most " +
-      "recognizable CRT trait. The lines stay locked to the game's " +
-      "own pixel rows at any window size." },
+    blurb: "Dark gaps between the picture's rows. The beam swells on " +
+      "bright colors, so the lines show in the shadows, melt into the " +
+      "highlights, and fade out on very small pictures." },
   { key: "softening", label: "Softening", ends: ["Sharp", "Soft"],
     blurb: "A tube's beam smears color along each scan, never between " +
       "rows — horizontal edges soften while the scanlines stay crisp." },
@@ -100,6 +100,14 @@ const PIC_SPECS: SliderSpec[] = [
   { key: "vsize", label: "Height", ends: ["Short", "Tall"], fmt: offset,
     blurb: "The height pot — tubes drifted tall or squat as they " +
       "warmed up, and owners dialed it back by hand." },
+  { key: "hpos", label: "Horizontal position", ends: ["Left", "Right"],
+    fmt: offset,
+    blurb: "The horizontal position pot. Slides the whole picture " +
+      "left or right inside the glass, to center a raster that drifted." },
+  { key: "vpos", label: "Vertical position", ends: ["Down", "Up"],
+    fmt: offset,
+    blurb: "The vertical position pot. Raises or lowers the whole " +
+      "picture inside the glass." },
   { key: "skew", label: "Skew", ends: ["Leans left", "Leans right"],
     fmt: offset,
     blurb: "The parallelogram pot — the raster's top edge slides " +
@@ -134,8 +142,8 @@ const MONITOR_GROUPS: Group[] = [
 ];
 const PICTURE_GROUPS: Group[] = [
   { title: "Picture", rows: [["brightness", "contrast", "zoom"]] },
-  { title: "Geometry", rows: [["hsize", "vsize"],
-                             ["skew", "perspective"]] },
+  { title: "Geometry", rows: [["hsize", "vsize", "hpos"],
+                             ["skew", "perspective", "vpos"]] },
   { title: "Color", rows: [["red", "green", "blue"]] },
 ];
 
