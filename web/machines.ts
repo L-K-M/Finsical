@@ -10,6 +10,8 @@
 // the silhouette the mask fills. `sx/sy/sw/sh` is the tank itself —
 // the 1.6-aspect aquarium letterboxed inside the glass.
 
+import type { RasterBox } from "./crt.js";
+
 /** A rounded rect in viewBox units — a building block of the window
  * silhouette. The native shell unions these into a CGPath layer mask,
  * so the window's visible shape can be irregular (stepped bases,
@@ -21,7 +23,7 @@ export interface ShapeRect {
 /** How far #screenback extends past `hole`, in viewBox units — covers
  * a few px of translucent glass rim that can outrun the measured
  * aperture. Must stay under every machine's clearance to the nearest
- * see-through pixel (>= 46px as of the current art). */
+ * see-through pixel (>= 44px as of the current art). */
 export const SCREENBACK_HOLE_PAD = 32;
 
 export interface Machine {
@@ -44,6 +46,25 @@ export interface Machine {
                             // (empty for image machines)
 }
 
+/** The glass aperture in viewBox units: the hole, or the tank's own
+ * screen rect for a machine without one. */
+export function glassRect(m: Machine): { x: number; y: number; w: number; h: number } {
+  return m.hole ?? { x: m.sx, y: m.sy, w: m.sw, h: m.sh };
+}
+
+/** The tank's rect as fractions of the glass: the hole, or the screen
+ * rect itself when there is none. The CRT canvas spans the whole glass
+ * so its size pots can grow the raster past the 1.6 tank rect (the
+ * Performa's glass is much taller than its tank), and draws the
+ * neutral raster at this box. */
+export function rasterInGlass(m: Machine): RasterBox {
+  const g = glassRect(m);
+  return {
+    x: (m.sx - g.x) / g.w, y: (m.sy - g.y) / g.h,
+    w: m.sw / g.w, h: m.sh / g.h,
+  };
+}
+
 /** The shell svg's inner markup — vector art, or the raster image
  * stretched to the viewBox. preserveAspectRatio="none" matters: the
  * native mask stretches the same image to the window, so both must
@@ -54,6 +75,59 @@ export function shellMarkup(m: Machine): string {
       `width="${m.vbW}" height="${m.vbH}" ` +
       `preserveAspectRatio="none"/>`;
   return m.svg;
+}
+
+// Preview palette mirrors the live tank in main.ts — a machine should
+// preview as a running Finsical, not an empty screen.
+const PV_WATER_TOP = "#2e7fc4", PV_WATER_BOT = "#14508c";
+const PV_GRAVEL = "#8a6d3b", PV_FISH = "#e8a33d", PV_EYE = "#1a1a2e";
+const PV_BUBBLE = "#cfe8ff", PV_BACKPLATE = "#050505"; // #screenback
+
+/** The shell over a still of the tank — the prefs machine picker shows
+ * each case as a running aquarium: black backplate behind the glass,
+ * water + gravel + a few placeholder swimmers inside the screen rect,
+ * and the shell art last so its baked-in reflections ride on top. */
+export function previewMarkup(m: Machine): string {
+  const k = m.sw / 320; // logical tank px (320×200) → viewBox units
+  const tx = (x: number) => m.sx + x * k;
+  const ty = (y: number) => m.sy + y * k;
+  const parts: string[] = [];
+  // Backplate — the letterbox matte around the tank. Padded like the
+  // live #screenback: the art's translucent glass rim runs a few px
+  // past the measured hole and would otherwise show the page behind.
+  if (m.hole) {
+    const pad = SCREENBACK_HOLE_PAD;
+    parts.push(`<rect x="${m.hole.x - pad}" y="${m.hole.y - pad}"` +
+      ` width="${m.hole.w + pad * 2}" height="${m.hole.h + pad * 2}"` +
+      ` fill="${PV_BACKPLATE}"/>`);
+  }
+  parts.push(
+    // ids are document-global across inline SVGs — suffix per machine
+    `<defs><linearGradient id="pvwater-${m.id}" x1="0" y1="0" x2="0" y2="1">` +
+      `<stop offset="0" stop-color="${PV_WATER_TOP}"/>` +
+      `<stop offset="1" stop-color="${PV_WATER_BOT}"/>` +
+      `</linearGradient></defs>`,
+    `<rect x="${m.sx}" y="${m.sy}" width="${m.sw}" height="${m.sh}"` +
+      ` fill="url(#pvwater-${m.id})"/>`,
+    // Gravel strip — the tank's bottom 12 logical px, anchored to the
+    // screen bottom (screen rects are ~16:10 but not exactly).
+    `<rect x="${m.sx}" y="${m.sy + m.sh - 12 * k}" width="${m.sw}"` +
+      ` height="${12 * k}" fill="${PV_GRAVEL}"/>`);
+  // Placeholder swimmers — drawPlaceholder's rects, mirrored to face.
+  const fish = (x: number, y: number, facing: 1 | -1, s = 1): string =>
+    `<g transform="translate(${tx(x)} ${ty(y)})` +
+    ` scale(${-facing * k * s} ${k * s})" fill="${PV_FISH}">` +
+    `<rect x="-8" y="-4" width="14" height="8"/>` +
+    `<rect x="6" y="-6" width="6" height="12"/>` +
+    `<rect x="-2" y="-7" width="6" height="3"/>` +
+    `<rect x="-6" y="-2" width="2" height="2" fill="${PV_EYE}"/></g>`;
+  parts.push(fish(84, 78, 1), fish(238, 108, -1), fish(158, 52, 1, 0.7));
+  const bubbles = [[252, 66], [255, 55], [253, 44]]
+    .map(([x, y]) => `<rect x="${tx(x!)}" y="${ty(y!)}"` +
+      ` width="${2 * k}" height="${2 * k}"/>`).join("");
+  parts.push(`<g fill="${PV_BUBBLE}">${bubbles}</g>`);
+  parts.push(shellMarkup(m));
+  return parts.join("");
 }
 
 // All renders: user-supplied art cropped to alpha bounds; hole and
@@ -73,11 +147,44 @@ const plus: Machine = {
 const performa: Machine = {
   id: "performa", name: "Macintosh Performa 450",
   blurb: "A pizza-box desktop under an Apple RGB monitor.",
-  vbW: 1063, vbH: 956,
-  hole: { x: 195, y: 141, w: 674, h: 486, r: 0 },
-  sx: 195, sy: 173, sw: 674, sh: 421,
+  vbW: 1013, vbH: 1013,
+  hole: { x: 135, y: 99, w: 745, h: 541, r: 0 },
+  sx: 135, sy: 137, sw: 745, sh: 466,
   image: "assets/performa-450.png",
-  shape: [{ x: 0, y: 0, w: 1063, h: 956, r: 0 }],
+  shape: [{ x: 0, y: 0, w: 1013, h: 1013, r: 0 }],
+  svg: "",
+};
+
+const performa2: Machine = {
+  id: "performa-2", name: "Macintosh Performa 450 (II)",
+  blurb: "Another take on the pizza box — angled, vents showing.",
+  vbW: 1132, vbH: 1010,
+  hole: { x: 294, y: 113, w: 688, h: 538, r: 0 },
+  sx: 294, sy: 167, sw: 688, sh: 430,
+  image: "assets/performa-450-2.png",
+  shape: [{ x: 0, y: 0, w: 1132, h: 1010, r: 0 }],
+  svg: "",
+};
+
+const performa5200: Machine = {
+  id: "performa-5200", name: "Macintosh Performa 5200",
+  blurb: "The PowerPC all-in-one — drives and speakers under the tube.",
+  vbW: 1002, vbH: 918,
+  hole: { x: 111, y: 105, w: 614, h: 482, r: 0 },
+  sx: 111, sy: 154, sw: 614, sh: 384,
+  image: "assets/performa-5200.png",
+  shape: [{ x: 0, y: 0, w: 1002, h: 918, r: 0 }],
+  svg: "",
+};
+
+const performa5200Black: Machine = {
+  id: "performa-5200-black", name: "Macintosh Performa 5200 (Black)",
+  blurb: "The same all-in-one, in black.",
+  vbW: 1005, vbH: 920,
+  hole: { x: 113, y: 107, w: 611, h: 480, r: 0 },
+  sx: 113, sy: 156, sw: 611, sh: 382,
+  image: "assets/performa-5200-black.png",
+  shape: [{ x: 0, y: 0, w: 1005, h: 920, r: 0 }],
   svg: "",
 };
 
@@ -158,6 +265,28 @@ const flowerPower2: Machine = {
   svg: "",
 };
 
+const powerbookG3: Machine = {
+  id: "powerbook-g3", name: "PowerBook G3",
+  blurb: "The black PowerPC notebook.",
+  vbW: 1072, vbH: 994,
+  hole: { x: 317, y: 60, w: 705, h: 499, r: 0 },
+  sx: 317, sy: 89, sw: 705, sh: 441,
+  image: "assets/powerbook-g3.png",
+  shape: [{ x: 0, y: 0, w: 1072, h: 994, r: 0 }],
+  svg: "",
+};
+
+const ibook: Machine = {
+  id: "ibook-tangerine", name: "iBook (Tangerine)",
+  blurb: "The orange clamshell.",
+  vbW: 1284, vbH: 1161,
+  hole: { x: 423, y: 120, w: 714, h: 495, r: 0 },
+  sx: 423, sy: 144, sw: 714, sh: 446,
+  image: "assets/ibook-tangerine.png",
+  shape: [{ x: 0, y: 0, w: 1284, h: 1161, r: 0 }],
+  svg: "",
+};
+
 const imacg4: Machine = {
   id: "imacg4", name: "iMac G4",
   blurb: "The sunflower — dome base, chrome arm, floating panel.",
@@ -178,8 +307,9 @@ const bare: Machine = {
 };
 
 export const MACHINES: readonly Machine[] =
-  [plus, performa, tam, bondi, bondi2, strawberry, strawberry2,
-   flowerPower, flowerPower2, imacg4, bare];
+  [plus, performa, performa2, performa5200, performa5200Black, tam,
+   bondi, bondi2, strawberry, strawberry2, flowerPower, flowerPower2,
+   powerbookG3, ibook, imacg4, bare];
 export const DEFAULT_MACHINE = "plus";
 export function machineById(id: string): Machine | undefined {
   return MACHINES.find((m) => m.id === id);

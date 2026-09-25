@@ -19,7 +19,16 @@ export function fishPose(sheet: SpriteSheet, f: Fish):
       Math.round(f.stateTicks * (ng / 2) / (TURN_TICKS - 1)));
     return { g: (((from + f.turnDir * step) % ng) + ng) % ng, mir: -1 };
   }
-  return { g: f.facing > 0 ? ng / 2 : 0, mir: -1 };
+  return restPose(sheet, f.facing);
+}
+
+/** The level profile facing `facing`: what a fish shows between turns,
+ * and the pose previews and thumbnails use. */
+export function restPose(sheet: SpriteSheet, facing: 1 | -1):
+    { g: number; mir: 1 | -1 } {
+  const ng = sheet.meta.groups;
+  if (ng < 4 || ng % 2 !== 0) return { g: 0, mir: facing };
+  return { g: facing > 0 ? ng / 2 : 0, mir: -1 };
 }
 
 /** Pitch of the heading off the facing's horizontal axis — the

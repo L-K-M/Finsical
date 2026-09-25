@@ -1,25 +1,44 @@
-# Ported from FFmpeg libavcodec/mace.c — FFmpeg is LGPL-2.1+; see
-# https://ffmpeg.org/legal.html. This is a build-time asset tool, not
-# distributed with the app.
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# Ported from FFmpeg libavcodec/mace.c (Copyright (c) 2002 Laszlo Torok,
+# adapted by Francois Revol) to Python for Finsical in 2026; licensed
+# under the GNU LGPL 2.1 or later (LICENSES/LGPL-2.1.txt). See
+# THIRD_PARTY_NOTICES.md. The browser port in core/data/mace.ts ships
+# inside the app bundle.
 """MACE 3:1 mono decoder, ported from FFmpeg libavcodec/mace.c (LGPL).
 
-The coefficient table lives in the sibling mace_tab.bin — a byte-level
-copy of FFmpeg libavcodec/mace.c's mace table (LGPL-2.1+), 128 rows of
-4 big-endian u16 = 1024 bytes; keeping it out of the source keeps the
-patch reviewable. Decode is verified against the real AQUAZONE 1.7.9
-resource fork.
+The coefficient tables live in the sibling mace_tab.bin (MACEtab2, 128
+rows of 4 big-endian u16 = 1024 bytes) and mace_tab4.bin (MACEtab4, 128
+rows of 2 = 512 bytes), byte-level copies of FFmpeg's tables; keeping
+them out of the source keeps the patch reviewable. Goldens come from a
+line-by-line port of FFmpeg's read_table/chomp3.
 """
 import os
 import struct
 
-with open(os.path.join(os.path.dirname(__file__), "mace_tab.bin"),
-          "rb") as _f:
-    raw = _f.read()
-    if len(raw) != 1024:
+
+def _load_rows(name, ncols):
+    with open(os.path.join(os.path.dirname(__file__), name), "rb") as f:
+        raw = f.read()
+    if len(raw) != 128 * ncols * 2:
         raise ValueError(
-            f"mace_tab.bin: expected 1024 bytes, got {len(raw)}")
-    _TAB2 = [tuple(x) for x in struct.iter_unpack(">4H", raw)]
+            f"{name}: expected {128 * ncols * 2} bytes, got {len(raw)}")
+    return [tuple(x) for x in struct.iter_unpack(f">{ncols}H", raw)]
+
+
 _TAB1 = (-13, 8, 76, 222, 222, 76, 8, -13)
+_TAB2 = _load_rows("mace_tab.bin", 4)
+_TAB3 = (-18, 140, 140, -18)
+_TAB4 = _load_rows("mace_tab4.bin", 2)
+# FFmpeg's tabs[]: (index step table, coefficient rows, stride) for the
+# three codes of each byte, low bits first. The middle code is 2 bits
+# wide and uses its own pair of tables.
+_TABS = ((_TAB1, _TAB2, 4), (_TAB3, _TAB4, 2), (_TAB1, _TAB2, 4))
+
+
+def _i16(n):
+    """Wrap to int16_t, as FFmpeg's ChannelData fields do."""
+    n &= 0xFFFF
+    return n - 0x10000 if n & 0x8000 else n
 
 
 def _clip16(n):
@@ -47,10 +66,12 @@ def mace3_decode(data: bytes, npackets: int) -> bytes:
     for j in range(npackets):
         for k in range(2):
             pkt = data[j * 2 + k]
-            for val in (pkt & 7, (pkt >> 3) & 3, pkt >> 5):
-                row = _TAB2[(index & 0x7F0) >> 4]
-                cur = row[val] if val < 4 else -1 - row[7 - val]
-                index += _TAB1[val] - (index >> 5)
+            for (tab1, tab2, stride), val in zip(
+                    _TABS, (pkt & 7, (pkt >> 3) & 3, pkt >> 5)):
+                row = tab2[(index & 0x7F0) >> 4]
+                cur = row[val] if val < stride else \
+                    -1 - row[2 * stride - val - 1]
+                index = _i16(index + tab1[val] - (index >> 5))
                 if index < 0:
                     index = 0
                 cur = _clip16(cur + level)
