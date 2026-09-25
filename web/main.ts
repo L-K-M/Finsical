@@ -43,6 +43,7 @@ import { coverCrop, decorCanvases, imageCanvas, isBackdropImage,
          isGravelImage,
          previewOf, soundIcon, swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
+import { partName } from "./tankmodel.js";
 import { nextNotice, noticePoint } from "./curiosity.js";
 import type { Notice } from "./curiosity.js";
 import { containPoint, isFeedZone } from "./feedzone.js";
@@ -1108,9 +1109,14 @@ const packBySheet = new Map<number, string>();
 // URLs installed whole — their slots hold every entry's art, the only
 // pack-level slots an entry-scoped re-add may reuse.
 const wholePackUrls = new Set<string>();
+/** One pack's sheets arriving. `name` is the add-on's listing name,
+ * `entry` the pack's name in it and `parts` how many sheet packs the
+ * add-on holds: a fish is named after its own pack when there are
+ * several (web/tankmodel.ts). */
 function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
                       url: string, section: string, live: boolean,
-                      care?: SpeciesCare | null, entry?: string): void {
+                      care?: SpeciesCare | null, entry?: string,
+                      parts = 1): void {
   // Only fish sections register sheets — a tank/scenery pack's sprite
   // streams mustn't join the fish pool or fish could bind to art
   // nobody chose.
@@ -1150,11 +1156,15 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
   if (entry === undefined) wholePackUrls.add(url);
   // A live fish-pack install adds a real fish; restores replay sheets
   // only — the saved roster already carries those fish.
+  // sheetBySpecies stays keyed by the listing name above: the oldest
+  // saves name their fish only by the add-on.
+  const species = entry !== undefined ? partName(name, entry, parts)
+                                      : name;
   if (live) {
-    const f = spawnFish(idx, name, url, "enforce", entry);
+    const f = spawnFish(idx, species, url, "enforce", entry);
     if (f) audio.splash(panFor(f.x, TANK.width));
   }
-  console.info(`archive.org: imported ${section} ${name}`);
+  console.info(`archive.org: imported ${section} ${species}`);
   requestPaint(); // restores can rebind existing fish to new art
   if (pendingThumbs.size) serveThumbs([...pendingThumbs]);
 }
@@ -1846,10 +1856,11 @@ async function downloadAddon(it: Importable): Promise<void> {
     throw new Error("cancelled — the tank was emptied mid-install");
   const usable = usablePacks(rs, it.section);
   if (!usable.length) throw new Error(usableProblem(it.section));
+  const parts = usable.filter((r) => r.sheets.size).length;
   for (const r of usable) {
     if (r.sheets.size)
       handleSheets(r.sheets, it.inner, it.url, it.section, true,
-                   r.care, r.entry);
+                   r.care, r.entry, parts);
     if (r.images.size)
       handleImages(r.images.values(), it.url, it.section, true);
   }

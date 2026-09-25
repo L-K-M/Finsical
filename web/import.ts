@@ -725,14 +725,16 @@ export async function listAddons(
 // ---- import panel --------------------------------------------------------
 
 export interface ImportHandlers {
-  /** `name` is the display/species label; `url` is the add-on identity.
+  /** `name` is the add-on's listing name; `url` is the add-on identity.
    * `live` = user-initiated install; false on launch-time restore, which
    * must not spawn fish (the saved roster already holds them). `entry`
    * is the pack's own name inside the add-on — fish bind to (url, entry)
-   * so a multi-pack add-on can't collapse its fish onto the last entry. */
+   * so a multi-pack add-on can't collapse its fish onto the last entry.
+   * `parts` is how many sheet packs the add-on holds: with several,
+   * each fish is named after its own pack. */
   onSheets(sheets: Map<string, SpriteSheet>, name: string, url: string,
            section: string, live: boolean, care?: SpeciesCare | null,
-           entry?: string): void;
+           entry?: string, parts?: number): void;
   /** `live` as for onSheets: a restore must not change the choice of
    * scenery on display. `count` is the persisted decor copy count —
    * 1 on a live install, `copies` on restore. */
@@ -1572,10 +1574,11 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     const usable = usablePacks(rs, it.section);
     if (!usable.length) throw new Error(usableProblem(it.section));
     const soundNames: string[] = [];
+    const parts = usable.filter((r) => r.sheets.size).length;
     for (const r of usable) {
       if (r.sheets.size)
         h.onSheets(r.sheets, it.inner, it.url, it.section, live,
-                   r.care, r.entry);
+                   r.care, r.entry, parts);
       if (r.images.size)
         h.onImages(r.images.values(), it.url, it.section, live,
                    live ? 1 : decorCopies(it));
