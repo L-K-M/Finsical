@@ -780,7 +780,10 @@ export class Sim {
 
       // A roll that began on this tick owns its own integration from
       // the turn branch — running this branch's stroke pulse and step
-      // too would move the fish twice on the entry tick.
+      // too would move the fish twice on the entry tick. The eat check
+      // sits inside the guard on purpose: the bite lands a tick later
+      // once the roll has committed, and eating now would setState out
+      // of the turn that was just entered.
       if (!turning) {
         // Stroke pulse — the original's "fin push": quadratic acceleration
         // out of the decision, then quadratic braking once the destination

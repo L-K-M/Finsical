@@ -1197,6 +1197,15 @@ describe("B-57 drift steering", () => {
       }
     }
     expect(entered).toBe(true);
+    // The roll completes within a few turn windows — a guard that
+    // trapped the fish in "turn" would fail here — and the meal lands,
+    // which only happens once seeking has resumed.
+    for (let i = 0; i < TURN_TICKS * 6 && f.state === "turn"; i++)
+      sim.tick();
+    expect(f.state).not.toBe("turn");
+    const pellet = sim.food[0]!;
+    for (let i = 0; i < 400 && !pellet.eaten; i++) sim.tick();
+    expect(pellet.eaten).toBe(true);
   });
 
   it("eats a pellet beyond its room by sliding along the wall", () => {
