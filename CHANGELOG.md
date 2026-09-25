@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- In the Mac app, the Tank Stats, Tank Overview, Preferences and Add-ons
+  windows no longer show a white pixel just outside their top-right
+  and bottom-left corners.
 - You can name your fish. Click the name in a fish's Get Info card and
   type, or select the fish in Tank Overview and choose Rename… (or
   press Return). The name shows on its name tag, hover tip, Get Info
