@@ -9,6 +9,7 @@ import { MENU_SEPARATOR, mountMenuBar, mountWindow, pushButton,
          registerSprites } from "osmium-ui";
 import { ICON_PALETTE, ICON_SPRITES, MENU_GLYPH } from "./icons.js";
 import { inNativeShell } from "./bus.js";
+import { clockLabel } from "../core/light.js";
 import type { Menu } from "osmium-ui";
 
 const DONATE_URL = "https://archive.org/donate";
@@ -26,6 +27,13 @@ export function openClientWindow(page: string): void {
   const target = `finsical-${page}`;
   const url = new URL(`${page}.html`, location.href).href;
   const existing = window.open("", target);
+  // Both opens can return null under a strict popup blocker — leave a
+  // trace so the failure isn't silent.
+  const open = () => {
+    if (!window.open(url, target))
+      console.warn(`Finsical: could not open the ${page} window — ` +
+                   "check the popup blocker");
+  };
   try {
     if (existing && !existing.closed &&
         existing.location.pathname.endsWith(`/${page}.html`)) {
@@ -34,14 +42,14 @@ export function openClientWindow(page: string): void {
       existing.location.assign(url);
       existing.focus();
     } else {
-      window.open(url, target);
+      open();
     }
   } catch {
     if (existing) {
       existing.location.href = url;
       existing.focus();
     } else {
-      window.open(url, target);
+      open();
     }
   }
 }
@@ -49,17 +57,25 @@ export function openClientWindow(page: string): void {
 export interface TankMenuActions {
   feed(): void;
   changeWater(): void;
+  toggleAutoFeed(): void;
   importAddons(): void;
   takePicture(): void;
+  exportTank(): void;
+  importTank(): void;
   toggleCrt(): void;
+  degauss(): void;
   toggleLamp(): void;
   toggleMute(): void;
   togglePause(): void;
+  toggleZen(): void;
+  toggleScold(): void;
+  toggleBoot(): void;
   /** Live state, read each time a menu opens. Osmium's items have no
    * checkmark, so toggles name the action they would take instead,
    * like System 8's Show Balloons / Hide Balloons. */
-  state(): { crtUsable: boolean; crtOn: boolean; lampOn: boolean;
-             muted: boolean; paused: boolean };
+  state(): { autoFeed: boolean; crtUsable: boolean; crtOn: boolean;
+             lampOn: boolean; muted: boolean; paused: boolean;
+             zen: boolean; scoldOn: boolean; bootOn: boolean };
 }
 
 /** True while a pull-down menu is open — the tank page's bare-key
@@ -240,9 +256,7 @@ function mountClock(bar: HTMLElement): () => void {
   bar.append(el);
   const paint = () => {
     const d = new Date();
-    const h12 = d.getHours() % 12 || 12;
-    el.textContent = `${h12}:${String(d.getMinutes()).padStart(2, "0")} ` +
-      (d.getHours() < 12 ? "AM" : "PM");
+    el.textContent = clockLabel(d.getHours(), d.getMinutes());
   };
   paint();
   // Every second, not every 30: the minute must roll over the moment
@@ -286,6 +300,9 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
         return [
           { title: "Feed Fish", action: a.feed },
           { title: "Change Water", action: a.changeWater },
+          { title: s.autoFeed ? "Turn Auto-Feeder Off"
+                             : "Turn Auto-Feeder On",
+            action: a.toggleAutoFeed },
           MENU_SEPARATOR,
           { title: s.paused ? "Resume Simulation" : "Pause Simulation",
             action: a.togglePause },
@@ -293,11 +310,24 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
             action: a.toggleLamp },
           { title: s.muted ? "Unmute Sound" : "Mute Sound",
             action: a.toggleMute },
+          { title: s.scoldOn ? "Turn Tap Sign Off" : "Turn Tap Sign On",
+            action: a.toggleScold },
+          { title: s.bootOn ? "Turn Startup Screen Off"
+                            : "Turn Startup Screen On",
+            action: a.toggleBoot },
           // Dimmed (no action) where the page has no usable WebGL.
           { title: s.crtOn ? "Turn CRT Effect Off" : "Turn CRT Effect On",
             ...(s.crtUsable ? { action: a.toggleCrt } : {}) },
+          // Dimmed while the tube is off or dead — nothing to degauss.
+          { title: "Degauss",
+            ...(s.crtOn && s.crtUsable ? { action: a.degauss } : {}) },
+          MENU_SEPARATOR,
+          { title: s.zen ? "Leave Zen Mode" : "Enter Zen Mode",
+            action: a.toggleZen },
           MENU_SEPARATOR,
           { title: "Take a Picture", action: a.takePicture },
+          { title: "Export Tank…", action: a.exportTank },
+          { title: "Import Tank…", action: a.importTank },
           { title: "Import Add-ons…", action: a.importAddons },
         ];
       },

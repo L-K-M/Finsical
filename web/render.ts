@@ -39,20 +39,49 @@ export function soundIcon(): HTMLCanvasElement {
   return (soundCanvas ??= gridCanvas(SOUND_ICON, ICON_PALETTE));
 }
 
-/** Rasterize an indexed image to a canvas. opaque=false makes index 0
- * transparent (sprite convention); opaque=true keeps every pixel. */
+/** True on little-endian hosts, where one Uint32 write lays RGBA bytes
+ * in ImageData order (r in the low byte). All supported targets are LE;
+ * the scalar fallback keeps the BE corner correct. */
+const RGBA_LE = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
+
+/** RGBA bytes for an indexed image: opaque=false makes index 0
+ * transparent (sprite convention); opaque=true keeps every pixel.
+ * Palette misses render opaque black, the long-standing default. The
+ * pixel count is clamped to w*h — a corrupt pack's over-long idx used
+ * to be dropped by the per-pixel loop; a bare `set` would throw. */
+export function indexedPixels(img: IndexedImage,
+                              opaque: boolean): Uint8ClampedArray {
+  const n = Math.min(img.idx.length, img.w * img.h);
+  const out = new Uint8ClampedArray(n * 4);
+  if (RGBA_LE) {
+    // Palette → packed RGBA lookup, then one word per pixel instead of
+    // a tuple destructure plus four byte writes.
+    const lut = new Uint32Array(256).fill(0xFF000000); // opaque black
+    img.palette.forEach(([r, g, b], i) => {
+      lut[i] = (0xFF << 24) | (b << 16) | (g << 8) | r;
+    });
+    if (!opaque) lut[0] = 0; // index 0 is the transparent key
+    const px = new Uint32Array(out.buffer);
+    for (let i = 0; i < n; i++) px[i] = lut[img.idx[i]!]!;
+  } else {
+    for (let i = 0; i < n; i++) {
+      const pi = img.idx[i] ?? 0;
+      const [r, g, b] = img.palette[pi] ?? [0, 0, 0];
+      out[i * 4] = r; out[i * 4 + 1] = g; out[i * 4 + 2] = b;
+      out[i * 4 + 3] = opaque || pi !== 0 ? 255 : 0;
+    }
+  }
+  return out;
+}
+
+/** Rasterize an indexed image to a canvas. */
 export function imageCanvas(img: IndexedImage,
                             opaque: boolean): HTMLCanvasElement {
   const cv = document.createElement("canvas");
   cv.width = img.w; cv.height = img.h;
   const c = cv.getContext("2d")!;
   const im = c.createImageData(img.w, img.h);
-  for (let i = 0; i < img.idx.length; i++) {
-    const pi = img.idx[i] ?? 0;
-    const [r, g, b] = img.palette[pi] ?? [0, 0, 0];
-    im.data[i * 4] = r; im.data[i * 4 + 1] = g; im.data[i * 4 + 2] = b;
-    im.data[i * 4 + 3] = opaque || pi !== 0 ? 255 : 0;
-  }
+  im.data.set(indexedPixels(img, opaque)); // bounded to w*h inside
   c.putImageData(im, 0, 0);
   return cv;
 }
@@ -67,8 +96,11 @@ function shrunkCanvas(img: IndexedImage, s: number): HTMLCanvasElement {
 }
 
 /** One swim frame, oriented and shrunk to `scale`, built once per
- * sheet: the tank draws it every frame without resampling. */
-const swimCache = new WeakMap<SpriteSheet, Map<string, HTMLCanvasElement>>();
+ * sheet: the tank draws it every frame without resampling. Nested by
+ * scale (few distinct values) then a packed int key — a string key per
+ * fish per frame allocates on the hot path. */
+const swimCache =
+  new WeakMap<SpriteSheet, Map<number, Map<number, HTMLCanvasElement>>>();
 
 /** Centered cover-crop of a srcW x srcH image into a dstW x dstH
  * frame: the returned source rect fills the frame with no letterbox
@@ -81,12 +113,39 @@ export function coverCrop(srcW: number, srcH: number,
   return { sx: (srcW - sw) / 2, sy: (srcH - sh) / 2, sw, sh };
 }
 
+/** The gravel-strip rule: at least 4:1 wide and at least half the
+ * tank's width (AquaZone .grv beds are ~6:1; 4:1 keeps margin below
+ * that so panoramic backdrops around 3:1 are not misfiled as gravel).
+ * Anything squarer is backdrop or decor art, anything smaller an
+ * icon. Shared so install validation applies the same rule the tank
+ * renders with. */
+export function isGravelImage(img: { w: number; h: number },
+                              tankW: number): boolean {
+  return img.w >= img.h * 4 && img.w >= tankW / 2;
+}
+
+/** The backdrop rule: a gravel strip never serves as one, and a scene
+ * must have each dim at least half the tank's (which also bounds the
+ * area to a quarter) — anything smaller is an icon or decor art.
+ * Shared so install validation applies the same rule pickBackdrop
+ * renders with. */
+export function isBackdropImage(
+    img: { w: number; h: number },
+    tank: { width: number; height: number }): boolean {
+  return !isGravelImage(img, tank.width) &&
+         img.w >= tank.width / 2 && img.h >= tank.height / 2;
+}
+
 export function swimCanvas(sheet: SpriteSheet, f: number,
                            facing: 1 | -1, group = 0,
                            scale = 1): HTMLCanvasElement {
-  let cache = swimCache.get(sheet);
-  if (!cache) swimCache.set(sheet, (cache = new Map()));
-  const key = `${group}:${f}:${facing}:${scale}`;
+  let byScale = swimCache.get(sheet);
+  if (!byScale) swimCache.set(sheet, (byScale = new Map()));
+  let cache = byScale.get(scale);
+  if (!cache) byScale.set(scale, (cache = new Map()));
+  // Stride 8192: collision-free for up to 4095 frames per group —
+  // beyond any plausible sheet. (Stride 64 collided at f = 32.)
+  const key = group * 8192 + f * 2 + (facing > 0 ? 1 : 0);
   let cv = cache.get(key);
   if (cv) return cv;
   const img = swimFrame(sheet, f, facing, group);
