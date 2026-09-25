@@ -32,6 +32,7 @@ const win = document.getElementById("swin")!;
 const rowsEl = document.getElementById("srows")!;
 const waterEl = document.getElementById("swrows")!;
 const careEl = document.getElementById("scare")!;
+const quietEl = document.getElementById("squiet")!;
 
 function el(tag: string, cls = "", text = ""): HTMLElement {
   const e = document.createElement(tag);
@@ -273,6 +274,7 @@ const bus = openBus((m: BusMsg) => {
   if (tankGone) {
     tankGone = false;
     for (const g of [rowsEl, waterEl]) g.classList.remove("osm-dimmed");
+    quietEl.hidden = true;
   }
   if (typeof m.boot === "string") {
     // A restarted tank is a different tank: its water and hunger must
@@ -411,6 +413,8 @@ setInterval(() => {
       Date.now() - lastStateAt <= TANK_QUIET_MS) return;
   tankGone = true;
   for (const g of [rowsEl, waterEl]) g.classList.add("osm-dimmed");
+  // Beside Copy Summary, so the tabs that show no care hints say it too.
+  quietEl.hidden = false;
   careEl.textContent = "";
   careEl.appendChild(el("div", "scareline", "Waiting for the tank…"));
 }, 1000);

@@ -272,7 +272,8 @@ body.crt canvas#tank { opacity: 0; }
 #swin .osm-content { display: flex; flex-direction: column; padding: 10px 12px 0; }
 #stabs { flex: auto; min-height: 0; }
 .spanel { box-sizing: border-box; height: 100%; padding: 10px 12px 0; overflow: hidden; }
-#sfoot { flex: none; padding: 10px 0; }
+#sfoot { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+#squiet[hidden] { display: none; }
 /* Bar, right-aligned percentage, trend arrow; the bar sits on rows
    1..14 of its 17px field row, centered on the text's cap height. */
 .smeter { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
