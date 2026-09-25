@@ -19,18 +19,63 @@ const AZ_ITEM_URL =
  * a tank on screen (icons.ts), not anyone else's logo. */
 const APPLE_SPRITE = "menu-glyph";
 
-/** Open (or focus) a client page in a named tab: an already-open
- * window keeps its live state instead of reloading, and a tab grabbed
- * cross-origin is steered home by writing href (a second window.open
- * can be blocked — one open per gesture in Safari). */
-export function openClientWindow(page: string): void {
+/** The pages the tank opens in windows of their own. */
+export type ClientPage = "prefs" | "overview" | "addons" | "stats";
+/** Each client page's size, as the app's windows open it
+ * (macos/Finsical.swift): its layout is built for that box. */
+const CLIENT_SIZES: Readonly<Record<ClientPage, { w: number; h: number }>> = {
+  prefs: { w: 565, h: 457 },
+  overview: { w: 521, h: 381 },
+  addons: { w: 621, h: 441 },
+  stats: { w: 380, h: 360 },
+};
+/** Where a new client window opens, relative to the tank window's top
+ * left: a little in and down, the way the Finder staggered windows. */
+const CLIENT_OFFSET = { x: 40, y: 60 };
+/** Room kept for the title bar a popup adds above its content, so one
+ * opened near the bottom doesn't sit under the dock or taskbar. */
+const POPUP_CHROME = 40;
+
+/** The window.open features for a client page: a small window of the
+ * app's size near the tank, kept on screen. A plain open made a
+ * full-size tab that stretched the page and sent the tank's own tab to
+ * the background, where the sim and its sound stop. */
+export function clientWindowFeatures(page: ClientPage, at: {
+  screenX: number; screenY: number; availLeft: number; availTop: number;
+  availWidth: number; availHeight: number;
+}): string {
+  const { w, h } = CLIENT_SIZES[page];
+  const clamp = (v: number, lo: number, span: number, size: number) =>
+    Math.round(Math.max(lo, Math.min(v, lo + span - size)));
+  const left = clamp(at.screenX + CLIENT_OFFSET.x, at.availLeft,
+                     at.availWidth, w);
+  const top = clamp(at.screenY + CLIENT_OFFSET.y, at.availTop,
+                    at.availHeight - POPUP_CHROME, h);
+  return `popup,width=${w},height=${h},left=${left},top=${top}`;
+}
+
+/** Open (or focus) a client page in a named window: an already-open
+ * window keeps its live state instead of reloading, and a window
+ * grabbed cross-origin is steered home by writing href (a second
+ * window.open can be blocked — one open per gesture in Safari). The
+ * first call creates the window, so it carries the features; phones
+ * ignore them and open a tab. */
+export function openClientWindow(page: ClientPage): void {
   const target = `finsical-${page}`;
   const url = new URL(`${page}.html`, location.href).href;
-  const existing = window.open("", target);
+  const scr = screen as Screen & { availLeft?: number; availTop?: number };
+  // Safari has no availLeft/availTop: there a popup stays on the main
+  // display even when the tank is on another screen.
+  const features = clientWindowFeatures(page, {
+    screenX, screenY, availLeft: scr.availLeft ?? 0,
+    availTop: scr.availTop ?? 0, availWidth: scr.availWidth,
+    availHeight: scr.availHeight,
+  });
+  const existing = window.open("", target, features);
   // Both opens can return null under a strict popup blocker — leave a
   // trace so the failure isn't silent.
   const open = () => {
-    if (!window.open(url, target))
+    if (!window.open(url, target, features))
       console.warn(`Finsical: could not open the ${page} window — ` +
                    "check the popup blocker");
   };

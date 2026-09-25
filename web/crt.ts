@@ -4,7 +4,9 @@
  * the display's device resolution through a shader emulating an
  * aperture-grille tube:
  *  - scanlines locked to logical game rows (they follow the warped,
- *    letterboxed image, not fixed screen stripes)
+ *    letterboxed image, not fixed screen stripes), drawn as a beam
+ *    whose spot swells with brightness: thin lines in the dark, full
+ *    rows in the highlights
  *  - horizontal beam smear (CRTs blur along the scan, not across lines)
  *  - phosphor bloom that over-emphasizes bright colors, plus wider
  *    glass halation
@@ -150,6 +152,58 @@ vec3 rowPx(vec2 lp) {
   return texture2D(uRows, vec2(x / uColsMax, y / uTank.y)).rgb;
 }
 
+// One scanline's signal at lp: the smeared row, then the misconverged
+// red and blue guns. At a row center it reads that row alone.
+vec3 scanRow(vec2 lp, float conv) {
+  vec3 c = rowPx(lp);
+  if (conv > 0.001) {
+    // Blend, don't overwrite — a hard swap would strip the beam smear
+    // from r/b and leave them crisper than green.
+    float k = clamp(conv * 2.5, 0.0, 1.0);
+    c.r = mix(c.r, gamePx(lp - vec2(conv, 0.0)).r, k);
+    c.b = mix(c.b, gamePx(lp + vec2(conv, 0.0)).b, k);
+  }
+  return c;
+}
+
+// Beam spot sizes in rows (gaussian sigma) as vec2(black, full drive):
+// a dark row draws a thin line, a bright one a spot that nearly meets
+// its neighbors. SPOT_LINES is where the Scanlines slider's first 40%
+// fades in; SPOT_DEEP is the top of the slider. Keep every sigma under
+// about 0.35: the beam reads only the two rows bracketing a fragment,
+// so a wider spot would leak light into rows it never reads (0.8% of
+// its peak at 0.32, 4% at 0.40), and spotArea's overlap cap only
+// engages from 0.40.
+const vec2 SPOT_LINES = vec2(0.20, 0.32);
+const vec2 SPOT_DEEP = vec2(0.12, 0.24);
+
+// Spot variance for signal v: the spot grows with the drive (a hotter
+// beam blooms wider).
+vec3 spotVar(vec3 v, vec2 size) {
+  vec3 s = mix(vec3(size.x), vec3(size.y), clamp(v, 0.0, 1.0));
+  return s * s;
+}
+
+// Share of a row's light at distance d rows from its center: 1 on
+// the center line, falling off across the gap. The device pixel's
+// footprint variance fp2 blurs the spot so its profile is never finer
+// than the pixel grid can draw; the blur spreads the same light, so
+// the peak drops as the spot widens.
+vec3 spot(float d, vec3 var, float fp2) {
+  vec3 blurred = var + fp2;
+  return exp(-0.5 * d * d / blurred) * sqrt(var / blurred);
+}
+
+// A spot's light averaged over its row pitch (its area, capped where
+// neighboring spots overlap into a flat field).
+vec3 spotArea(vec3 var) { return min(sqrt(6.2831853 * var), 1.0); }
+
+// Spots of light add in linear light, not in signal space. The tube's
+// light is about the signal squared (a gamma of 2 instead of ~2.2,
+// close enough for how neighboring spots blend and far cheaper).
+vec3 toLight(vec3 v) { return v * v; }
+vec3 toSignal(vec3 l) { return sqrt(max(l, 0.0)); }
+
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
 }
@@ -234,19 +288,47 @@ void main() {
     return;
   }
 
-  // The scanline, already smeared along the scan by the rows pass.
-  vec3 c = rowPx(lp);
-
   // Misconvergence: the outer electron guns never land perfectly —
   // red drifts left and blue right, growing from zero at the center
   // toward the edges. Green stays as the reference beam.
   float conv = (1.2 * uConv) * length(gc) * (1.0 + 6.0 * uDegauss);
-  if (conv > 0.001) {
-    // Blend, don't overwrite — a hard swap would strip the beam smear
-    // from r/b and leave them crisper than green.
-    float k = clamp(conv * 2.5, 0.0, 1.0);
-    c.r = mix(c.r, gamePx(lp - vec2(conv, 0.0)).r, k);
-    c.b = mix(c.b, gamePx(lp + vec2(conv, 0.0)).b, k);
+
+  // Scanlines: each row is a beam whose spot swells with its
+  // brightness, so dark rows thin to lines with deep gaps while bright
+  // rows nearly fill them and spill a little into their neighbors. A
+  // lone bright pixel glows as a dot instead of a sliver. Like
+  // Softening, the first 40% of the slider fades the lines in at a
+  // fixed spot size; beyond that the spots narrow and the gaps deepen.
+  float scan = clamp(uScan / 0.4, 0.0, 1.0);
+  vec3 c;
+  if (scan <= 0.0) {
+    c = scanRow(lp, conv); // flat rows, sampled sharp
+  } else {
+    // The two rows whose centers bracket this fragment, fy of the way
+    // from the lower to the upper one.
+    float p = lp.y - 0.5;
+    float row = floor(p);
+    float fy = p - row;
+    vec3 a = scanRow(vec2(lp.x, row + 0.5), conv);
+    vec3 b = scanRow(vec2(lp.x, row + 1.5), conv);
+    // The flat end, identical to the sharp read above: rows fade into
+    // each other over the same device px.
+    vec3 rows = mix(a, b, clamp((fy - 0.5) * pxScale.y + 0.5, 0.0, 1.0));
+    vec2 size = mix(SPOT_LINES, SPOT_DEEP,
+                    clamp((uScan - 0.4) / 0.6, 0.0, 1.0));
+    float fp2 = 1.0 / (12.0 * pxScale.y * pxScale.y);
+    // Past the first and last rows there is no beam: the clamped read
+    // would repeat the edge row and fill its outer half-row with light.
+    float inA = step(0.0, row);
+    float inB = step(row + 2.0, uTank.y);
+    vec3 beam = inA * toLight(a) * spot(fy, spotVar(a, size), fp2) +
+                inB * toLight(b) * spot(1.0 - fy, spotVar(b, size), fp2);
+    // Below ~3 device px per row the lines would beat against the
+    // pixel grid (moire), so they give way to their average light:
+    // small pictures lose the lines but keep the same brightness.
+    beam = mix(toLight(rows) * spotArea(spotVar(rows, size)), beam,
+               smoothstep(1.5, 3.0, pxScale.y));
+    c = toSignal(mix(toLight(rows), beam, scan));
   }
 
   // Phosphor bloom: bright areas bleed wider and overdrive.
@@ -260,12 +342,6 @@ void main() {
      gamePx(lp - vec2(0.0, 5.0)) + gamePx(lp + vec2(0.0, 5.0))) * 0.25;
   c += halo * (0.10 * uBloom);
   c *= 1.0 + (0.60 * uOver) * smoothstep(0.5, 1.0, max(c.r, max(c.g, c.b)));
-
-  // Scanlines ride the logical-row phase: sin² dips at row boundaries.
-  // (pow() is undefined for negative bases — square explicitly.)
-  float scan = sin(3.14159265 * lp.y);
-  scan *= scan;
-  c *= mix(1.0 - uScan, 1.0, scan);
 
   // Aperture grille: one RGB channel per device-pixel column.
   float stripe = mod(floor(gl_FragCoord.x), 3.0);
@@ -304,7 +380,9 @@ void main() {
 /** Tunable CRT traits, all normalized 0–1. The shader multiplies each
  * by a tuned ceiling, so 1.0 is "authentic" rather than "clipped". */
 export interface CrtConfig {
-  /** Darkness of the gaps between game-pixel rows. */
+  /** Darkness of the gaps between game-pixel rows. Bright rows swell
+   * to fill them, so the lines show most in the dark. Up to 0.4 the
+   * lines fade in; above, the beam narrows and the gaps deepen. */
   scanlines: number;
   /** How much the beam smears color sideways along each scan. Up to
    * 0.4 the smear fades in at a fixed width; above, it widens. */
@@ -670,7 +748,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   // devicePixelRatio read stays per-frame (a cheap number, no
   // layout) so browser-zoom DPR changes still resize the buffer.
   // DPR caps at 2: the grille mask is sub-game-pixel already there,
-  // and the ~9-tap tube pass scales with buffer pixels.
+  // and the ~12-read tube pass scales with buffer pixels.
   // Lifetime: initCrt runs once per page load (module scope in
   // web/main.ts) and CrtFilter has no dispose path, so the observer
   // and window listener below live exactly as long as the page.
