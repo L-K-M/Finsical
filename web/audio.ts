@@ -147,6 +147,12 @@ export class TankAudio {
   async load(read: (path: string) => Promise<Uint8Array>,
              manifest: AzpackManifest): Promise<void> {
     const sounds = manifest.sounds ?? [];
+    // A new pack supersedes whatever feedback is still playing — the
+    // old tail would overlap this pack's install cue.
+    if (this.feedbackSrc) {
+      try { this.feedbackSrc.stop(); } catch { /* already ended */ }
+      this.feedbackSrc = null;
+    }
     if (sounds.length) {
       // context(), not a bare AudioContext: it also builds the master
       // gain every play() connects to.
@@ -339,9 +345,20 @@ export class TankAudio {
       this.feedbackSrc = null;
     }
     const buf = this.imported.get(name);
-    // Not through play(): while the context is locked that queues the
-    // sound until the first click, long after the install it answers.
-    if (!buf || !this.ctx || this.ctx.state !== "running") return;
+    // Not through play() — but a feedback that answers the install
+    // gesture itself may still wait out the lock, like play()'s
+    // gesture retry. Without an activation (a remote relay, a drop
+    // whose walk outlasted the gesture) resume() rejects quietly and
+    // the cue drops rather than firing long after the install.
+    if (!buf || !this.ctx || this.hidden) return;
+    if (this.ctx.state === "suspended") {
+      if (!gestureActive()) return;
+      void this.ctx.resume()
+        .then(() => this.playImported(name))
+        .catch(() => { /* still locked — the feedback drops */ });
+      return;
+    }
+    if (this.ctx.state !== "running") return;
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     const g = this.ctx.createGain();

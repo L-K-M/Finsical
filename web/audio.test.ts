@@ -363,6 +363,31 @@ describe("TankAudio install feedback", () => {
     await Promise.resolve();
     expect(ac.sources).toHaveLength(0);
   });
+
+  it("waits out the lock when the install gesture is still held",
+     async () => {
+    // The Add-to-Tank click/drop is a user activation: the cue it
+    // triggered must resume and play, not drop on the locked context.
+    const { audio, ac } = await tank({ a: 1 });
+    ac.state = "suspended";
+    vi.stubGlobal("navigator", { userActivation: { isActive: true } });
+    audio.playImported("a");
+    await flush();
+    expect(ac.sources).toHaveLength(1);
+  });
+
+  it("a pack load stops the previous pack's feedback", async () => {
+    // load() merges sound tables; the old pack's feedback must not
+    // overlap the new one's install cue.
+    const { audio, ac } = await tank({ a: 1 });
+    audio.playImported("a");
+    await audio.load(async () => wav(1), {
+      format: "azpack/1", tag: "T", version: 1, chunks: [], names: [],
+      sounds: [{ name: "b", file: "s/b.wav" }],
+    });
+    expect(ac.sources[0]!.stops).toHaveLength(1);
+    expect(ac.sources).toHaveLength(1); // load decodes nothing live
+  });
 });
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
