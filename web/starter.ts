@@ -3,9 +3,9 @@
 // collections, about 2 MB in all, picked by name and resolved against
 // the live listing so an item the archive drops is skipped instead of
 // breaking the offer.
-import type { Collection, Importable } from "./import.js";
+import type { Collection, Importable, PackSection } from "./import.js";
 
-export interface StarterItem { section: string; inner: string }
+export interface StarterItem { section: PackSection; inner: string }
 
 /** In install order: scenery after the fish, so the fish arrive first
  * and the placeholders can go as early as possible, and the sounds,

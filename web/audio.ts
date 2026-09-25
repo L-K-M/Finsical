@@ -361,10 +361,14 @@ export class TankAudio {
     this.feedbackSrc = src;
   }
 
-  /** The first sound named one of `subs`, else the first whose name
-   * contains one, passing over the sound named `skip`. */
+  /** The first sound named one of `subs`, else the first with one as
+   * a whole word in its name, passing over the sound named `skip`.
+   * Each sub must be a single lowercase word ("center", "drop"):
+   * multi-word subs can never match in the word pass.
+   * Whole-word: "Centerfold" must not answer a "center" tap, while
+   * "CENTER*" (tokens: center) and "bubble pop" still match. */
   private find(subs: readonly string[], skip = ""): AudioBuffer | null {
-    // Exact names beat substring hits globally — a bundled "drop" keeps
+    // Exact names beat word hits globally — a bundled "drop" keeps
     // the feed slot over an unrelated import that merely contains the
     // substring. Needle order is the caller's stated preference:
     // feed's ["drop", "intowater"] and splash's ["intowater", "drop"]

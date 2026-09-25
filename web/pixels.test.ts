@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { indexedPixels } from "./render.js";
+import { indexedPixels, isBackdropImage, isGravelImage }
+  from "./render.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 
 const img = (idx: number[],
@@ -35,5 +36,31 @@ describe("indexedPixels", () => {
     const under = { w: 2, h: 1, palette: [[1, 2, 3]],
                     idx: new Uint8Array([0]) } as IndexedImage;
     expect(indexedPixels(under, true)).toHaveLength(4);
+  });
+});
+
+describe("isGravelImage", () => {
+  it("accepts a ~6:1 strip at half tank width", () => {
+    expect(isGravelImage({ w: 192, h: 32 }, 320)).toBe(true);
+  });
+  it("rejects a 3:1 panoramic below the real ~6:1 gravel ratio", () => {
+    expect(isGravelImage({ w: 300, h: 100 }, 320)).toBe(false);
+  });
+  it("rejects narrow strips and near-square art", () => {
+    expect(isGravelImage({ w: 150, h: 30 }, 320)).toBe(false); // < w/2
+    expect(isGravelImage({ w: 200, h: 80 }, 320)).toBe(false); // 2.5:1
+  });
+});
+
+describe("isBackdropImage", () => {
+  const tank = { width: 320, height: 200 };
+  it("accepts a half-tank-or-larger scene, gravel excluded", () => {
+    expect(isBackdropImage({ w: 320, h: 200 }, tank)).toBe(true);
+    expect(isBackdropImage({ w: 300, h: 100 }, tank)).toBe(true);
+    expect(isBackdropImage({ w: 320, h: 50 }, tank)).toBe(false); // gravel
+  });
+  it("rejects icons and decor art under half a dimension", () => {
+    expect(isBackdropImage({ w: 159, h: 200 }, tank)).toBe(false);
+    expect(isBackdropImage({ w: 320, h: 99 }, tank)).toBe(false);
   });
 });

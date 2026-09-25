@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { COLLECTIONS } from "./import.js";
-import type { Importable } from "./import.js";
+import type { Importable, PackSection } from "./import.js";
 import { resolveStarter, STARTER_SET, starterCollection, wantsStarterSounds }
   from "./starter.js";
 
-const item = (section: string, inner: string): Importable =>
+const item = (section: PackSection, inner: string): Importable =>
   ({ section, inner,
      url: `https://archive.org/download/x/${section}.zip/${inner}.zip` });
 

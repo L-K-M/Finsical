@@ -572,6 +572,22 @@ describe("TankAudio event sounds", () => {
     expect(played(ac)).toEqual([5]);
   });
 
+  it("a song can't take the glass-tap sound", async () => {
+    const { audio, ac } = await tank({
+      "Centerfold": 1, "CENTER*": 7, "SIDE": 8,
+    });
+    audio.tap(160, 100, 320, 200); // middle of the glass -> center
+    audio.tap(10, 100, 320, 200); // near the edge -> side
+    expect(played(ac)).toEqual([7, 8]);
+  });
+
+  it("stays silent on tap with only a song installed", async () => {
+    const { audio, ac } = await tank({ "Centerfold": 1 });
+    audio.tap(160, 100, 320, 200);
+    audio.tap(10, 100, 320, 200);
+    expect(ac.sources).toHaveLength(0);
+  });
+
   // The original game's sound bank ships these names (sndbank.ts) —
   // the ones TankAudio has events for each resolve through their own
   // event, and the unexercised ones prove nothing hijacks a needle

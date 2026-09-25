@@ -3,7 +3,7 @@ import { BOTTOM_PAD, CORPSE_TICKS, DAY_TICKS, FOOD_ENTRY_Y, Sim,
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
-import { FISH_CAP, FOOD_CAP, HUNGER_SEEK, SPAWN_HUNGER }
+import { FISH_CAP, FOOD_CAP, HUNGER_SEEK, SPAWN_HUNGER, TANK_SIZE }
   from "../core/tuning.js";
 import { planFrame } from "../core/loop.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
@@ -11,7 +11,8 @@ import { isPack } from "../core/data/fsh.js";
 import { decodeDroppedPacks } from "./drop.js";
 import { decorFrame, decorPhase, decorPhaseFrac }
   from "../core/data/decor.js";
-import { bodySize, pickSwimSheet } from "../core/data/swimsheet.js";
+import { bodySize, pickDrawableSheet }
+  from "../core/data/swimsheet.js";
 import { fishScale } from "./artscale.js";
 import { panFor, sanitizeSoundConfig, TankAudio } from "./audio.js";
 import { drawRipples, drawSplashes, newSplash, tickRipples,
@@ -24,13 +25,16 @@ import { backfillStarterSounds, showWelcome, wantsWelcome }
   from "./welcome.js";
 import { clampDecorCopies, decorCopyRoom, fetchAddon, installProblem,
          mountImportPanel, orphanedSounds, recordAddon,
-         qualifySoundItemName, isListed, COLLECTIONS } from "./import.js";
+         qualifySoundItemName, isListed, usablePacks, usableProblem,
+         COLLECTIONS }
+  from "./import.js";
 import { SWAY_BANDS, swayOffset } from "./sway.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
          sndsMerge, sndsRemove } from "./store.js";
-import { coverCrop, decorCanvases, imageCanvas, previewOf, soundIcon,
-         swimCanvas } from "./render.js";
+import { coverCrop, decorCanvases, imageCanvas, isBackdropImage,
+         isGravelImage,
+         previewOf, soundIcon, swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
 import { containPoint, isFeedZone } from "./feedzone.js";
 import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
@@ -66,7 +70,7 @@ import type { Fish } from "../core/sim.js";
 import type { SnailVisit } from "./snail.js";
 import type { AzpackManifest, IndexedImage } from "../core/data/azpack.js";
 
-const TANK = { width: 320, height: 200 };
+const TANK = TANK_SIZE;
 const TICKS_PER_SECOND = 30;
 const STEP_MS = 1000 / TICKS_PER_SECOND;
 
@@ -494,7 +498,7 @@ function setFeedHover(on: boolean): void {
 function syncFeedHover(): void {
   if (!lastClient) { setFeedHover(false); return; }
   const p = containPoint(lastClient.x, lastClient.y,
-                         canvas.getBoundingClientRect(), TANK);
+                         tankRect(), TANK);
   // Paused drops the affordance too — the click below is gated the
   // same way, so the cursor mustn't promise a feed that won't land.
   setFeedHover(p !== null && !paused &&
@@ -580,7 +584,8 @@ function tipForPoint(p: { x: number; y: number }): string | null {
   const f = fishToName(p);
   if (f) return fishTipLabel(f);
   if (anyOverlayOpen()) return null;
-  return isFeedZone(p.x, p.y, waterline) ? "Click to feed" : null;
+  return !paused && isFeedZone(p.x, p.y, waterline)
+    ? "Click to feed" : null;
 }
 
 function placeTip(e: { clientX: number; clientY: number }): void {
@@ -730,7 +735,7 @@ let fishSheets: SpriteSheet[] = [];
 function usePack(pack: { sheets: Map<string, SpriteSheet>;
                          manifest?: AzpackManifest },
                  read?: (path: string) => Promise<Uint8Array>): number {
-  const sheet = pickSwimSheet(pack.sheets.values());
+  const sheet = pickDrawableSheet(pack.sheets.values());
   if (sheet) {
     fishSheets.push(sheet);
     // A new sheet can resolve a fish whose binding was out of range.
@@ -856,9 +861,8 @@ function pickBackdrop(images: Iterable<IndexedImage>, src = ""): void {
   let best: IndexedImage | null = null;
   let gravel: IndexedImage | null = null;
   for (const img of images) {
-    if (img.w >= img.h * 3 && img.w >= TANK.width / 2) { if (!gravel || img.w > gravel.w) gravel = img; continue; }
-    if (img.w * img.h < (TANK.width * TANK.height) / 4) continue;
-    if (img.w < TANK.width / 2 || img.h < TANK.height / 2) continue;
+    if (isGravelImage(img, TANK.width)) { if (!gravel || img.w > gravel.w) gravel = img; continue; }
+    if (!isBackdropImage(img, TANK)) continue;
     if (!best || img.w * img.h > best.w * best.h) best = img;
   }
   // delete-then-set: Map keeps an existing key's insertion position, so
@@ -875,7 +879,7 @@ function pickGravel(images: Iterable<IndexedImage>, src: string): void {
   // .grv packs also carry a ~square texture-fill tile — strip-only, never a backdrop
   let gravel: IndexedImage | null = null;
   for (const img of images) {
-    if (img.w >= img.h * 3 && img.w >= TANK.width / 2 &&
+    if (isGravelImage(img, TANK.width) &&
         (!gravel || img.w > gravel.w)) gravel = img;
   }
   if (gravel) { gravelByPack.delete(src);
@@ -986,21 +990,24 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
   // nobody chose.
   if (section !== "fish") return;
   const idx = usePack({ sheets });
-  if (idx >= 0) {
-    sheetBySpecies.set(name, idx);
-    if (entry !== undefined) sheetByEntry.set(entryKey(url, entry), idx);
-    // A reinstall can rebind the url to a new slot — drop the old
-    // reverse entry so the two maps stay exact inverses.
-    const prior = sheetByPack.get(url);
-    if (prior !== undefined && prior !== idx) packBySheet.delete(prior);
-    sheetByPack.set(url, idx);
-    packBySheet.set(idx, url);
-    // A live fish-pack install adds a real fish; restores replay sheets
-    // only — the saved roster already carries those fish.
-    if (live) {
-      const f = spawnFish(idx, name, url, "enforce", entry);
-      if (f) audio.splash(panFor(f.x, TANK.width));
-    }
+  if (idx < 0) {
+    // A sheet that can't draw is not an install — usePack refused it.
+    console.info(`archive.org: ${section} ${name} has no usable art`);
+    return;
+  }
+  sheetBySpecies.set(name, idx);
+  if (entry !== undefined) sheetByEntry.set(entryKey(url, entry), idx);
+  // A reinstall can rebind the url to a new slot — drop the old
+  // reverse entry so the two maps stay exact inverses.
+  const prior = sheetByPack.get(url);
+  if (prior !== undefined && prior !== idx) packBySheet.delete(prior);
+  sheetByPack.set(url, idx);
+  packBySheet.set(idx, url);
+  // A live fish-pack install adds a real fish; restores replay sheets
+  // only — the saved roster already carries those fish.
+  if (live) {
+    const f = spawnFish(idx, name, url, "enforce", entry);
+    if (f) audio.splash(panFor(f.x, TANK.width));
   }
   console.info(`archive.org: imported ${section} ${name}`);
   requestPaint(); // restores can rebind existing fish to new art
@@ -1647,9 +1654,8 @@ async function downloadAddon(it: Importable): Promise<void> {
   // it now would repopulate the tank the user just cleared.
   if (epoch !== tankEpoch)
     throw new Error("cancelled — the tank was emptied mid-install");
-  const usable = rs.filter(
-    (r) => r.sheets.size || r.images.size || r.sounds.length);
-  if (!usable.length) throw new Error("no pack inside");
+  const usable = usablePacks(rs, it.section);
+  if (!usable.length) throw new Error(usableProblem(it.section));
   for (const r of usable) {
     if (r.sheets.size)
       handleSheets(r.sheets, it.inner, it.url, it.section, true, r.entry);
