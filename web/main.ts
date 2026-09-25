@@ -32,8 +32,8 @@ import { backfillStarterSounds, showWelcome, wantsWelcome }
   from "./welcome.js";
 import { clampDecorCopies, decorCopyRoom, fetchAddon, installProblem,
          mountImportPanel, orphanedSounds, recordAddon,
-         qualifySoundItemName, isListed, usablePacks, usableProblem,
-         COLLECTIONS }
+         qualifySoundItemName, isListed, isSavedAddon, usablePacks,
+         usableProblem, COLLECTIONS }
   from "./import.js";
 import { SWAY_BANDS, swayOffset } from "./sway.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
@@ -143,20 +143,39 @@ interface SavedTank {
 function parseTank(raw: unknown): SavedTank | null {
   const s = raw as SavedTank;
   if ((s?.v !== 1 && s?.v !== 2) ||
-      !Array.isArray(s.fish) || !Array.isArray(s.addons) ||
-      // Fish entries only need to be objects: the restore path's
-      // filter + sanitizeSavedFish drop or clamp anything malformed.
-      // Addons get no such treatment — they're fetched as URLs, so
-      // reject non-strings here.
-      !s.addons.every((u) => typeof u === "string"))
+      !Array.isArray(s.fish) || !Array.isArray(s.addons))
     return null;
-  return s;
+  // Fish entries only need to be objects: the restore path's filter +
+  // sanitizeSavedFish drop or clamp anything malformed. Add-on records
+  // are fetched by URL, so a malformed one is dropped here; it must
+  // not cost the whole tank.
+  const addons = s.addons.filter(isSavedAddon);
+  if (addons.length < s.addons.length)
+    console.warn("tank save: dropped",
+                 s.addons.length - addons.length, "malformed add-on(s)");
+  return { ...s, addons };
 }
 function loadTank(): SavedTank | null {
+  let raw: string | null = null;
+  let s: SavedTank | null = null;
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    return raw ? parseTank(JSON.parse(raw)) : null;
-  } catch { return null; }
+    raw = localStorage.getItem(SAVE_KEY);
+    if (raw === null) return null;
+    const obj = JSON.parse(raw) as { addons?: unknown[] } | null;
+    s = parseTank(obj);
+    // Whole and intact: nothing to keep aside.
+    if (s && s.addons.length === obj?.addons?.length) return s;
+  } catch { /* unreadable: handled below */ }
+  if (raw === null) return null;
+  // What loads here saves over SAVE_KEY on the first event or
+  // pagehide. Keep the original aside when any of it was unreadable,
+  // so a parser bug or a corrupt write can't destroy the user's tank
+  // (or some of its add-ons) for good.
+  console.warn("tank save not fully readable; kept as",
+               SAVE_KEY + ".unreadable");
+  try { localStorage.setItem(SAVE_KEY + ".unreadable", raw); }
+  catch { /* best-effort */ }
+  return s;
 }
 const saved = loadTank();
 const installedAddons: Importable[] = [...(saved?.addons ?? [])];
