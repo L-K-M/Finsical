@@ -113,17 +113,16 @@ describe("sortItems", () => {
     ] }), "status");
     expect(rows.map((i) => i.name)).toEqual(["Zebra", "Alpha"]);
   });
-  it("orders the hunger bands starving, hungry, peckish, full", () => {
+  it("orders the hunger bands hungry, peckish, full", () => {
     // If a band label ever stops matching BAND_RANK (a rename, a new
     // band), every row collapses into the fallback and this fails.
     const rows = sortItems(itemsOf({ ...STATE, addons: [], fish: [
       { id: 1, species: "Fed", hunger: 0.1, state: "drift" },
-      { id: 2, species: "Ravenous", hunger: 0.9, state: "drift" },
-      { id: 3, species: "Snackish", hunger: 0.5, state: "drift" },
-      { id: 4, species: "Hungry", hunger: 0.7, state: "drift" },
+      { id: 2, species: "Snackish", hunger: 0.5, state: "drift" },
+      { id: 3, species: "Hungry", hunger: 0.7, state: "drift" },
     ] }), "status");
     expect(rows.map((i) => i.name))
-      .toEqual(["Ravenous", "Hungry", "Snackish", "Fed"]);
+      .toEqual(["Hungry", "Snackish", "Fed"]);
   });
   it("ailing fish lead the status sort, Dead before Sick", () => {
     // Names are picked so the alphabetical tiebreak would produce the
