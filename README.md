@@ -64,7 +64,8 @@ Add-ons.
 | Move the window | In the app, drag the computer case around the tank, or the top edge of the window |
 
 A fish nearby comes over to look at the pointer while you hover over
-the tank, unless it is hungry or startled.
+the tank, unless it is hungry or startled. At night the pointer also
+works as a torch, lighting a warm circle of the dark tank.
 
 ### Keeping the tank
 
