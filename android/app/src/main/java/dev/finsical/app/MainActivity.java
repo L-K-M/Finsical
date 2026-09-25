@@ -16,6 +16,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.os.SystemClock;
 import android.provider.DocumentsContract;
 import android.util.Base64;
 import android.util.Log;
@@ -119,6 +120,12 @@ public final class MainActivity extends Activity {
     /** The page's file input waiting for the document picker's answer. */
     private ValueCallback<Uri[]> pendingFileChooser;
     private boolean restarting;
+    /**
+     * Renderer-loss restarts in this process. Static: recreate() replaces
+     * the Activity but keeps the process, so the count survives it. UI
+     * thread only.
+     */
+    private static final RestartLimiter RENDERER_RESTARTS = new RestartLimiter();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -698,6 +705,11 @@ public final class MainActivity extends Activity {
             smoke.cancel();
         }
         destroyWebViews();
+        if (!RENDERER_RESTARTS.allowRestart(SystemClock.elapsedRealtime())) {
+            Log.e(LOG_TAG, "The WebView renderer keeps failing; not restarting");
+            showProblem(getString(R.string.renderer_keeps_failing));
+            return;
+        }
         recreate();
     }
 

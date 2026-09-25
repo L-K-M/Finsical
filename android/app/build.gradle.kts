@@ -64,8 +64,8 @@ android {
     defaultConfig {
         applicationId = "dev.finsical.app"
         minSdk = 24
-        // 37 rather than Play's minimum of 36: lint's OldTargetApi check
-        // fails the build (warnings are errors) on anything older.
+        // The newest stable API level; Play's minimum is 36, and lintVital's
+        // ExpiredTargetSdkVersion keeps enforcing Play's deadline.
         targetSdk = 37
         versionCode = appVersionCode
         versionName = appVersionName
@@ -103,10 +103,13 @@ android {
     lint {
         abortOnError = true
         warningsAsErrors = true
-        // These compare against the newest releases on the network and
-        // would turn CI red on someone else's release day. Toolchain
-        // bumps are deliberate changes instead.
-        disable += setOf("GradleDependency", "AndroidGradlePluginVersion", "NewerVersionAvailable")
+        // These compare against the newest releases (on the network, or the
+        // newest platform installed in the SDK, for OldTargetApi) and would
+        // turn CI red on someone else's release day. Toolchain and
+        // targetSdk bumps are deliberate changes instead.
+        disable += setOf(
+            "GradleDependency", "AndroidGradlePluginVersion", "NewerVersionAvailable", "OldTargetApi",
+        )
     }
 }
 

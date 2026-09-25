@@ -16,5 +16,6 @@
     <string name="save_busy">Finish saving the other file first.</string>
     <string name="save_no_app">No app on this device can save files.</string>
     <string name="open_no_app">No app on this device can open files.</string>
+    <string name="renderer_keeps_failing">Finsical’s web view stopped several times in a row, so Finsical stopped restarting it. Close Finsical and open it again; if this keeps happening, update “Android System WebView” from the Play Store.</string>
     <string name="link_no_app">No app on this device can open web links.</string>
 </resources>
