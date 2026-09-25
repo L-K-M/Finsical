@@ -762,7 +762,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         window.collectionBehavior = defaults.bool(forKey: WindowPref.allSpaces)
             ? [.canJoinAllSpaces, .fullScreenAuxiliary]
             : [.managed, .participatesInCycle]
-        for hw in host.windows { hw.window?.level = window.level }
+        // Client windows and lifted panels track the tank both ways —
+        // an About left floating after Float turns off would cover
+        // every other app.
+        for w in NSApp.windows where w !== window && w.sheetParent == nil {
+            w.level = window.level
+        }
     }
 
     /// Checkmarks for the toggles. CRT Effect is disabled where the
@@ -896,6 +901,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             WindowPref.float: true, WindowPref.allSpaces: true,
         ])
         applyWindowPrefs() // on top and on every Space by default
+        // A normal-level window can never order above the floating
+        // tank, so the About panel (and any later non-modal panel)
+        // would open behind the case and look lost. Any window that
+        // becomes key below the tank's level takes it — sheets are
+        // excluded (they ride their parent's level).
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil, queue: .main) { [weak self] note in
+            guard let self, let w = note.object as? NSWindow,
+                  w !== self.window, w.sheetParent == nil,
+                  w.level.rawValue < self.window.level.rawValue
+            else { return }
+            w.level = self.window.level
+        }
         window.contentAspectRatio = NSSize(width: 320, height: 200)
         window.contentView = webView
         window.delegate = self
