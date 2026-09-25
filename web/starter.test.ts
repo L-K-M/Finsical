@@ -112,9 +112,11 @@ describe("runStarter", () => {
       stopped: () => false,
     });
     // banggai resolves → its install's await wakes the loop, which
-    // calls clownfish and parks; the sounds kick off in between.
-    for (let i = 0; i < 5 && !calls.includes("AZ_WAVES"); i++)
-      await Promise.resolve();
+    // calls clownfish and parks; the sounds kick off in between. A
+    // macrotask drains every queued microtask, so this doesn't count
+    // runStarter's internal await boundaries.
+    for (let i = 0; i < 20 && !calls.includes("AZ_WAVES"); i++)
+      await new Promise((r) => setTimeout(r, 0));
     expect(calls).toEqual(["banggai", "clownfish", "AZ_WAVES"]);
     hold.resolve(null);
     const r = await run;
@@ -144,6 +146,20 @@ describe("runStarter", () => {
     });
     expect(r.failed.map((f) => f.inner)).toEqual(["AZ_WAVES"]);
     expect(r.problem).toBe(err);
+  });
+
+  it("counts a null rejection from the bank as a failure", async () => {
+    // Success resolves to null internally — a null rejection must not
+    // be mistaken for it.
+    const r = await runStarter(set, {
+      install: (it) => it.section === "sounds"
+        ? Promise.reject(null) : Promise.resolve(),
+      progress: () => {},
+      fishArrived: () => {},
+      stopped: () => false,
+    });
+    expect(r.failed.map((f) => f.inner)).toEqual(["AZ_WAVES"]);
+    expect(r.problem).toBeInstanceOf(Error);
   });
 
   it("still installs the sounds when every fish fails", async () => {
