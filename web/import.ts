@@ -494,6 +494,9 @@ async function fetchInnerBlobs(url: string): Promise<RawBlob[]> {
 }
 
 export interface PackResult {
+  /** The blob's own name inside the add-on (zip entry or file name) —
+   * the fish-identity key when one add-on holds several pack entries. */
+  entry: string;
   sheets: Map<string, SpriteSheet>;
   images: Map<string, IndexedImage>;
   /** Sound records — `wav` is the encoded payload (literal WAV for
@@ -582,7 +585,7 @@ export async function importAddon(url: string): Promise<PackResult[]> {
     // Same shape as the remote isPack branch: a pack blob yields no
     // sound records — dropped loose audio already persisted via
     // handleSounds/sndsPut at drop time.
-    return [{ sheets: fshToSheets(d), images: packImages(d),
+    return [{ entry: url, sheets: fshToSheets(d), images: packImages(d),
               sounds: [] }];
   }
   const blobs = await fetchInnerBlobs(url);
@@ -593,15 +596,16 @@ export async function importAddon(url: string): Promise<PackResult[]> {
       // A sound bank (AZ_WAVES.REZ) has WAVs and no art. A pack with
       // art brings no sounds: one kind of content per add-on.
       const sounds = sheets.size || images.size ? [] : bankSounds(b.data);
-      out.push({ sheets, images, sounds });
+      out.push({ entry: b.name, sheets, images, sounds });
     } else if (isBmp(b.data)) {
       const img = decodeBmp(b.data);
-      if (img) out.push({ sheets: new Map(), sounds: [],
+      if (img) out.push({ entry: b.name, sheets: new Map(), sounds: [],
                          images: new Map([[url, img]]) });
     } else {
       const sounds = fileSoundRecords(b.name, b.data);
       if (sounds.length)
-        out.push({ sheets: new Map(), images: new Map(), sounds });
+        out.push({ entry: b.name, sheets: new Map(), images: new Map(),
+                   sounds });
     }
   }
   return out;
@@ -661,9 +665,11 @@ export async function listAddons(
 export interface ImportHandlers {
   /** `name` is the display/species label; `url` is the add-on identity.
    * `live` = user-initiated install; false on launch-time restore, which
-   * must not spawn fish (the saved roster already holds them). */
+   * must not spawn fish (the saved roster already holds them). `entry`
+   * is the pack's own name inside the add-on — fish bind to (url, entry)
+   * so a multi-pack add-on can't collapse its fish onto the last entry. */
   onSheets(sheets: Map<string, SpriteSheet>, name: string, url: string,
-           section: string, live: boolean): void;
+           section: string, live: boolean, entry?: string): void;
   /** `live` as for onSheets: a restore must not change the choice of
    * scenery on display. `count` is the persisted decor copy count —
    * 1 on a live install, `copies` on restore. */
@@ -1482,7 +1488,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     const soundNames: string[] = [];
     for (const r of usable) {
       if (r.sheets.size)
-        h.onSheets(r.sheets, it.inner, it.url, it.section, live);
+        h.onSheets(r.sheets, it.inner, it.url, it.section, live, r.entry);
       if (r.images.size)
         h.onImages(r.images.values(), it.url, it.section, live,
                    live ? 1 : decorCopies(it));
