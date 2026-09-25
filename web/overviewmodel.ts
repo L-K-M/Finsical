@@ -6,6 +6,7 @@ import type { Importable } from "./import.js";
 import type { FishState } from "../core/sim.js";
 import { conditionLabel } from "./lifecopy.js";
 import { hungerLabel, uptime } from "./statsmodel.js";
+import type { HungerBand } from "./statsmodel.js";
 
 export interface FishSnap {
   id: number; species: string; hunger: number; state: string;
@@ -68,22 +69,25 @@ const STATES: Record<FishState, string> = {
 // floor, backgrounds/tanks fill the walls (aspect decides which at
 // decode). Plants/accessories stack as decor; nothing to switch.
 const USABLE = new Set(["gravel", "backgrounds", "tanks"]);
-/** Display label for a fish's sim state — the hover tip shares it. */
+/** Display label for a fish's sim state — the hover tip and the
+ * overview share it. A roll in progress reads "Swimming": it's
+ * transient enough that the row shouldn't flash "Turning", and an
+ * unknown bus state gets the same neutral label. */
 export function stateLabel(state: string): string {
-  return STATES[state as FishState] ?? state;
+  return state === "turn" ? "Swimming"
+    : STATES[state as FishState] ?? "Swimming";
 }
 
 // Status-column ordering: hunger band first (hungrier sorts earlier),
 // then a fixed per-state rank. Transient states share a rank where
 // they read the same — a barrel roll is Swimming for list purposes.
 // Bands ride on hungerLabel so the sort and the status text can't
-// drift on separate cut-offs.
-const BAND_RANK = { starving: 0, hungry: 1, peckish: 2, full: 3 } as const;
-const hungerBand = (h: number): number =>
-  // Non-finite bus values, and any label missing from BAND_RANK
-  // (a renamed band, a casing change), sort with "full".
-  !Number.isFinite(h) ? 3
-    : BAND_RANK[hungerLabel(h) as keyof typeof BAND_RANK] ?? 3;
+// drift on separate cut-offs — and HungerBand is total over the
+// record, so a new band without a rank fails to compile rather than
+// silently sorting as full.
+const BAND_RANK: Record<HungerBand, number> =
+  { starving: 0, hungry: 1, peckish: 2, full: 3 };
+const hungerBand = (h: number): number => BAND_RANK[hungerLabel(h)];
 const STATE_ORDER: Record<FishState, number> = {
   startle: 0, seek: 1, sleep: 2, turn: 3, drift: 3,
   // A real dead fish takes the ailing branch below; this only orders
@@ -107,10 +111,7 @@ export function itemsOf(s: TankState): Item[] {
   const fish = s.fish ?? [];
   const items: Item[] = fish.map((f) => {
     const ailing = typeof f.dead === "number" || typeof f.sick === "number";
-    // A roll in progress reads "Turning" for ~10 ticks — transient
-    // enough that the row and its sort should show Swimming instead.
-    const stateTxt = f.state === "turn" ? "Swimming"
-      : STATES[f.state as FishState] ?? "Swimming";
+    const stateTxt = stateLabel(f.state);
     return {
       key: fishThumbKey(f),
       thumb: fishThumbKey(f),

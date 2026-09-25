@@ -127,14 +127,18 @@ describe("sortItems", () => {
   });
   it("bands malformed hunger readings as full", () => {
     // A negative or non-finite bus value must not sort a fish to the
-    // urgent end; hungerLabel sends both to "full".
+    // urgent end; hungerLabel sends both to "full" — in the status
+    // text too, so sort and display can't disagree.
     const rows = sortItems(itemsOf({ ...STATE, addons: [], fish: [
       { id: 1, species: "Negative", hunger: -0.5, state: "drift" },
       { id: 2, species: "Notanum", hunger: NaN, state: "drift" },
       { id: 3, species: "Peckish", hunger: 0.5, state: "drift" },
+      { id: 4, species: "Overflow", hunger: Infinity, state: "drift" },
     ] }), "status");
     expect(rows.map((i) => i.name))
-      .toEqual(["Peckish", "Negative", "Notanum"]);
+      .toEqual(["Peckish", "Negative", "Notanum", "Overflow"]);
+    for (const r of rows.slice(1))
+      expect(r.status).toBe("Swimming, full");
   });
   it("keeps add-ons after fish, In tank before Showing", () => {
     // The old status-text sort grouped the two; the rank key must keep
