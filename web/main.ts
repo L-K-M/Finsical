@@ -32,8 +32,8 @@ import { backfillStarterSounds, showWelcome, wantsWelcome }
   from "./welcome.js";
 import { clampDecorCopies, decorCopyRoom, fetchAddon, installProblem,
          mountImportPanel, orphanedSounds, recordAddon,
-         qualifySoundItemName, isListed, usablePacks, usableProblem,
-         COLLECTIONS }
+         qualifySoundItemName, isListed, isSavedAddon, usablePacks,
+         usableProblem, COLLECTIONS }
   from "./import.js";
 import { SWAY_BANDS, swayOffset } from "./sway.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
@@ -64,7 +64,8 @@ import { crtClientToTank, crtTankToClient, initCrt, sanitizeCrtConfig }
   from "./crt.js";
 import { bubbleOffset, bubblePops, drawAir, drawBubblePop,
          drawBubbles, drawFood, drawLight, drawMurk, drawRefraction,
-         drawSurface, feedPinch, sunFactor, tapBubble } from "./water.js";
+         drawSurface, drawTorch, feedPinch, keepTorch, sunFactor,
+         tapBubble, torchShows } from "./water.js";
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
   from "./surface.js";
 import {
@@ -144,20 +145,39 @@ interface SavedTank {
 function parseTank(raw: unknown): SavedTank | null {
   const s = raw as SavedTank;
   if ((s?.v !== 1 && s?.v !== 2) ||
-      !Array.isArray(s.fish) || !Array.isArray(s.addons) ||
-      // Fish entries only need to be objects: the restore path's
-      // filter + sanitizeSavedFish drop or clamp anything malformed.
-      // Addons get no such treatment — they're fetched as URLs, so
-      // reject non-strings here.
-      !s.addons.every((u) => typeof u === "string"))
+      !Array.isArray(s.fish) || !Array.isArray(s.addons))
     return null;
-  return s;
+  // Fish entries only need to be objects: the restore path's filter +
+  // sanitizeSavedFish drop or clamp anything malformed. Add-on records
+  // are fetched by URL, so a malformed one is dropped here; it must
+  // not cost the whole tank.
+  const addons = s.addons.filter(isSavedAddon);
+  if (addons.length < s.addons.length)
+    console.warn("tank save: dropped",
+                 s.addons.length - addons.length, "malformed add-on(s)");
+  return { ...s, addons };
 }
 function loadTank(): SavedTank | null {
+  let raw: string | null = null;
+  let s: SavedTank | null = null;
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    return raw ? parseTank(JSON.parse(raw)) : null;
-  } catch { return null; }
+    raw = localStorage.getItem(SAVE_KEY);
+    if (raw === null) return null;
+    const obj = JSON.parse(raw) as { addons?: unknown[] } | null;
+    s = parseTank(obj);
+    // Whole and intact: nothing to keep aside.
+    if (s && s.addons.length === obj?.addons?.length) return s;
+  } catch { /* unreadable: handled below */ }
+  if (raw === null) return null;
+  // What loads here saves over SAVE_KEY on the first event or
+  // pagehide. Keep the original aside when any of it was unreadable,
+  // so a parser bug or a corrupt write can't destroy the user's tank
+  // (or some of its add-ons) for good.
+  console.warn("tank save not fully readable; kept as",
+               SAVE_KEY + ".unreadable");
+  try { localStorage.setItem(SAVE_KEY + ".unreadable", raw); }
+  catch { /* best-effort */ }
+  return s;
 }
 const saved = loadTank();
 const installedAddons: Importable[] = [...(saved?.addons ?? [])];
@@ -711,6 +731,12 @@ function conditionOf(f: Fish): { health?: number; sick?: number | null;
 // Tank coords of the last hover — the frame loop re-checks it so the
 // tip doesn't linger when the fish swims away from a parked cursor.
 let lastHover: { x: number; y: number } | null = null;
+/** Whether it is dark enough for a hovering pointer to light the
+ * torch (see render()). */
+const torchOn = (): boolean => torchShows(sim.light, nightFloor(lighting));
+/** Whether the last frame painted the torch, so leaving the tank
+ * repaints to put it out even if the light has changed since. */
+let torchLit = false;
 
 /** The hover tip for a tank point: the fish's name, or in the air
  * strip a hint that a click drops food there. fishToName already
@@ -745,6 +771,8 @@ function onTankMove(e: PointerEvent): void {
   if (e.pointerType === "touch") return; // no hover on touch
   mouseClient = lastClient;
   lastHover = p;
+  // The torch follows the pointer even while no tick runs (paused).
+  if (torchOn()) requestPaint();
   const tip = p && tipForPoint(p);
   if (!tip) { fishTip.style.display = "none"; return; }
   fishTip.textContent = tip;
@@ -766,6 +794,7 @@ function onTankLeave(e: PointerEvent): void {
   mouseClient = null;
   lastClient = null;
   lastHover = null;
+  if (torchLit) requestPaint(); // put the torch out, even while paused
   fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
   seePointer(null);
@@ -2291,13 +2320,15 @@ function takePicture(): void {
   out.height = TANK.height * 2;
   const c = out.getContext("2d")!;
   c.imageSmoothingEnabled = false;
-  // A paused canvas carries the scrim and the PAUSED label — repaint
-  // without them for the shot, then put the overlay back. Both
-  // renders run inside this task, so nothing flickers.
+  // A paused canvas carries the scrim and the PAUSED label, and a
+  // hovering pointer may light the torch — repaint without them for
+  // the shot, then put them back. Both renders run inside this task,
+  // so nothing flickers.
   const d = new Date();
-  if (paused) render(d, true);
+  const clean = paused || torchLit;
+  if (clean) render(d, "picture");
   c.drawImage(canvas, 0, 0, out.width, out.height);
-  if (paused) render(d);
+  if (clean) render(d);
   const pad = (n: number): string => String(n).padStart(2, "0");
   const name = `finsical-${d.getFullYear()}${pad(d.getMonth() + 1)}` +
     `${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}` +
@@ -3117,7 +3148,11 @@ function stirSurface(): void {
     disturbSurface(surface, f.x, sign * f.speed * WAKE_PUSH, 2);
   }
 }
-function render(now: Date, hidePauseOverlay = false): void {
+/** Who a frame is for: the live screen, or a Take a Picture souvenir,
+ * which leaves out what only the viewer's pointer and the pause put
+ * there (the torch, the scrim). */
+type RenderTarget = "screen" | "picture";
+function render(now: Date, target: RenderTarget = "screen"): void {
   // The startup parade owns the canvas until it fades: black, desktop,
   // marching icons — then the tank draws normally under a fading boot
   // screen, so the crossfade needs no compositing machinery.
@@ -3260,7 +3295,14 @@ function render(now: Date, hidePauseOverlay = false): void {
   // Fouled water murks the whole scene.
   drawMurk(ctx, sim.waterQuality, t);
 
+  // A mouse or pen hovering the dark tank lights it like a torch, in
+  // the colors the scene has before the night veil goes on.
+  const torch = target === "screen" && lastHover && torchOn()
+    ? lastHover : null;
+  torchLit = torch !== null;
+  if (torch) keepTorch(ctx, torch.x, torch.y, 1 - sun);
   drawNight(now);
+  if (torch) drawTorch(ctx);
 
   // The cat presses its paw to the outside of the glass — painted after
   // the murk and night tints, which can't dim what's on the viewer's
@@ -3270,7 +3312,7 @@ function render(now: Date, hidePauseOverlay = false): void {
     if (pose) drawPaw(pose.x, pose.y);
   }
 
-  if (paused && !hidePauseOverlay) {
+  if (paused && target === "screen") {
     ctx.save();
     ctx.fillStyle = "rgba(4,8,24,0.35)";
     ctx.fillRect(0, 0, TANK.width, TANK.height);
