@@ -608,7 +608,7 @@ export function recordAddon(list: Importable[], it: Importable,
 
 /** Scenery sections by pack extension. A Map, not an object literal:
  * an extension such as "constructor" must not find Object.prototype. */
-const SCENERY_BY_EXT: ReadonlyMap<string, string> = new Map([
+const SCENERY_BY_EXT: ReadonlyMap<string, PackSection> = new Map([
   ["grv", "gravel"], ["plt", "plants"], ["acc", "accessories"],
 ]);
 

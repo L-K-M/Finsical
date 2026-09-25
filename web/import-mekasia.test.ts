@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { COLLECTIONS, listAddons, sceneryFix } from "./import.js";
+import { COLLECTIONS, listAddons, sceneryFix, type PackSection }
+  from "./import.js";
 
 const enc = new TextEncoder();
 
@@ -97,37 +98,39 @@ describe("sceneryFix", () => {
     "mekasia.zip/mekaccs.zip#G_Debris.grv";
 
   it("moves a gravel pack saved as an accessory to the gravel", () => {
-    const saved = { section: "accessories", inner: "G_Debris", url,
-                    sounds: [] };
+    const saved = { section: "accessories" as PackSection,
+                    inner: "G_Debris", url, sounds: [] };
     expect(sceneryFix(saved)).toEqual({ ...saved, section: "gravel" });
     const caps = { ...saved, url: url.replace(".grv", ".GRV") };
     expect(sceneryFix(caps)).toEqual({ ...caps, section: "gravel" });
   });
 
   it("moves an accessory saved as a plant to the accessories", () => {
-    const stray = { section: "plants", inner: "Stray", sounds: [],
+    const stray = { section: "plants" as PackSection, inner: "Stray",
+                    sounds: [],
                     url: url.replace("mekaccs.zip#G_Debris.grv",
                                      "mekplants.zip#Stray.acc") };
     expect(sceneryFix(stray)).toEqual({ ...stray, section: "accessories" });
   });
 
   it("leaves records that already match their pack alone", () => {
-    const ok = { section: "gravel", inner: "G_Debris", url };
+    const ok = { section: "gravel" as PackSection, inner: "G_Debris", url };
     expect(sceneryFix(ok)).toBe(ok);
-    const acc = { section: "accessories", inner: "MekaUni",
+    const acc = { section: "accessories" as PackSection, inner: "MekaUni",
                   url: url.replace("G_Debris.grv", "MekaUni.acc") };
     expect(sceneryFix(acc)).toBe(acc);
   });
 
   it("never touches fish, sounds, backdrops or tanks", () => {
-    for (const section of ["fish", "sounds", "backgrounds", "tanks"]) {
+    for (const section of ["fish", "sounds", "backgrounds", "tanks"] as
+         PackSection[]) {
       const it = { section, inner: "x", url };
       expect(sceneryFix(it)).toBe(it);
     }
   });
 
   it("keeps records whose url names no scenery extension", () => {
-    const it = { section: "plants", inner: "x",
+    const it = { section: "plants" as PackSection, inner: "x",
                  url: "https://archive.org/download/x/y.zip#weed" };
     expect(sceneryFix(it)).toBe(it);
     // An extension that names an Object.prototype member, not a section.
