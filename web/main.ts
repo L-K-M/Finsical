@@ -742,8 +742,13 @@ function openInfo(f: Fish): void {
   root.append(title, body);
   // A press on the card is on the card — never feed or tap through it.
   root.addEventListener("pointerdown", (e) => e.stopPropagation());
-  screenEl.appendChild(root);
+  // On body, not #screen: #screen's stacking context paints under
+  // #machine, so a card inside it slid under the glass reflections.
+  document.body.appendChild(root);
   infoCard = { root, hunger, mood, fish: f };
+  // Position now, not next frame: unpositioned the card would paint
+  // once at its in-flow default (the end of body) before landing.
+  layoutInfo();
 }
 
 /** Reposition the card over its fish and refresh the two live lines.
@@ -754,23 +759,21 @@ function layoutInfo(): void {
   if (!card) return;
   const f = card.fish;
   if (!sim.fish.includes(f)) { closeInfo(); return; }
+  // Fixed on body, so card space is viewport coordinates.
   const r = canvas.getBoundingClientRect();
-  const sr = screenEl.getBoundingClientRect();
   const s = Math.min(r.width / TANK.width, r.height / TANK.height);
-  // Card space is screenEl-relative — rect deltas stay right under
-  // scroll and regardless of which ancestor is positioned.
-  const ox = r.left - sr.left + (r.width - TANK.width * s) / 2;
-  const oy = r.top - sr.top + (r.height - TANK.height * s) / 2;
+  const ox = r.left + (r.width - TANK.width * s) / 2;
+  const oy = r.top + (r.height - TANK.height * s) / 2;
   const cw = card.root.offsetWidth, ch = card.root.offsetHeight;
   let px = ox + f.x * s - cw / 2;
   let py = oy + f.y * s - ch - 8;
-  if (py < 0) py = oy + f.y * s + 16; // too near the surface: go under
-  // Bounds are screenEl-relative like the offsets above — the canvas
-  // may not fill the screen exactly.
+  if (py < r.top) py = oy + f.y * s + 16; // too near the surface: go under
+  // Clamp inside the tank rect — the card can't slide under the
+  // case's bezel edge or off the window.
   card.root.style.left =
-    `${Math.max(0, Math.min(px, sr.width - cw))}px`;
+    `${Math.max(r.left, Math.min(px, r.right - cw))}px`;
   card.root.style.top =
-    `${Math.max(0, Math.min(py, sr.height - ch))}px`;
+    `${Math.max(r.top, Math.min(py, r.bottom - ch))}px`;
   const hunger = f.life?.dead ? conditionLabel(conditionOf(f))
     : `Health  ${f.life?.health ?? 100}%  Hunger  ${Math.round(f.hunger * 100)}%`;
   const mood = f.life?.sick && !f.life.dead
