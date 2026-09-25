@@ -26,7 +26,9 @@ LINUX_DIR = pathlib.Path(__file__).resolve().parent.parent
 class TempDirTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
-        self.tmp = self._tmp.name
+        # WebRoot resolves symlinks, and macOS's temp directory is one
+        # (/var -> /private/var); build.sh runs these tests there too.
+        self.tmp = os.path.realpath(self._tmp.name)
         self.addCleanup(self._tmp.cleanup)
 
     def write(self, rel, data=b"x"):
