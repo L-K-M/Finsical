@@ -3,7 +3,8 @@ import { BOTTOM_PAD, CORPSE_TICKS, DAY_TICKS, FOOD_ENTRY_Y, Sim,
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
-import { FISH_CAP, HUNGER_SEEK, SPAWN_HUNGER } from "../core/tuning.js";
+import { FISH_CAP, FOOD_CAP, HUNGER_SEEK, SPAWN_HUNGER }
+  from "../core/tuning.js";
 import { planFrame } from "../core/loop.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { isPack } from "../core/data/fsh.js";
@@ -810,14 +811,23 @@ function fitBackdrop(img: IndexedImage): HTMLCanvasElement {
   c.drawImage(src, sx, sy, sw, sh, 0, 0, out.width, out.height);
   return out;
 }
+/** The gravel bed never covers more than this many pixels of tank —
+ * the sim's floor stays at BOTTOM_PAD regardless, and a tall strip
+ * painted deeper would put fish visibly under the gravel. */
+const GRAVEL_MAX_H = 20;
 function fitGravel(img: IndexedImage): HTMLCanvasElement {
   const src = imageCanvas(img, false);
   const out = document.createElement("canvas");
   out.width = TANK.width;
-  out.height = Math.max(1, Math.round(src.height * TANK.width / src.width));
+  out.height = Math.min(GRAVEL_MAX_H,
+    Math.max(1, Math.round(src.height * TANK.width / src.width)));
   const c = out.getContext("2d")!;
   c.imageSmoothingEnabled = false; // keep the crunch
-  c.drawImage(src, 0, 0, out.width, out.height);
+  // A capped strip draws its top rows — the gravel's visible surface —
+  // at the same scale, rather than stretching or swallowing the tank.
+  const srcH = Math.min(src.height,
+                        out.height * src.width / TANK.width);
+  c.drawImage(src, 0, 0, src.width, srcH, 0, 0, out.width, out.height);
   return out;
 }
 function pickBackdrop(images: Iterable<IndexedImage>, src = ""): void {
@@ -1934,9 +1944,27 @@ function feedFish(): void {
   audio.unlock();
   const x = 30 + Math.random() * (TANK.width - 60);
   const hungry = sim.fish.filter((f) => f.hunger > HUNGER_SEEK).length;
-  for (const p of feedPinch(Math.random, hungry)) {
+  const room = FOOD_CAP - sim.food.filter((p) => !p.eaten).length;
+  // The cap refuses a pellet with a bare blip where it would have
+  // landed — whether it's refused now or at drop time.
+  const blip = (bx: number): void => {
+    splashAt(bx, FOOD_ENTRY_Y, PUSH.pellet);
+    requestPaint();
+  };
+  if (room <= 0) {
+    // The tank's already full of uneaten food — no pellets, no shake.
+    blip(x);
+    return;
+  }
+  for (const p of feedPinch(Math.random, Math.min(hungry, room))) {
     setTimeout(() => {
       if (paused) return; // paused since the pinch was scattered
+      // Re-check at drop time: a second click fills the tank while a
+      // first pinch is still falling.
+      if (sim.food.filter((q) => !q.eaten).length >= FOOD_CAP) {
+        blip(x + p.dx);
+        return;
+      }
       const pellet = sim.dropFood(x + p.dx);
       if (!pellet) { noteFoodRefused(); return; }
       splashAt(pellet.x, pellet.y, PUSH.pellet);
@@ -2269,6 +2297,9 @@ window.addEventListener("drop", (e) => {
   dragDepth = 0;
   setDragging(false);
 }, true);
+// Right-click surfaces WebKit's generic menu (Reload etc.) — nothing
+// in it applies to the tank, and the native window has no chrome.
+window.addEventListener("contextmenu", (e) => e.preventDefault());
 window.addEventListener("drop", (e) => {
   e.preventDefault();
   // Entries must be read before the handler returns — items invalidate.
