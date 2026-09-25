@@ -1078,8 +1078,19 @@ export class Sim {
     if (f.hideTicks > 0 && f.hideIn) {
       // Hiding: potter about behind the cover, below its top.
       const c = f.hideIn, m = Math.min(8, (c.x1 - c.x0) / 4);
-      f.tx = Math.min(x1, Math.max(x0,
-        c.x0 + m + this.zRand() * Math.max(0, c.x1 - c.x0 - 2 * m)));
+      if (f.z < c.depth) {
+        f.tx = Math.min(x1, Math.max(x0,
+          c.x0 + m + this.zRand() * Math.max(0, c.x1 - c.x0 - 2 * m)));
+      } else {
+        // Still in front of the art (the dart outran the depth change):
+        // swim clear of it on the side the fish faces, where it can
+        // slip behind without a roll, then go in.
+        const hw = Math.max(this.halfW(f), DEFAULT_BODY / 2);
+        const right = c.x1 + hw + 2, left = c.x0 - hw - 2;
+        const ahead = f.facing > 0 ? right : left;
+        f.tx = Math.min(x1, Math.max(x0,
+          ahead > x0 && ahead < x1 ? ahead : f.facing > 0 ? left : right));
+      }
       const top = Math.min(y1, Math.max(y0, c.top + this.halfH(f)));
       f.ty = top + this.zRand() * (y1 - top);
       f.phase = 0;
@@ -1194,7 +1205,8 @@ export class Sim {
    * front of it. It changes depth in open water, or above the art. */
   private stepDepth(f: Fish): void {
     if (f.hideTicks > 0 && f.state !== "startle") {
-      // Cover removed from the tank, or time up: back to open water.
+      // Time up, or the decor changed (any add or removal re-spaces
+      // every piece, so the old cover is gone): back to open water.
       if (!f.hideIn || !this.cover.includes(f.hideIn) || --f.hideTicks === 0) {
         f.hideTicks = 0;
         delete f.hideIn;
@@ -1209,7 +1221,15 @@ export class Sim {
       if ((f.z < c.depth) === (nz < c.depth)) continue;
       if (f.x + hw > c.x0 && f.x - hw < c.x1 && f.y + hh > c.top) return;
     }
+    const was = f.z;
     f.z = nz;
+    // Waiting beside its cover, the fish just got behind it: go in.
+    const c = f.hideIn;
+    if (c && f.hideTicks > 0 && was >= c.depth && nz < c.depth &&
+        f.state === "drift") {
+      this.decide(f);
+      this.maybeTurn(f);
+    }
   }
 
   /** A target behind the fish needs a reversal — the original plays

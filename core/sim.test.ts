@@ -1423,6 +1423,31 @@ describe("depth among the decor", () => {
     expect(f.hideTicks).toBe(0);
   });
 
+  it("a fish darting into the cover's span in front waits beside it",
+     () => {
+    // Knocked from the far side toward a plant it is in front of, the
+    // dart carries it into the span before it can get behind; it must
+    // not then hide in plain sight in front of the art.
+    for (let seed = 1; seed <= 10; seed++) {
+      const sim = new Sim({ width: 320, height: 200 }, seed);
+      sim.setLight(1);
+      sim.cover = [plant];
+      const f = sim.addFish({ x: 136, y: 120, z: 0.9, tz: 0.9, facing: 1,
+                              hunger: 0 });
+      sim.tap(122, 120);
+      let front = 0, hidden = 0;
+      for (let i = 0; i < 240 && f.hideTicks > 0; i++) {
+        sim.tick();
+        const over = f.x > plant.x0 && f.x < plant.x1;
+        if (f.state !== "startle" && over && f.z >= plant.depth) front++;
+        if (over && f.z < plant.depth) hidden++;
+      }
+      // Only the swim out past the art (~1.5 s), not the whole hide.
+      expect(front).toBeLessThan(60);
+      expect(hidden).toBeGreaterThan(0);
+    }
+  });
+
   it("a knock with no cover in reach is just a dart", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     sim.cover = [{ ...plant, depth: 0.1 }]; // too far back to get behind
