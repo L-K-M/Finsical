@@ -809,9 +809,10 @@ captioned({ label: "Mute", input: muteBox,
               "stays where it is for when you turn sound back on." },
           document.getElementById("pfmute")!);
 captioned({ label: "Bubble sounds", input: bubblesBox,
-            blurb: "A soft bloop now and then as a bubble rises. The " +
-              "game's own sounds have none, so this plays a short " +
-              "bubble sound you add." },
+            blurb: "A soft bloop now and then as a bubble rises, and " +
+              "a plip when you pop one. The bloop needs a sound you " +
+              "add with \"bubble\" in its name; one with \"pop\" " +
+              "replaces the plip." },
           document.getElementById("pfbubbles")!);
 captioned({ label: "Water ambience", input: ambientBox,
             blurb: "The filter's steady bubbling, looped under " +
