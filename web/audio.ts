@@ -15,8 +15,9 @@ export interface SoundConfig {
   bubbles: boolean;
   ambient: boolean;
   /** Schema marker: 2 since the gain curve turned quadratic. Absent
-   * on older saves; only sanitizeSoundConfig reads it. */
-  v?: number;
+   * on older saves; only sanitizeSoundConfig reads it. Required, so a
+   * hand-built config can't silently opt back into the migration. */
+  v: number;
 }
 
 export const SOUND_DEFAULTS: Readonly<SoundConfig> =
@@ -40,7 +41,11 @@ export function sanitizeSoundConfig(raw: unknown): SoundConfig {
   if (hadVolume) c.volume = Math.min(1, Math.max(0, r.volume as number));
   // A volume saved before v: 2 was the gain itself; it becomes the
   // slider position that reproduces that level under the new curve.
-  if (r.v !== 2 && hadVolume) c.volume = Math.sqrt(c.volume);
+  // Only the two legacy shapes migrate — a malformed or future marker
+  // ("2", null, 3) keeps the clamped volume rather than being sqrt'd
+  // a second time or reinterpreted on a guess.
+  if ((r.v === undefined || r.v === 1) && hadVolume)
+    c.volume = Math.sqrt(c.volume);
   for (const k of ["muted", "bubbles", "ambient"] as const) {
     const v = r[k];
     if (typeof v === "boolean") c[k] = v;

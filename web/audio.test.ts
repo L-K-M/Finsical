@@ -897,6 +897,16 @@ describe("sanitizeSoundConfig", () => {
       .toBe(SOUND_DEFAULTS.volume);
   });
 
+  it("migrates an explicit v: 1 marker, but never v: 2 or newer", () => {
+    expect(sanitizeSoundConfig({ volume: 0.49, v: 1 }).volume)
+      .toBeCloseTo(0.7, 10);
+    // A future or malformed marker keeps the volume verbatim — sqrt
+    // on an already-quadratic value would be a silent drift.
+    for (const v of [2, 3, "2", null])
+      expect(sanitizeSoundConfig({ volume: 0.49, v }).volume)
+        .toBe(0.49);
+  });
+
   it("round-trips a full config as a copy", () => {
     const off = { volume: 0, muted: true, bubbles: false,
                   ambient: false, v: 2 };
