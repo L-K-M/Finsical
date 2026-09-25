@@ -270,8 +270,14 @@ export function milestone(minutes: number): string | null {
   return null;
 }
 
-/** Compact hunger label — same bands as the overview's. */
-export function hungerLabel(h: number): string {
+/** The four hunger bands, least to most urgent. */
+export type HungerBand = "full" | "peckish" | "hungry" | "starving";
+
+/** Compact hunger label — same bands as the overview's. A non-finite
+ * reading (a malformed bus frame) reports as full rather than
+ * alarming the sort and the status text with "starving". */
+export function hungerLabel(h: number): HungerBand {
+  if (!Number.isFinite(h)) return "full";
   // "peckish" means the fish is looking for food.
   if (h < HUNGER_SEEK) return "full";
   if (h < 0.66) return "peckish";
