@@ -2230,12 +2230,14 @@ function takePicture(): void {
   out.height = TANK.height * 2;
   const c = out.getContext("2d")!;
   c.imageSmoothingEnabled = false;
-  // A paused canvas carries the scrim and the PAUSED label — repaint
-  // without them for the shot, then put the overlay back. Both
-  // renders run inside this task, so nothing flickers.
-  if (paused) render(true);
+  // A paused canvas carries the scrim and the PAUSED label, and a
+  // hovering pointer may light the torch — repaint without them for
+  // the shot, then put them back. Both renders run inside this task,
+  // so nothing flickers.
+  const clean = paused || torchLit;
+  if (clean) render("picture");
   c.drawImage(canvas, 0, 0, out.width, out.height);
-  if (paused) render();
+  if (clean) render();
   const d = new Date();
   const pad = (n: number): string => String(n).padStart(2, "0");
   const name = `finsical-${d.getFullYear()}${pad(d.getMonth() + 1)}` +
@@ -3045,7 +3047,11 @@ function stirSurface(): void {
     disturbSurface(surface, f.x, sign * f.speed * WAKE_PUSH, 2);
   }
 }
-function render(hidePauseOverlay = false): void {
+/** Who a frame is for: the live screen, or a Take a Picture souvenir,
+ * which leaves out what only the viewer's pointer and the pause put
+ * there (the torch, the scrim). */
+type RenderTarget = "screen" | "picture";
+function render(target: RenderTarget = "screen"): void {
   // The startup parade owns the canvas until it fades: black, desktop,
   // marching icons — then the tank draws normally under a fading boot
   // screen, so the crossfade needs no compositing machinery.
@@ -3190,7 +3196,8 @@ function render(hidePauseOverlay = false): void {
 
   // A mouse or pen hovering the dark tank lights it like a torch, in
   // the colors the scene has before the night veil goes on.
-  const torch = lastHover && torchOn() ? lastHover : null;
+  const torch = target === "screen" && lastHover && torchOn()
+    ? lastHover : null;
   torchLit = torch !== null;
   if (torch) keepTorch(ctx, torch.x, torch.y, 1 - sun);
   drawNight(new Date());
@@ -3204,7 +3211,7 @@ function render(hidePauseOverlay = false): void {
     if (pose) drawPaw(pose.x, pose.y);
   }
 
-  if (paused && !hidePauseOverlay) {
+  if (paused && target === "screen") {
     ctx.save();
     ctx.fillStyle = "rgba(4,8,24,0.35)";
     ctx.fillRect(0, 0, TANK.width, TANK.height);
