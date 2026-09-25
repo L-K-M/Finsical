@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Add-ons download from the Internet Archive. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- enableOnBackInvokedCallback: Back goes to MainActivity's
+         OnBackInvokedCallback on API 33+ (older versions ignore it). -->
+    <application
+        android:enableOnBackInvokedCallback="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.Finsical"
+        tools:targetApi="33">
+
+        <!-- configChanges: rotation, resizing, a keyboard or a density
+             change must not recreate the Activity, which would reload the
+             tank page and every panel. adjustResize: the keyboard's insets
+             reach the root, which pads for them (edge-to-edge). -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Finsical
+GenericName=Virtual Aquarium
+Comment=Watch a retro virtual aquarium on your desktop
+Exec=/usr/games/finsical
+Icon=dev.finsical.app
+Terminal=false
+Categories=Game;Simulation;
+Keywords=fish;aquarium;tank;retro;AquaZone;
+StartupNotify=true
+StartupWMClass=dev.finsical.app
