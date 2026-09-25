@@ -169,7 +169,7 @@ body.crt canvas#tank { opacity: 0; }
    native window (.osm-page, .osm-page-window). */
 
 /* ---- Preferences (web/prefs.ts) ----------------------------------------
-   A fixed-size control panel, 564 x 456 (native window 565 x 457 with
+   A fixed-size control panel, 564 x 517 (native window 565 x 518 with
    the shadow). Pane buttons down an 80px strip on the left, parted from
    the pane by a gray/black/white line, as in Desktop Pictures, and
    sized like its pane buttons: 54 x 40, on a 70px pitch. */
@@ -188,10 +188,10 @@ body.crt canvas#tank { opacity: 0; }
 .pfpane[hidden] { display: none; }
 
 /* Machine: the cases in a list box beside a preview well. */
-#pfmachines { position: absolute; left: 0; top: 0; width: 190px; height: 322px; }
+#pfmachines { position: absolute; left: 0; top: 0; width: 190px; height: 383px; }
 #pfmachines .osm-row { padding-left: 4px; font: var(--osm-font-system); }
 #pfpreview {
-  position: absolute; left: 204px; right: 0; top: 0; height: 322px;
+  position: absolute; left: 204px; right: 0; top: 0; height: 383px;
   display: flex; align-items: center; justify-content: center;
   background: #fff;
 }
@@ -232,6 +232,11 @@ body.crt canvas#tank { opacity: 0; }
    this pane's own stylesheet finishes the job. */
 .pfslider .osm-slider.osm-disabled::after { opacity: .45; }
 .pflabel { display: block; padding-left: 4px; margin-bottom: 5px; }
+/* A pop-up in a slider's caption row (the mask type over its
+   strength): as wide as the track, with just room for "Aperture
+   grille", and no taller than the row. */
+.pftitlepop { padding-left: 0; margin: -3px 0 1px; }
+.pftitlepop .osm-popup { width: 100%; padding-right: 0; }
 .pfends { display: flex; justify-content: space-between; margin-top: 2px; padding: 0 1px 0 3px; }
 /* CRT off: the sliders and preset buttons are disabled and their
    captions dim with them. */

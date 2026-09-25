@@ -11,6 +11,22 @@
   reopens on the tab you used last. The first time it opens after this
   update it comes up centered at its new size, since the size you left
   it at was for the old single pane.
+- The CRT's scanlines now follow the picture's brightness, like a real
+  tube's beam. Dark rows thin to lines with deep gaps, while bright
+  rows swell to nearly fill them, so highlights look painted rather
+  than striped and a lone bright pixel glows as a dot. In a small
+  window the lines fade to their average brightness instead of
+  beating into moire patterns.
+- The CRT's bloom and glass halation are now smooth glows. Small
+  bright shapes such as bubbles used to cast sharp copies of
+  themselves a few pixels to each side.
+- The CRT's Softening blends colors the way a tube's light does, so
+  dithered patterns and the seams between two colors no longer come
+  out darker than they should.
+- The CRT picture's corners are rounded and its curved edges are
+  smooth instead of stair-stepped.
+- The CRT's Geometry group gains Horizontal and Vertical position
+  pots, which shift the picture left, right, up or down on the glass.
 - A tank saved by 0.3.0 or earlier keeps the look of each fish from an
   add-on that holds several fish. The first launch after the update
   would otherwise turn them all into the add-on's last fish: angels.zip
@@ -42,15 +58,22 @@
   Fish also settle one at a time, each between 2 and 22 seconds after
   dark, and wake one by one within 11 seconds of dawn, instead of all
   on the same instant.
+- A hungry fish between two pellets picks one and eats it. Near the
+  midpoint it used to roll back and forth between them, sometimes for a
+  minute, while both sank and fouled the water.
+- Adding a big fish add-on stalls the tank for less time: decoding
+  the gup, discus and angel packs' sprites takes under a third as
+  long, which shortens the pause while one goes in.
 - At night, the pointer works as a torch. When you hover over the dark
   tank with a mouse or pen, a warm, soft circle of light shows the
   fish and plants under it in their daytime colors while the rest of
   the tank stays moonlit. The beam widens as the night deepens and
   follows the pointer even while the tank is paused.
-- The CRT's Geometry group gains two pots. Skew leans the whole
-  picture into a parallelogram, and Perspective swings it like the
-  tube turning on its stand — one edge looming large while the
-  other shrinks back.
+- The CRT's Geometry group gains three pots. Horizontal skew leans the
+  whole picture into a parallelogram, Vertical skew slopes it up or
+  down, and Perspective swings it like the tube turning on its stand —
+  one edge looming large while the other shrinks back. The Preferences
+  window is a little taller to fit them.
 - The CRT Softening control now smears only along each scanline, as
   its description says. The rows used to blend into each other at
   every setting, so the whole picture turned soft, and even Sharp and
