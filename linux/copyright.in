@@ -18,6 +18,12 @@ Comment: Ported from FFmpeg libavcodec/mace.c. The decoder is compiled
  `npm run build` rebuilds the bundles from it. See
  /usr/share/doc/finsical/THIRD_PARTY_NOTICES.md.
 
+Files: node_modules/fflate/*
+Copyright: 2026 Arjun Barrett
+License: Expat
+Comment: fflate, an npm dependency, is compiled into
+ /usr/share/finsical/web/bundle.js and addons.js.
+
 License: LGPL-2.1+
  This library is free software; you can redistribute it and/or
  modify it under the terms of the GNU Lesser General Public

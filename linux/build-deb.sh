@@ -38,6 +38,9 @@ readonly RECOMMENDS="gstreamer1.0-plugins-bad"
 # The LGPL decoder's source, relative to the repository root; shipped
 # under the same relative path in /usr/share/finsical.
 readonly MACE_SOURCE=core/data/mace.ts
+# fflate (MIT) is compiled into the bundles; its notice goes into the
+# copyright file.
+readonly FFLATE_LICENSE=node_modules/fflate/LICENSE
 # Renders the icons (GdkPixbuf through PyGObject).
 readonly PYTHON="${PYTHON:-/usr/bin/python3}"
 
@@ -78,6 +81,8 @@ if ((check_requested)); then
 fi
 [[ -d "$REPOSITORY_ROOT/node_modules/osmium-ui" ]] ||
   die "node_modules is missing: run npm ci in the repository root"
+[[ -f "$REPOSITORY_ROOT/$FFLATE_LICENSE" ]] ||
+  die "$FFLATE_LICENSE is missing: run npm ci in the repository root"
 
 cd "$REPOSITORY_ROOT"
 VERSION="$(node -p 'require("./package.json").version')"
@@ -155,12 +160,16 @@ for size in map(int, sizes):
 PY
 
 # --- Documentation ------------------------------------------------------------
-# copyright: DEP-5, uncompressed (Policy 12.5). The Unlicense stanza is
-# generated from LICENSE so it stays verbatim.
+# copyright: DEP-5, uncompressed (Policy 12.5). The Unlicense and Expat
+# (MIT, fflate) texts are generated from their files so they stay
+# verbatim.
 {
   cat "$SCRIPT_DIR/copyright.in"
   printf '\nLicense: Unlicense\n'
   sed -e 's/^$/./' -e 's/^/ /' LICENSE
+  printf '\nLicense: Expat\n'
+  sed -e 's/^$/./' -e 's/^/ /' "$FFLATE_LICENSE"
+  printf '\n'
 } > "$ROOT/$DOC_DIR/copyright"
 # A native package's changelog is changelog.gz in Debian format; the
 # Markdown release notes are NEWS.gz (Policy 12.7). gzip -9n: maximum

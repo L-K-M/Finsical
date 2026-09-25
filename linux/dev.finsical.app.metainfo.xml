@@ -4,7 +4,7 @@
 <component type="desktop-application">
   <id>dev.finsical.app</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>Unlicense AND LGPL-2.1-or-later</project_license>
+  <project_license>Unlicense AND LGPL-2.1-or-later AND MIT</project_license>
   <name>Finsical</name>
   <summary>Watch a retro virtual aquarium on your desktop</summary>
   <description>
