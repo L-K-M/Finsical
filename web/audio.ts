@@ -31,28 +31,41 @@ export const SOUND_DEFAULTS: Readonly<SoundConfig> =
 export function gainForVolume(v: number): number { return v * v; }
 
 /** Trust boundary for localStorage payloads and bus messages: unknown
- * keys drop, wrong types fall back to the defaults, volume clamps. */
+ * keys drop, wrong types fall back to the defaults, volume clamps.
+ * Never migrates — a bus message carrying no marker is a partial
+ * update, not a legacy save; only loadSoundConfig rewrites volumes. */
 export function sanitizeSoundConfig(raw: unknown): SoundConfig {
   const c = { ...SOUND_DEFAULTS };
   if (!raw || typeof raw !== "object") return c;
   const r = raw as Record<string, unknown>;
-  const hadVolume =
-    typeof r.volume === "number" && Number.isFinite(r.volume);
-  if (hadVolume) c.volume = Math.min(1, Math.max(0, r.volume as number));
-  // A volume saved before v: 2 was the gain itself; it becomes the
-  // slider position that reproduces that level under the new curve.
-  // Only the two legacy shapes migrate — a malformed or future marker
-  // ("2", null, 3) keeps the clamped volume rather than being sqrt'd
-  // a second time or reinterpreted on a guess.
-  if ((r.v === undefined || r.v === 1) && hadVolume)
-    c.volume = Math.sqrt(c.volume);
+  if (typeof r.volume === "number" && Number.isFinite(r.volume))
+    c.volume = Math.min(1, Math.max(0, r.volume));
   // A newer marker than we know survives the round-trip, so a config
   // written by a future build keeps its schema stamp.
-  if (typeof r.v === "number" && r.v > SOUND_DEFAULTS.v) c.v = r.v;
+  const mark = r.v;
+  if (typeof mark === "number" && Number.isInteger(mark) &&
+      mark > SOUND_DEFAULTS.v) c.v = mark;
   for (const k of ["muted", "bubbles", "ambient"] as const) {
     const v = r[k];
     if (typeof v === "boolean") c[k] = v;
   }
+  return c;
+}
+
+/** Sanitize a stored config and apply the v: 1 volume migration. A
+ * volume saved before v: 2 was the gain itself; it becomes the slider
+ * position that reproduces that level under the new curve. Only the
+ * two legacy shapes migrate — a malformed or future marker keeps the
+ * clamped volume rather than being sqrt'd a second time or
+ * reinterpreted on a guess. Bus messages must use the sanitizer
+ * directly: a v-less partial there is an update, not a legacy save. */
+export function loadSoundConfig(raw: unknown): SoundConfig {
+  const c = sanitizeSoundConfig(raw);
+  if (!raw || typeof raw !== "object") return c;
+  const r = raw as Record<string, unknown>;
+  if ((r.v === undefined || r.v === 1) &&
+      typeof r.volume === "number" && Number.isFinite(r.volume))
+    c.volume = Math.sqrt(c.volume);
   return c;
 }
 

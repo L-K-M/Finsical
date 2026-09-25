@@ -20,7 +20,8 @@ import { decorFrame, decorPhase, decorPhaseFrac }
 import { bodySize, pickDrawableSheet }
   from "../core/data/swimsheet.js";
 import { fishScale } from "./artscale.js";
-import { panFor, sanitizeSoundConfig, TankAudio } from "./audio.js";
+import { loadSoundConfig, panFor, sanitizeSoundConfig, TankAudio }
+  from "./audio.js";
 import { drawRipples, drawSplashes, newSplash, tickRipples,
          tickSplashes } from "./fx.js";
 import type { Ripple, Splash } from "./fx.js";
@@ -1925,7 +1926,7 @@ let machine: Machine =
 // Volume, mute and the bubble/ambience switches. Declared before the
 // setCrt call below for the same TDZ reason: postState() reads them.
 const SOUND_KEY = "finsical:sound";
-let soundCfg: SoundConfig = sanitizeSoundConfig(
+let soundCfg: SoundConfig = loadSoundConfig(
   (() => { try {
     return JSON.parse(localStorage.getItem(SOUND_KEY) ?? "null");
   } catch { return null; /* storage or JSON: defaults */ } })());

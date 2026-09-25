@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FEEDBACK_MAX_S, gainForVolume, panFor, SOUND_DEFAULTS,
-         sanitizeSoundConfig,
+import { FEEDBACK_MAX_S, gainForVolume, loadSoundConfig, panFor,
+         SOUND_DEFAULTS, sanitizeSoundConfig,
          TankAudio } from "./audio.js";
 import type { AzpackManifest } from "../core/data/azpack.js";
 
@@ -887,18 +887,18 @@ describe("sanitizeSoundConfig", () => {
   it("maps a pre-quadratic volume to the slider that replays it", () => {
     // Before v: 2 the saved number was the gain itself; under the new
     // curve the same level sits at sqrt(volume).
-    const c = sanitizeSoundConfig({ volume: 0.49 });
+    const c = loadSoundConfig({ volume: 0.49 });
     expect(c.volume).toBeCloseTo(0.7, 10);
     expect(c.v).toBe(2);
-    // Idempotent: re-sanitizing the migrated config does not move it.
-    expect(sanitizeSoundConfig(c).volume).toBeCloseTo(0.7, 10);
+    // Idempotent: re-loading the migrated config does not move it.
+    expect(loadSoundConfig(c).volume).toBeCloseTo(0.7, 10);
     // A missing or non-numeric volume doesn't migrate the default.
-    expect(sanitizeSoundConfig({ muted: true }).volume)
+    expect(loadSoundConfig({ muted: true }).volume)
       .toBe(SOUND_DEFAULTS.volume);
   });
 
   it("migrates an explicit v: 1 marker, but never v: 2 or newer", () => {
-    const mig = sanitizeSoundConfig({ volume: 0.49, v: 1 });
+    const mig = loadSoundConfig({ volume: 0.49, v: 1 });
     expect(mig.volume).toBeCloseTo(0.7, 10);
     // The output must carry the current marker — copying r.v through
     // would re-migrate an already-quadratic volume on the next load.
@@ -906,12 +906,22 @@ describe("sanitizeSoundConfig", () => {
     // A future or malformed marker keeps the volume verbatim — sqrt
     // on an already-quadratic value would be a silent drift.
     for (const v of [2, 3, "2", null])
-      expect(sanitizeSoundConfig({ volume: 0.49, v }).volume)
+      expect(loadSoundConfig({ volume: 0.49, v }).volume)
         .toBe(0.49);
-    // A numeric marker newer than this build survives the round-trip;
-    // string/null markers normalize to the current schema.
-    expect(sanitizeSoundConfig({ volume: 0.49, v: 3 }).v).toBe(3);
-    expect(sanitizeSoundConfig({ volume: 0.49, v: "2" }).v).toBe(2);
+    // An integer marker newer than this build survives the round-trip;
+    // string/null and non-integer markers normalize to the schema.
+    expect(loadSoundConfig({ volume: 0.49, v: 3 }).v).toBe(3);
+    for (const v of ["2", 2.5, Infinity])
+      expect(loadSoundConfig({ volume: 0.49, v }).v).toBe(2);
+  });
+
+  it("never migrates a v-less bus partial", () => {
+    // A { volume } update from the Sound pane carries no marker; the
+    // sanitizer must treat it as the current schema, not a legacy
+    // save — only loadSoundConfig rewrites volumes.
+    const c = sanitizeSoundConfig({ volume: 0.49 });
+    expect(c.volume).toBe(0.49);
+    expect(c.v).toBe(2);
   });
 
   it("round-trips a full config as a copy", () => {
