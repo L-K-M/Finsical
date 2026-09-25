@@ -168,7 +168,8 @@ export function showAlert(spec: AlertSpec): Alert {
       const next = focusStep(stops.length, i, e.shiftKey);
       (next < 0 ? win : stops[next]!).focus();
     } else if ((e.key === "Escape" || (e.metaKey && e.key === ".")) &&
-               (inField || t.closest("button")) && cancelBtn) {
+               !e.isComposing && (inField || t.closest("button")) &&
+               cancelBtn) {
       e.preventDefault();
       cancelBtn.click();
     } else if (e.key === "Enter" && inField && !e.isComposing && okBtn) {

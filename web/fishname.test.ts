@@ -17,6 +17,11 @@ describe("cleanFishName", () => {
     expect(cleanFishName("Fin\u0000n\u0007y")).toBe("Finny");
   });
 
+  it("drops invisible format characters and bidi overrides", () => {
+    expect(cleanFishName("\u200b\u200b")).toBeUndefined();
+    expect(cleanFishName("Fi\u202enn\ufeff")).toBe("Finn");
+  });
+
   it("cuts to NAME_MAX code points without splitting a pair", () => {
     const long = "a".repeat(NAME_MAX + 10);
     expect(cleanFishName(long)).toHaveLength(NAME_MAX);
@@ -35,5 +40,6 @@ describe("fishLabel", () => {
   it("ignores fields that aren't strings", () => {
     expect(fishLabel({ name: 7, species: "Guppy" })).toBe("Guppy");
     expect(fishLabel({ name: null, species: {} })).toBe("Fish");
+    expect(fishLabel({ name: "  ", species: "Guppy" })).toBe("Guppy");
   });
 });

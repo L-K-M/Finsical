@@ -121,7 +121,7 @@ export function summary(fish: number, addons: number, water: number,
 export function fishRowName(f: FishSnap): string {
   const label = fishLabel(f);
   if (f.standIn) return `${label} (stand-in)`;
-  const named = typeof f.name === "string" && f.name !== "";
+  const named = typeof f.name === "string" && f.name.trim() !== "";
   return named && f.species ? `${label} (${f.species})` : label;
 }
 

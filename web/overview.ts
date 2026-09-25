@@ -264,7 +264,8 @@ pushButton(emptyBtn, () => {
 // releases one fish, not the whole list.
 listEl.addEventListener("keydown", (e) => {
   // Return renames the selected fish, as it renames in the Finder.
-  if (e.key === "Enter" && !e.repeat && !e.isComposing &&
+  if (e.key === "Enter" && !e.altKey && !e.ctrlKey && !e.metaKey &&
+      !e.shiftKey && !e.repeat && !e.isComposing &&
       items[list.selected]?.fishId !== undefined) {
     e.preventDefault();
     renameSelected();

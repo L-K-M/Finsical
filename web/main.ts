@@ -883,8 +883,12 @@ function editInfoName(): void {
     // the tank's bare-key shortcuts listen on window.
     e.stopPropagation();
     if (e.isComposing) return; // Return picks an IME candidate
-    if (e.key === "Enter") { e.preventDefault(); finish(true); }
-    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+    const keep = e.key === "Enter" ? true : e.key === "Escape" ? false : null;
+    if (keep === null) return;
+    e.preventDefault();
+    finish(keep);
+    // Ended from the keyboard: keep the keyboard's place on the card.
+    if (infoCard === card) card.name.focus({ preventScroll: true });
   });
   input.addEventListener("blur", () => finish(true));
   card.edit = input;
