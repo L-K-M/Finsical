@@ -22,7 +22,9 @@ readonly timeout_seconds="${2:-180}"
 adb wait-for-device
 adb install -r "$apk"
 adb logcat -c
-# The extra only takes effect in debuggable builds (see SmokeTest.java).
+# The Activity reads the extra only when it is created, and only in
+# debuggable builds (see SmokeTest.java), so start from a stopped app.
+adb shell am force-stop "${ACTIVITY%%/*}"
 adb shell am start -W -n "$ACTIVITY" --ez "$SMOKE_EXTRA" true
 
 deadline=$((SECONDS + timeout_seconds))

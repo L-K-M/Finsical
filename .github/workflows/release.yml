@@ -160,14 +160,15 @@ jobs:
           apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           apk="release/Finsical-$VERSION-android.apk"
           mkdir -p release
+          # No v4 signature: it is a separate .idsig file, only used for
+          # incremental adb installs.
           "$apksigner" sign --ks "$keystore" --ks-key-alias "$ANDROID_KEY_ALIAS" \
             --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
             --key-pass env:ANDROID_KEY_PASSWORD \
-            --out "$apk" android/app/build/outputs/apk/release/app-release-unsigned.apk
+            --v4-signing-enabled false \
+            --out "$apk" \
+            "android/app/build/outputs/apk/release/Finsical-$VERSION-android-release-unsigned.apk"
           "$apksigner" verify --verbose --print-certs "$apk"
-          # apksigner writes a v4 signature file next to the APK; the
-          # release ships the APK alone.
-          rm -f release/*.idsig
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-android

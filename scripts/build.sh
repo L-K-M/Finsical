@@ -69,8 +69,10 @@ cd "$REPOSITORY_ROOT"
 
 version="$(node -p 'require("./package.json").version')"
 readonly deb_path="$OUT_DIR/Finsical-$version-linux.deb"
-readonly apk_debug_path="$OUT_DIR/Finsical-$version-android-debug.apk"
-readonly apk_unsigned_path="$OUT_DIR/Finsical-$version-android-unsigned.apk"
+readonly apk_debug_name="Finsical-$version-android-debug.apk"
+readonly apk_unsigned_name="Finsical-$version-android-release-unsigned.apk"
+readonly apk_debug_path="$OUT_DIR/$apk_debug_name"
+readonly apk_unsigned_path="$OUT_DIR/$apk_unsigned_name"
 
 if ((clean_requested)); then
   rm -rf -- "$REPOSITORY_ROOT/dist"
@@ -80,7 +82,7 @@ if ((clean_requested)); then
     "$TARGET_DEB")
       rm -f -- "$OUT_DIR"/Finsical-*-linux.deb ;;
     "$TARGET_ANDROID")
-      rm -rf -- "$ANDROID_DIR/build" "$ANDROID_DIR/app/build"
+      rm -rf -- "$ANDROID_DIR/build" "$ANDROID_DIR/app/build" "$ANDROID_DIR/.gradle"
       rm -f -- "$OUT_DIR"/Finsical-*-android-*.apk ;;
   esac
 fi
@@ -140,8 +142,8 @@ build_deb() {
 build_android() {
   (cd "$ANDROID_DIR" && ./gradlew assembleDebug assembleRelease)
   mkdir -p "$OUT_DIR"
-  cp "$ANDROID_DIR/app/build/outputs/apk/debug/app-debug.apk" "$apk_debug_path"
-  cp "$ANDROID_DIR/app/build/outputs/apk/release/app-release-unsigned.apk" \
+  cp "$ANDROID_DIR/app/build/outputs/apk/debug/$apk_debug_name" "$apk_debug_path"
+  cp "$ANDROID_DIR/app/build/outputs/apk/release/$apk_unsigned_name" \
      "$apk_unsigned_path"
   echo "Built $apk_debug_path"
   echo "Built $apk_unsigned_path (sign it before distributing; see README)"
