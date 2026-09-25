@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CRT_DEFAULTS, CRT_PRESETS, DEGAUSS_MS, PICTURE_KEYS, crtRasterRect,
-  degaussAmp, presetTube, sanitizeCrtConfig,
+  crtRowColumns, degaussAmp, presetTube, sanitizeCrtConfig,
 } from "./crt.js";
 import type { CrtConfig } from "./crt.js";
 
@@ -49,6 +49,13 @@ describe("sanitizeCrtConfig", () => {
     expect(sanitizeCrtConfig({ beam: "x" }).softening)
       .toBe(CRT_DEFAULTS.softening);
     expect(sanitizeCrtConfig({ beam: 9 }).softening).toBe(1);
+  });
+
+  it("centers the picture for a config saved before the position pots", () => {
+    const c = sanitizeCrtConfig({ scanlines: 0.6, hsize: 0.8 });
+    expect(c.hpos).toBe(0.5);
+    expect(c.vpos).toBe(0.5);
+    expect(c.hsize).toBe(0.8);
   });
 
   it("round-trips a full config", () => {
@@ -106,6 +113,12 @@ describe("CRT_PRESETS", () => {
       .toEqual(Object.keys(CRT_DEFAULTS).sort());
   });
 
+  it("counts the position pots as the user's trims", () => {
+    // Picture keys survive every preset (tested above).
+    expect(PICTURE_KEYS).toContain("hpos");
+    expect(PICTURE_KEYS).toContain("vpos");
+  });
+
   it("configs are frozen so a click cannot mutate the shared object", () => {
     for (const p of CRT_PRESETS)
       expect(Object.isFrozen(p.config)).toBe(true);
@@ -130,6 +143,31 @@ describe("crtRasterRect", () => {
     expect(r[0]).toBeCloseTo(0);
     // Box spans top-down 20..120, so y-up 80..180; centered: +18.75.
     expect(r[1]).toBeCloseTo(80 + 18.75);
+  });
+});
+
+// The rows pass smears each scanline once at the raster's device
+// width; too few columns would blur the sharp end of Softening.
+describe("crtRowColumns", () => {
+  const neutral = { zoom: 0, hsize: 0.5 };
+
+  it("draws one column per device px of the neutral raster", () => {
+    expect(crtRowColumns(1280, neutral, 320, 4096)).toBe(1280);
+  });
+
+  it("follows the overscan and width pots like FRAG's pxScale.x", () => {
+    expect(crtRowColumns(1000, { zoom: 1, hsize: 0.5 }, 320, 4096))
+      .toBe(1120);
+    expect(crtRowColumns(1000, { zoom: 0, hsize: 1 }, 320, 4096))
+      .toBe(1250);
+    expect(crtRowColumns(1000, { zoom: 0, hsize: 0 }, 320, 4096))
+      .toBe(750);
+  });
+
+  it("keeps a column per game px and stays inside the target", () => {
+    expect(crtRowColumns(100, neutral, 320, 4096)).toBe(320);
+    expect(crtRowColumns(5120, { zoom: 1, hsize: 1 }, 320, 4096))
+      .toBe(4096);
   });
 });
 

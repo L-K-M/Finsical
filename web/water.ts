@@ -1,6 +1,7 @@
 /**
  * Living water: bubbles, food pellets, the surface and the hood above
- * it, refraction, caustics, sun shafts and murk. Everything here is render-only. Looks derive from sim data
+ * it, refraction, caustics, sun shafts, murk and the night torch.
+ * Everything here is render-only. Looks derive from sim data
  * (positions, tickCount, light, water quality) rather than per-frame
  * randomness, so drawing the same sim state twice gives the same frame.
  * Sprites, tiles and gradients are built once on first use; the per-frame
@@ -476,6 +477,13 @@ function fillAboveLine(ctx: CanvasRenderingContext2D,
   }
 }
 
+let airShade: CanvasGradient | null = null;
+// Keyed on the context too — a gradient belongs to the context that
+// created it, so a second canvas (or another test's mock) must build
+// its own rather than reuse a foreign one.
+let airShadeCtx: CanvasRenderingContext2D | null = null;
+let airShadeLip = "", airShadeLow = "";
+
 /**
  * The air above the waterline. The back of the tank carries on behind
  * it, as in a real tank, but dry: drained of color and dimmed, darkest
@@ -489,10 +497,23 @@ function fillAboveLine(ctx: CanvasRenderingContext2D,
 export function drawAir(ctx: CanvasRenderingContext2D, lamp = 0,
                         line?: Int16Array): void {
   const mix = (off: number, on: number): number => off + (on - off) * lamp;
-  // Built per call: the shade follows the lamp, which dims at dusk.
-  const shade = ctx.createLinearGradient(0, RIM_ROWS, 0, SURFACE + SURFACE_MAX);
-  shade.addColorStop(0, grey(mix(AIR_SHADE.lipOff, AIR_SHADE.lipOn)));
-  shade.addColorStop(1, grey(mix(AIR_SHADE.lowOff, AIR_SHADE.lowOn)));
+  // The shade follows the lamp, which dims at dusk — but grey() rounds
+  // each stop to a whole grey, so most frames of a day produce stops
+  // that already have a gradient. Keyed on that pair, this rebuilds
+  // exactly when the picture would change, like shaftFill and murkFill,
+  // instead of once per frame.
+  const lip = grey(mix(AIR_SHADE.lipOff, AIR_SHADE.lipOn));
+  const low = grey(mix(AIR_SHADE.lowOff, AIR_SHADE.lowOn));
+  if (!airShade || airShadeCtx !== ctx ||
+      airShadeLip !== lip || airShadeLow !== low) {
+    airShadeCtx = ctx;
+    airShadeLip = lip;
+    airShadeLow = low;
+    airShade = ctx.createLinearGradient(0, RIM_ROWS, 0, SURFACE + SURFACE_MAX);
+    airShade.addColorStop(0, lip);
+    airShade.addColorStop(1, low);
+  }
+  const shade = airShade;
 
   ctx.globalCompositeOperation = "saturation";
   ctx.globalAlpha = 0.8;
@@ -623,5 +644,109 @@ export function drawMurk(ctx: CanvasRenderingContext2D, quality: number,
     ctx.globalAlpha = 0.35 + 0.45 * m.strength;
     ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
   }
+  ctx.globalAlpha = 1;
+}
+
+// ---- torch -----------------------------------------------------------------
+
+/** Nightness (1 - sunFactor: 0 by day, 1 at the darkest this night
+ * gets) above which a hovering pointer lights the torch. */
+const TORCH_NIGHTNESS = 0.35;
+/** The torch's radius, px, as it comes on and at the darkest night. */
+const TORCH_R_MIN = 24;
+const TORCH_R_MAX = 40;
+/** The beam's strength from TORCH_CORE px out (offset 0) to its rim
+ * (offset 1): a hot spot easing out to a soft edge. */
+const TORCH_PROFILE = [[0, 1], [0.4, 0.85], [0.7, 0.4], [1, 0]] as const;
+const TORCH_CORE = 4;
+/** How much light the torch adds at its hot spot on the darkest night:
+ * a little over what the night veil takes away, so what it lights looks
+ * about as bright as by day. */
+const TORCH_STRENGTH = 0.8;
+/** The bulb's warm color, multiplied into the light it adds, and a
+ * faint warm glow it adds even over black. */
+const TORCH_TINT = "rgb(255,225,185)";
+const TORCH_GLOW = "rgba(255,230,180,0.05)";
+
+/** Whether a hovering pointer lights the torch: the tank's `light` is
+ * well on its way down to `floor`, the darkest this night gets (the
+ * demo's or a lamp-off night's 0.3, a light timer's 0.45). */
+export function torchShows(light: number, floor: number): boolean {
+  return 1 - sunFactor(light, floor) > TORCH_NIGHTNESS;
+}
+
+/** The torch's radius, px, at a nightness past TORCH_NIGHTNESS: the
+ * darker the tank, the wider the beam. Whole pixels, so the circle
+ * sits on the pixel grid and its mask is rebuilt only as it widens. */
+export function torchRadius(nightness: number): number {
+  const k = clamp01((nightness - TORCH_NIGHTNESS) / (1 - TORCH_NIGHTNESS));
+  return Math.round(TORCH_R_MIN + (TORCH_R_MAX - TORCH_R_MIN) * k);
+}
+
+let torchCv: HTMLCanvasElement | null = null;
+let torchMask: CanvasGradient | null = null;
+let torchMaskR = 0;
+/** Tank position of the kept square's top-left corner. */
+let torchX = 0;
+let torchY = 0;
+let torchStrength = 0;
+
+/**
+ * A torch under a pointer hovering the night tank lights a warm circle
+ * of it. keepTorch saves the square around (x, y) from the scene drawn
+ * so far, which stands in for the colors the torch would light: call
+ * it just before the night veil goes on, and drawTorch just after.
+ * `nightness` is 1 - sunFactor, as for torchRadius.
+ *
+ * The light is added over the veil rather than the undimmed scene laid
+ * over it: the veil lifts the shadows to a moonlit blue, and a dark
+ * backdrop copied over that would dim the beam's edges below the night
+ * around it. The torch is as strong as the night is dark, so it comes
+ * on gently at dusk and what it lights stays near its daylight look.
+ */
+export function keepTorch(ctx: CanvasRenderingContext2D, x: number,
+                          y: number, nightness: number): void {
+  const d = TORCH_R_MAX * 2;
+  if (!torchCv) {
+    torchCv = document.createElement("canvas");
+    torchCv.width = d;
+    torchCv.height = d;
+  }
+  const g = torchCv.getContext("2d")!;
+  const r = torchRadius(nightness);
+  if (!torchMask || torchMaskR !== r) {
+    torchMask = g.createRadialGradient(TORCH_R_MAX, TORCH_R_MAX, TORCH_CORE,
+                                       TORCH_R_MAX, TORCH_R_MAX, r);
+    for (const [at, k] of TORCH_PROFILE)
+      torchMask.addColorStop(at, `rgba(0,0,0,${k})`);
+    torchMaskR = r;
+  }
+  torchX = Math.round(x) - TORCH_R_MAX;
+  torchY = Math.round(y) - TORCH_R_MAX;
+  torchStrength = TORCH_STRENGTH * clamp01(nightness);
+  // Offsetting the whole scene copies just the square. Past the tank's
+  // edges it lands off the canvas when drawn back, so its fill there
+  // doesn't matter.
+  g.clearRect(0, 0, d, d);
+  g.drawImage(ctx.canvas, -torchX, -torchY);
+  g.globalCompositeOperation = "multiply";
+  g.fillStyle = TORCH_TINT;
+  g.fillRect(0, 0, d, d);
+  g.globalCompositeOperation = "lighter";
+  g.fillStyle = TORCH_GLOW;
+  g.fillRect(0, 0, d, d);
+  g.globalCompositeOperation = "destination-in";
+  g.fillStyle = torchMask;
+  g.fillRect(0, 0, d, d);
+  g.globalCompositeOperation = "source-over";
+}
+
+/** Add the light keepTorch saved over the night veil. */
+export function drawTorch(ctx: CanvasRenderingContext2D): void {
+  if (!torchCv) return;
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = torchStrength;
+  ctx.drawImage(torchCv, torchX, torchY);
+  ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
 }
