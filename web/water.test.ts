@@ -196,6 +196,40 @@ describe("drawAir", () => {
     for (const [, y, , h] of details)
       expect(y! + h!).toBeLessThanOrEqual(SURFACE - SURFACE_MAX);
   });
+
+  it("reuses its shade gradient until a stop actually changes", () => {
+    // drawAir runs every frame; the other water gradients are built
+    // once and cached, so this one must be too. Its stops are rounded
+    // to a whole grey, so the cache key is the pair of stop strings —
+    // exact, not a tolerance that could shift the picture.
+    let built = 0;
+    let last: unknown = null;
+    const fills: number[] = [];
+    const ctx = {
+      get fillStyle(): unknown { return last; },
+      set fillStyle(v: unknown) {
+        last = v;
+        const g = v as { id?: number };
+        if (g && typeof g.id === "number") fills.push(g.id);
+      },
+      globalAlpha: 1, globalCompositeOperation: "",
+      createLinearGradient: () => {
+        const g = { addColorStop: () => {}, id: ++built };
+        last = g;
+        return g;
+      },
+      fillRect: () => {},
+    } as unknown as CanvasRenderingContext2D;
+
+    drawAir(ctx, 0.33);
+    expect(built).toBe(1);
+    drawAir(ctx, 0.33);
+    expect(built).toBe(1); // same stops: no new object
+    drawAir(ctx, 0.9);
+    expect(built).toBe(2); // a different pair of stops rebuilds
+    // The gradient is what the air strip itself was filled with.
+    expect(fills).toEqual([1, 1, 2]);
+  });
 });
 
 describe("refraction", () => {

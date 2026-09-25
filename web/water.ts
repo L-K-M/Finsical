@@ -466,6 +466,9 @@ function fillAboveLine(ctx: CanvasRenderingContext2D,
   }
 }
 
+let airShade: CanvasGradient | null = null;
+let airShadeLip = "", airShadeLow = "";
+
 /**
  * The air above the waterline. The back of the tank carries on behind
  * it, as in a real tank, but dry: drained of color and dimmed, darkest
@@ -479,10 +482,21 @@ function fillAboveLine(ctx: CanvasRenderingContext2D,
 export function drawAir(ctx: CanvasRenderingContext2D, lamp = 0,
                         line?: Int16Array): void {
   const mix = (off: number, on: number): number => off + (on - off) * lamp;
-  // Built per call: the shade follows the lamp, which dims at dusk.
-  const shade = ctx.createLinearGradient(0, RIM_ROWS, 0, SURFACE + SURFACE_MAX);
-  shade.addColorStop(0, grey(mix(AIR_SHADE.lipOff, AIR_SHADE.lipOn)));
-  shade.addColorStop(1, grey(mix(AIR_SHADE.lowOff, AIR_SHADE.lowOn)));
+  // The shade follows the lamp, which dims at dusk — but grey() rounds
+  // each stop to a whole grey, so most frames of a day produce stops
+  // that already have a gradient. Keyed on that pair, this rebuilds
+  // exactly when the picture would change, like shaftFill and murkFill,
+  // instead of once per frame.
+  const lip = grey(mix(AIR_SHADE.lipOff, AIR_SHADE.lipOn));
+  const low = grey(mix(AIR_SHADE.lowOff, AIR_SHADE.lowOn));
+  if (!airShade || airShadeLip !== lip || airShadeLow !== low) {
+    airShadeLip = lip;
+    airShadeLow = low;
+    airShade = ctx.createLinearGradient(0, RIM_ROWS, 0, SURFACE + SURFACE_MAX);
+    airShade.addColorStop(0, lip);
+    airShade.addColorStop(1, low);
+  }
+  const shade = airShade;
 
   ctx.globalCompositeOperation = "saturation";
   ctx.globalAlpha = 0.8;
