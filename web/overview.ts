@@ -343,6 +343,9 @@ function render(scroll: ListScroll = "keep"): void {
         r!.setAttribute("aria-label", `${it.name}, ${it.kind}, ${it.status}`);
       }
     });
+    // A status-only re-tag can flip the selected row's `use` — "In
+    // tank" becoming "Showing" — without a rebuild to run syncRemove.
+    syncRemove();
     return;
   }
   lastStructure = structure;
