@@ -317,3 +317,11 @@ export const MACHINE_KEY = "finsical:machine";
 export function machineById(id: string): Machine | undefined {
   return MACHINES.find((m) => m.id === id);
 }
+/** The persisted machine id, validated against MACHINES; falls back to
+ * DEFAULT_MACHINE when missing, invalid, or storage is blocked. */
+export function savedMachineId(): string {
+  try {
+    const saved = localStorage.getItem(MACHINE_KEY) ?? "";
+    return machineById(saved) ? saved : DEFAULT_MACHINE;
+  } catch { return DEFAULT_MACHINE; }
+}

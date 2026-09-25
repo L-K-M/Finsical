@@ -1,8 +1,8 @@
 import { openBus } from "./bus.js";
 import { CRT_DEFAULTS, CRT_PRESETS, presetTube, sanitizeCrtConfig }
   from "./crt.js";
-import { DEFAULT_MACHINE, MACHINE_KEY, machineById, MACHINES,
-         previewMarkup } from "./machines.js";
+import { MACHINES, previewMarkup, savedMachineId }
+  from "./machines.js";
 import type { CrtConfig, CrtPreset } from "./crt.js";
 import { centerText, hostWindow, mountList, mountPopup, pushButton,
          registerSprites, setEnabled, trackHighlight, trackPress }
@@ -844,10 +844,9 @@ if (initial === "machine") machineList.element.focus({ preventScroll: true });
 // the first state push — showMachine() never runs and the list shows no
 // selection with a blank preview well. The first push overwrites this;
 // select(..., false) keeps the seed from posting a machine change.
-try {
-  const saved = localStorage.getItem(MACHINE_KEY) ?? "";
-  showMachine(machineById(saved) ? saved : DEFAULT_MACHINE);
-} catch { showMachine(DEFAULT_MACHINE); }
+// savedMachineId owns the storage try/catch, so a render failure can't
+// be mistaken for blocked storage.
+showMachine(savedMachineId());
 
 // The tank page may still be loading when the window opens — retry the
 // hello until a state push arrives.
