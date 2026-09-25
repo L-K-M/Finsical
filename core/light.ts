@@ -141,9 +141,12 @@ export function moonIllumination(ms: number): number {
   return (1 - Math.cos(2 * Math.PI * moonPhase(ms))) / 2;
 }
 
-/** "08:00" for hour 8. */
+/** "08:00" for hour 8. Out-of-range input clamps: the label feeds a
+ * pop-up built from validated hours, but callers pass raw numbers. */
 export function hourLabel(h: number): string {
-  return `${String(h).padStart(2, "0")}:00`;
+  const c = Number.isFinite(h) ? Math.min(23, Math.max(0, Math.trunc(h)))
+                               : 0;
+  return `${String(c).padStart(2, "0")}:00`;
 }
 
 const isHour = (v: unknown): v is number =>

@@ -131,6 +131,7 @@ function render(st: TankStats): void {
     : "none"));
   field("Light", text(st.lightLabel));
   field("Tank age", text(uptime(st.uptimeMin)));
+  if (st.milestone) field("Diary", text(st.milestone));
 
   careEl.textContent = "";
   careEl.appendChild(el("div", "osm-label scarehead", "Care:"));
