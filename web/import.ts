@@ -516,8 +516,9 @@ export interface PackResult {
 }
 
 /** Catalog sections, plus "" for a listed pack not yet stamped. */
-export type PackSection = "" | "fish" | "gravel" | "backgrounds" |
-    "tanks" | "plants" | "accessories" | "sounds";
+const PACK_SECTIONS = ["", "fish", "gravel", "backgrounds", "tanks",
+                       "plants", "accessories", "sounds"] as const;
+export type PackSection = typeof PACK_SECTIONS[number];
 
 /** Which decoded packs would actually put something in the tank.
  * Each section counts only the art its renderer accepts: fish needs a
@@ -606,6 +607,20 @@ export function recordAddon(list: Importable[], it: Importable,
  * was queued (Remove, Empty Tank) must not come back. */
 export function isListed(list: Importable[], it: Importable): boolean {
   return list.some((a) => a.url === it.url);
+}
+
+/** Whether a saved add-on record (untrusted: localStorage or a .fins
+ * file) has the shape the restore path relies on. `copies` needs no
+ * check here: decorCopies() clamps it wherever it is read. */
+export function isSavedAddon(raw: unknown): raw is Importable {
+  const a = raw as Partial<Importable> | null;
+  return typeof a === "object" && a !== null &&
+    typeof a.url === "string" && a.url !== "" &&
+    typeof a.inner === "string" &&
+    typeof a.section === "string" && (PACK_SECTIONS as readonly string[]).includes(a.section) &&
+    (a.sounds === undefined ||
+     (Array.isArray(a.sounds) &&
+      a.sounds.every((n) => typeof n === "string")));
 }
 
 /** The listing qualifies colliding leaf names ("sub/dup", "dup (2)");
@@ -725,14 +740,16 @@ export async function listAddons(
 // ---- import panel --------------------------------------------------------
 
 export interface ImportHandlers {
-  /** `name` is the display/species label; `url` is the add-on identity.
+  /** `name` is the add-on's listing name; `url` is the add-on identity.
    * `live` = user-initiated install; false on launch-time restore, which
    * must not spawn fish (the saved roster already holds them). `entry`
    * is the pack's own name inside the add-on — fish bind to (url, entry)
-   * so a multi-pack add-on can't collapse its fish onto the last entry. */
+   * so a multi-pack add-on can't collapse its fish onto the last entry.
+   * `parts` is how many sheet packs the add-on holds: with several,
+   * each fish is named after its own pack. */
   onSheets(sheets: Map<string, SpriteSheet>, name: string, url: string,
            section: string, live: boolean, care?: SpeciesCare | null,
-           entry?: string): void;
+           entry?: string, parts?: number): void;
   /** `live` as for onSheets: a restore must not change the choice of
    * scenery on display. `count` is the persisted decor copy count —
    * 1 on a live install, `copies` on restore. */
@@ -755,8 +772,10 @@ export interface ImportHandlers {
   onRestore?(it: Importable, soundNames: string[]): void;
   /** Why the tank can't take this add-on right now (e.g. it is full),
    * or null. Asked before a local install; the Import Add-ons window
-   * gets the same answer from the tank page as an installFailed. */
-  refuse?(it: Importable): string | null;
+   * gets the same answer from the tank page as an installFailed.
+   * `fish` is how many fish the install adds: one per sheet pack in a
+   * fish add-on, 0 for any other section. */
+  refuse?(it: Importable, fish: number): string | null;
   /** Render decoded packs to a preview canvas; null = nothing to show. */
   preview(rs: PackResult[]): HTMLCanvasElement | null;
 }
@@ -1299,7 +1318,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
             "The tank isn't running — is Finsical open?";
           return;
         }
-        const refusal = remote ? null : h.refuse?.(it) ?? null;
+        const fish = it.section === "fish"
+          ? usable.filter((x) => x.sheets.size).length : 0;
+        const refusal = remote ? null : h.refuse?.(it, fish) ?? null;
         if (refusal) {
           status.textContent = refusal;
           return;
@@ -1572,10 +1593,11 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     const usable = usablePacks(rs, it.section);
     if (!usable.length) throw new Error(usableProblem(it.section));
     const soundNames: string[] = [];
+    const parts = usable.filter((r) => r.sheets.size).length;
     for (const r of usable) {
       if (r.sheets.size)
         h.onSheets(r.sheets, it.inner, it.url, it.section, live,
-                   r.care, r.entry);
+                   r.care, r.entry, parts);
       if (r.images.size)
         h.onImages(r.images.values(), it.url, it.section, live,
                    live ? 1 : decorCopies(it));
