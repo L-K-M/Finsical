@@ -427,9 +427,12 @@ void main() {
   // After the grille rather than before it: the lit stripe's boost is
   // part of the drive, and a shoulder ending at 1 before it would
   // still clip every lit stripe above 1 / MASK_BOOST, while one ending
-  // at 1 / MASK_BOOST would dim white by up to a quarter. The rows
-  // signal peaks at 1, so peak bounds everything the traits add; with
-  // them all off it is 1 and the picture is untouched.
+  // at 1 / MASK_BOOST would dim white by up to a quarter. peak is the
+  // drive a full-level rows signal reaches with the active traits. It
+  // is a nominal bound, not a strict one (overlapping beam spots can
+  // lift c slightly above 1 before bloom), and only sets the white
+  // point. With the traits all off it is 1 and the picture is
+  // untouched.
   float peak = (1.0 + (BLOOM_GAIN + HALO_GAIN) * uBloom) *
                (1.0 + OVER_GAIN * uOver) * mix(1.0, MASK_BOOST, uGrill);
   if (peak > 1.0) c = shoulder(c, 1.0 + WHITE_SHARE * (peak - 1.0));
