@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CARE, parseFsti, parseSusceptibility, sanitizeCare }
-  from "./species.js";
+import { DEFAULT_CARE, DEFAULT_SUSCEPTIBLE, packSpeciesCare, parseFsti,
+         parseSusceptibility, sanitizeCare } from "./species.js";
+import { buildPack } from "./rsrc.fixture.js";
 
 /** An FsTI record: the tolerance table in thousandths, max before min. */
 function fsti(): Uint8Array {
@@ -74,5 +75,47 @@ describe("sanitizeCare", () => {
     expect(sanitizeCare({ ...c, tolerance: { ...c.tolerance, pH: {} } }))
       .toBeNull();
     expect(sanitizeCare("angelfish")).toBeNull();
+  });
+});
+
+describe("packSpeciesCare", () => {
+  it("pairs each species' SuS# by resource id, not by position", () => {
+    // Two species in one pack; species 600's susceptibility list is
+    // the second SuS# — a positional find would hand it 601's.
+    const d = buildPack([
+      { type: "FsTI", id: 600, payload: [...fsti()] },
+      { type: "FsTI", id: 601, payload: [...fsti()] },
+      { type: "SuS#", id: 601, payload: [1, 0, 7, 0] },
+      { type: "SuS#", id: 600, payload: [1, 0, 3, 0] },
+    ]);
+    expect(packSpeciesCare(d)!.susceptible).toEqual([3]);
+  });
+
+  it("keeps the fallback for a pack with one shared SuS#", () => {
+    const d = buildPack([
+      { type: "FsTI", id: 600, payload: [...fsti()] },
+      { type: "SuS#", id: 999, payload: [1, 0, 5, 0] },
+    ]);
+    expect(packSpeciesCare(d)!.susceptible).toEqual([5]);
+  });
+
+  it("guesses no list when several SuS# records match no FsTI id", () => {
+    // Rather than handing species 600 whichever list comes first.
+    const d = buildPack([
+      { type: "FsTI", id: 600, payload: [...fsti()] },
+      { type: "SuS#", id: 701, payload: [1, 0, 7, 0] },
+      { type: "SuS#", id: 702, payload: [1, 0, 3, 0] },
+    ]);
+    expect(packSpeciesCare(d)!.susceptible).toEqual(DEFAULT_SUSCEPTIBLE);
+  });
+
+  it("won't borrow a lone SuS# that another species claims", () => {
+    // FsTI 600's list was lost; the pack's only SuS# belongs to 700.
+    const d = buildPack([
+      { type: "FsTI", id: 600, payload: [...fsti()] },
+      { type: "FsTI", id: 700, payload: [...fsti()] },
+      { type: "SuS#", id: 700, payload: [1, 0, 7, 0] },
+    ]);
+    expect(packSpeciesCare(d)!.susceptible).toEqual(DEFAULT_SUSCEPTIBLE);
   });
 });
