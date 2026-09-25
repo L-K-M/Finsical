@@ -279,6 +279,7 @@ function sanitizeSavedFish(f: Partial<Fish> & { x: number; y: number }):
   if (Number.isInteger(f.sheetIdx) && f.sheetIdx! >= 0)
     out.sheetIdx = f.sheetIdx!;
   if (typeof f.pack === "string") out.pack = f.pack;
+  if (typeof f.entry === "string") out.entry = f.entry;
   return out;
 }
 const roster = (saved?.fish ?? [])
@@ -498,8 +499,12 @@ canvas.addEventListener("pointerdown", (e) => {
   if (paused) return;
   if (isFeedZone(p.x, p.y, waterline)) {
     const pellet = sim.dropFood(p.x);
-    audio.feed(panFor(pellet.x, TANK.width)); // dropFood clamps to the walls
-    splashAt(pellet.x, pellet.y, PUSH.pellet);
+    if (pellet) {
+      audio.feed(panFor(pellet.x, TANK.width));
+      splashAt(pellet.x, pellet.y, PUSH.pellet);
+    } else {
+      noteFoodRefused();
+    }
   } else {
     sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
     // A rising bubble under the tap pops early — the knock already
@@ -679,12 +684,25 @@ function noteGlassTap(): void {
               buttons: [{ title: "OK", default: true, cancel: true }] });
 }
 
+// A refused feed (the tank already holds MAX_UNEATEN pellets) says so
+// once — a silent no-op would read as a broken click.
+let foodRefusedAt = -Infinity; // first refusal always shows
+function noteFoodRefused(): void {
+  const now = performance.now();
+  if (now - foodRefusedAt < 60_000) return;
+  foodRefusedAt = now;
+  showAlert({ icon: "note",
+              text: "The tank is full of food the fish haven't eaten. " +
+                    "More would only foul the water.",
+              buttons: [{ title: "OK", default: true, cancel: true }] });
+}
+
 // ---- sprite loading ----------------------------------------------------
 // Drop an emitted .azpack into web/pack/ (manifest.json at its root), or
 // drag the folder onto the window, and real Aquazone sprites replace the
 // placeholder fish.
-// The adult swim ring per imported pack; fish get sheets round-robin so
-// a tank can mix species.
+// The adult swim ring per imported pack; fish bind to their own pack's
+// or species' sheet so a tank can mix species.
 let fishSheets: SpriteSheet[] = [];
 function usePack(pack: { sheets: Map<string, SpriteSheet>;
                          manifest?: AzpackManifest },
@@ -692,7 +710,7 @@ function usePack(pack: { sheets: Map<string, SpriteSheet>;
   const sheet = pickSwimSheet(pack.sheets.values());
   if (sheet) {
     fishSheets.push(sheet);
-    // One more sheet re-deals every round-robin fish's art.
+    // A new sheet can resolve a fish whose binding was out of range.
     for (const f of sim.fish) bindExtents(f);
   }
   if (pack.manifest && read)
@@ -720,7 +738,7 @@ function fishRefusal(section: string): string | null {
  * install URL: the precise identity when packs share a species name.
  * Returns the new fish, or null when the tank is already full. */
 function spawnFish(sheetIdx: number, species: string, pack?: string,
-                   cap: CapRule = "enforce"): Fish | null {
+                   cap: CapRule = "enforce", entry?: string): Fish | null {
   if (cap === "enforce" && sim.fish.length >= FISH_CAP) return null;
   const facing = Math.random() < 0.5 ? 1 : -1;
   const x = 60 + Math.random() * (TANK.width - 120);
@@ -737,6 +755,7 @@ function spawnFish(sheetIdx: number, species: string, pack?: string,
     hunger: SPAWN_HUNGER,
     sheetIdx, species,
     ...(pack !== undefined ? { pack } : {}),
+    ...(entry !== undefined ? { entry } : {}),
   });
   bindExtents(f);
   // A new fish enters through the surface — pair the splash sound
@@ -884,19 +903,25 @@ let nextSlot = 0;
 let storageWarnedAt = -1;
 function sheetOf(f: Fish): SpriteSheet | null {
   if (!fishSheets.length) return null;
-  // Fish spawned by a specific pack keep its sheet; the rest round-robin.
-  // Out-of-range bindings fall through rather than wrapping onto an
-  // unrelated species' art.
   if (f.sheetIdx !== undefined && f.sheetIdx >= 0 &&
       f.sheetIdx < fishSheets.length)
     return fishSheets[f.sheetIdx]!;
-  let i = fishSlot.get(f);
-  if (i === undefined) {
-    i = nextSlot;
-    nextSlot = (nextSlot + 1) % MAX_FISH_SLOTS; // slots may repeat after wrap; only used to pick a sheet
-    fishSlot.set(f, i);
+  // An unbound fish resolves only through identity — its pack URL,
+  // then its species name. Anything else draws the stand-in: adopting
+  // another species' art by position made every fish a liar, and let
+  // stand-ins and cache-miss restores masquerade as whatever pack
+  // happened to be installed.
+  if (f.pack !== undefined) {
+    const idx = f.entry !== undefined
+      ? sheetByEntry.get(entryKey(f.pack, f.entry))
+      : sheetByPack.get(f.pack);
+    return idx !== undefined ? fishSheets[idx] ?? null : null;
   }
-  return fishSheets[i % fishSheets.length]!;
+  if (f.species) {
+    const idx = sheetBySpecies.get(f.species);
+    return idx !== undefined ? fishSheets[idx] ?? null : null;
+  }
+  return null;
 }
 // archive.org add-on import: Tank > Import Add-ons… (⌘I) opens the
 // browser of fish/gravel packs hosted as inner zip entries (web/import.ts).
@@ -908,20 +933,30 @@ function sheetOf(f: Fish): SpriteSheet | null {
 // or a drag-dropped pack isn't restorable — remap by species instead.
 const sheetBySpecies = new Map<string, number>();
 // Add-on URL → sheet slot: the precise binding when two packs share a
-// species name (basenames collide across collections).
+// species name (basenames collide across collections). A multi-entry
+// add-on maps its URL to the last registered entry's slot here — the
+// per-entry binding below is the exact one.
 const sheetByPack = new Map<string, number>();
+// Add-on URL + zip entry name → sheet slot: a zip holding several fish
+// packs registers one slot per entry, so each fish rebinds to its own
+// blob after relaunch instead of collapsing onto the last entry.
+const sheetByEntry = new Map<string, number>();
+const entryKey = (url: string, entry: string): string =>
+  `${url}\n${entry}`;
 // Reverse of sheetByPack — which pack owns a slot, for migrating
 // species-bound fish onto the URL binding of the sheet they render.
 const packBySheet = new Map<number, string>();
 function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
-                      url: string, section: string, live: boolean): void {
+                      url: string, section: string, live: boolean,
+                      entry?: string): void {
   // Only fish sections register sheets — a tank/scenery pack's sprite
-  // streams mustn't join the fish pool or starter fish could
-  // round-robin onto art nobody chose.
+  // streams mustn't join the fish pool or fish could bind to art
+  // nobody chose.
   if (section !== "fish") return;
   const idx = usePack({ sheets });
   if (idx >= 0) {
     sheetBySpecies.set(name, idx);
+    if (entry !== undefined) sheetByEntry.set(entryKey(url, entry), idx);
     // A reinstall can rebind the url to a new slot — drop the old
     // reverse entry so the two maps stay exact inverses.
     const prior = sheetByPack.get(url);
@@ -931,7 +966,7 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
     // A live fish-pack install adds a real fish; restores replay sheets
     // only — the saved roster already carries those fish.
     if (live) {
-      const f = spawnFish(idx, name, url);
+      const f = spawnFish(idx, name, url, "enforce", entry);
       if (f) audio.splash(panFor(f.x, TANK.width));
     }
   }
@@ -941,14 +976,18 @@ function handleSheets(sheets: Map<string, SpriteSheet>, name: string,
 }
 
 /** Rebind each saved fish's sheetIdx to where its species' pack actually
- * landed this session. Unknown species keep in-range bindings (the
- * bundled pack registers its tag too) — only out-of-range ones drop. */
+ * landed this session. Fish whose pack or species has no sheet lose
+ * their binding entirely — a stale in-range index renders the wrong
+ * species, and the stand-in is the honest answer until a restore retry
+ * lands the real pack. */
 function remapSheetIdx(): void {
   for (const f of sim.fish) {
     // Fish spawned by an add-on rebind by pack URL; older saves carry
     // only a species name — fall back to it (collisions just share art).
     const idx = f.pack !== undefined
-      ? sheetByPack.get(f.pack)
+      ? (f.entry !== undefined
+         ? sheetByEntry.get(entryKey(f.pack, f.entry))
+         : sheetByPack.get(f.pack))
       : f.species ? sheetBySpecies.get(f.species) : undefined;
     if (idx !== undefined) {
       f.sheetIdx = idx;
@@ -959,9 +998,18 @@ function remapSheetIdx(): void {
         const u = packBySheet.get(idx);
         if (u !== undefined) f.pack = u;
       }
-    } else if (f.sheetIdx !== undefined &&
-               (f.sheetIdx < 0 || f.sheetIdx >= fishSheets.length))
+      // Backfill entry for any fish whose sheet slot is known —
+      // including ones that already had `pack` recorded — or the next
+      // relaunch still collapses them onto the add-on's last entry.
+      if (f.pack !== undefined && f.entry === undefined)
+        for (const [k, v] of sheetByEntry)
+          if (v === idx && k.startsWith(`${f.pack}\n`)) {
+            f.entry = k.slice(f.pack.length + 1);
+            break;
+          }
+    } else {
       delete f.sheetIdx;
+    }
     bindExtents(f);
   }
 }
@@ -1437,6 +1485,8 @@ function removeAddon(url: string, opts: { persist?: boolean } = {}): void {
       .catch((e) => console.warn("snd removal failed:", e));
   }
   for (const s of orphaned) sheetBySpecies.delete(s);
+  for (const k of [...sheetByEntry.keys()])
+    if (k.startsWith(`${url}\n`)) sheetByEntry.delete(k);
   const slot = sheetByPack.get(url);
   // Only delete the reverse entry it still owns — a rebind may have
   // handed the slot to a different pack since.
@@ -1506,7 +1556,20 @@ function installAddon(it: Importable, again: boolean): Promise<void> {
   // running, and a starter install can overlap a panel request: a second
   // request for the same url rides the first instead of double-installing.
   const running = installsInFlight.get(it.url);
-  if (running) return running;
+  if (running) {
+    if (!again) return running;
+    // "Add Again" means one more copy — riding the in-flight run would
+    // install just the one. Chain a real install behind it. The guard
+    // is defensive: the anchor's own finally clears its slot before any
+    // tail runs (it attaches first), so the slot is already gone or
+    // holds a newer run — an unconditional delete could drop that
+    // newer registration and let two installs overlap.
+    return running.then(() => {
+      if (installsInFlight.get(it.url) === running)
+        installsInFlight.delete(it.url);
+      return installAddon(it, again);
+    });
+  }
   // A restore may have landed this add-on while the panel's detail fetch
   // was in flight — unless the user clicked "Add again", that's a dup.
   if (!again && installedAddons.some((a) => a.url === it.url)) {
@@ -1532,7 +1595,12 @@ function installAddon(it: Importable, again: boolean): Promise<void> {
     bus.post({ op: "installFailed", url: it.url,
                error: installProblem(e) });
     throw e;
-  }).finally(() => installsInFlight.delete(it.url));
+  }).finally(() => {
+    // Identity guard: a settling run must not delete a newer run's
+    // slot if a queued tail already re-registered the url.
+    if (installsInFlight.get(it.url) === run)
+      installsInFlight.delete(it.url);
+  });
   installsInFlight.set(it.url, run);
   return run;
 }
@@ -1549,7 +1617,7 @@ async function downloadAddon(it: Importable): Promise<void> {
   if (!usable.length) throw new Error("no pack inside");
   for (const r of usable) {
     if (r.sheets.size)
-      handleSheets(r.sheets, it.inner, it.url, it.section, true);
+      handleSheets(r.sheets, it.inner, it.url, it.section, true, r.entry);
     if (r.images.size)
       handleImages(r.images.values(), it.url, it.section, true);
   }
@@ -1856,6 +1924,9 @@ postState();
  * neither stack into one sinking column nor always pile up in the
  * middle. Each pellet splashes where it goes in. */
 function feedFish(): void {
+  // The click and key paths already check, but Tank ▸ Feed Fish can
+  // arrive while a modal alert is up — don't drop food behind its scrim.
+  if (alertOpen()) return;
   if (paused) return; // pellets only sink in tick(); fed now they'd hang
   // Bare F is a real user gesture, but Tank ▸ Feed Fish arrives via
   // evaluateJavaScript with no user activation — without unlock() the
@@ -1867,6 +1938,7 @@ function feedFish(): void {
     setTimeout(() => {
       if (paused) return; // paused since the pinch was scattered
       const pellet = sim.dropFood(x + p.dx);
+      if (!pellet) { noteFoodRefused(); return; }
       splashAt(pellet.x, pellet.y, PUSH.pellet);
       requestPaint();
     }, p.delay);
@@ -1886,6 +1958,7 @@ function feederDrop(): void {
   for (const p of feedPinch(Math.random, 0)) {
     if (sim.food.length >= AUTOFEED_MAX_FOOD) break; // cap, not just a gate
     const pellet = sim.dropFood(x + p.dx);
+    if (!pellet) break; // a racer refilled the tank past MAX_UNEATEN
     splashAt(pellet.x, pellet.y, PUSH.pellet);
   }
   audio.feederChime();
@@ -2354,7 +2427,10 @@ window.addEventListener("drop", (e) => {
       // The archive install path: handleSheets binds the sheet to the
       // url and spawns the fish; scenery keys by url so Overview's
       // Remove clears it.
-      if (p.sheets.size) handleSheets(p.sheets, p.name, url, "fish", true);
+      // importAddon gives a stored local pack entry === url; record the
+      // same binding so the fish's saved identity matches its restore.
+      if (p.sheets.size)
+        handleSheets(p.sheets, p.name, url, "fish", true, url);
       if (p.images.size)
         handleImages(p.images.values(), url, p.section, true);
       // Only when the bytes persisted — a dangling record would throw
@@ -2418,7 +2494,7 @@ function sheetScale(sheet: SpriteSheet): number {
  * scales them by the fish's growth and keeps big bodies inside the
  * glass by them. Cells hold the fish on its side, so cellH is its
  * drawn width. Called wherever the fish's sheet can
- * change (spawn, a pack landing re-dealing round-robin sheets, restore
+ * change (spawn, a pack landing resolving waiting fish, restore
  * remaps) rather than while drawing, so no tick runs on stale extents
  * and a newly bound big fish doesn't snap inward on its next tick. */
 function bindExtents(f: Fish): void {
