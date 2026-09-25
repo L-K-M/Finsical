@@ -1,4 +1,4 @@
-import { openBus } from "./bus.js";
+import { openBus, TANK_QUIET_MS } from "./bus.js";
 import { hostWindow, mountPopup, pushButton, setButtonTitle }
   from "osmium-ui";
 import { MEDICINES } from "../core/aquarium/disease.js";
@@ -252,9 +252,14 @@ function syncKeeping(w: WaterStats | null): void {
 let greeted = false;
 let tankBoot: string | undefined;
 let lastStats: TankStats | null = null;
+let lastStateAt = 0;
+let tankGone = false;
 const bus = openBus((m: BusMsg) => {
   if (m.op !== "state") return;
   greeted = true;
+  lastStateAt = Date.now();
+  if (tankGone) { tankGone = false;
+                rowsEl.classList.remove("osm-dimmed"); }
   if (typeof m.boot === "string") {
     // A restarted tank is a different tank: its water and hunger must
     // not merge into the trends and sparklines the old one drew.
@@ -358,8 +363,27 @@ pushButton(copyBtn, () => {
 setInterval(() => {
   if (!document.hidden) bus.post({ op: "hello" });
 }, 2000);
+// A hello earns a state push within ~750 ms — six quiet seconds after
+// the last one means the tank tab is gone or reloading. Dim the stale
+// readings and say so instead of showing them as live.
+setInterval(() => {
+  // Only mark — the state handler restores when a real push lands, so
+  // a late hello reply can't strand the dim between the two.
+  if (!greeted || tankGone ||
+      Date.now() - lastStateAt <= TANK_QUIET_MS) return;
+  tankGone = true;
+  rowsEl.classList.add("osm-dimmed");
+  careEl.textContent = "";
+  careEl.appendChild(el("div", "scareline", "Waiting for the tank…"));
+}, 1000);
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) bus.post({ op: "hello" });
+  if (!document.hidden) {
+    // A backgrounded tab is expected to be quiet — the return hello's
+    // response window resets staleness so a live tank never flashes
+    // "Waiting for the tank…" on the way back.
+    lastStateAt = Date.now();
+    bus.post({ op: "hello" });
+  }
 });
 // Right-click inside a borderless WebKit window surfaces WebKit's
 // generic menu (Reload etc.) — nothing in it applies to a desk

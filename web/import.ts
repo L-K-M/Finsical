@@ -827,6 +827,9 @@ export interface PanelOptions {
   /** Set on the Import Add-ons page: installs are posted to the tank
    * page, which owns the sim; results come back through notify(). */
   remote?: Bus;
+  /** Remote mode only: false while no tank state has landed lately —
+   * an install posted then would just wait out the ack timeout. */
+  connected?: () => boolean;
 }
 
 /** Section names as the Show: pop-up lists them. */
@@ -1289,6 +1292,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       // paths drop a first add of something already in the tank, which
       // is what "Add to Tank" promises.
       const addIt = (again: boolean) => {
+        // No tank heard lately: say so now instead of posting into
+        // the void and waiting out the 15 s ack timeout.
+        if (remote && opts?.connected && !opts.connected()) {
+          status.textContent =
+            "The tank isn't running — is Finsical open?";
+          return;
+        }
         const refusal = remote ? null : h.refuse?.(it) ?? null;
         if (refusal) {
           status.textContent = refusal;
