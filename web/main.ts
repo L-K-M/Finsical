@@ -1488,12 +1488,14 @@ function serveThumbs(keys: Iterable<unknown>): void {
   if (Object.keys(thumbs).length) bus.post({ op: "thumbs", thumbs });
 }
 
-// Thumb entries keyed to a fish that's gone can never be served
-// again — sweep them on any removal so the maps stay bounded.
+// Thumb entries keyed to a fish or add-on that's gone can never be
+// served again — sweep them on any removal so the maps stay bounded.
 function sweepThumbs(): void {
   const alive = (k: string) =>
-    !k.startsWith("f:") ||
-    sim.fish.some((x) => fishThumbKey(x) === k);
+    k.startsWith("f:")
+      ? sim.fish.some((x) => fishThumbKey(x) === k)
+      : k.startsWith("a:") &&
+        installedAddons.some((a) => a.url === k.slice(2));
   for (const k of [...thumbMemo.keys()]) if (!alive(k)) thumbMemo.delete(k);
   for (const k of [...pendingThumbs]) if (!alive(k)) pendingThumbs.delete(k);
 }
