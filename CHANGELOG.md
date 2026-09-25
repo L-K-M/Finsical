@@ -2,14 +2,6 @@
 
 ## Unreleased
 
-- Finsical now runs on Linux and Android too. Each release adds a
-  Debian package for Debian 12, Ubuntu 22.04 and later, and an Android
-  app for Android 7.0 and later. On Linux the tank floats above your
-  windows in its computer case, just as on the Mac: right-click it for
-  the app menu, and use Larger and Smaller to resize it. On Android
-  the tank fills the screen with the browser build's menu bar;
-  Preferences, Tank Overview and Tank Stats open as panels over it,
-  and Back closes them.
 - In a browser, Preferences, Tank Overview and Tank Stats open in
   small windows beside the tank, at the size the app gives them. They
   used to open as full-size tabs that stretched their panes and sent
@@ -22,6 +14,14 @@
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the
   other shrinks back.
+- Finsical now runs on Linux and Android too. Each release adds a
+  Debian package for Debian 12, Ubuntu 22.04 and later, and an Android
+  app for Android 7.0 and later. On Linux the tank floats above your
+  windows in its computer case, just as on the Mac: right-click it for
+  the app menu, and use Larger and Smaller to resize it. On Android
+  the tank fills the screen with the browser build's menu bar;
+  Preferences, Tank Overview and Tank Stats open as panels over it,
+  and Back closes them.
 - The CRT Softening control now smears only along each scanline, as
   its description says. The rows used to blend into each other at
   every setting, so the whole picture turned soft, and even Sharp and
