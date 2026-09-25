@@ -18,9 +18,9 @@ from .logic import Rect, Size
 from .screen import (
     is_x11,
     make_transparent,
-    monitor_rects,
     window_frame,
     work_area,
+    work_areas,
 )
 from .web import PageView
 
@@ -180,6 +180,7 @@ class TankWindow:
         strip.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         strip.connect("button-press-event", self._on_strip_press)
         overlay.add_overlay(strip)
+        self._strip = strip
         self.window.add(overlay)
 
         self._restore_frame()
@@ -213,6 +214,7 @@ class TankWindow:
         if old is not None and old.id == machine.id:
             return
         self._silhouette = _Silhouette(machine, load_mask(self._root, machine))
+        self._strip.set_size_request(-1, logic.drag_strip_height(machine.id))
 
         frame = window_frame(self.window)
         if old is None:
@@ -224,6 +226,11 @@ class TankWindow:
             new = logic.swapped_machine_frame(
                 frame, old.w, machine.w, machine.h
             )
+        # The swap keeps the top-left, so a taller case could push the
+        # bottom under a panel or off the monitor: keep it all visible.
+        area = work_area(self.window) if self.x11 else None
+        if area is not None:
+            new = logic.clamp_to_visible(new, area)
         # The new aspect goes on only once the window has its new size. A
         # window manager that applies a changed aspect to the current size
         # first (openbox: the 640x400 launch frame grows 825 px tall) also
@@ -236,7 +243,7 @@ class TankWindow:
             ASPECT_FALLBACK_MS, self._on_aspect_timeout
         )
         self.window.resize(new.w, new.h)
-        if self.x11 and old is None:
+        if self.x11 and (new.x, new.y) != (frame.x, frame.y):
             self.window.move(new.x, new.y)
         self._schedule_shape()
 
@@ -311,7 +318,9 @@ class TankWindow:
 
     def _restore_frame(self) -> None:
         """Where the user left the tank: its size always, its position
-        on X11 when that still lands on a monitor, else centred."""
+        on X11 when enough of it still lands on a monitor's work area to
+        see and grab (a 1 px sliver would be a lost window), else
+        centred."""
         saved = self._frames.get(logic.TANK_FRAME_KEY)
         if saved is None:
             self._set_hints(self._aspect())
@@ -330,8 +339,8 @@ class TankWindow:
             and saved is not None
             and saved.x is not None
             and saved.y is not None
-            and logic.intersects_any(
-                Rect(saved.x, saved.y, size.w, size.h), monitor_rects(display)
+            and logic.grabbable_on_any(
+                Rect(saved.x, saved.y, size.w, size.h), work_areas(display)
             )
         ):
             self.window.move(saved.x, saved.y)

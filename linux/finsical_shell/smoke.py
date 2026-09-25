@@ -32,6 +32,7 @@ class Step(enum.Enum):
     CLIENTS = ("every client window says hello and reports its fold state", 30)
     STATS_ROWS = ("Tank Stats renders a state relayed from the tank", 20)
     MENU_CALL = ("the menu's Pause Simulation reaches the tank and back", 10)
+    PICTURE = ("the menu's Take a Picture hands the shell a PNG", 15)
     QUIT = ("quitting saves through the normal quit sequence", 10)
 
     @property
@@ -78,8 +79,20 @@ class SmokeTest(Observer):
                 self._want_paused = False
                 self._app.activate_action("pause", None)
                 return
-            self._begin(Step.QUIT)
-            self._app.quit_gracefully()
+            self._begin(Step.PICTURE)
+            self._app.activate_action("picture", None)
+
+    def picture_offered(self, name: str, png: bytes) -> bool:
+        if self._step is not Step.PICTURE:
+            return False
+        assert self._app is not None
+        # decode_picture already checked the PNG signature.
+        if not name.endswith(".png"):
+            self._fail(f"the picture's suggested name {name!r} is not .png")
+            return True
+        self._begin(Step.QUIT)
+        self._app.quit_gracefully()
+        return True  # no save dialog in a test run
 
     def client_posted(
         self, client: ClientWindow, handler: str, msg: Any

@@ -3,6 +3,7 @@ root with: python3 -m unittest discover -s linux/tests -t linux
 """
 
 import ast
+import base64
 import json
 import os
 import pathlib
@@ -528,15 +529,15 @@ class TestClientWindowState(unittest.TestCase):
 
     def test_reopen_expands_a_window_closed_while_folded(self):
         state = ClientWindowState(logic.STATS)
-        folded = state.shade(Rect(5, 6, 360, 320))
-        self.assertEqual(state.reopen(folded), Rect(5, 6, 360, 320))
+        folded = state.shade(Rect(5, 6, 380, 640))
+        self.assertEqual(state.reopen(folded), Rect(5, 6, 380, 640))
         self.assertFalse(state.shaded)
-        self.assertIsNone(state.reopen(Rect(5, 6, 360, 320)))
+        self.assertIsNone(state.reopen(Rect(5, 6, 380, 640)))
 
     def test_reopen_grows_a_saved_sliver(self):
         state = ClientWindowState(logic.STATS)
         self.assertEqual(
-            state.reopen(Rect(5, 6, 360, 23)), Rect(5, 6, 360, 320)
+            state.reopen(Rect(5, 6, 380, 23)), Rect(5, 6, 380, 640)
         )
 
     def test_folded_window_saves_its_expanded_frame(self):
@@ -580,8 +581,8 @@ class TestClientWindowState(unittest.TestCase):
                     "stats.html",
                     "Tank Stats",
                     "FinsicalStats",
-                    Size(360, 320),
-                    Size(300, 250),
+                    Size(380, 640),
+                    Size(340, 560),
                 ),
             ],
         )
@@ -818,7 +819,137 @@ class TestInteriorFill(unittest.TestCase):
         )
 
 
+class TestTankFrames(unittest.TestCase):
+    AREA = Rect(0, 30, 1920, 1050)
+
+    def test_grabbable_needs_a_patch_not_a_sliver(self):
+        areas = [self.AREA, Rect(1920, 0, 1280, 1024)]
+        self.assertTrue(
+            logic.grabbable_on_any(Rect(100, 100, 300, 400), areas)
+        )
+        # 1 px of the frame on screen is a lost window.
+        self.assertFalse(
+            logic.grabbable_on_any(Rect(-299, 100, 300, 400), areas)
+        )
+        # Exactly the minimum patch counts; one less does not.
+        self.assertTrue(
+            logic.grabbable_on_any(Rect(-236, 0, 300, 400), [self.AREA])
+        )
+        self.assertFalse(
+            logic.grabbable_on_any(Rect(-237, 0, 300, 400), [self.AREA])
+        )
+        self.assertFalse(
+            logic.grabbable_on_any(Rect(100, -370, 300, 400), [self.AREA])
+        )
+        self.assertFalse(logic.grabbable_on_any(Rect(0, 0, 300, 400), []))
+
+    def test_clamp_to_visible_moves_but_never_resizes(self):
+        area = self.AREA
+        self.assertEqual(
+            logic.clamp_to_visible(Rect(10, 900, 300, 400), area),
+            Rect(10, 680, 300, 400),
+        )
+        self.assertEqual(
+            logic.clamp_to_visible(Rect(-50, 0, 300, 400), area),
+            Rect(0, 30, 300, 400),
+        )
+        self.assertEqual(
+            logic.clamp_to_visible(Rect(1800, 100, 300, 400), area),
+            Rect(1620, 100, 300, 400),
+        )
+        # Larger than the work area: pinned to its top-left.
+        self.assertEqual(
+            logic.clamp_to_visible(Rect(50, 90, 2000, 1200), area),
+            Rect(0, 30, 2000, 1200),
+        )
+        inside = Rect(100, 100, 300, 400)
+        self.assertEqual(logic.clamp_to_visible(inside, area), inside)
+
+    def test_bare_tank_has_a_thin_drag_strip(self):
+        self.assertEqual(logic.drag_strip_height("bare"), 8)
+        self.assertEqual(logic.drag_strip_height("plus"), 22)
+        self.assertEqual(logic.drag_strip_height(None), 22)
+
+
+class TestPicture(unittest.TestCase):
+    PNG = logic.PNG_SIGNATURE + b"rest of a png"
+
+    def test_decodes_base64_png(self):
+        encoded = base64.b64encode(self.PNG).decode("ascii")
+        self.assertEqual(logic.decode_picture(encoded), self.PNG)
+
+    def test_rejects_what_is_not_base64_png(self):
+        self.assertIsNone(logic.decode_picture(None))
+        self.assertIsNone(logic.decode_picture(42))
+        self.assertIsNone(logic.decode_picture("not base64!"))
+        gif = base64.b64encode(b"GIF89a....").decode("ascii")
+        self.assertIsNone(logic.decode_picture(gif))
+        self.assertIsNone(
+            logic.decode_picture("A" * (logic.PICTURE_MAX_BYTES * 2))
+        )
+
+    def test_file_name_loses_directories(self):
+        self.assertEqual(
+            logic.picture_file_name("finsical-20260925-101010.png"),
+            "finsical-20260925-101010.png",
+        )
+        self.assertEqual(
+            logic.picture_file_name("../../etc/passwd"), "passwd"
+        )
+        self.assertEqual(logic.picture_file_name("a\\b.png"), "b.png")
+        for bad in (None, "", "..", "dir/", 5):
+            self.assertEqual(
+                logic.picture_file_name(bad), logic.DEFAULT_PICTURE_NAME
+            )
+
+    def test_write_file_atomic(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "pic.png")
+            logic.write_file_atomic(path, b"one", 0o644)
+            logic.write_file_atomic(path, b"two", 0o644)
+            with open(path, "rb") as f:
+                self.assertEqual(f.read(), b"two")
+            self.assertEqual(os.listdir(d), ["pic.png"])
+            with self.assertRaises(OSError):
+                logic.write_file_atomic(
+                    os.path.join(d, "missing", "x.png"), b"x"
+                )
+
+
+class TestCrashLimiter(unittest.TestCase):
+    def test_three_reloads_a_minute(self):
+        limiter = logic.CrashLimiter()
+        self.assertTrue(limiter.allow_reload(0))
+        self.assertTrue(limiter.allow_reload(10))
+        self.assertTrue(limiter.allow_reload(20))
+        self.assertFalse(limiter.allow_reload(30))
+        self.assertEqual(limiter.recent, 4)
+        # Once the old crashes age out, reloads resume.
+        self.assertTrue(limiter.allow_reload(85))
+        self.assertEqual(limiter.recent, 2)
+
+
+class TestTankBridge(unittest.TestCase):
+    def test_every_tank_function_is_in_the_page_bridge(self):
+        """The menu calls window.finsical.<fn> (web/main.ts
+        finsicalBridge); a name the page dropped or renamed would only
+        fail at run time."""
+        main = (LINUX_DIR.parent / "web" / "main.ts").read_text("utf-8")
+        start = main.index("const finsicalBridge = {")
+        bridge = main[start : main.index("};", start)]
+        for function in sorted(logic.TANK_FUNCTIONS):
+            with self.subTest(function=function):
+                self.assertRegex(bridge, rf"\b{function}\b")
+
+
 class TestMenu(unittest.TestCase):
+    def test_take_a_picture_is_in_the_menu(self):
+        # macOS Tank ▸ Take a Picture, right after Pause.
+        actions = [e and e.action for e in logic.APP_MENU]
+        self.assertEqual(
+            actions[actions.index("pause") + 1], "picture"
+        )
+
     def test_actions_are_unique(self):
         actions = [e.action for e in logic.APP_MENU if e is not None]
         self.assertEqual(len(actions), len(set(actions)))

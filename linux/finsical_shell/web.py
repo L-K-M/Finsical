@@ -8,6 +8,7 @@ Import only after app.py has chosen the GDK backend.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
@@ -117,7 +118,39 @@ class WebHost:
         view.set_background_color(Gdk.RGBA(0, 0, 0, 0))
         view.connect("decide-policy", self._on_decide_policy)
         view.connect("create", self._on_create)
+        view.connect(
+            "web-process-terminated",
+            self._on_web_process_terminated,
+            logic.CrashLimiter(),
+        )
         return view
+
+    def _on_web_process_terminated(
+        self,
+        view: WebKit2.WebView,
+        reason: WebKit2.WebProcessTerminationReason,
+        limiter: logic.CrashLimiter,
+    ) -> None:
+        """A crashed page leaves a floating window that paints and
+        answers nothing: reload it (the tank restores its save), up to
+        the limiter's cap, after a short delay (macOS
+        webViewWebContentProcessDidTerminate)."""
+        allowed = limiter.allow_reload(time.monotonic())
+        log.warning(
+            "web process for %s terminated (%s), %d in the last minute",
+            view.get_uri(),
+            reason.value_nick,
+            limiter.recent,
+        )
+        if not allowed:
+            log.warning("not reloading %s: it keeps crashing", view.get_uri())
+            return
+
+        def reload() -> bool:
+            view.reload()
+            return GLib.SOURCE_REMOVE
+
+        GLib.timeout_add(logic.CRASH_RETRY_DELAY_MS, reload)
 
     def _popup_menu(
         self, view: WebKit2.WebView, event: Gdk.Event

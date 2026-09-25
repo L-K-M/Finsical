@@ -11,6 +11,8 @@ y-up, so its top-edge rules appear here as rules on `y`.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import bisect
 import enum
 import json
@@ -230,6 +232,41 @@ def intersects_any(frame: Rect, monitors: list[Rect]) -> bool:
     return any(frame.intersects(m) for m in monitors)
 
 
+# A saved tank frame is restored only if this much of it is on some
+# monitor's work area: a 1 px overlap would bring back a sliver no one
+# can find or grab (macOS restoreTankFrame; 44 is the drag strip twice).
+TANK_GRAB_MIN = Size(64, 44)
+
+
+def grabbable_on_any(frame: Rect, areas: list[Rect]) -> bool:
+    """True when some work area shows at least TANK_GRAB_MIN of
+    `frame`."""
+    for a in areas:
+        w = min(frame.x + frame.w, a.x + a.w) - max(frame.x, a.x)
+        h = min(frame.y + frame.h, a.y + a.h) - max(frame.y, a.y)
+        if w >= TANK_GRAB_MIN.w and h >= TANK_GRAB_MIN.h:
+            return True
+    return False
+
+
+def clamp_to_visible(frame: Rect, area: Rect) -> Rect:
+    """`frame` moved (not resized) into the work area; a frame larger
+    than the area pins to its top-left (macOS clampToVisible). A case
+    swap keeps the top-left, so a taller case would otherwise push the
+    bottom off the screen."""
+    x = (
+        area.x
+        if frame.w >= area.w
+        else max(area.x, min(frame.x, area.x + area.w - frame.w))
+    )
+    y = (
+        area.y
+        if frame.h >= area.h
+        else max(area.y, min(frame.y, area.y + area.h - frame.h))
+    )
+    return Rect(x, y, frame.w, frame.h)
+
+
 def centered(size: Size, area: Rect) -> Rect:
     return Rect(
         area.x + (area.w - size.w) // 2,
@@ -247,8 +284,20 @@ TANK_LAUNCH_ASPECT = (320, 200)
 TANK_MIN_SCALE = 0.25
 # Larger/Smaller change the tank's size by this factor per step.
 TANK_SIZE_STEP = 1.25
-# Top strip of the tank that drags the window (macOS DragStrip).
+# Top strip of the tank that drags the window (macOS DragStrip). The
+# Bare tank gets a thin one: 22 px would cover most of its feed zone,
+# and its edges still drag.
 TANK_DRAG_STRIP_HEIGHT = 22
+TANK_DRAG_STRIP_HEIGHT_BARE = 8
+BARE_MACHINE_ID = "bare"
+
+
+def drag_strip_height(machine_id: Optional[str]) -> int:
+    return (
+        TANK_DRAG_STRIP_HEIGHT_BARE
+        if machine_id == BARE_MACHINE_ID
+        else TANK_DRAG_STRIP_HEIGHT
+    )
 
 
 def tank_min_size(vb_w: float, vb_h: float) -> Size:
@@ -356,15 +405,15 @@ ADDONS = ClientSpec(
     Size(621, 441),
     Size(441, 301),
 )
-# The stats page clips rather than scrolls, so its minimum keeps every
-# field and two care hints visible.
+# The stats page clips rather than scrolls, so its minimum keeps the
+# water readings, two care hints and the Keeping controls visible.
 STATS = ClientSpec(
     "stats",
     "stats.html",
     "Tank Stats",
     "FinsicalStats",
-    Size(360, 320),
-    Size(300, 250),
+    Size(380, 640),
+    Size(340, 560),
 )
 CLIENT_SPECS = (PREFS, OVERVIEW, ADDONS, STATS)
 
@@ -496,6 +545,32 @@ WINDOWS_FILE = "windows.json"
 SETTINGS_FILE = "settings.json"
 
 
+def _umask() -> int:
+    mask = os.umask(0)
+    os.umask(mask)
+    return mask
+
+
+def write_file_atomic(path: str, data: bytes, mode: int = 0o600) -> None:
+    """Write `data` to `path` through a temporary file in the same
+    directory, so readers never see half a file and a failed write
+    leaves the old one. `mode` is filtered by the umask. Raises
+    OSError."""
+    directory = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(prefix=".tmp-", dir=directory)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.chmod(tmp, mode & ~_umask())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 class JsonStore:
     """One JSON object in a file: read once, written back atomically.
 
@@ -523,22 +598,12 @@ class JsonStore:
         the changes stay pending for the next flush."""
         if not self._dirty:
             return True
-        directory = os.path.dirname(self._path)
-        tmp = None
+        text = json.dumps(self._data, indent=1, sort_keys=True) + "\n"
         try:
-            os.makedirs(directory, exist_ok=True)
-            fd, tmp = tempfile.mkstemp(prefix=".tmp-", dir=directory)
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(self._data, f, indent=1, sort_keys=True)
-                f.write("\n")
-            os.replace(tmp, self._path)
+            os.makedirs(os.path.dirname(self._path), exist_ok=True)
+            write_file_atomic(self._path, text.encode("utf-8"))
         except OSError as e:
             log.warning("could not save %s: %s", self._path, e)
-            if tmp is not None:
-                try:
-                    os.unlink(tmp)
-                except OSError:
-                    pass
             return False
         self._dirty = False
         return True
@@ -747,6 +812,7 @@ TANK_FUNCTIONS = frozenset(
         "toggleLights",
         "toggleMute",
         "togglePause",
+        "takePicture",
     }
 )
 
@@ -878,6 +944,71 @@ def scaled_shape_rects(shape: tuple[BoxRect, ...], scale: float) -> list[Rect]:
 
 
 # ---------------------------------------------------------------------------
+# Take a Picture (the tank posts {op: "savePicture", name, png})
+
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+# Far above a 2x tank PNG (a few hundred KB); anything bigger is not
+# one of the tank's pictures.
+PICTURE_MAX_BYTES = 32 * 1024 * 1024
+DEFAULT_PICTURE_NAME = "finsical.png"
+
+
+def decode_picture(png_base64: Any) -> Optional[bytes]:
+    """The PNG bytes of a savePicture message, or None when the payload
+    is not base64 PNG data (or absurdly large)."""
+    if not isinstance(png_base64, str):
+        return None
+    if len(png_base64) > PICTURE_MAX_BYTES * 4 // 3 + 4:
+        return None
+    try:
+        data = base64.b64decode(png_base64, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    return data if data.startswith(PNG_SIGNATURE) else None
+
+
+def picture_file_name(suggested: Any) -> str:
+    """The page's suggested file name without any directory parts."""
+    if not isinstance(suggested, str):
+        return DEFAULT_PICTURE_NAME
+    name = suggested.replace("\\", "/").rsplit("/", 1)[-1].strip()
+    if name in ("", ".", "..") or "\0" in name:
+        return DEFAULT_PICTURE_NAME
+    return name
+
+
+# ---------------------------------------------------------------------------
+# Web process crash recovery (macOS webViewWebContentProcessDidTerminate)
+
+# A crashed page reloads after this delay, at most CRASH_RETRY_LIMIT
+# times per CRASH_RETRY_WINDOW_S seconds; past that it is a
+# deterministic crasher and its window stays blank rather than burning
+# CPU on process spawns.
+CRASH_RETRY_WINDOW_S = 60.0
+CRASH_RETRY_LIMIT = 3
+CRASH_RETRY_DELAY_MS = 500
+
+
+class CrashLimiter:
+    """Recent crash times for one web view."""
+
+    def __init__(self) -> None:
+        self._times: list[float] = []
+
+    def allow_reload(self, now: float) -> bool:
+        """Record a crash at `now` (seconds, monotonic); True while the
+        view may still be reloaded."""
+        self._times = [
+            t for t in self._times if now - t <= CRASH_RETRY_WINDOW_S
+        ] + [now]
+        return len(self._times) <= CRASH_RETRY_LIMIT
+
+    @property
+    def recent(self) -> int:
+        return len(self._times)
+
+
+# ---------------------------------------------------------------------------
 # The app menu (right-click on any window; accelerators on every window)
 
 
@@ -902,6 +1033,7 @@ APP_MENU: tuple[Optional[MenuEntry], ...] = (
     MenuEntry("lamp", "Lamp On", ("<Control>l",)),
     MenuEntry("mute", "Mute Sound", ("<Control><Alt>s",)),
     MenuEntry("pause", pause_label(False), ("<Control>p",)),
+    MenuEntry("picture", "Take a Picture"),
     None,
     MenuEntry(
         "larger",

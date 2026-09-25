@@ -68,6 +68,11 @@ class Observer:
     ) -> None:
         pass
 
+    def picture_offered(self, name: str, png: bytes) -> bool:
+        """Take a Picture delivered a PNG; True means handled (no save
+        dialog)."""
+        return False
+
     def quit_finished(self, via_timeout: bool) -> None:
         pass
 
@@ -101,6 +106,9 @@ class FinsicalApp(Gtk.Application):
         self._save_source = 0
         self._quitting = False
         self._about: Optional[Gtk.AboutDialog] = None
+        # Take a Picture's save dialog while it is up: repeated clicks
+        # must not stack dialogs.
+        self._picture_dialog: Optional[Gtk.FileChooserNative] = None
         self.tank: Optional[TankWindow] = None
         self.clients: Optional[ClientHost] = None
 
@@ -221,6 +229,10 @@ class FinsicalApp(Gtk.Application):
             if op == "dragWindow":
                 self.tank.drag_from_page()
                 return
+            # Take a Picture hands the shell the PNG to save, as on macOS.
+            if op == "savePicture":
+                self._save_picture(msg)
+                return
             # State carries the menu's toggles and the machine case, and
             # still goes on to the clients.
             if op == "state":
@@ -274,6 +286,7 @@ class FinsicalApp(Gtk.Application):
             "feed": lambda: self._call_tank("feedFish"),
             "water": lambda: self._call_tank("changeWater"),
             "pause": self._toggle_pause,
+            "picture": lambda: self._call_tank("takePicture"),
             "larger": lambda: self._step_tank(logic.SizeStep.LARGER),
             "smaller": lambda: self._step_tank(logic.SizeStep.SMALLER),
             "donate": lambda: open_in_browser(logic.DONATE_URL),
@@ -446,6 +459,49 @@ class FinsicalApp(Gtk.Application):
             action = self._action(name)
             action.set_state(GLib.Variant.new_boolean(on))
             action.set_enabled(x11)
+
+    def _save_picture(self, msg: dict) -> None:
+        """Offer the tank's picture to a save dialog. The page names the
+        file; directory parts are dropped all the same."""
+        png = logic.decode_picture(msg.get("png"))
+        if png is None:
+            log.warning("savePicture payload was not PNG data")
+            return
+        name = logic.picture_file_name(msg.get("name"))
+        if self._observer.picture_offered(name, png):
+            return
+        if self._picture_dialog is not None:
+            log.info("savePicture dropped: a save dialog is open")
+            return
+        assert self.tank is not None
+        dialog = Gtk.FileChooserNative.new(
+            "Take a Picture",
+            self.tank.window,
+            Gtk.FileChooserAction.SAVE,
+            "_Save",
+            "_Cancel",
+        )
+        dialog.set_do_overwrite_confirmation(True)
+        dialog.set_current_name(name)
+        png_filter = Gtk.FileFilter()
+        png_filter.set_name("PNG image")
+        png_filter.add_mime_type("image/png")
+        dialog.add_filter(png_filter)
+
+        def respond(_d: Gtk.FileChooserNative, response: int) -> None:
+            self._picture_dialog = None
+            path = dialog.get_filename()
+            dialog.destroy()
+            if response != Gtk.ResponseType.ACCEPT or path is None:
+                return
+            try:
+                logic.write_file_atomic(path, png, 0o666)
+            except OSError as e:
+                log.warning("Take a Picture: could not save %s: %s", path, e)
+
+        dialog.connect("response", respond)
+        self._picture_dialog = dialog
+        dialog.show()
 
     def _show_about(self) -> None:
         if self._about is not None:

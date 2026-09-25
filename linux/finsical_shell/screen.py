@@ -29,6 +29,15 @@ def monitor_rects(display: Gdk.Display) -> list[Rect]:
     return rects
 
 
+def work_areas(display: Gdk.Display) -> list[Rect]:
+    """Every monitor's work area (without panels and docks)."""
+    rects = []
+    for i in range(display.get_n_monitors()):
+        a = display.get_monitor(i).get_workarea()
+        rects.append(Rect(a.x, a.y, a.width, a.height))
+    return rects
+
+
 def work_area(window: Gtk.Window) -> Optional[Rect]:
     """The work area of the monitor showing `window` (or the primary
     one before it is realized)."""
