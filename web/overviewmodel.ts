@@ -77,10 +77,12 @@ export function stateLabel(state: string): string {
 // they read the same — a barrel roll is Swimming for list purposes.
 // Bands ride on hungerLabel so the sort and the status text can't
 // drift on separate cut-offs.
-const BAND_RANK = { starving: 0, hungry: 1, peckish: 2 } as const;
+const BAND_RANK = { starving: 0, hungry: 1, peckish: 2, full: 3 }
+  as const;
 const hungerBand = (h: number): number =>
-  // !(h >= 0) catches non-finite bus values: they sort with "full".
-  !(h >= 0) ? 3
+  // Non-finite bus values, and any label missing from BAND_RANK
+  // (a renamed band, a casing change), sort with "full".
+  !Number.isFinite(h) ? 3
     : BAND_RANK[hungerLabel(h) as keyof typeof BAND_RANK] ?? 3;
 const STATE_ORDER: Record<FishState, number> = {
   startle: 0, seek: 1, sleep: 2, turn: 3, drift: 3,
