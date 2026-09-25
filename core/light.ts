@@ -141,9 +141,35 @@ export function moonIllumination(ms: number): number {
   return (1 - Math.cos(2 * Math.PI * moonPhase(ms))) / 2;
 }
 
-/** "08:00" for hour 8. */
+// One formatter per locale: mountClock repaints every second and the
+// Lighting pop-ups build 24 labels at once.
+const clockFmts = new Map<string | undefined, Intl.DateTimeFormat>();
+function clockFormat(locale?: string): Intl.DateTimeFormat {
+  let f = clockFmts.get(locale);
+  if (!f) {
+    f = new Intl.DateTimeFormat(locale,
+      { hour: "numeric", minute: "2-digit" });
+    clockFmts.set(locale, f);
+  }
+  return f;
+}
+
+/** "8:04 PM" for (20, 4) in en-US, "20:04" in de-DE — the menu clock
+ * and the Lighting/Stats hour labels share the locale's convention,
+ * the one setting Mac OS 8's Date & Time control panel owned.
+ * Out-of-range input clamps: callers pass raw numbers. */
+export function clockLabel(h: number, m = 0, locale?: string): string {
+  const ch = Number.isFinite(h) ? Math.min(23, Math.max(0, Math.trunc(h)))
+                                : 0;
+  const cm = Number.isFinite(m) ? Math.min(59, Math.max(0, Math.trunc(m)))
+                                : 0;
+  return clockFormat(locale).format(new Date(2000, 0, 1, ch, cm));
+}
+
+/** The clock label on the hour — feeds the Lighting pop-ups and the
+ * Stats "(lights off at …)" line. */
 export function hourLabel(h: number): string {
-  return `${String(h).padStart(2, "0")}:00`;
+  return clockLabel(h, 0);
 }
 
 const isHour = (v: unknown): v is number =>

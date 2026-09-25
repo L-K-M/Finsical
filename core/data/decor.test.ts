@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { borderKey, cornerKey, DECOR_TICKS_PER_FRAME, decorFrame,
-         decorPhase, keyToZero, MAX_DECOR_FRAMES, pickDecorArt,
-         pickDecorFrames } from "./decor.js";
+         decorPhase, hasDecorFrames, keyToZero, MAX_DECOR_FRAMES,
+         pickDecorArt, pickDecorFrames } from "./decor.js";
 import type { IndexedImage } from "./azpack.js";
 
 const PAL: [number, number, number][] = Array.from({ length: 256 },
@@ -197,3 +197,27 @@ describe("pickDecorArt", () => {
   });
 });
 
+
+describe("hasDecorFrames", () => {
+  it("accepts a frame with art outside the key", () => {
+    expect(hasDecorFrames([framed(40, 40, 255, 3)])).toBe(true);
+  });
+  it("rejects art that is nothing but its transparent key", () => {
+    const blank = { w: 20, h: 20, palette: PAL,
+                    idx: new Uint8Array(400).fill(255) };
+    expect(hasDecorFrames([blank])).toBe(false);
+  });
+  it("rejects a zero-area pick and an empty pack", () => {
+    const empty = { w: 0, h: 0, palette: PAL, idx: new Uint8Array(0) };
+    expect(hasDecorFrames([empty])).toBe(false);
+    expect(hasDecorFrames([])).toBe(false);
+  });
+  it("accepts a keyed animation when only one frame draws", () => {
+    const art = framed(30, 30, 255, 7);
+    const blank = { w: 30, h: 30, palette: PAL,
+                    idx: new Uint8Array(900).fill(255) };
+    const frames = Array.from({ length: 8 },
+      (_, i) => i === 3 ? art : blank);
+    expect(hasDecorFrames(frames)).toBe(true);
+  });
+});
