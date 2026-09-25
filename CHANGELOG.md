@@ -52,6 +52,9 @@
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.
+- Adding a big fish add-on stalls the tank for less time: decoding
+  the gup, discus and angel packs' sprites takes under a third as
+  long, which shortens the pause while one goes in.
 - At night, the pointer works as a torch. When you hover over the dark
   tank with a mouse or pen, a warm, soft circle of light shows the
   fish and plants under it in their daytime colors while the rest of
