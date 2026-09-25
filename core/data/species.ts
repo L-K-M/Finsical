@@ -135,7 +135,12 @@ export function packSpeciesCare(d: Uint8Array): SpeciesCare | null {
     if (r.type !== "FsTI") continue;
     const s = parseFsti(r.payload);
     if (!s) continue;
-    const sus = res.find((x) => x.type === "SuS#");
+    // A species' records share one id across types — pair the SuS# by
+    // id so a multi-species pack can't hand this fish another species'
+    // disease list. Fallback keeps packs whose SuS# uses another scheme
+    // (and the sequential parser's all--1 ids) working.
+    const sus = res.find((x) => x.type === "SuS#" && x.id === r.id) ??
+                res.find((x) => x.type === "SuS#");
     const ids = sus ? parseSusceptibility(sus.payload) : null;
     if (ids) s.susceptible = ids;
     return s;

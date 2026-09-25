@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CARE, parseFsti, parseSusceptibility, sanitizeCare }
-  from "./species.js";
+import { DEFAULT_CARE, packSpeciesCare, parseFsti, parseSusceptibility,
+         sanitizeCare } from "./species.js";
+import { buildPack } from "./rsrc.fixture.js";
 
 /** An FsTI record: the tolerance table in thousandths, max before min. */
 function fsti(): Uint8Array {
@@ -74,5 +75,19 @@ describe("sanitizeCare", () => {
     expect(sanitizeCare({ ...c, tolerance: { ...c.tolerance, pH: {} } }))
       .toBeNull();
     expect(sanitizeCare("angelfish")).toBeNull();
+  });
+});
+
+describe("packSpeciesCare", () => {
+  it("pairs each species' SuS# by resource id, not by position", () => {
+    // Two species in one pack; species 600's susceptibility list is
+    // the second SuS# — a positional find would hand it 601's.
+    const d = buildPack([
+      { type: "FsTI", id: 600, payload: [...fsti()] },
+      { type: "FsTI", id: 601, payload: [...fsti()] },
+      { type: "SuS#", id: 601, payload: [1, 0, 7, 0] },
+      { type: "SuS#", id: 600, payload: [1, 0, 3, 0] },
+    ]);
+    expect(packSpeciesCare(d)!.susceptible).toEqual([3]);
   });
 });

@@ -287,10 +287,15 @@ export class Aquarium {
     // the whole dose at once as an overdose. Here the dose dissolves
     // into the water, without its effect on the fish.
     if (med.kind === 1 && !catchUp) {
-      if (d.clock < 10) return "wait";
+      // Batching only makes sense while the remainder can still reach
+      // an effective concentration — a dose too dilute to ever act
+      // must still dissolve (into the water, harmlessly) and leave
+      // doses[], not bank up forever waiting.
+      const maxC = Math.min(med.strength, 10) * d.ml / this.water.litres;
+      if (d.clock < 10 && maxC >= 1) return "wait";
       const c = Math.min(med.strength, 10) * n / this.water.litres;
-      if (c < 1) return "wait";
-      for (const r of fish) this.dose(r, med.cures, c);
+      if (c < 1 && maxC >= 1) return "wait";
+      if (c >= 1) for (const r of fish) this.dose(r, med.cures, c);
     }
     for (const e of ELEMENTS) {
       const v = med.perMl[e];

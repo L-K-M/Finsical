@@ -210,6 +210,19 @@ describe("pacing (review regressions)", () => {
     expect(a.food).toBe(2);
   });
 
+  it("a dose too dilute to act still dissolves away", () => {
+    const rand = makeRng(7);
+    const a = new Aquarium(rand);
+    const r = resident(1, rand);
+    // Green Remedy is strength 6: 10 ml in 100 L can never reach an
+    // effective concentration — it must still dissolve and leave
+    // doses[] rather than banking up forever.
+    a.addMedicine(1100, 10);
+    live(a, 60, [r]);
+    expect(a.doses).toEqual([]);
+    expect(r.life.dead).toBeNull();
+  });
+
   it("a topped-up dose doesn't come out as an overdose", () => {
     const rand = makeRng(24);
     const a = new Aquarium(rand);
@@ -248,7 +261,7 @@ describe("review round 1", () => {
 
   it("keeps a dose's banked time across a save", () => {
     const a = new Aquarium(makeRng(33));
-    a.addMedicine(1100, 5);
+    a.addMedicine(1100, 30);   // can still reach threshold, so it banks
     a.advanceMinutes(7, []);
     const b = Aquarium.fromJSON(JSON.parse(JSON.stringify(a)), makeRng(1));
     expect(b.doses[0]?.clock).toBe(7);
