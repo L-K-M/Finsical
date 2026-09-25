@@ -1,4 +1,4 @@
-import { openBus } from "./bus.js";
+import { openBus, TANK_QUIET_MS } from "./bus.js";
 import { COLUMNS, itemsOf, sortItems, summary } from "./overviewmodel.js";
 import type { Column, Item, TankState } from "./overviewmodel.js";
 import { centerText, hostWindow, mountList, pushButton } from "osmium-ui";
@@ -89,9 +89,15 @@ let tankBoot: string | undefined;
 // needs — not crypto strength.
 const pageId = crypto.randomUUID?.() ??
   `o-${Date.now()}-${Math.random()}`;
+let lastStateAt = 0;
+// True while the tank has gone quiet — the list keeps its last rows
+// (dimmed) but Remove mustn't post into the void.
+let tankGone = false;
 const bus = openBus((m) => {
   if (m.op === "state") {
     greeted = true;
+    lastStateAt = Date.now();
+    if (tankGone) { tankGone = false; render(); }
     // A tank restart loses any in-flight wantThumbs — a new boot id
     // resets ask state so missing thumbs are requested again (stored
     // thumbs still serve; only empty boxes re-ask).
@@ -174,8 +180,8 @@ listEl.focus({ preventScroll: true });
 
 function syncRemove(): void {
   const it = items[list.selected];
-  removeBtn.disabled = !it;
-  useBtn.disabled = !it?.use;
+  removeBtn.disabled = tankGone || !it;
+  useBtn.disabled = tankGone || !it?.use;
 }
 const armOrRemove = (): void => {
   const it = items[list.selected];
@@ -314,6 +320,7 @@ let lastStructure = "";
 function render(scroll: ListScroll = "keep"): void {
   const s = tankState;
   if (!s) return;
+  listEl.classList.remove("osm-dimmed");
   // Only now is "empty" a fact rather than "not heard from the tank".
   list.setEmpty("The tank is empty. Import add-ons to stock it.");
   const fishN = (s.fish ?? []).length;
@@ -336,6 +343,9 @@ function render(scroll: ListScroll = "keep"): void {
         r!.setAttribute("aria-label", `${it.name}, ${it.kind}, ${it.status}`);
       }
     });
+    // A status-only re-tag can flip the selected row's `use` — "In
+    // tank" becoming "Showing" — without a rebuild to run syncRemove.
+    syncRemove();
     return;
   }
   lastStructure = structure;
@@ -377,9 +387,30 @@ bus.post({ op: "hello" });
 setInterval(() => {
   if (!document.hidden) bus.post({ op: "hello" });
 }, 2000);
-// Snap to fresh state the moment the window is shown again.
+// A hello earns a state push within ~750 ms — six quiet seconds after
+// the last one means the tank tab is gone or reloading, and the rows
+// still on screen are stale. Dim them and stand the buttons down
+// rather than let Remove post into the void.
+setInterval(() => {
+  // Only mark — the state handler restores when a real push lands, so
+  // a late hello reply can't strand the dim between the two.
+  if (!greeted || tankGone ||
+      Date.now() - lastStateAt <= TANK_QUIET_MS) return;
+  tankGone = true;
+  summaryEl.textContent = "Waiting for the tank…";
+  centerText(summaryEl);
+  listEl.classList.add("osm-dimmed");
+  syncRemove();
+}, 1000);
+// Snap to fresh state the moment the window is shown again. The
+// hello's response window also resets staleness — a backgrounded tab
+// is expected to be quiet, so without the grace the next tick would
+// flash "Waiting for the tank…" on a perfectly live one.
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) bus.post({ op: "hello" });
+  if (!document.hidden) {
+    lastStateAt = Date.now();
+    bus.post({ op: "hello" });
+  }
 });
 // Right-click inside a borderless WebKit window surfaces WebKit's
 // generic menu (Reload etc.) — nothing in it applies to a desk

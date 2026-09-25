@@ -6,6 +6,7 @@ import type { Importable } from "./import.js";
 import type { FishState } from "../core/sim.js";
 import { conditionLabel } from "./lifecopy.js";
 import { hungerLabel, uptime } from "./statsmodel.js";
+import type { HungerBand } from "./statsmodel.js";
 
 export interface FishSnap {
   id: number; species: string; hunger: number; state: string;
@@ -39,6 +40,11 @@ export interface Item {
   use?: BusMsg | undefined;
   /** Fish rows carry the sim id so a selection can spotlight it. */
   fishId?: number;
+  /** Status-column order as an explicit lexicographic key: ailing fish
+   * first, then hunger bands, then a fixed state order — a fish turning
+   * or startling for a second must not reshuffle the list under the
+   * pointer. A tuple can't collide the way packed integer ranks can. */
+  statusKey: readonly number[];
 }
 
 export type Column = "name" | "kind" | "status";
@@ -63,9 +69,40 @@ const STATES: Record<FishState, string> = {
 // floor, backgrounds/tanks fill the walls (aspect decides which at
 // decode). Plants/accessories stack as decor; nothing to switch.
 const USABLE = new Set(["gravel", "backgrounds", "tanks"]);
-/** Display label for a fish's sim state — the hover tip shares it. */
+/** Display label for a fish's sim state — the hover tip and the
+ * overview share it. A roll in progress reads "Swimming": it's
+ * transient enough that the row shouldn't flash "Turning", and an
+ * unknown bus state gets the same neutral label. */
 export function stateLabel(state: string): string {
-  return STATES[state as FishState] ?? state;
+  // typeof, not ??: a hostile string like "constructor" resolves to
+  // an inherited Object.prototype member, which is never nullish.
+  const known = STATES[state as FishState];
+  if (state === "turn" || typeof known !== "string") return "Swimming";
+  return known;
+}
+
+// Status-column ordering: hunger band first (hungrier sorts earlier),
+// then a fixed per-state rank. Transient states share a rank where
+// they read the same — a barrel roll is Swimming for list purposes.
+// Bands ride on hungerLabel so the sort and the status text can't
+// drift on separate cut-offs — and HungerBand is total over the
+// record, so a new band without a rank fails to compile rather than
+// silently sorting as full.
+const BAND_RANK: Record<HungerBand, number> =
+  { starving: 0, hungry: 1, peckish: 2, full: 3 };
+const hungerBand = (h: number): number => BAND_RANK[hungerLabel(h)];
+const STATE_ORDER: Record<FishState, number> = {
+  startle: 0, seek: 1, sleep: 2, turn: 3, drift: 3,
+  // A real dead fish takes the ailing branch below; this only orders
+  // a malformed bus frame that reports state "dead" with no timestamp.
+  dead: 0,
+};
+
+// typeof, not ??: indexing with an inherited key ("constructor")
+// returns a function, which is never nullish.
+function stateRank(state: string): number {
+  const rank = STATE_ORDER[state as FishState];
+  return typeof rank === "number" ? rank : 3;
 }
 
 /** The Finder-style header line: "8 fish, 3 add-ons, water 96%, up
@@ -82,21 +119,27 @@ export function summary(fish: number, addons: number, water: number,
  * pre-pack rosters). */
 export function itemsOf(s: TankState): Item[] {
   const fish = s.fish ?? [];
-  const items: Item[] = fish.map((f) => ({
-    key: fishThumbKey(f),
-    thumb: fishThumbKey(f),
-    name: f.standIn ? `${f.species || "Fish"} (stand-in)`
-                    : f.species || "Fish",
-    kind: "Fish",
-    // Bus data is untrusted: an unknown state reads as swimming.
-    status: typeof f.dead === "number" || typeof f.sick === "number"
-      ? conditionLabel(f)
-      : `${STATES[f.state as FishState] ?? "Swimming"}, ` +
-        hungerLabel(f.hunger),
-    rank: 0,
-    remove: { op: "removeFish", id: f.id },
-    fishId: f.id,
-  }));
+  const items: Item[] = fish.map((f) => {
+    const ailing = typeof f.dead === "number" || typeof f.sick === "number";
+    const stateTxt = stateLabel(f.state);
+    return {
+      key: fishThumbKey(f),
+      thumb: fishThumbKey(f),
+      name: f.standIn ? `${f.species || "Fish"} (stand-in)`
+                      : f.species || "Fish",
+      kind: "Fish",
+      // Bus data is untrusted: an unknown state reads as swimming.
+      status: ailing ? conditionLabel(f)
+                     : `${stateTxt}, ${hungerLabel(f.hunger)}`,
+      rank: 0,
+      remove: { op: "removeFish", id: f.id },
+      fishId: f.id,
+      // Ailing rows lead the list, Dead before Sick — a corpse needs
+      // attention before a patient does.
+      statusKey: ailing ? [typeof f.dead === "number" ? 0 : 1]
+        : [2, hungerBand(f.hunger), stateRank(f.state)],
+    };
+  });
   const showing = new Set(
     [s.scenery?.backdrop, s.scenery?.gravel].filter(
       (u): u is string => typeof u === "string" && u !== ""));
@@ -112,6 +155,9 @@ export function itemsOf(s: TankState): Item[] {
       kind: KINDS[a.section] ?? a.section,
       status: on ? "Showing" : "In tank",
       rank: 1,
+      // Add-ons sit after every fish; "In tank" sorts ahead of
+      // "Showing" the way the old status-text compare did.
+      statusKey: [3, on ? 1 : 0],
       remove: { op: "removeAddon", url: a.url },
       use: !on && USABLE.has(a.section)
         ? { op: "useAddon", url: a.url } : undefined,
@@ -120,11 +166,18 @@ export function itemsOf(s: TankState): Item[] {
   return items;
 }
 
+/** Lexicographic compare for status keys — prefix-free. */
+function cmpKey(a: readonly number[], b: readonly number[]): number {
+  for (let i = 0; i < a.length && i < b.length; i++)
+    if (a[i]! !== b[i]!) return a[i]! - b[i]!;
+  return a.length - b.length;
+}
+
 export function sortItems(items: Item[], by: Column): Item[] {
   const name = (a: Item, b: Item) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   return [...items].sort((a, b) =>
     by === "kind" ? a.kind.localeCompare(b.kind) || name(a, b)
-    : by === "status" ? a.status.localeCompare(b.status) || name(a, b)
+    : by === "status" ? cmpKey(a.statusKey, b.statusKey) || name(a, b)
     : name(a, b) || a.kind.localeCompare(b.kind));
 }

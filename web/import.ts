@@ -827,6 +827,9 @@ export interface PanelOptions {
   /** Set on the Import Add-ons page: installs are posted to the tank
    * page, which owns the sim; results come back through notify(). */
   remote?: Bus;
+  /** Remote mode only: false while no tank state has landed lately —
+   * an install posted then would just wait out the ack timeout. */
+  connected?: () => boolean;
 }
 
 /** Section names as the Show: pop-up lists them. */
@@ -1289,6 +1292,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       // paths drop a first add of something already in the tank, which
       // is what "Add to Tank" promises.
       const addIt = (again: boolean) => {
+        // No tank heard lately: say so now instead of posting into
+        // the void and waiting out the 15 s ack timeout.
+        if (remote && opts?.connected && !opts.connected()) {
+          status.textContent =
+            "The tank isn't running — is Finsical open?";
+          return;
+        }
         const refusal = remote ? null : h.refuse?.(it) ?? null;
         if (refusal) {
           status.textContent = refusal;
@@ -1389,11 +1399,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
 
   function paintThumb(row: Element, th: HTMLCanvasElement): void {
     const box = row.querySelector(".ithumb");
-    if (!box || box.firstChild) return;
+    if (!box) return;
+    // Replace, don't skip: a pack that reinstalls under the same url
+    // earns a fresh preview, and a re-paint of the same thumb is cheap.
     const cv = miniThumb(th);
     cv.style.left = `${Math.floor((MINI_W - cv.width) / 2)}px`;
     cv.style.top = `${Math.floor((MINI_H - cv.height) / 2)}px`;
-    box.appendChild(cv);
+    box.replaceChildren(cv);
   }
 
   // Row thumbs fetch lazily: when a row scrolls into view its pack is
@@ -1742,7 +1754,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         if (detailRef?.url === ackUrl && pending?.ref === detailRef) {
           const p = pending;
           pending = null;
-          detailRef.status.textContent = `Couldn't add it: ${m.error}`;
+          detailRef.status.textContent =
+            m.error ? `Couldn't add it. ${m.error}` : "Couldn't add it.";
           setAdd("Try Again", p.retry);
         }
       } else if (m.op === "state" && Array.isArray(m.addons)) {

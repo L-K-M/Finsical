@@ -1,9 +1,9 @@
-import { openBus } from "./bus.js";
+import { openBus, TANK_QUIET_MS } from "./bus.js";
 import { hostWindow, mountPopup, pushButton, setButtonTitle }
   from "osmium-ui";
 import { MEDICINES } from "../core/aquarium/disease.js";
-import { deriveStats, hungerLabel, SPARK_H, SPARK_W, sparkColumns, sparkRow,
-         summaryText, trend, uptime } from "./statsmodel.js";
+import { deriveStats, hungriestLabel, SPARK_H, SPARK_W, sparkColumns,
+         sparkRow, summaryText, trend, uptime } from "./statsmodel.js";
 import type { BusMsg } from "./bus.js";
 import type { StatsInput, TankStats, WaterStats } from "./statsmodel.js";
 
@@ -122,15 +122,19 @@ function render(st: TankStats): void {
     : meter(st.avgHunger, `${Math.round(st.avgHunger * 100)}%`,
             trend(old?.avgHunger ?? null, st.avgHunger),
             history.map((s) => ({ t: s.t, v: s.avgHunger }))));
-  field("Hungriest", text(st.hungriest
-    ? `${st.hungriest.name} — ${hungerLabel(st.hungriest.hunger)}` : "—"));
+  field("Hungriest", text(hungriestLabel(st)));
   const w = st.water;
   if (w) waterRows(w);
   field("Fish", text(`${st.fishCount}` +
     (st.sick.length ? `, ${st.sick.length} sick` : "") +
     (st.dead ? `, ${st.dead} dead` : "") +
-    (st.seeking ? ` (${st.seeking} seeking food)` : "") +
-    (st.startled ? ` (${st.startled} startled)` : "")));
+    // One paren group, comma-joined — "(2 seeking food) (1 startled)"
+    // read as nested noise.
+    (st.seeking || st.startled
+      ? ` (${[st.seeking && `${st.seeking} seeking food`,
+             st.startled && `${st.startled} startled`]
+            .filter(Boolean).join(", ")})`
+      : "")));
   field("Food", text(st.food
     ? `${st.food} pellet${st.food > 1 ? "s" : ""}` +
       (st.foodSettled ? `, ${st.foodSettled} rotting` : "")
@@ -252,9 +256,14 @@ function syncKeeping(w: WaterStats | null): void {
 let greeted = false;
 let tankBoot: string | undefined;
 let lastStats: TankStats | null = null;
+let lastStateAt = 0;
+let tankGone = false;
 const bus = openBus((m: BusMsg) => {
   if (m.op !== "state") return;
   greeted = true;
+  lastStateAt = Date.now();
+  if (tankGone) { tankGone = false;
+                rowsEl.classList.remove("osm-dimmed"); }
   if (typeof m.boot === "string") {
     // A restarted tank is a different tank: its water and hunger must
     // not merge into the trends and sparklines the old one drew.
@@ -287,7 +296,9 @@ window.addEventListener("drop", (e) => e.preventDefault());
 hostWindow(win, {
   title: "Tank Stats",
   zoom: { standard: { w: 380, h: 640 } },
-  grow: { min: { w: 340, h: 60 } },
+  // Match the native minimum: below it the water readings, care hints
+  // and Keeping controls clip without a scroll path.
+  grow: { min: { w: 340, h: 560 } },
 });
 
 // Until the first state push lands the window says what it is waiting
@@ -358,8 +369,27 @@ pushButton(copyBtn, () => {
 setInterval(() => {
   if (!document.hidden) bus.post({ op: "hello" });
 }, 2000);
+// A hello earns a state push within ~750 ms — six quiet seconds after
+// the last one means the tank tab is gone or reloading. Dim the stale
+// readings and say so instead of showing them as live.
+setInterval(() => {
+  // Only mark — the state handler restores when a real push lands, so
+  // a late hello reply can't strand the dim between the two.
+  if (!greeted || tankGone ||
+      Date.now() - lastStateAt <= TANK_QUIET_MS) return;
+  tankGone = true;
+  rowsEl.classList.add("osm-dimmed");
+  careEl.textContent = "";
+  careEl.appendChild(el("div", "scareline", "Waiting for the tank…"));
+}, 1000);
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) bus.post({ op: "hello" });
+  if (!document.hidden) {
+    // A backgrounded tab is expected to be quiet — the return hello's
+    // response window resets staleness so a live tank never flashes
+    // "Waiting for the tank…" on the way back.
+    lastStateAt = Date.now();
+    bus.post({ op: "hello" });
+  }
 });
 // Right-click inside a borderless WebKit window surfaces WebKit's
 // generic menu (Reload etc.) — nothing in it applies to a desk
