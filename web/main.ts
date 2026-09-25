@@ -1531,7 +1531,12 @@ function onBusMessage(m: BusMsg): void {
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
   else if (m.op === "removeFish" && typeof m.id === "number") {
-    if (sim.removeFish(m.id)) { audio.fishOut(); sweepThumbs(); saveTank(); }
+    // requestPaint, not a tick: the frame loop draws after a sim tick,
+    // so a paused tank would keep showing the fish that was just taken
+    // out of the water.
+    if (sim.removeFish(m.id)) {
+      audio.fishOut(); sweepThumbs(); saveTank(); requestPaint();
+    }
   } else if (m.op === "removeAddon" &&
              typeof m.url === "string" && m.url !== "") {
     const url = m.url;
@@ -2414,17 +2419,27 @@ void (async () => {
     // sound plays now or on the first click.
     audio.open();
     // The user's chosen scenery wins over install-recency — applied
-    // once every pack has had its restore chance. A pack that failed
-    // to restore leaves whatever the chain picked, until a retry.
+    // once every pack has had its restore chance.
     applySceneryChoice();
     remapSheetIdx(); reconcileFish();
-    retryRestores(restoreFailed);
     backfillStarterSounds({
       welcomePending,
       hasSounds: storedSounds > 0 ||
         installedAddons.some((a) => a.section === "sounds"),
       install: (it) => installAddon(it, false),
     }).catch((e) => console.warn("starter sounds skipped:", e));
+  })
+  // A step above throwing used to end the chain silently: the tank
+  // came up missing art or fish, and the retry below — the whole
+  // reason a pack that failed to restore is kept in restoreFailed —
+  // never ran. Log it, repaint what did land, and retry regardless.
+  .catch((e) => {
+    console.warn("launch stopped before the tank was settled:", e);
+    requestPaint();
+  })
+  .finally(() => {
+    try { retryRestores(restoreFailed); }
+    catch (e) { console.warn("add-on restore retry failed to start:", e); }
   });
 
 // First launch: offer to stock the tank (web/welcome.ts). Accepting
