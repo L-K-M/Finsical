@@ -10,13 +10,15 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  native-macos:
-    name: Build native macOS release
-    runs-on: macos-15
-    timeout-minutes: 30
+  verify:
+    name: Verify release source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.source.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -25,8 +27,11 @@ jobs:
       - name: Verify release source
         id: source
         run: |
+          # package.json, Info.plist and the README marker agree (the
+          # script fails otherwise), so the tag only needs to match one.
+          node scripts/check-version.mjs
           tag_version="${GITHUB_REF_NAME#v}"
-          app_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' macos/Info.plist)"
+          app_version="$(node -p 'require("./package.json").version')"
           if [ "$tag_version" != "$app_version" ]; then
             echo "::error::tag v$tag_version != app version $app_version"
             exit 1
@@ -44,18 +49,165 @@ jobs:
           fi
 
           echo "version=$tag_version" >> "$GITHUB_OUTPUT"
+
+  native-macos:
+    name: Build native macOS release
+    needs: verify
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Build
         run: scripts/build.sh --clean
       - name: Archive
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
         run: |
           mkdir -p release
-          archive="release/Finsical-${{ steps.source.outputs.version }}-macOS.zip"
-          ditto -c -k --sequesterRsrc --keepParent macos/Finsical.app "$archive"
-          (cd release && shasum -a 256 "${archive##*/}" > SHA256SUMS.txt)
+          ditto -c -k --sequesterRsrc --keepParent macos/Finsical.app \
+            "release/Finsical-$VERSION-macOS.zip"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-macos
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  linux-deb:
+    name: Build Linux package
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # GdkPixbuf (through python3-gi) renders the package's icons.
+      - name: Install packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            lintian python3-gi gir1.2-gtk-3.0
+      - run: npm ci
+      - name: Build
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          linux/build-deb.sh
+          lintian --profile debian --fail-on error,warning \
+            "out/Finsical-$VERSION-linux.deb"
+          mkdir -p release
+          mv "out/Finsical-$VERSION-linux.deb" release/
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-linux
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  android:
+    name: Build signed Android release
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      # An APK signed with any other key would not install over the
+      # previous release, and uninstalling first deletes the user's tank,
+      # so there is no fallback key: fail until the secrets exist. The
+      # secrets reach only this step and Sign, never the Gradle build.
+      - name: Check signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=()
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD \
+                      ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing Android signing secrets: ${missing[*]}. Add them under Settings > Secrets and variables > Actions (README.md, \"Signing Android releases\"). The macOS and Linux assets still reach the draft."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      - run: npm ci
+      - run: ./gradlew assembleRelease
+        working-directory: android
+      # Signed outside Gradle so the passwords never enter its
+      # configuration cache.
+      - name: Sign
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          keystore="$RUNNER_TEMP/release.p12"
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$keystore"
+          apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          apk="release/Finsical-$VERSION-android.apk"
+          mkdir -p release
+          "$apksigner" sign --ks "$keystore" --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEY_PASSWORD \
+            --out "$apk" android/app/build/outputs/apk/release/app-release-unsigned.apk
+          "$apksigner" verify --verbose --print-certs "$apk"
+          # apksigner writes a v4 signature file next to the APK; the
+          # release ships the APK alone.
+          rm -f release/*.idsig
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-android
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish draft
+    needs: [verify, native-macos, linux-deb, android]
+    # A missing Android signing key must not hold back the other
+    # platforms; the android job's failure stays visible in the run.
+    if: >-
+      ${{ !cancelled() && needs.verify.result == 'success' &&
+          needs.native-macos.result == 'success' &&
+          needs.linux-deb.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd release
+          sha256sum Finsical-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Note a missing APK
+        if: ${{ needs.android.result != 'success' }}
+        run: echo "::warning::The draft has no Android APK because the android job did not succeed."
+      # The README's Download link (releases/latest) skips drafts, so
+      # publishing stays a manual step.
       - name: Publish draft
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          name: Finsical ${{ steps.source.outputs.version }}
+          name: Finsical ${{ needs.verify.outputs.version }}
           draft: true
           generate_release_notes: true
           files: release/*
