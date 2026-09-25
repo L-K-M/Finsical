@@ -184,6 +184,21 @@ const float POS_RANGE = 0.10;
 // Corner radius of the raster, in game px.
 const float RASTER_CORNER = 6.0;
 
+// Light the bloom, halation, overdrive and the grille's lit stripe
+// add at full slider. The highlight shoulder's peak is built from the
+// same gains, so they live in one place.
+const float BLOOM_GAIN = 0.60;
+const float HALO_GAIN = 0.10;
+const float OVER_GAIN = 0.60;
+const float MASK_BOOST = 1.18; // compensates the grille's dimming
+// The shoulder leaves everything below KNEE alone and reaches full
+// output at WHITE_SHARE of the way from 1 to the peak drive. Rolling
+// off the whole headroom instead dimmed real tank frames by over 2%;
+// this share keeps their mean within 1.7% at defaults and clips under
+// 1% of their pixels, down from about 14% with a hard clip.
+const float KNEE = 0.85;
+const float WHITE_SHARE = 0.25;
+
 // The smeared scanline signal at lp. Like gamePx, rows sample sharp:
 // the linear filter blends columns, and rows only across the one
 // device px where they meet.
@@ -246,6 +261,19 @@ vec3 spotArea(vec3 var) { return min(sqrt(6.2831853 * var), 1.0); }
 // close enough for how neighboring spots blend and far cheaper).
 vec3 toLight(vec3 v) { return v * v; }
 vec3 toSignal(vec3 l) { return sqrt(max(l, 0.0)); }
+
+// Highlight shoulder: bloom, halation, overdrive and the grille's
+// boost drive bright channels past what the display shows, and a hard
+// clip there flattens the brightest detail into one level. Values
+// below KNEE pass untouched; above it an extended Reinhard curve
+// (slope 1 at the knee, so no visible crease) rolls KNEE..white into
+// KNEE..1, and only drive past white still clips. At white 1 it is
+// the identity.
+vec3 shoulder(vec3 c, float white) {
+  vec3 over = max(c - KNEE, 0.0);
+  float k = 1.0 / (1.0 - KNEE) - 1.0 / (white - KNEE);
+  return min(c, KNEE) + over / (1.0 + k * over);
+}
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -381,10 +409,11 @@ void main() {
   // rather than casting sharp copies of itself.
   if (uBloom > 0.0) {
     vec2 t = lp / uTank;
-    c += texture2D(uBloomTex, t).rgb * (0.60 * uBloom);
-    c += texture2D(uHaloTex, t).rgb * (0.10 * uBloom);
+    c += texture2D(uBloomTex, t).rgb * (BLOOM_GAIN * uBloom);
+    c += texture2D(uHaloTex, t).rgb * (HALO_GAIN * uBloom);
   }
-  c *= 1.0 + (0.60 * uOver) * smoothstep(0.5, 1.0, max(c.r, max(c.g, c.b)));
+  c *= 1.0 + (OVER_GAIN * uOver) *
+             smoothstep(0.5, 1.0, max(c.r, max(c.g, c.b)));
 
   // Aperture grille: one RGB channel per device-pixel column.
   float stripe = mod(floor(gl_FragCoord.x), 3.0);
@@ -392,7 +421,18 @@ void main() {
   if (stripe < 0.5) mask.r = 1.0;
   else if (stripe < 1.5) mask.g = 1.0;
   else mask.b = 1.0;
-  c *= mix(vec3(1.0), mask * 1.18, uGrill); // 1.18 compensates dimming
+  c *= mix(vec3(1.0), mask * MASK_BOOST, uGrill);
+
+  // Roll the highlights off before the vignette and picture controls.
+  // After the grille rather than before it: the lit stripe's boost is
+  // part of the drive, and a shoulder ending at 1 before it would
+  // still clip every lit stripe above 1 / MASK_BOOST, while one ending
+  // at 1 / MASK_BOOST would dim white by up to a quarter. The rows
+  // signal peaks at 1, so peak bounds everything the traits add; with
+  // them all off it is 1 and the picture is untouched.
+  float peak = (1.0 + (BLOOM_GAIN + HALO_GAIN) * uBloom) *
+               (1.0 + OVER_GAIN * uOver) * mix(1.0, MASK_BOOST, uGrill);
+  if (peak > 1.0) c = shoulder(c, 1.0 + WHITE_SHARE * (peak - 1.0));
 
   c *= edge;
 
