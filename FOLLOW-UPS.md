@@ -153,6 +153,12 @@ descriptions of #161 and #162.
   the first frame after install showed stale content; it never
   reproduced.
 - The AppStream metainfo has no screenshots.
+- After a web process crash, the Linux and Android shells (like the
+  macOS one) reload the tank within about a second, while the dead
+  page's tank lease (`web/tankclaim.ts`, 4 s) still holds. The reloaded
+  tank shows the "already open in another window" view-only notice
+  until the lease runs out, then takes over. No data is lost, but the
+  notice is wrong.
 
 ### Tooling and tests
 

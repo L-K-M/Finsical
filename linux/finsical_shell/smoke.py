@@ -18,9 +18,11 @@ from .shell import FinsicalApp, Observer
 
 OVERALL_TIMEOUT_S = 90
 STATS_POLL_MS = 250
-# Stats renders its rows only once a state push relayed from the tank
-# arrived, so rows prove the relay both ways (hello out, state back).
-STATS_ROWS_SCRIPT = "document.querySelector('#srows')?.childElementCount > 0"
+# Stats renders its meters only once a state push relayed from the tank
+# arrived, so a meter proves the relay both ways (hello out, state
+# back). Not just any row: until then #srows holds a "Waiting for the
+# tank" row.
+STATS_ROWS_SCRIPT = "document.querySelector('#srows .smeter') !== null"
 
 
 class Step(enum.Enum):

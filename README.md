@@ -175,7 +175,8 @@ on All Desktops are dimmed on native Wayland, which doesn't allow them.
 
 On Android, the tank uses the browser build's menu bar (below).
 Preferences, Tank Overview and Tank Stats open as panels over the tank;
-Back closes the front one. Take a Picture asks where to save the PNG.
+Back closes the front one. Take a Picture and Export Tank ask where to
+save the file, and Import Tank opens the system file picker.
 
 Keys on the tank page, in the app and the browser build (see
 [Build from source](#build-from-source)):
