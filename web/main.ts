@@ -1552,7 +1552,20 @@ function installAddon(it: Importable, again: boolean): Promise<void> {
   // running, and a starter install can overlap a panel request: a second
   // request for the same url rides the first instead of double-installing.
   const running = installsInFlight.get(it.url);
-  if (running) return running;
+  if (running) {
+    if (!again) return running;
+    // "Add Again" means one more copy — riding the in-flight run would
+    // install just the one. Chain a real install behind it. The guard
+    // is defensive: the anchor's own finally clears its slot before any
+    // tail runs (it attaches first), so the slot is already gone or
+    // holds a newer run — an unconditional delete could drop that
+    // newer registration and let two installs overlap.
+    return running.then(() => {
+      if (installsInFlight.get(it.url) === running)
+        installsInFlight.delete(it.url);
+      return installAddon(it, again);
+    });
+  }
   // A restore may have landed this add-on while the panel's detail fetch
   // was in flight — unless the user clicked "Add again", that's a dup.
   if (!again && installedAddons.some((a) => a.url === it.url)) {
@@ -1578,7 +1591,12 @@ function installAddon(it: Importable, again: boolean): Promise<void> {
     bus.post({ op: "installFailed", url: it.url,
                error: installProblem(e) });
     throw e;
-  }).finally(() => installsInFlight.delete(it.url));
+  }).finally(() => {
+    // Identity guard: a settling run must not delete a newer run's
+    // slot if a queued tail already re-registered the url.
+    if (installsInFlight.get(it.url) === run)
+      installsInFlight.delete(it.url);
+  });
   installsInFlight.set(it.url, run);
   return run;
 }
@@ -1902,6 +1920,9 @@ postState();
  * neither stack into one sinking column nor always pile up in the
  * middle. Each pellet splashes where it goes in. */
 function feedFish(): void {
+  // The click and key paths already check, but Tank ▸ Feed Fish can
+  // arrive while a modal alert is up — don't drop food behind its scrim.
+  if (alertOpen()) return;
   if (paused) return; // pellets only sink in tick(); fed now they'd hang
   // Bare F is a real user gesture, but Tank ▸ Feed Fish arrives via
   // evaluateJavaScript with no user activation — without unlock() the
