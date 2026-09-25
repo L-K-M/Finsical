@@ -166,8 +166,9 @@ function syncRemove(): void {
 }
 // A double-click's second press lands before the tank's state push
 // moves the selection, so without a floor one gesture could remove
-// the row and then its successor.
-const REMOVE_FLOOR_MS = 350;
+// the row and then its successor. 500 ms matches the default
+// double-click interval on macOS and Windows.
+const REMOVE_FLOOR_MS = 500;
 let lastRemovedAt = -Infinity;
 let statusTimer = 0;
 const removeSelected = (): void => {
