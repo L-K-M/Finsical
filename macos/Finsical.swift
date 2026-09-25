@@ -1,4 +1,5 @@
 import Cocoa
+import UniformTypeIdentifiers
 import WebKit
 
 /// Serves the bundled web app (Resources/web/) on the `finsical` scheme so
@@ -145,12 +146,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         frameKey: "FinsicalAddons", size: NSSize(width: 621, height: 441),
         minSize: NSSize(width: 441, height: 301)))
     /// The stats page clips rather than scrolls (Mac OS 8 windows
-    /// without scroll bars), so its minimum keeps every field and two
-    /// care hints visible.
+    /// without scroll bars), so its minimum keeps the water readings,
+    /// two care hints and the Keeping controls visible.
     private lazy var stats = host.add(OsmiumWindowSpec(
         url: page("stats.html"), title: "Tank Stats",
-        frameKey: "FinsicalStats", size: NSSize(width: 360, height: 320),
-        minSize: NSSize(width: 300, height: 250)))
+        frameKey: "FinsicalStats", size: NSSize(width: 380, height: 640),
+        minSize: NSSize(width: 340, height: 560)))
 
     private func page(_ name: String) -> URL {
         URL(string: "\(WebHandler.scheme)://app/\(name)")!
@@ -218,6 +219,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         return NSPoint(x: x, y: top)
     }
 
+    /// Apply the saved tank frame, or center. OsmiumFrameStore.restore
+    /// accepts any 1 pt edge overlap with any screen — a tank parked
+    /// 99 % off a now-smaller display restores as an unreachable
+    /// sliver. Require a patch big enough to see and grab (the case
+    /// drags from anywhere, but 44 pt is the drag strip twice over).
+    private func restoreTankFrame() {
+        let key = "FinsicalTank"
+        guard let f = frames.frame(for: key),
+              NSScreen.screens.contains(where: {
+                  let i = $0.visibleFrame.intersection(f)
+                  return i.width >= 64 && i.height >= 44
+              })
+        else { window.center(); return }
+        window.setFrame(f, display: false)
+    }
+
     /// The tank window's shape follows the selected machine case.
     /// Applied only when the id changes — state pushes every ~2s.
     private var machineId = ""
@@ -236,16 +253,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         pauseMenuItem?.title = paused ? "Resume Simulation" : "Pause Simulation"
     }
     private var machineMaskImage: CGImage?
+    /// The drag strip's height constraint — applyMachine shrinks it
+    /// for the Bare tank, where a 22 pt strip covers the feed zone.
+    private var stripHeight: NSLayoutConstraint?
     /// Smallest tank window, as a fraction of the machine's viewBox
     /// (1 pt per viewBox unit). A quarter lets the tank shrink to a
     /// desk-corner ornament (Plus: 205x265 pt; Bare: 80x50 pt).
     private static let tankMinScale: CGFloat = 0.25
+    /// Full-height drag strip, and the slimmer one for the Bare case —
+    /// 22 pt would cover most of its feed zone.
+    private static let stripHeightFull: CGFloat = 22
+    private static let stripHeightBare: CGFloat = 8
+    /// The swap resize pins to the top edge, so a taller machine can
+    /// push the bottom under the Dock or off the display — keep the
+    /// whole window inside the screen's visible frame.
+    private func clampToVisible(_ f: NSRect) -> NSRect {
+        guard let vis = (window.screen ?? NSScreen.main)?.visibleFrame
+        else { return f }
+        var r = f
+        r.origin.x = r.width >= vis.width ? vis.minX
+            : max(vis.minX, min(r.minX, vis.maxX - r.width))
+        r.origin.y = r.height >= vis.height ? vis.minY
+            : max(vis.minY, min(r.minY, vis.maxY - r.height))
+        return r
+    }
     private func applyMachine(id: String, w: CGFloat, h: CGFloat,
                               shape: [(CGRect, CGFloat)],
                               maskPath: String?, hole: CGRect?) {
         guard id != machineId, w > 0, h > 0 else { return }
         let old = machineVbW
         machineId = id
+        // On the Bare tank a 22 pt strip is most of the feed zone —
+        // the case edges still drag, so a thin strip is enough.
+        stripHeight?.constant = id == "bare"
+            ? Self.stripHeightBare : Self.stripHeightFull
         machineVbW = w
         machineVbH = h
         machineShape = shape
@@ -264,9 +305,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             // user happens to resize.
             let f = window.frame
             let nw = f.height * w / h
-            window.setFrame(NSRect(x: f.midX - nw / 2, y: f.minY,
-                                   width: nw, height: f.height),
-                            display: true, animate: false)
+            window.setFrame(clampToVisible(
+                NSRect(x: f.midX - nw / 2, y: f.minY,
+                       width: nw, height: f.height)),
+                display: true, animate: false)
             return
         }
         // Keep the screen the same size across a case swap — scale the
@@ -275,9 +317,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         let f = window.frame
         let nw = f.width * (w / old)
         let nh = nw * h / w
-        window.setFrame(NSRect(x: f.minX, y: f.maxY - nh,
-                               width: nw, height: nh),
-                        display: true, animate: true)
+        window.setFrame(clampToVisible(
+            NSRect(x: f.minX, y: f.maxY - nh, width: nw, height: nh)),
+            display: true, animate: true)
     }
 
     /// Load a mask image shipped under Resources/web/ — the raster
@@ -388,11 +430,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             mask.contents = img
             mask.contentsGravity = .resize
             layer.mask = mask
+            window.invalidateShadow() // the silhouette is the shadow
             return
         }
         let s = webView.frame.width / machineVbW
         guard s > 0, !machineShape.isEmpty else {
             layer.mask = nil
+            window.invalidateShadow()
             return
         }
         let path = CGMutablePath()
@@ -412,6 +456,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         mask.contentsScale = window.backingScaleFactor
         mask.path = path
         layer.mask = mask
+        window.invalidateShadow() // the silhouette is the shadow's shape
     }
 
     // Every move and resize rewrites the tank's saved frame, so the
@@ -449,6 +494,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             if body["op"] as? String == "dragWindow",
                message.webView === webView {
                 OsmiumWindowHost.drag(window, firstResponder: webView)
+                return
+            }
+            // WKWebView ignores <a download>: Take a Picture posts the
+            // PNG over the bus for a real NSSavePanel instead.
+            if body["op"] as? String == "savePicture",
+               message.webView === webView,
+               let name = body["name"] as? String,
+               let png = body["png"] as? String {
+                savePicturePng(png, suggestedName: name)
                 return
             }
             // Tank state carries the Tank menu's live toggles and the
@@ -569,6 +623,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         }
     }
 
+    /// Set while a Take a Picture save panel is up — repeated menu
+    /// clicks must not stack overlapping NSSavePanels.
+    private var picturePanelOpen = false
+
+    /// Take a Picture's save: decode the base64 PNG the page posted and
+    /// offer it to a real save panel (WKWebView ignores <a download>).
+    private func savePicturePng(_ base64: String, suggestedName: String) {
+        guard let data = Data(base64Encoded: base64),
+              data.starts(with: [0x89, 0x50, 0x4E, 0x47]) else {
+            NSLog("Finsical: savePicture payload was not PNG data")
+            return
+        }
+        guard !picturePanelOpen else {
+            NSLog("Finsical: savePicture dropped — a save panel is open")
+            return
+        }
+        let panel = NSSavePanel()
+        // The page names the file; strip any path parts anyway.
+        panel.nameFieldStringValue =
+            (suggestedName as NSString).lastPathComponent
+        panel.allowedContentTypes = [.png]
+        panel.canCreateDirectories = true
+        picturePanelOpen = true
+        panel.begin { [self] response in
+            picturePanelOpen = false
+            guard response == .OK, let url = panel.url else { return }
+            do { try data.write(to: url, options: .atomic) }
+            catch {
+                NSLog("Finsical: Take a Picture save failed: "
+                      + "\(error.localizedDescription)")
+            }
+        }
+    }
+
+    @objc func takePicture() {
+        let js = "window.finsical?.takePicture ? window.finsical.takePicture()" +
+                 " : (() => { throw new Error('window.finsical.takePicture missing') })()"
+        webView?.evaluateJavaScript(js) { _, error in
+            if let error { NSLog("Finsical: takePicture JS failed: \(error.localizedDescription)") }
+        }
+    }
+
     @objc func toggleLights() {
         let js = "window.finsical?.toggleLights ? window.finsical.toggleLights()" +
                  " : (() => { throw new Error('window.finsical.toggleLights missing') })()"
@@ -684,7 +780,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         window.collectionBehavior = defaults.bool(forKey: WindowPref.allSpaces)
             ? [.canJoinAllSpaces, .fullScreenAuxiliary]
             : [.managed, .participatesInCycle]
-        for hw in host.windows { hw.window?.level = window.level }
+        // Client windows and lifted panels track the tank both ways —
+        // an About left floating after Float turns off would cover
+        // every other app.
+        for w in NSApp.windows where w !== window && w.sheetParent == nil {
+            w.level = window.level
+        }
     }
 
     /// Checkmarks for the toggles. CRT Effect is disabled where the
@@ -732,6 +833,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             return
         }
         decisionHandler(.allow)
+    }
+
+    /// WebContent crash times within the last minute, per webview —
+    /// a page that deterministically kills its renderer would
+    /// otherwise loop spawn-crash-reload forever in an always-on-top
+    /// window, and a global count would let one crasher starve every
+    /// other window's reload.
+    private var recentWebCrashes: [ObjectIdentifier: [Date]] = [:]
+    /// Rolling window, retry cap, and settling delay for WebContent
+    /// crash recovery.
+    private static let crashRetryWindow: TimeInterval = 60
+    private static let crashRetryLimit = 3
+    private static let crashRetryDelay: TimeInterval = 0.5
+
+    /// A WebContent crash leaves a floating, always-on-top window that
+    /// paints nothing and answers nothing. Reload the affected webview —
+    /// the tank page restores its save; a client window reloads its
+    /// page — but cap the retries: past a few crashes a minute the page
+    /// is a deterministic crasher and the window stays blank rather
+    /// than burning CPU on process spawns.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        let now = Date()
+        let key = ObjectIdentifier(webView)
+        let crashes = (recentWebCrashes[key] ?? [])
+            .filter { now.timeIntervalSince($0) <= Self.crashRetryWindow }
+            + [now]
+        recentWebCrashes[key] = crashes
+        NSLog("Finsical: WebContent process terminated "
+              + "(\(crashes.count) in the last minute)")
+        guard crashes.count <= Self.crashRetryLimit else { return }
+        // A beat of delay — reloading synchronously inside the
+        // termination callback can wedge the fresh process.
+        DispatchQueue.main.asyncAfter(deadline: .now()
+                + Self.crashRetryDelay) { [weak webView] in
+            webView?.reload()
+        }
     }
 
     /// target=_blank links (the donate link) have no host view; open them
@@ -784,6 +921,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             WindowPref.float: true, WindowPref.allSpaces: true,
         ])
         applyWindowPrefs() // on top and on every Space by default
+        // A normal-level window can never order above the floating
+        // tank, so the About panel (and any later non-modal panel)
+        // would open behind the case and look lost. Any window that
+        // becomes key below the tank's level takes it — sheets are
+        // excluded (they ride their parent's level).
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil, queue: .main) { note in
+            // The observer closure is @Sendable; hop to the main actor
+            // to touch AppKit windows. Carry the notified window across
+            // — re-reading keyWindow inside the task can miss it or hit
+            // a window that became key since.
+            guard let w = note.object as? NSWindow else { return }
+            Task { @MainActor [weak self] in
+                guard let self, w !== self.window, w.sheetParent == nil,
+                      w.level.rawValue < self.window.level.rawValue
+                else { return }
+                w.level = self.window.level
+            }
+        }
         window.contentAspectRatio = NSSize(width: 320, height: 200)
         window.contentView = webView
         window.delegate = self
@@ -799,17 +956,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         let strip = DragStrip()
         strip.translatesAutoresizingMaskIntoConstraints = false
         webView.addSubview(strip)
+        let stripH = strip.heightAnchor.constraint(
+            equalToConstant: Self.stripHeightFull)
         NSLayoutConstraint.activate([
             strip.topAnchor.constraint(equalTo: webView.topAnchor),
             strip.leadingAnchor.constraint(equalTo: webView.leadingAnchor),
             strip.trailingAnchor.constraint(equalTo: webView.trailingAnchor),
-            strip.heightAnchor.constraint(equalToConstant: 22),
+            stripH,
         ])
+        stripHeight = stripH // applyMachine shrinks it for Bare
 
-        // Exactly where the user left it, even partly offscreen. A
-        // frame on no attached screen still comes back centered.
+        // Exactly where the user left it, even partly offscreen — but
+        // a sliver (a 1 pt edge overlap) is a lost window: require a
+        // grabbable patch on some screen, else center.
         window.keepingFrame {
-            frames.restore(window, key: "FinsicalTank")
+            restoreTankFrame()
             window.makeKeyAndOrderFront(nil)
         }
 
@@ -904,6 +1065,9 @@ enum FinsicalApp {
                                  action: #selector(AppDelegate.togglePause),
                                  keyEquivalent: "p") // ⌘P — no Print menu here
         delegate.setPauseMenuItem(pause)
+        tankMenu.addItem(withTitle: "Take a Picture",
+                         action: #selector(AppDelegate.takePicture),
+                         keyEquivalent: "")
         tankMenu.addItem(.separator())
         tankMenu.addItem(withTitle: "Support the Internet Archive",
                          action: #selector(AppDelegate.supportArchive),

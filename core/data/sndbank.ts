@@ -102,9 +102,13 @@ export function bankSounds(d: Uint8Array): BankSound[] {
         GAME_SOUND_NAMES.get(id) ?? `snd_${id & 0xFFFF}`;
       found.push({ id, rec: { name, wav } });
     }
+    // A resource map lists each type once — later 'snd ' entries are
+    // crafted chaff re-scanning every ref.
+    break;
   }
-  found.sort((a, b) => a.id === LEAD_ID ? -1 : b.id === LEAD_ID ? 1
-                                                 : a.id - b.id);
+  found.sort((a, b) =>
+    (a.id === LEAD_ID ? 0 : 1) - (b.id === LEAD_ID ? 0 : 1) ||
+    a.id - b.id);
   return found.map((f) => f.rec);
 }
 

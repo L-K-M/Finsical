@@ -5,17 +5,22 @@
  * and what do they contain" half so it stays testable in node.
  */
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
+import { packSpeciesCare } from "../core/data/species.js";
+import type { SpeciesCare } from "../core/data/species.js";
 import type { IndexedImage, SpriteSheet } from "../core/data/azpack.js";
+import type { PackSection } from "./import.js";
 
 export interface DroppedPack {
   /** Display/species name — the file name minus its extension. */
   name: string;
   /** Tank section the file imports as (see dropSection). */
-  section: string;
+  section: PackSection;
   /** Sprite sheets that spawn a fish: fish packs and the base-library
    * .REZ only. Scenery packs' sprite streams stay out of the fish pool,
    * matching handleSheets' fish-only registration. */
   sheets: Map<string, SpriteSheet>;
+  /** The species' care needs, when the pack spawns a fish. */
+  care: SpeciesCare | null;
   /** Scenery art. Empty for fish packs: their catalog portraits must
    * not take the tank's backdrop. */
   images: Map<string, IndexedImage>;
@@ -23,7 +28,7 @@ export interface DroppedPack {
 
 /** The section a dropped pack imports as, by extension: the same
  * dispatch a remote install gets from its collection's section. */
-export function dropSection(name: string): string {
+export function dropSection(name: string): PackSection {
   const ext = (/\.([^./]+)$/.exec(name)?.[1] ?? "").toLowerCase();
   return ext === "grv" ? "gravel"
     : ext === "plt" ? "plants"
@@ -53,7 +58,7 @@ export function decodeDroppedPacks(
       if (!sheets.size && !images.size) continue;
       // The same extension dropSection reads: never across a slash.
       out.push({ name: name.replace(/\.[^./]+$/, ""), section, sheets,
-                 images });
+                 images, care: sheets.size ? packSpeciesCare(data) : null });
     } catch (e) {
       console.warn(`drop: skipping undecodable pack ${name}:`, e);
     }

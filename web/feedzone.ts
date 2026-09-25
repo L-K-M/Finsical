@@ -5,11 +5,19 @@
  */
 import { SURFACE } from "../core/sim.js";
 
-/** True when a tank-space y is above the water: the air strip, or the
- * surface line's own row, so a click on the line feeds too. Anything
- * lower is in the water and knocks on the glass. */
-export function isFeedZoneY(y: number): boolean {
-  return y < SURFACE + 1;
+/** True when a tank-space point is above the water: the air strip, or
+ * the surface line's own row, so a click on the line feeds too.
+ * Anything lower is in the water and knocks on the glass. `waterline`
+ * is the drawn line per column (see surfaceLine) — the waves wander
+ * SURFACE ± SURFACE_MAX, so a fixed threshold would let clicks on a
+ * crest's submerged pixels feed and clicks on a trough's bare pixels
+ * knock. A column outside the line's length falls back to the rest
+ * height. */
+export function isFeedZone(x: number, y: number,
+                           waterline: ArrayLike<number>): boolean {
+  const i = Math.round(x);
+  const line = i >= 0 && i < waterline.length ? waterline[i]! : SURFACE;
+  return y < line + 1;
 }
 
 /**
