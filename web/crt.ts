@@ -78,20 +78,25 @@ void main() {
   // Horizontal beam smear: a 9-tap gaussian along the scan. The first
   // 40% of the slider fades in a beam about one game px wide (sigma
   // ~0.9 px); beyond that the beam itself widens, to 2.5x at the top.
+  // The spot spreads light, so the taps blend in linear light (about
+  // the signal squared) and convert back: a dither or a seam between
+  // two colors blends to the brightness a tube shows, not darker.
   vec3 sharp = texelAt(lp);
   vec3 c = sharp;
   float soft = 2.5 * uSoft;
   if (soft > 0.0) {
     float pitch = 0.55 * max(soft, 1.0); // tap spacing in game px
-    vec3 sum = gamePx(lp);
+    vec3 mid = gamePx(lp);
+    vec3 sum = mid * mid;
     float total = 1.0;
     for (int i = 1; i <= 4; i++) {
       float w = exp(-0.18 * float(i * i));
       vec2 o = vec2(pitch * float(i), 0.0);
-      sum += (gamePx(lp - o) + gamePx(lp + o)) * w;
+      vec3 l = gamePx(lp - o), r = gamePx(lp + o);
+      sum += (l * l + r * r) * w;
       total += 2.0 * w;
     }
-    c = mix(sharp, sum / total, min(soft, 1.0));
+    c = sqrt(mix(sharp * sharp, sum / total, min(soft, 1.0)));
   }
   gl_FragColor = vec4(c, 1.0);
 }
