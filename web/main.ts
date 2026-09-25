@@ -1285,7 +1285,9 @@ async function handleSounds(
   // Persist best-effort — a quota failure logs, never breaks import.
   void sndsMerge(recs).catch((e) =>
     console.warn("snd persist failed:", e));
-  if (live) audio.playImported(recs[0]!.name);
+  // The Add-to-Tank click and the file drop are gestures; a context
+  // still locked at decode time must resume before the feedback plays.
+  if (live) { audio.unlock(); audio.playImported(recs[0]!.name); }
   audio.startAmbient();
 }
 
@@ -2598,6 +2600,9 @@ function dropSay(text: string): void {
 }
 window.addEventListener("drop", (e) => {
   e.preventDefault();
+  // A drop is a gesture — wake audio now so the install feedback can
+  // still answer it once the (async) decode finishes.
+  audio.unlock();
   // Entries must be read before the handler returns — items invalidate.
   const items = e.dataTransfer?.items;
   const entries: FileSystemEntry[] = [];

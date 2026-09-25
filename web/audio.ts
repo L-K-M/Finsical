@@ -133,6 +133,12 @@ export class TankAudio {
   // Bumped by each startAmbient so a stale pending resume() retry can
   // tell it lost the race instead of starting a second loop.
   private ambientGen = 0;
+  // Bumped whenever a feedback cue is superseded (newer cue or a pack
+  // load): a deferred retry must not resurrect a cue that was stopped.
+  private feedbackGen = 0;
+  // A resume() already in flight — a deferred cue may ride it even
+  // after the user activation that started it has lapsed.
+  private resuming: Promise<void> | null = null;
   // Page hidden: rAF stops and the sim freezes, so the device sleeps too.
   private hidden = false;
   // The opening sound plays once per session: due from open() when the
@@ -147,6 +153,14 @@ export class TankAudio {
   async load(read: (path: string) => Promise<Uint8Array>,
              manifest: AzpackManifest): Promise<void> {
     const sounds = manifest.sounds ?? [];
+    // A new pack supersedes whatever feedback is still playing — the
+    // old tail would overlap this pack's install cue. The generation
+    // bump also kills a cue still waiting on a pending resume().
+    this.feedbackGen++;
+    if (this.feedbackSrc) {
+      try { this.feedbackSrc.stop(); } catch { /* already ended */ }
+      this.feedbackSrc = null;
+    }
     if (sounds.length) {
       // context(), not a bare AudioContext: it also builds the master
       // gain every play() connects to.
@@ -278,8 +292,11 @@ export class TankAudio {
     // do not infer success from ctx.state — a concurrent resume() can
     // race this one and flip the state without this chain succeeding.
     let resumed = false;
-    void this.ctx.resume()
-      .then(() => {
+    // Exposed so a deferred feedback cue can ride this resume rather
+    // than dropping once the activation lapses.
+    const r = this.ctx.resume();
+    this.resuming = r;
+    void r.then(() => {
         resumed = true;
         this.playOpening();
         return this.startAmbient();
@@ -291,7 +308,8 @@ export class TankAudio {
           && err.name === "NotAllowedError";
         if (!expected)
           console.warn(resumed ? "audio start failed:" : "audio resume failed:", err);
-      });
+      })
+      .finally(() => { if (this.resuming === r) this.resuming = null; });
   }
 
   /** Suspend the audio device while the tank is hidden and resume it on
@@ -334,14 +352,41 @@ export class TankAudio {
    * feedback still playing, and records longer than FEEDBACK_MAX_S
    * fade out and stop there. */
   playImported(name: string): void {
+    // A newer cue supersedes both a playing one and a deferred retry.
+    this.feedbackGen++;
     if (this.feedbackSrc) {
       try { this.feedbackSrc.stop(); } catch { /* already ended */ }
       this.feedbackSrc = null;
     }
     const buf = this.imported.get(name);
-    // Not through play(): while the context is locked that queues the
-    // sound until the first click, long after the install it answers.
-    if (!buf || !this.ctx || this.ctx.state !== "running") return;
+    // Not through play() — but a feedback that answers the install
+    // gesture itself may still wait out the lock, like play()'s
+    // gesture retry. Without an activation (a remote relay, a drop
+    // whose walk outlasted the gesture) resume() rejects quietly and
+    // the cue drops rather than firing long after the install.
+    if (!buf || !this.ctx || this.hidden) return;
+    if (this.ctx.state === "suspended") {
+      // A live gesture always starts a fresh resume — a parked one
+      // (a gesture-less unlock() can stay pending forever on an
+      // autoplay-blocked context) would never carry the cue. Only
+      // without a gesture does the cue ride an in-flight resume.
+      const r = gestureActive()
+        ? (this.resuming = this.ctx.resume())
+        : this.resuming;
+      if (!r) return;
+      const gen = this.feedbackGen;
+      void r.then(() => {
+          // Retry only when the context truly started and the cue
+          // wasn't superseded meanwhile — a resume that resolves with
+          // the context still suspended drops the cue, not loops.
+          if (this.ctx?.state === "running" && this.feedbackGen === gen)
+            this.playImported(name);
+        })
+        .catch(() => { /* still locked — the feedback drops */ })
+        .finally(() => { if (this.resuming === r) this.resuming = null; });
+      return;
+    }
+    if (this.ctx.state !== "running") return;
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     const g = this.ctx.createGain();
