@@ -4,6 +4,12 @@
 export type BusMsg = Record<string, unknown>;
 export interface Bus { post(m: BusMsg): void }
 
+/** A client window hello earns a state push within ~750 ms, and
+ * visible clients hello every 2 s — six quiet seconds means the tank
+ * is gone or reloading. Shared so the windows can't drift apart on
+ * what "connected" means. */
+export const TANK_QUIET_MS = 6000;
+
 type WkHandlers = { finsical?: { postMessage(m: unknown): void } };
 declare global {
   interface Window { __bus?: (m: BusMsg) => void }

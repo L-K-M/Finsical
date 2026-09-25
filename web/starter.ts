@@ -3,13 +3,15 @@
 // collections, about 2 MB in all, picked by name and resolved against
 // the live listing so an item the archive drops is skipped instead of
 // breaking the offer.
-import type { Collection, Importable } from "./import.js";
+import type { Collection, Importable, PackSection } from "./import.js";
 
-export interface StarterItem { section: string; inner: string }
+export interface StarterItem { section: PackSection; inner: string }
 
-/** In install order: scenery after the fish, so the fish arrive first
- * and the placeholders can go as early as possible, and the sounds,
- * the slowest download, last. Sizes are the archive's download sizes. */
+/** In reported install order: scenery after the fish, so the fish
+ * arrive first and the placeholders can go as early as possible, and
+ * the sounds last — runStarter still kicks that slowest download off
+ * in the background once the first fish lands. Sizes are the
+ * archive's download sizes. */
 export const STARTER_SET: readonly StarterItem[] = [
   { section: "fish", inner: "banggai" },       // 321 KB
   { section: "fish", inner: "clownfish" },     //  94 KB
@@ -71,4 +73,83 @@ export function welcomeOffer(s: { answer: string | null;
   if (s.answer === "pending") return "welcome";
   if (s.answer === "retry") return "retry";
   return s.answer === null && s.pristine ? "welcome" : null;
+}
+
+/** Outcome of a starter install run: the items that failed, in set
+ * order, and the first error seen, for the retry offer's message. */
+export interface StarterRun {
+  failed: Importable[];
+  problem: unknown;
+}
+
+/** Install a resolved starter set, skipping the items the tank already
+ * has (a retry after an unfinished run). The art installs strictly in
+ * order — fish first so the stand-ins leave as early as possible — while the
+ * sounds, the slowest download, kick off once the first fish lands and
+ * overlap the remaining art instead of stacking on the end. The sounds
+ * are still awaited last, so progress numbering and failure order keep
+ * the set's order. A stopped run returns what it has so far; an
+ * in-flight download still lands. */
+export async function runStarter(
+  items: readonly Importable[],
+  hooks: {
+    install: (it: Importable) => Promise<unknown>;
+    installed: (it: Importable) => boolean;
+    /** `index` of `total`: the items this run installs. */
+    progress: (index: number, total: number, it: Importable) => void;
+    fishArrived: (it: Importable) => void;
+    /** The sound bank landed, even after a stop. */
+    soundsArrived: (it: Importable) => void;
+    stopped: () => boolean;
+  },
+): Promise<StarterRun> {
+  const todo = items.filter((it) => !hooks.installed(it));
+  const failed: Importable[] = [];
+  let problem: unknown = null;
+  const soundJobs = new Map<Importable, Promise<unknown>>();
+  const startSounds = (): void => {
+    if (soundJobs.size) return;
+    for (const it of todo)
+      if (it.section === "sounds")
+        soundJobs.set(it, Promise.resolve().then(() => hooks.install(it))
+          .then(() => { hooks.soundsArrived(it); return null; },
+                // A null rejection mustn't read as success.
+                (e: unknown) =>
+                  e ?? new Error(`couldn't add ${it.inner}`)));
+  };
+  for (const [i, it] of todo.entries()) {
+    if (it.section === "sounds") continue;
+    if (hooks.stopped()) return { failed, problem };
+    hooks.progress(i, todo.length, it);
+    try {
+      await hooks.install(it);
+    } catch (e) {
+      console.warn(`starter set: couldn't add ${it.inner}:`, e);
+      failed.push(it);
+      // A bare Promise.reject() leaves e nullish — the modal's retry
+      // still needs a real error to report, and it should name the
+      // item that failed.
+      problem ??= e ?? new Error(`couldn't add ${it.inner}`);
+      continue;
+    }
+    if (it.section === "fish") {
+      hooks.fishArrived(it);
+      if (!hooks.stopped()) startSounds();
+    }
+  }
+  // No fish landed, or the set has no fish — the sounds still install.
+  if (!hooks.stopped()) startSounds();
+  for (const [i, it] of todo.entries()) {
+    const job = soundJobs.get(it);
+    if (!job) continue;
+    if (hooks.stopped()) return { failed, problem };
+    hooks.progress(i, todo.length, it);
+    const e = await job;
+    if (e !== null) {
+      console.warn(`starter set: couldn't add ${it.inner}:`, e);
+      failed.push(it);
+      problem ??= e;
+    }
+  }
+  return { failed, problem };
 }

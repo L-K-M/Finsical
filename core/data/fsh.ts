@@ -34,6 +34,14 @@ export function isPack(d: Uint8Array): boolean {
   return d.length > DATA_BASE && u32(d, 0) === MAGIC;
 }
 
+/** The earlier accessory format the JPN archives also carry (uppercase
+ * 8.3 names under AQUAZONE ITEM/アクセサリー): length-prefixed records
+ * starting `22 00 25 00`, not the 9003 pack container. Recognized so
+ * callers can say "can't read" instead of "no add-on inside". */
+export function isLegacyPack(d: Uint8Array): boolean {
+  return d.length > 4 && u32(d, 0) === 0x00250022;
+}
+
 export interface PackChunk {
   pos: number;
   payload: Uint8Array;

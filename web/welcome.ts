@@ -8,8 +8,8 @@ import { showAlert } from "./alert.js";
 import type { Alert, AlertButton } from "./alert.js";
 import { listAddons, loadProblem } from "./import.js";
 import type { Importable } from "./import.js";
-import { resolveStarter, starterCollection, wantsStarterSounds,
-         welcomeOffer } from "./starter.js";
+import { resolveStarter, runStarter, starterCollection,
+         wantsStarterSounds, welcomeOffer } from "./starter.js";
 import type { WelcomeAnswer } from "./starter.js";
 
 /** A WelcomeAnswer (or the old "1"). */
@@ -146,25 +146,22 @@ async function stock(alert: Alert, hooks: StarterHooks,
                "the connection and try again.");
     return;
   }
-  const items = listed.filter((it) => !hooks.installed(it));
 
-  const failed: Importable[] = [];
-  let problem: unknown = null;
-  for (const [i, it] of items.entries()) {
-    if (stopped) return;
-    alert.progress(`Adding ${i + 1} of ${items.length}: ${it.inner}…`,
-                   i / items.length);
-    try {
-      await hooks.install(it);
-    } catch (e) {
-      console.warn(`starter set: couldn't add ${it.inner}:`, e);
-      failed.push(it);
-      problem ??= e;
-      continue;
-    }
-    if (it.section === "fish") hooks.fishArrived();
-    if (it.section === "sounds") markSoundsHandled();
-  }
+  const { failed, problem } = await runStarter(listed, {
+    install: (it) => hooks.install(it),
+    installed: (it) => hooks.installed(it),
+    progress: (i, total, it) => alert.progress(
+      it.section === "sounds"
+        // The bank started early — by now it is usually mid-flight or
+        // done, so "Adding N of M" would lie about what is happening.
+        ? `Adding the sound effects (${i + 1} of ${total})…`
+        : `Adding ${i + 1} of ${total}: ${it.inner}…`,
+      i / total),
+    fishArrived: () => hooks.fishArrived(),
+    // The bank can land after a Stop; it still counts as handled.
+    soundsArrived: markSoundsHandled,
+    stopped: () => stopped,
+  });
   if (stopped) return;
   if (!failed.length) { recordAnswer("stocked"); alert.close(); return; }
 

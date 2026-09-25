@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, demoLight, hourLabel,
+import { CLOCK_NIGHT_LIGHT, clockLabel, DEMO_NIGHT_LIGHT, demoLight,
+         hourLabel,
          LIGHTING_DEFAULTS,
          lightAt, moonIllumination, moonPhase, nightFloor, sanitizeLighting,
          twilightTint } from "./light.js";
@@ -132,8 +133,18 @@ describe("sanitizeLighting", () => {
     expect(sanitizeLighting({ off: 23 }, timer)).toEqual({ ...timer, off: 23 });
   });
 
-  it("formats hours as clock times", () => {
-    expect(hourLabel(8)).toBe("08:00");
-    expect(hourLabel(22)).toBe("22:00");
+  it("formats hours as clock times in the locale's convention", () => {
+    expect(clockLabel(8, 0, "en-US")).toBe("8:00 AM");
+    expect(clockLabel(20, 4, "en-US")).toBe("8:04 PM");
+    expect(clockLabel(20, 0, "de-DE")).toBe("20:00");
+    // The on-the-hour label is the same function at minute zero.
+    expect(hourLabel(8)).toBe(clockLabel(8, 0));
+  });
+
+  it("clamps out-of-range hours instead of printing nonsense", () => {
+    expect(clockLabel(8.5, 0, "de-DE")).toBe("8:00");
+    expect(clockLabel(NaN, 0, "de-DE")).toBe("0:00");
+    expect(clockLabel(25, 0, "de-DE")).toBe("23:00");
+    expect(clockLabel(-3, 0, "de-DE")).toBe("0:00");
   });
 });
