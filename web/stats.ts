@@ -2,8 +2,8 @@ import { openBus } from "./bus.js";
 import { hostWindow, mountPopup, pushButton, setButtonTitle }
   from "osmium-ui";
 import { MEDICINES } from "../core/aquarium/disease.js";
-import { deriveStats, hungerLabel, SPARK_H, SPARK_W, sparkColumns, sparkRow,
-         summaryText, trend, uptime } from "./statsmodel.js";
+import { deriveStats, hungriestLabel, SPARK_H, SPARK_W, sparkColumns,
+         sparkRow, summaryText, trend, uptime } from "./statsmodel.js";
 import type { BusMsg } from "./bus.js";
 import type { StatsInput, TankStats, WaterStats } from "./statsmodel.js";
 
@@ -122,15 +122,19 @@ function render(st: TankStats): void {
     : meter(st.avgHunger, `${Math.round(st.avgHunger * 100)}%`,
             trend(old?.avgHunger ?? null, st.avgHunger),
             history.map((s) => ({ t: s.t, v: s.avgHunger }))));
-  field("Hungriest", text(st.hungriest
-    ? `${st.hungriest.name} — ${hungerLabel(st.hungriest.hunger)}` : "—"));
+  field("Hungriest", text(hungriestLabel(st)));
   const w = st.water;
   if (w) waterRows(w);
   field("Fish", text(`${st.fishCount}` +
     (st.sick.length ? `, ${st.sick.length} sick` : "") +
     (st.dead ? `, ${st.dead} dead` : "") +
-    (st.seeking ? ` (${st.seeking} seeking food)` : "") +
-    (st.startled ? ` (${st.startled} startled)` : "")));
+    // One paren group, comma-joined — "(2 seeking food) (1 startled)"
+    // read as nested noise.
+    (st.seeking || st.startled
+      ? ` (${[st.seeking && `${st.seeking} seeking food`,
+             st.startled && `${st.startled} startled`]
+            .filter(Boolean).join(", ")})`
+      : "")));
   field("Food", text(st.food
     ? `${st.food} pellet${st.food > 1 ? "s" : ""}` +
       (st.foodSettled ? `, ${st.foodSettled} rotting` : "")
@@ -287,7 +291,9 @@ window.addEventListener("drop", (e) => e.preventDefault());
 hostWindow(win, {
   title: "Tank Stats",
   zoom: { standard: { w: 380, h: 640 } },
-  grow: { min: { w: 340, h: 60 } },
+  // Match the native minimum: below it the water readings, care hints
+  // and Keeping controls clip without a scroll path.
+  grow: { min: { w: 340, h: 560 } },
 });
 
 // Until the first state push lands the window says what it is waiting
