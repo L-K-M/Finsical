@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- A tank saved by 0.3.0 or earlier keeps the look of each fish from an
+  add-on that holds several fish. The first launch after the update
+  would otherwise turn them all into the add-on's last fish: angels.zip
+  gave an angel and a black angel, and both came back black angels.
+- A fish add-on whose fish don't all fit in the tank is refused as a
+  whole, with a note of how much room is left. It used to add as many
+  as fit and report success.
+- A fish add-on that holds several fish now names each fish after its
+  own pack. Adding angels.zip used to give two fish both called
+  "angels"; they are now "angel" and "blackangel".
+- A pointer left resting over the tank loses the fish's interest after
+  about 20 seconds, so the fish gathered to look at it swim off again
+  instead of waiting there for hours. Moving the pointer brings them
+  back.
+- A bubble you pop by tapping it now bursts with a soft plip from its
+  side of the tank, or with a sound of your own that has "pop" in its
+  name. The Bubble sounds switch in Preferences turns it off.
 - In a browser, Preferences, Tank Overview and Tank Stats open in
   small windows beside the tank, at the size the app gives them. They
   used to open as full-size tabs that stretched their panes and sent

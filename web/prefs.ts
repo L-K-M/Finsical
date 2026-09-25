@@ -50,9 +50,9 @@ const offset = (v: number): string => {
 
 const SPECS: SliderSpec[] = [
   { key: "scanlines", label: "Scanlines", ends: ["Off", "Deep"],
-    blurb: "Dark gaps between the picture's rows — the most " +
-      "recognizable CRT trait. The lines stay locked to the game's " +
-      "own pixel rows at any window size." },
+    blurb: "Dark gaps between the picture's rows. The beam swells on " +
+      "bright colors, so the lines show in the shadows, melt into the " +
+      "highlights, and fade out on very small pictures." },
   { key: "softening", label: "Softening", ends: ["Sharp", "Soft"],
     blurb: "A tube's beam smears color along each scan, never between " +
       "rows — horizontal edges soften while the scanlines stay crisp." },
@@ -809,9 +809,10 @@ captioned({ label: "Mute", input: muteBox,
               "stays where it is for when you turn sound back on." },
           document.getElementById("pfmute")!);
 captioned({ label: "Bubble sounds", input: bubblesBox,
-            blurb: "A soft bloop now and then as a bubble rises. The " +
-              "game's own sounds have none, so this plays a short " +
-              "bubble sound you add." },
+            blurb: "A soft bloop now and then as a bubble rises, and " +
+              "a plip when you pop one. The bloop needs a sound you " +
+              "add with \"bubble\" in its name; one with \"pop\" " +
+              "replaces the plip." },
           document.getElementById("pfbubbles")!);
 captioned({ label: "Water ambience", input: ambientBox,
             blurb: "The filter's steady bubbling, looped under " +
