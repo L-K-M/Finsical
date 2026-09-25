@@ -58,9 +58,15 @@ describe("standalone web build", () => {
     // the decoder's own table so a new bundle compiling MACE in is
     // covered too — and assert the tables are really there so the
     // check can't pass vacuously.
-    const maceMark = "ACUAdADOAUoAJwB5"; // MACE_TAB2_B64's first 16 chars
+    // The marker is read out of the source constant, not copied — a
+    // regenerated table must fail loudly here, not just look absent.
+    const maceSrc = readFileSync(join(root, "core/data/mace.ts"), "utf8");
+    const maceMark =
+      /MACE_TAB2_B64\s*=\s*"([A-Za-z0-9+/=]{16})/.exec(maceSrc)?.[1];
+    expect(maceMark, "MACE_TAB2_B64 marker in mace.ts").toBeTruthy();
     const dist = join(fixture, "dist");
-    const bundles = readdirSync(dist).filter((f) => f.endsWith(".js"));
+    const bundles = readdirSync(dist)
+      .filter((f) => /\.[cm]?js$/.test(f));
     const withMace = bundles.filter((f) =>
       readFileSync(join(dist, f), "utf8").includes(maceMark));
     expect(withMace.sort()).toEqual(["addons.js", "bundle.js"]);
