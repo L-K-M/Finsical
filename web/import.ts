@@ -1389,11 +1389,13 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
 
   function paintThumb(row: Element, th: HTMLCanvasElement): void {
     const box = row.querySelector(".ithumb");
-    if (!box || box.firstChild) return;
+    if (!box) return;
+    // Replace, don't skip: a pack that reinstalls under the same url
+    // earns a fresh preview, and a re-paint of the same thumb is cheap.
     const cv = miniThumb(th);
     cv.style.left = `${Math.floor((MINI_W - cv.width) / 2)}px`;
     cv.style.top = `${Math.floor((MINI_H - cv.height) / 2)}px`;
-    box.appendChild(cv);
+    box.replaceChildren(cv);
   }
 
   // Row thumbs fetch lazily: when a row scrolls into view its pack is
