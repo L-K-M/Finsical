@@ -226,6 +226,11 @@ body.crt canvas#tank { opacity: 0; }
 .pfrow { display: flex; gap: 20px; }
 .pfrow + .pfrow { margin-top: 6px; }
 .pfslider { flex: none; width: 125px; }
+/* A disabled slider dims its track and thumb (osmium.css) but left
+   its ticks at full strength, which read as half-on under a gray
+   track. The upstream fix belongs in osmium-ui; until the pin moves,
+   this pane's own stylesheet finishes the job. */
+.pfslider .osm-slider.osm-disabled::after { opacity: .45; }
 .pflabel { display: block; padding-left: 4px; margin-bottom: 5px; }
 .pfends { display: flex; justify-content: space-between; margin-top: 2px; padding: 0 1px 0 3px; }
 /* CRT off: the sliders and preset buttons are disabled and their
