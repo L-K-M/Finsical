@@ -51,6 +51,13 @@ describe("sanitizeCrtConfig", () => {
     expect(sanitizeCrtConfig({ beam: 9 }).softening).toBe(1);
   });
 
+  it("centers the picture for a config saved before the position pots", () => {
+    const c = sanitizeCrtConfig({ scanlines: 0.6, hsize: 0.8 });
+    expect(c.hpos).toBe(0.5);
+    expect(c.vpos).toBe(0.5);
+    expect(c.hsize).toBe(0.8);
+  });
+
   it("round-trips a full config", () => {
     const c = sanitizeCrtConfig(CRT_DEFAULTS);
     expect(c).toEqual(CRT_DEFAULTS);
@@ -104,6 +111,12 @@ describe("CRT_PRESETS", () => {
     const tube = Object.keys(presetTube(CRT_PRESETS[0]!));
     expect([...PICTURE_KEYS, ...tube].sort())
       .toEqual(Object.keys(CRT_DEFAULTS).sort());
+  });
+
+  it("counts the position pots as the user's trims", () => {
+    // Picture keys survive every preset (tested above).
+    expect(PICTURE_KEYS).toContain("hpos");
+    expect(PICTURE_KEYS).toContain("vpos");
   });
 
   it("configs are frozen so a click cannot mutate the shared object", () => {
