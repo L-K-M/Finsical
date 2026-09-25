@@ -113,16 +113,28 @@ describe("sortItems", () => {
     ] }), "status");
     expect(rows.map((i) => i.name)).toEqual(["Zebra", "Alpha"]);
   });
-  it("orders the hunger bands hungry, peckish, full", () => {
-    // If a band label ever stops matching BAND_RANK (a rename, a new
-    // band), every row collapses into the fallback and this fails.
+  it("orders the hunger bands starving, hungry, peckish, full", () => {
+    // A renamed or dropped band falls into the "full" fallback rank and
+    // lands at the wrong end of this order.
     const rows = sortItems(itemsOf({ ...STATE, addons: [], fish: [
-      { id: 1, species: "Fed", hunger: 0.1, state: "drift" },
+      { id: 1, species: "Fed", hunger: 0.05, state: "drift" },
       { id: 2, species: "Snackish", hunger: 0.5, state: "drift" },
       { id: 3, species: "Hungry", hunger: 0.7, state: "drift" },
+      { id: 4, species: "Starving", hunger: 0.9, state: "drift" },
     ] }), "status");
     expect(rows.map((i) => i.name))
-      .toEqual(["Hungry", "Snackish", "Fed"]);
+      .toEqual(["Starving", "Hungry", "Snackish", "Fed"]);
+  });
+  it("bands malformed hunger readings as full", () => {
+    // A negative or non-finite bus value must not sort a fish to the
+    // urgent end; hungerLabel sends both to "full".
+    const rows = sortItems(itemsOf({ ...STATE, addons: [], fish: [
+      { id: 1, species: "Negative", hunger: -0.5, state: "drift" },
+      { id: 2, species: "Notanum", hunger: NaN, state: "drift" },
+      { id: 3, species: "Peckish", hunger: 0.5, state: "drift" },
+    ] }), "status");
+    expect(rows.map((i) => i.name))
+      .toEqual(["Peckish", "Negative", "Notanum"]);
   });
   it("ailing fish lead the status sort, Dead before Sick", () => {
     // Names are picked so the alphabetical tiebreak would produce the
