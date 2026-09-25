@@ -180,8 +180,13 @@ export function drawBubbles(ctx: CanvasRenderingContext2D,
 
 /** Most pellets one feed drops. */
 export const PINCH_MAX = 5;
-/** Horizontal scatter of a pinch around the drop x, px. */
+/** Horizontal scatter of a pinch around its center, px. */
 export const PINCH_SPREAD = 24;
+/** Most centers one pinch may split across. */
+export const PINCH_CENTERS_MAX = 3;
+/** How far a multi-center pinch's centers may sit from the drop x, px.
+ * A one-center pinch keeps it — a lone pellet still lands where fed. */
+export const PINCH_CENTER_SPREAD = 48;
 /** Delay between pellets of one pinch, ms: they rain in, not as a row. */
 const PINCH_STAGGER_MS = 110;
 
@@ -199,10 +204,15 @@ export interface PinchPellet {
 export function feedPinch(rand: () => number,
                           hungry: number): PinchPellet[] {
   const n = Math.min(PINCH_MAX, Math.max(1, Math.floor(hungry)));
+  const centers = Math.min(PINCH_CENTERS_MAX, Math.ceil(n / 2));
+  const at: number[] = centers === 1 ? [0] : [];
+  for (let c = at.length; c < centers; c++)
+    at.push(Math.round((rand() * 2 - 1) * PINCH_CENTER_SPREAD));
   const out: PinchPellet[] = [];
   for (let i = 0; i < n; i++) {
     out.push({
-      dx: Math.round((rand() * 2 - 1) * PINCH_SPREAD),
+      dx: at[i % centers]!
+        + Math.round((rand() * 2 - 1) * PINCH_SPREAD),
       delay: i === 0
         ? 0 : Math.round(i * PINCH_STAGGER_MS * (0.6 + rand() * 0.8)),
     });
@@ -467,6 +477,10 @@ function fillAboveLine(ctx: CanvasRenderingContext2D,
 }
 
 let airShade: CanvasGradient | null = null;
+// Keyed on the context too — a gradient belongs to the context that
+// created it, so a second canvas (or another test's mock) must build
+// its own rather than reuse a foreign one.
+let airShadeCtx: CanvasRenderingContext2D | null = null;
 let airShadeLip = "", airShadeLow = "";
 
 /**
@@ -489,7 +503,9 @@ export function drawAir(ctx: CanvasRenderingContext2D, lamp = 0,
   // instead of once per frame.
   const lip = grey(mix(AIR_SHADE.lipOff, AIR_SHADE.lipOn));
   const low = grey(mix(AIR_SHADE.lowOff, AIR_SHADE.lowOn));
-  if (!airShade || airShadeLip !== lip || airShadeLow !== low) {
+  if (!airShade || airShadeCtx !== ctx ||
+      airShadeLip !== lip || airShadeLow !== low) {
+    airShadeCtx = ctx;
     airShadeLip = lip;
     airShadeLow = low;
     airShade = ctx.createLinearGradient(0, RIM_ROWS, 0, SURFACE + SURFACE_MAX);

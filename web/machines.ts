@@ -40,6 +40,11 @@ export interface Machine {
                             // part of the silhouette the mask refills.
                             // `r` is unused — the refill is a sharp
                             // rect on both platforms.
+  glassR?: number;          // glass corner radius, viewBox units — set
+                            // only where the render's baked-in glare
+                            // over the glass is strong enough to dim
+                            // with the light (the Bondi/Strawberry
+                            // iMacs). Requires `hole` and `image`.
   image?: string;           // raster shell asset under web/ — when set,
                             // its alpha IS the silhouette
   svg: string;              // inner markup for the shell <svg>
@@ -70,11 +75,37 @@ export function rasterInGlass(m: Machine): RasterBox {
  * native mask stretches the same image to the window, so both must
  * use identical (stretch) semantics or silhouette and art misalign. */
 export function shellMarkup(m: Machine): string {
-  if (m.image)
-    return `<image href="${m.image}" x="0" y="0" ` +
-      `width="${m.vbW}" height="${m.vbH}" ` +
-      `preserveAspectRatio="none"/>`;
-  return m.svg;
+  if (!m.image) return m.svg;
+  const img = `<image href="${m.image}" x="0" y="0" ` +
+    `width="${m.vbW}" height="${m.vbH}" ` +
+    `preserveAspectRatio="none"/>`;
+  if (m.glassR === undefined || !m.hole) return img;
+  // Strong baked glare (the iMac renders) splits the art in two: the
+  // shell drawn everywhere but the glass, then the glass region again
+  // at --glare opacity, which the tank page turns down with the light.
+  // The hole is inset and feathered so the dim lands inside the rim
+  // and never cuts a hard edge into the case.
+  const g = { x: m.hole.x + 3, y: m.hole.y + 3,
+              w: m.hole.w - 6, h: m.hole.h - 6 };
+  return `<defs>` +
+    `<filter id="glareblur-${m.id}">` +
+    `<feGaussianBlur stdDeviation="2"/></filter>` +
+    `<mask id="glareoff-${m.id}" maskUnits="userSpaceOnUse">` +
+    `<rect x="0" y="0" width="${m.vbW}" height="${m.vbH}" fill="#fff"/>` +
+    `<rect x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}"` +
+    ` rx="${m.glassR}" fill="#000" filter="url(#glareblur-${m.id})"/>` +
+    `</mask>` +
+    `<mask id="glareon-${m.id}" maskUnits="userSpaceOnUse">` +
+    `<rect x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}"` +
+    ` rx="${m.glassR}" fill="#fff" filter="url(#glareblur-${m.id})"/>` +
+    `</mask></defs>` +
+    `<image href="${m.image}" x="0" y="0" ` +
+    `width="${m.vbW}" height="${m.vbH}" ` +
+    `preserveAspectRatio="none" mask="url(#glareoff-${m.id})"/>` +
+    `<image href="${m.image}" x="0" y="0" ` +
+    `width="${m.vbW}" height="${m.vbH}" ` +
+    `preserveAspectRatio="none" mask="url(#glareon-${m.id})"` +
+    ` style="opacity: var(--glare, 1)"/>`;
 }
 
 // Preview palette mirrors the live tank in main.ts — a machine should
@@ -204,6 +235,7 @@ const bondi: Machine = {
   blurb: "The teal translucent bubble.",
   vbW: 1241, vbH: 1035,
   hole: { x: 379, y: 175, w: 685, h: 538, r: 0 },
+  glassR: 60,
   sx: 387, sy: 235, sw: 669, sh: 418,
   image: "assets/imac-bondi.png",
   shape: [{ x: 0, y: 0, w: 1241, h: 1035, r: 0 }],
@@ -215,6 +247,7 @@ const bondi2: Machine = {
   blurb: "Another take on the teal bubble — clearer glass.",
   vbW: 1245, vbH: 1037,
   hole: { x: 185, y: 179, w: 665, h: 531, r: 0 },
+  glassR: 60,
   sx: 193, sy: 242, sw: 649, sh: 406,
   image: "assets/imac-bondi-2.png",
   shape: [{ x: 0, y: 0, w: 1245, h: 1037, r: 0 }],
@@ -226,6 +259,7 @@ const strawberry: Machine = {
   blurb: "The red bubble.",
   vbW: 1189, vbH: 1003,
   hole: { x: 357, y: 171, w: 675, h: 515, r: 0 },
+  glassR: 65,
   sx: 365, sy: 223, sw: 659, sh: 412,
   image: "assets/imac-strawberry.png",
   shape: [{ x: 0, y: 0, w: 1189, h: 1003, r: 0 }],
@@ -237,6 +271,7 @@ const strawberry2: Machine = {
   blurb: "Another take on the red bubble.",
   vbW: 1207, vbH: 1013,
   hole: { x: 164, y: 173, w: 675, h: 517, r: 0 },
+  glassR: 65,
   sx: 172, sy: 226, sw: 659, sh: 412,
   image: "assets/imac-strawberry-2.png",
   shape: [{ x: 0, y: 0, w: 1207, h: 1013, r: 0 }],

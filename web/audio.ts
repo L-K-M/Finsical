@@ -6,31 +6,66 @@ import type { AzpackManifest } from "../core/data/azpack.js";
 /** The tank's sound settings, owned and persisted by the tank page and
  * edited from Preferences' Sound pane. */
 export interface SoundConfig {
-  /** Master level, 0 (silent) to 1 (each sound at its mixed gain). */
+  /** Master level, 0 (silent) to 1 (each sound at its mixed gain).
+   * This is the slider position — the heard level is
+   * `gainForVolume(volume)`. */
   volume: number;
   /** Silences everything but keeps `volume` for unmuting. */
   muted: boolean;
   bubbles: boolean;
   ambient: boolean;
+  /** Schema marker: 2 since the gain curve turned quadratic. Absent
+   * on older saves; only sanitizeSoundConfig reads it. Required, so a
+   * hand-built config can't silently opt back into the migration. */
+  v: number;
 }
 
 export const SOUND_DEFAULTS: Readonly<SoundConfig> =
   Object.freeze<SoundConfig>({
-    volume: 0.7, muted: false, bubbles: true, ambient: true,
+    volume: 0.84, muted: false, bubbles: true, ambient: true, v: 2,
   });
 
+/** Slider position → master gain. Quadratic: the ear hears roughly
+ * logarithmically, so half the slider's travel no longer covers just
+ * one halving of loudness — 50% is -12 dB, 25% is -24 dB. */
+export function gainForVolume(v: number): number { return v * v; }
+
 /** Trust boundary for localStorage payloads and bus messages: unknown
- * keys drop, wrong types fall back to the defaults, volume clamps. */
+ * keys drop, wrong types fall back to the defaults, volume clamps.
+ * Never migrates — a bus message carrying no marker is a partial
+ * update, not a legacy save; only loadSoundConfig rewrites volumes. */
 export function sanitizeSoundConfig(raw: unknown): SoundConfig {
   const c = { ...SOUND_DEFAULTS };
   if (!raw || typeof raw !== "object") return c;
   const r = raw as Record<string, unknown>;
   if (typeof r.volume === "number" && Number.isFinite(r.volume))
     c.volume = Math.min(1, Math.max(0, r.volume));
+  // A newer marker than we know survives the round-trip, so a config
+  // written by a future build keeps its schema stamp.
+  const mark = r.v;
+  if (typeof mark === "number" && Number.isInteger(mark) &&
+      mark > SOUND_DEFAULTS.v) c.v = mark;
   for (const k of ["muted", "bubbles", "ambient"] as const) {
     const v = r[k];
     if (typeof v === "boolean") c[k] = v;
   }
+  return c;
+}
+
+/** Sanitize a stored config and apply the v: 1 volume migration. A
+ * volume saved before v: 2 was the gain itself; it becomes the slider
+ * position that reproduces that level under the new curve. Only the
+ * two legacy shapes migrate — a malformed or future marker keeps the
+ * clamped volume rather than being sqrt'd a second time or
+ * reinterpreted on a guess. Bus messages must use the sanitizer
+ * directly: a v-less partial there is an update, not a legacy save. */
+export function loadSoundConfig(raw: unknown): SoundConfig {
+  const c = sanitizeSoundConfig(raw);
+  if (!raw || typeof raw !== "object") return c;
+  const r = raw as Record<string, unknown>;
+  if ((r.v === undefined || r.v === 1) &&
+      typeof r.volume === "number" && Number.isFinite(r.volume))
+    c.volume = Math.sqrt(c.volume);
   return c;
 }
 
@@ -133,6 +168,12 @@ export class TankAudio {
   // Bumped by each startAmbient so a stale pending resume() retry can
   // tell it lost the race instead of starting a second loop.
   private ambientGen = 0;
+  // Bumped whenever a feedback cue is superseded (newer cue or a pack
+  // load): a deferred retry must not resurrect a cue that was stopped.
+  private feedbackGen = 0;
+  // A resume() already in flight — a deferred cue may ride it even
+  // after the user activation that started it has lapsed.
+  private resuming: Promise<void> | null = null;
   // Page hidden: rAF stops and the sim freezes, so the device sleeps too.
   private hidden = false;
   // The opening sound plays once per session: due from open() when the
@@ -147,6 +188,14 @@ export class TankAudio {
   async load(read: (path: string) => Promise<Uint8Array>,
              manifest: AzpackManifest): Promise<void> {
     const sounds = manifest.sounds ?? [];
+    // A new pack supersedes whatever feedback is still playing — the
+    // old tail would overlap this pack's install cue. The generation
+    // bump also kills a cue still waiting on a pending resume().
+    this.feedbackGen++;
+    if (this.feedbackSrc) {
+      try { this.feedbackSrc.stop(); } catch { /* already ended */ }
+      this.feedbackSrc = null;
+    }
     if (sounds.length) {
       // context(), not a bare AudioContext: it also builds the master
       // gain every play() connects to.
@@ -223,7 +272,9 @@ export class TankAudio {
     return ac;
   }
 
-  private level(): number { return this.muted ? 0 : this.volume; }
+  private level(): number {
+    return this.muted ? 0 : gainForVolume(this.volume);
+  }
 
   /** Glide the live master to the current level: a hard step in the
    * gain mid-waveform clicks on mute and zippers under a slider drag. */
@@ -278,8 +329,11 @@ export class TankAudio {
     // do not infer success from ctx.state — a concurrent resume() can
     // race this one and flip the state without this chain succeeding.
     let resumed = false;
-    void this.ctx.resume()
-      .then(() => {
+    // Exposed so a deferred feedback cue can ride this resume rather
+    // than dropping once the activation lapses.
+    const r = this.ctx.resume();
+    this.resuming = r;
+    void r.then(() => {
         resumed = true;
         this.playOpening();
         return this.startAmbient();
@@ -291,7 +345,8 @@ export class TankAudio {
           && err.name === "NotAllowedError";
         if (!expected)
           console.warn(resumed ? "audio start failed:" : "audio resume failed:", err);
-      });
+      })
+      .finally(() => { if (this.resuming === r) this.resuming = null; });
   }
 
   /** Suspend the audio device while the tank is hidden and resume it on
@@ -334,14 +389,41 @@ export class TankAudio {
    * feedback still playing, and records longer than FEEDBACK_MAX_S
    * fade out and stop there. */
   playImported(name: string): void {
+    // A newer cue supersedes both a playing one and a deferred retry.
+    this.feedbackGen++;
     if (this.feedbackSrc) {
       try { this.feedbackSrc.stop(); } catch { /* already ended */ }
       this.feedbackSrc = null;
     }
     const buf = this.imported.get(name);
-    // Not through play(): while the context is locked that queues the
-    // sound until the first click, long after the install it answers.
-    if (!buf || !this.ctx || this.ctx.state !== "running") return;
+    // Not through play() — but a feedback that answers the install
+    // gesture itself may still wait out the lock, like play()'s
+    // gesture retry. Without an activation (a remote relay, a drop
+    // whose walk outlasted the gesture) resume() rejects quietly and
+    // the cue drops rather than firing long after the install.
+    if (!buf || !this.ctx || this.hidden) return;
+    if (this.ctx.state === "suspended") {
+      // A live gesture always starts a fresh resume — a parked one
+      // (a gesture-less unlock() can stay pending forever on an
+      // autoplay-blocked context) would never carry the cue. Only
+      // without a gesture does the cue ride an in-flight resume.
+      const r = gestureActive()
+        ? (this.resuming = this.ctx.resume())
+        : this.resuming;
+      if (!r) return;
+      const gen = this.feedbackGen;
+      void r.then(() => {
+          // Retry only when the context truly started and the cue
+          // wasn't superseded meanwhile — a resume that resolves with
+          // the context still suspended drops the cue, not loops.
+          if (this.ctx?.state === "running" && this.feedbackGen === gen)
+            this.playImported(name);
+        })
+        .catch(() => { /* still locked — the feedback drops */ })
+        .finally(() => { if (this.resuming === r) this.resuming = null; });
+      return;
+    }
+    if (this.ctx.state !== "running") return;
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     const g = this.ctx.createGain();

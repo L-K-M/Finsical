@@ -42,6 +42,12 @@ def _sprite_sheet(payload: bytes):
     cw = max(fr.w for _, _, fr in frames)
     ch = max(fr.h for _, _, fr in frames)
     sw, sh = cw * nf, ch * ng
+    # Same cap as core/data/fsh.ts: a corrupt header can claim a grid far
+    # larger than the frames filling it, and the buffer below would be
+    # allocated and touched before anything noticed. Raise rather than
+    # return None so emit() records the reason on the chunk.
+    if sw * sh > 1 << 26:
+        raise ValueError(f"sprite sheet {sw}x{sh} exceeds 1<<26 pixels")
     sheet = bytearray(sw * sh)
     for g, f, fr in frames:
         for y in range(fr.h):

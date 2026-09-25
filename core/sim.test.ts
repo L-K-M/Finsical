@@ -3,7 +3,8 @@ import { BAND_HALF, BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, MARGIN,
          MAX_UNEATEN, NOTICE_RADIUS, PELLET_UNITS, Sim, SLEEP_LIGHT,
          SURFACE,
          TURN_TICKS, WAKE_LIGHT } from "./sim.js";
-import { QUALITY_SEEK } from "./tuning.js";
+import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
+  from "./tuning.js";
 import { CLOCK_NIGHT_LIGHT } from "./light.js";
 import { pitch } from "./pose.js";
 
@@ -1104,6 +1105,22 @@ describe("Sim", () => {
     expect(f.state).not.toBe("seek");
   });
 
+  it("refuses food at exactly QUALITY_SEEK, not one step above", () => {
+    // statsmodel.ts's advice gates mirror this edge — at the boundary
+    // the fish won't take a pellet, so the advice can't invite one.
+    const sim = new Sim({ width: 300, height: 100 }, 11);
+    const f = sim.addFish({ x: 50, y: 50, facing: 1, heading: 0,
+                          hunger: 0.9 });
+    sim.dropFood(200);
+    sim.waterQuality = QUALITY_SEEK;
+    sim.tick();
+    expect(f.state).not.toBe("seek");
+    expect(sim.isBegging(f)).toBe(false);
+    sim.waterQuality = QUALITY_SEEK + 0.01;
+    sim.tick();
+    expect(f.state).toBe("seek");
+  });
+
   it("stops seeking once another fish ate the pellet", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     // b ticks first, so it sets off for the pellet before a eats it.
@@ -1117,6 +1134,26 @@ describe("Sim", () => {
     expect(a.state).not.toBe("seek");
     sim.tick();
     expect(b.state).not.toBe("seek");
+  });
+
+  it("spawns at SPAWN_HUNGER when the caller doesn't say", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 3);
+    // Just past the seek threshold — a fresh fish takes the first
+    // pellets it's offered instead of ignoring them for minutes.
+    expect(sim.addFish({ x: 50, y: 50 }).hunger).toBe(SPAWN_HUNGER);
+    expect(sim.addFish({ x: 50, y: 50, hunger: 0 }).hunger).toBe(0);
+  });
+
+  it("refuses a spawn at FISH_CAP, but restores still land", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 3);
+    for (let i = 0; i < FISH_CAP; i++) sim.addFish({ x: 50, y: 50 });
+    expect(sim.addFish({ x: 50, y: 50 }, "enforce")).toBeNull();
+    expect(sim.fish).toHaveLength(FISH_CAP);
+    // A saved roster keeps every pet — the cap governs spawns, not
+    // restoring what was already in the tank.
+    expect(sim.addFish({ x: 50, y: 50 })).toBeTruthy();
+    expect(sim.addFish({ x: 50, y: 50 }, "bypass")).toBeTruthy();
+    expect(sim.fish).toHaveLength(FISH_CAP + 2);
   });
 });
 
@@ -1178,4 +1215,104 @@ describe("lifecycle", () => {
     expect(sim.events.every((e) => e.type !== "birth")).toBe(true);
   });
 
+});
+
+describe("B-57 drift steering", () => {
+  it("doesn't step the drift stroke on the tick a turn begins", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 11);
+    const f = sim.addFish({ x: 200, y: 100, facing: 1, hunger: 1 });
+    // The pellet lands behind the fish: the seek must roll first.
+    sim.dropFood(60);
+    let entered = false;
+    for (let i = 0; i < 60 && !entered; i++) {
+      const px = f.x, py = f.y;
+      sim.tick();
+      if (f.state === "turn") {
+        entered = true;
+        expect(f.x).toBe(px);
+        expect(f.y).toBe(py);
+      }
+    }
+    expect(entered).toBe(true);
+    // The roll completes within a few turn windows — a guard that
+    // trapped the fish in "turn" would fail here — and the meal lands,
+    // which only happens once seeking has resumed.
+    for (let i = 0; i < TURN_TICKS * 6 && f.state === "turn"; i++)
+      sim.tick();
+    expect(f.state).not.toBe("turn");
+    const pellet = sim.food[0]!;
+    expect(pellet).toBeDefined(); // the dropped pellet
+    expect(pellet.eaten).toBe(false); // and not eaten mid-roll
+    for (let i = 0; i < 400 && !pellet.eaten; i++) sim.tick();
+    expect(pellet.eaten).toBe(true);
+  });
+
+  it("eats a pellet beyond its room by sliding along the wall", () => {
+    // halfW 50 keeps this fish's centre at x >= 40; a pellet dropped at
+    // MARGIN (16) sits outside its room, but the eat reach spans the
+    // gap — the seeker must still get the meal, not press forever.
+    const sim = new Sim({ width: 320, height: 200 }, 3);
+    const f = sim.addFish({ x: 60, y: 150, facing: -1, hunger: 1,
+                            halfW: 50, halfH: 30, scale: 1 });
+    sim.dropFood(16);
+    const pellet = sim.food[0]!;
+    for (let i = 0; i < 400 && !pellet.eaten; i++) sim.tick();
+    expect(pellet.eaten).toBe(true);
+  });
+});
+
+describe("B-58 hunger and vigor", () => {
+  it("brakes a weakened seeker — the floor is pre-vigor", () => {
+    // A latched brake past its decay lands on the floor; a fish whose
+    // vigor is down (ill or worn by foul water) must cross that floor
+    // proportionally instead of having the division cancel it out.
+    const step = (health: number): number => {
+      const sim = new Sim({ width: 320, height: 200 }, 5);
+      const f = sim.addFish({ x: 100, y: 100, hunger: 1, facing: 1,
+                              state: "seek", latch: 0, peak: 1,
+                              phase: 30, speed: 0.6 });
+      sim.advanceLife(1);
+      f.life!.health = health;
+      sim.food.push({ x: 108, y: 100, eaten: false, settled: 1 });
+      sim.tick();
+      return Math.hypot(f.x - 100, f.y - 100);
+    };
+    const well = step(90);
+    const weak = step(1);
+    expect(weak).toBeLessThan(well * 0.9);
+    // The pin that separates old from new: a weakened seeker must end
+    // up slower than the pellet sinks (FOOD_SINK * 1.5 = 0.525 px).
+    // The old /vigor floor cancelled the penalty and gave 0.525.
+    expect(weak).toBeLessThan(0.525);
+  });
+
+  it("wakes a sleeper for a pellet inside NOTICE_DIST at snack hunger", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 4);
+    sim.setLight(0); // night
+    const f = sim.addFish({ x: 100, y: 184, hunger: HUNGER_SEEK - 0.01,
+                            state: "sleep" });
+    sim.dropFood(115); // sinks to the gravel 15 px from the sleeper
+    let woke = false;
+    for (let i = 0; i < 700 && !woke; i++) {
+      // Pin hunger just under HUNGER_SEEK so the wake can only come
+      // through the snack-smell path, never the any-pellet seek path.
+      f.hunger = HUNGER_SEEK - 0.01;
+      sim.tick();
+      woke = f.state !== "sleep";
+    }
+    expect(woke).toBe(true);
+    expect(f.hunger).toBeLessThan(HUNGER_SEEK);
+  });
+
+  it("keeps a snack-hungry sleeper down for a distant pellet", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 4);
+    sim.setLight(0);
+    const f = sim.addFish({ x: 100, y: 184, hunger: 0.2,
+                            state: "sleep" });
+    sim.dropFood(300); // 200 px away — too far to smell at 0.2
+    for (let i = 0; i < 600; i++) {
+      sim.tick();
+      expect(f.state).toBe("sleep");
+    }
+  });
 });

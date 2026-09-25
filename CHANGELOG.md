@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- New machine cases: Performa 450 (II), Performa 5200 and 5200
+  (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
+  20th Anniversary Mac, iMac G3 and G4 and the bare tank.
 - The CRT's Geometry group gains two pots. Skew leans the whole
   picture into a parallelogram, and Perspective swings it like the
   tube turning on its stand — one edge looming large while the
@@ -173,8 +176,9 @@
   hidden there.
 
 - On first launch, a Mac OS 8 alert welcomes you and offers to stock
-  the tank: Stock the Tank downloads three fish, a gravel, a plant and
-  a background (about 1 MB) from the Internet Archive, shows its
+  the tank: Stock the Tank downloads three fish, a gravel, a plant, a
+  background and the game's sound effects (about 2 MB) from the
+  Internet Archive, shows its
   progress (Stop ends it), and replaces the four stand-in fish. If the
   download fails, the alert says so and offers Try Again. Knock on the
   glass too often and you get the aquarium's sign: "Please don't tap
