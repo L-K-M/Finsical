@@ -60,11 +60,37 @@ Add-ons.
 | Feed the fish | Click above the waterline, in the dark strip at the top of the tank (the pointer becomes a crosshair) |
 | Tap the glass | Click in the water; nearby fish startle |
 | See a fish's name | Point at it: a balloon names it and says what it is doing |
-| Get Info on a fish | Option-click it: a card follows it with its hunger and mood |
+| Get Info on a fish | Option-click it: a card follows it with its health, hunger and mood |
 | Move the window | In the app, drag the computer case around the tank, or the top edge of the window |
 
 A fish nearby comes over to look at the pointer while you hover over
 the tank, unless it is hungry or startled.
+
+### Keeping the tank
+
+The tank lives like the original AquaZone's, in real time: a fed fish
+gets hungry again after most of a day, and time passes while Finsical
+is closed (see [docs/ORIGINAL-SIM.md](docs/ORIGINAL-SIM.md) for the
+rules). Tank Stats shows the water, as mg per litre, and has the
+controls to keep it:
+
+- **Heater:** holds the water at the temperature you set.
+- **Filter:** aerates the water and, once it has some dirt in it,
+  breaks ammonia down into nitrate. Clean it a little at a time: a
+  spotless filter breaks nothing down.
+- **Water change:** replaces part of the water with tap water at the
+  temperature you pick. Tap water carries chlorine, so add Chlorine
+  Remover or let it gas off, and match the temperature, or the fish
+  get a shock.
+- **Medicine:** Green Remedy and Methylene Blue cure the common fish
+  diseases; the water treatments soften the water, raise or lower the
+  pH, and remove chlorine. A dose dissolves over a few hours.
+- **Time:** real time, or up to 100 times faster.
+
+Fish fall sick when poor water, hunger or shocks wear their health
+down, and a sick fish can pass its disease to the weakest fish in the
+tank. A fish that dies floats belly-up and then sinks; remove it from
+Tank Overview before it fouls the water.
 
 Menu commands in the app:
 
@@ -78,7 +104,7 @@ Menu commands in the app:
 | Tank Stats | Tank | Shift-Cmd-S |
 | Import Add-ons… | Tank | Cmd-I |
 | Feed Fish | Tank | Cmd-F |
-| Change Water | Tank | |
+| Change Water (the last change set in Tank Stats) | Tank | |
 | CRT Effect (checked while on) | Tank | Cmd-R |
 | Lamp On (checked while on) | Tank | Cmd-L |
 | Mute Sound (checked while muted) | Tank | Option-Cmd-S |

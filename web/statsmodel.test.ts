@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { deriveStats, hungerLabel, milestone, SPARK_H, SPARK_SLOT_MS,
-         SPARK_W, sparkColumns, sparkRow, summaryText, trend, uptime }
-  from "./statsmodel.js";
+import { curesFor, deriveStats, deriveWater, hungerLabel, milestone,
+         SPARK_H, SPARK_SLOT_MS, SPARK_W, sparkColumns, sparkRow,
+         summaryText, trend, uptime } from "./statsmodel.js";
 import { DAY_TICKS, Sim } from "../core/sim.js";
 import { HUNGER_SEEK } from "../core/tuning.js";
 
@@ -222,6 +222,47 @@ describe("sparkline", () => {
       { t: now - SPARK_SLOT_MS, v: null }, { t: now, v: 0.5 },
     ], now);
     expect(cols[SPARK_W - 2]).toBeNull();
+  });
+});
+
+describe("care from the life model", () => {
+  const water = { litres: 100, temp: 26, pH: 7, gH: 4, o2: 8, oxygenSat: 1,
+                  co2: 15, nitrate: 0, ammonia: 0, chlorine: 0,
+                  filterDirt: 10, speed: 1, days: 3 };
+
+  it("reads the water, checking every number", () => {
+    const w = deriveWater({ ...water, pH: NaN, doses: [{ id: 1100, ml: 30.4 },
+                                                       { id: 1 }] })!;
+    expect(w.pH).toBe(7);
+    expect(w.doses).toEqual([{ name: "Green Remedy", ml: 30 }]);
+    expect(deriveWater(undefined)).toBeNull();
+  });
+
+  it("puts the dead first, then the sick with their cure", () => {
+    const s = deriveStats({ ...base, aquarium: water, fish: [
+      { species: "Guppy", hunger: 0.2, state: "drift", sick: 3 },
+      { species: "Angel", hunger: 0, state: "dead", dead: 12 },
+    ] });
+    expect(s.fishCount).toBe(1);
+    expect(s.dead).toBe(1);
+    expect(s.advice[0]).toMatch(/dead fish/);
+    expect(s.advice[1]).toBe(
+      "Guppy has Chilodonella — treat the tank with Green Remedy.");
+  });
+
+  it("warns about chlorine, ammonia, nitrate and a clogged filter", () => {
+    const hint = (a: object): string =>
+      deriveStats({ ...base, aquarium: { ...water, ...a } }).advice[0]!;
+    expect(hint({ chlorine: 1.1 })).toMatch(/chlorine/);
+    expect(hint({ ammonia: 2 })).toMatch(/Ammonia/);
+    expect(hint({ nitrate: 30 })).toMatch(/Nitrate/);
+    expect(hint({ filterDirt: 90 })).toMatch(/clogging/);
+  });
+
+  it("knows which medicines cure what", () => {
+    expect(curesFor(0)).toEqual(["Green Remedy", "Methylene Blue"]);
+    expect(curesFor(5)).toEqual(["Rust Remedy"]);
+    expect(curesFor(7)).toEqual([]);
   });
 });
 

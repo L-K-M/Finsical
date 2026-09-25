@@ -14,6 +14,12 @@ export const SPAWN_HUNGER = HUNGER_SEEK + 0.05;
 /** Soft population limit: the original kept tanks small, and past this
  * the water reads as soup while every save bloats. */
 export const FISH_CAP = 24;
+
+/** The tank's logical resolution — art is fitted to it once at import
+ * and blitted 1:1 after. Shared so import validation can apply the
+ * same size rules the tank renders with. */
+export const TANK_SIZE =
+  Object.freeze({ width: 320, height: 200 } as const);
 /** Uneaten-pellet ceiling: past this a feed only blips the surface —
  * settled food fouls the water, and a tank can rot under a new owner
  * who never learns pellets pile up. */
