@@ -133,6 +133,12 @@ export class TankAudio {
   // Bumped by each startAmbient so a stale pending resume() retry can
   // tell it lost the race instead of starting a second loop.
   private ambientGen = 0;
+  // Bumped whenever a feedback cue is superseded (newer cue or a pack
+  // load): a deferred retry must not resurrect a cue that was stopped.
+  private feedbackGen = 0;
+  // A resume() already in flight — a deferred cue may ride it even
+  // after the user activation that started it has lapsed.
+  private resuming: Promise<void> | null = null;
   // Page hidden: rAF stops and the sim freezes, so the device sleeps too.
   private hidden = false;
   // The opening sound plays once per session: due from open() when the
@@ -148,7 +154,9 @@ export class TankAudio {
              manifest: AzpackManifest): Promise<void> {
     const sounds = manifest.sounds ?? [];
     // A new pack supersedes whatever feedback is still playing — the
-    // old tail would overlap this pack's install cue.
+    // old tail would overlap this pack's install cue. The generation
+    // bump also kills a cue still waiting on a pending resume().
+    this.feedbackGen++;
     if (this.feedbackSrc) {
       try { this.feedbackSrc.stop(); } catch { /* already ended */ }
       this.feedbackSrc = null;
@@ -284,8 +292,11 @@ export class TankAudio {
     // do not infer success from ctx.state — a concurrent resume() can
     // race this one and flip the state without this chain succeeding.
     let resumed = false;
-    void this.ctx.resume()
-      .then(() => {
+    // Exposed so a deferred feedback cue can ride this resume rather
+    // than dropping once the activation lapses.
+    const r = this.ctx.resume();
+    this.resuming = r;
+    void r.then(() => {
         resumed = true;
         this.playOpening();
         return this.startAmbient();
@@ -297,7 +308,8 @@ export class TankAudio {
           && err.name === "NotAllowedError";
         if (!expected)
           console.warn(resumed ? "audio start failed:" : "audio resume failed:", err);
-      });
+      })
+      .finally(() => { if (this.resuming === r) this.resuming = null; });
   }
 
   /** Suspend the audio device while the tank is hidden and resume it on
@@ -340,6 +352,8 @@ export class TankAudio {
    * feedback still playing, and records longer than FEEDBACK_MAX_S
    * fade out and stop there. */
   playImported(name: string): void {
+    // A newer cue supersedes both a playing one and a deferred retry.
+    this.feedbackGen++;
     if (this.feedbackSrc) {
       try { this.feedbackSrc.stop(); } catch { /* already ended */ }
       this.feedbackSrc = null;
@@ -352,10 +366,23 @@ export class TankAudio {
     // the cue drops rather than firing long after the install.
     if (!buf || !this.ctx || this.hidden) return;
     if (this.ctx.state === "suspended") {
-      if (!gestureActive()) return;
-      void this.ctx.resume()
-        .then(() => this.playImported(name))
-        .catch(() => { /* still locked — the feedback drops */ });
+      // A resume already in flight — the install gesture's unlock() —
+      // can carry this cue even once the activation has lapsed; only a
+      // live gesture may start a fresh resume.
+      const r = this.resuming ??
+        (gestureActive()
+          ? (this.resuming = this.ctx.resume()) : null);
+      if (!r) return;
+      const gen = this.feedbackGen;
+      void r.then(() => {
+          // Retry only when the context truly started and the cue
+          // wasn't superseded meanwhile — a resume that resolves with
+          // the context still suspended drops the cue, not loops.
+          if (this.ctx?.state === "running" && this.feedbackGen === gen)
+            this.playImported(name);
+        })
+        .catch(() => { /* still locked — the feedback drops */ })
+        .finally(() => { if (this.resuming === r) this.resuming = null; });
       return;
     }
     if (this.ctx.state !== "running") return;

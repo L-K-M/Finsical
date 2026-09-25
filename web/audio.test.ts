@@ -109,7 +109,17 @@ beforeEach(() => {
 });
 // restoreAllMocks too: a spy (console.warn in the load test) would
 // otherwise stay mocked for every later test in the file.
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => {
+  vi.unstubAllGlobals(); vi.restoreAllMocks();
+  delete (navigator as { userActivation?: unknown }).userActivation;
+});
+
+// Shadow only userActivation on the real navigator — stubGlobal would
+// blank every other navigator property for the test's duration.
+const stubActivation = (isActive: boolean): void => {
+  Object.defineProperty(navigator, "userActivation",
+    { configurable: true, get: () => ({ isActive }) });
+};
 
 describe("TankAudio master gain", () => {
   it("routes every sound through the master and maps the volume", async () => {
@@ -370,10 +380,50 @@ describe("TankAudio install feedback", () => {
     // triggered must resume and play, not drop on the locked context.
     const { audio, ac } = await tank({ a: 1 });
     ac.state = "suspended";
-    vi.stubGlobal("navigator", { userActivation: { isActive: true } });
+    stubActivation(true);
     audio.playImported("a");
     await flush();
     expect(ac.sources).toHaveLength(1);
+  });
+
+  it("rides an unlock() resume already in flight after the gesture " +
+     "lapses", async () => {
+    // The drop handler unlocks during the gesture; the WAV decode can
+    // finish after isActive lapses — the cue must still land.
+    const { audio, ac } = await tank({ a: 1 });
+    ac.state = "suspended";
+    audio.unlock(); // gesture's resume: pending, no activation needed
+    audio.playImported("a"); // decode landing late
+    await flush();
+    expect(ac.sources).toHaveLength(1);
+  });
+
+  it("a pack load kills a feedback cue still waiting on resume",
+     async () => {
+    const { audio, ac } = await tank({ a: 1 });
+    ac.state = "suspended";
+    stubActivation(true);
+    audio.playImported("a"); // deferred behind the locked context
+    await audio.load(async () => wav(1), {
+      format: "azpack/1", tag: "T", version: 1, chunks: [], names: [],
+      sounds: [{ name: "b", file: "s/b.wav" }],
+    });
+    await flush();
+    expect(ac.sources).toHaveLength(0); // superseded — must not play
+  });
+
+  it("drops the cue rather than looping when resume leaves the " +
+     "context suspended", async () => {
+    const { audio, ac } = await tank({ a: 1 });
+    ac.state = "suspended";
+    let resumes = 0;
+    // A quirky embedder can resolve resume() without running.
+    ac.resume = () => { resumes++; return Promise.resolve(); };
+    stubActivation(true);
+    audio.playImported("a");
+    await flush();
+    expect(ac.sources).toHaveLength(0);
+    expect(resumes).toBe(1); // retried once, then dropped — no loop
   });
 
   it("a pack load stops the previous pack's feedback", async () => {
@@ -659,7 +709,7 @@ describe("TankAudio behind a locked context", () => {
      async () => {
     const { audio, ac } = await tank({ "center": 1 });
     ac.state = "suspended";
-    vi.stubGlobal("navigator", { userActivation: { isActive: true } });
+    stubActivation(true);
     audio.tap(160, 100, 320, 200); // the click that unlocks also taps
     await flush();
     expect(ac.sources).toHaveLength(1);
