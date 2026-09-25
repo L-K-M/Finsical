@@ -51,7 +51,9 @@ stock it with a starter set of Aquazone fish, a gravel, a plant, a
 background and the game's sound effects from the Internet Archive
 (about 2 MB). Choose **Not Now**
 to keep the stand-ins; you can add the same things later from Import
-Add-ons.
+Add-ons. If you close Finsical before answering, it asks again next
+time. If stocking the tank doesn't finish, later launches offer the
+rest until it arrives or you choose **Not Now** or **Stop**.
 
 ## Using Finsical
 
@@ -161,6 +163,7 @@ You can also drag files from the Finder onto the tank:
 | --- | --- |
 | An `.azpack` folder (made by the [asset tools](#asset-tools)) | Its fish, art and sounds are imported |
 | Aquazone pack files: fish (`.fsh`), gravel (`.grv`), plants (`.plt`), accessories (`.acc`), tanks (`.azn`), or the base library (`.REZ`, fish and scenery) | Imported into their section and kept, so they come back at every launch |
+| Your own picture: a 256-color BMP (`.bmp`) of at least 160 by 100 pixels | Becomes the backdrop and is kept, like a pack file. A strip at least three times as wide as it is tall becomes the gravel instead. Other pictures, such as 24-bit BMPs, get an alert |
 | Resource files with `snd ` resources: `.rsrc`, MacBinary `.bin`, BinHex `.hqx`, AppleDouble, and the Windows game's sound bank `AZ_WAVES.REZ` | Their sounds are imported and kept |
 | Audio files: `.wav`, `.mp3`, `.aif`, `.aiff`, `.m4a`, `.ogg`, `.flac` | Imported as sounds and kept |
 
@@ -218,16 +221,16 @@ Everything stays on your Mac:
   (`finsical:tank-owner`), the Auto Feed, tap-the-glass sign and
   startup-parade switches (`finsical:autofeed`, `finsical:scoldSign`,
   `finsical:boot`), whether fish wear name tags
-  (`finsical:names`), whether the first-run offer and its sound-effects
-  download were answered (`finsical:welcomed`,
+  (`finsical:names`), how far the first-run offer got and
+  whether its sound effects were handled (`finsical:welcomed`,
   `finsical:starterSounds`), and the last Preferences pane and
   add-on section (`finsical:prefsPane`, `finsical:addonSection`).
 - **IndexedDB** database `finsical`: downloaded add-on archives,
   thumbnails and archive.org listing pages, so installed add-ons restore
   offline. Cached downloads are evicted least recently used once they pass
-  about 150 MB. Sounds you import and packs you drop onto the tank are
-  stored there too and are never evicted; removing a dropped pack in
-  Tank Overview deletes it.
+  about 150 MB. Sounds you import and packs and pictures you drop onto
+  the tank are stored there too and are never evicted; removing a
+  dropped pack or picture in Tank Overview deletes it.
 - **macOS defaults** (`dev.finsical.app`): window positions.
 
 The only network host Finsical contacts is archive.org, for add-on listings

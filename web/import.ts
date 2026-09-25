@@ -82,8 +82,13 @@ export interface Collection {
 export const COLLECTIONS: Collection[] = [
   { section: "fish", outer: "addon and modded fish.zip" },
   { section: "gravel", outer: "gravel.zip" },
-  { section: "plants", outer: "mekasia.zip/mekplants.zip" },
-  { section: "accessories", outer: "mekasia.zip/mekaccs.zip" },
+  // Nested zips list every pack extension unless told otherwise, and
+  // mekaccs.zip also carries the story's gravel (G_Debris.grv): each
+  // section takes only its own kind of pack.
+  { section: "plants", outer: "mekasia.zip/mekplants.zip", exts: /\.plt$/i },
+  { section: "accessories", outer: "mekasia.zip/mekaccs.zip",
+    exts: /\.acc$/i },
+  { section: "gravel", outer: "mekasia.zip/mekaccs.zip", exts: /\.grv$/i },
   { section: "plants", item: JPN_ITEM, outer: JPN_ZIP,
     prefix: JPN_ROOT + "水草/", exts: /\.plt$/i },
   { section: "accessories", item: JPN_ITEM, outer: JPN_ZIP,
@@ -602,6 +607,24 @@ export function recordAddon(list: Importable[], it: Importable,
   return true;
 }
 
+/** Scenery sections by pack extension. A Map, not an object literal:
+ * an extension such as "constructor" must not find Object.prototype. */
+const SCENERY_BY_EXT: ReadonlyMap<string, PackSection> = new Map([
+  ["grv", "gravel"], ["plt", "plants"], ["acc", "accessories"],
+]);
+
+/** A saved scenery add-on under the section its pack's extension names.
+ * Before each Mekasia collection took only its own kind of pack,
+ * mekaccs.zip's G_Debris.grv listed and installed as an accessory, a
+ * big textured block in the tank; its record restores as the gravel it
+ * is. Fish, sounds and non-scenery records pass through unchanged. */
+export function sceneryFix(it: Importable): Importable {
+  if (![...SCENERY_BY_EXT.values()].includes(it.section)) return it;
+  const ext = /\.([a-z]+)$/i.exec(it.url)?.[1]?.toLowerCase();
+  const section = ext ? SCENERY_BY_EXT.get(ext) : undefined;
+  return section && section !== it.section ? { ...it, section } : it;
+}
+
 /** Whether `it` is still on the saved add-on `list`. A restore asks
  * right before applying a pack: an add-on removed since the restore
  * was queued (Remove, Empty Tank) must not come back. */
@@ -644,11 +667,20 @@ export function qualifySoundItemName(
  * the caller can pick each one's best sheet. Sound-bearing entries
  * (audio files, 'snd ' resource forks) come back as sound records. */
 export async function importAddon(url: string): Promise<PackResult[]> {
-  // Dropped packs persist as raw bytes under a `local:` key — nothing
-  // to download; decode them like any other pack blob.
+  // Dropped packs and pictures persist as raw bytes under a `local:`
+  // key — nothing to download; decode them like any other blob.
   if (isLocalPack(url)) {
     const d = await packGet(url);
     if (!d) throw new Error(`${url}: stored pack missing`);
+    // A dropped picture: the same images-only result as the remote
+    // isBmp branch. The drop keeps only pictures that decode.
+    if (isBmp(d)) {
+      const img = decodeBmp(d);
+      if (!img)
+        throw new Error(`${url}: stored picture is not a 256-color BMP`);
+      return [{ entry: url, sheets: new Map(), images: new Map([[url, img]]),
+                sounds: [] }];
+    }
     if (!isPack(d)) throw new Error(`${url}: stored data is not a pack`);
     // Same shape as the remote isPack branch: a pack blob yields no
     // sound records — dropped loose audio already persisted via

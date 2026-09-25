@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { COLLECTIONS } from "./import.js";
 import type { Importable, PackSection } from "./import.js";
 import { resolveStarter, runStarter, STARTER_SET, starterCollection,
-         wantsStarterSounds } from "./starter.js";
+         wantsStarterSounds, welcomeOffer } from "./starter.js";
 
 const item = (section: PackSection, inner: string): Importable =>
   ({ section, inner,
@@ -87,6 +87,32 @@ describe("wantsStarterSounds", () => {
   });
 });
 
+describe("welcomeOffer", () => {
+  it("greets a new tank", () => {
+    expect(welcomeOffer({ answer: null, pristine: true })).toBe("welcome");
+  });
+
+  it("greets again when the welcome was left unanswered", () => {
+    for (const pristine of [true, false])
+      expect(welcomeOffer({ answer: "pending", pristine })).toBe("welcome");
+  });
+
+  it("offers the rest after stocking didn't finish", () => {
+    for (const pristine of [true, false])
+      expect(welcomeOffer({ answer: "retry", pristine })).toBe("retry");
+  });
+
+  it("leaves an answered offer alone, including the old answer", () => {
+    for (const answer of ["declined", "stocked", "1"])
+      for (const pristine of [true, false])
+        expect(welcomeOffer({ answer, pristine })).toBeNull();
+  });
+
+  it("leaves a tank set up before the welcome alone", () => {
+    expect(welcomeOffer({ answer: null, pristine: false })).toBeNull();
+  });
+});
+
 describe("runStarter", () => {
   const deferred = <T>() => {
     let resolve!: (v: T) => void, reject!: (e: unknown) => void;
@@ -108,7 +134,9 @@ describe("runStarter", () => {
     const run = runStarter(set, {
       install,
       progress: () => {},
+      installed: () => false,
       fishArrived: () => {},
+      soundsArrived: () => {},
       stopped: () => false,
     });
     // banggai resolves → its install's await wakes the loop, which
@@ -129,7 +157,9 @@ describe("runStarter", () => {
     await runStarter(set, {
       install: () => Promise.resolve(),
       progress: (i) => seen.push(i),
+      installed: () => false,
       fishArrived: () => {},
+      soundsArrived: () => {},
       stopped: () => false,
     });
     expect(seen).toEqual(set.map((_, i) => i));
@@ -141,7 +171,9 @@ describe("runStarter", () => {
       install: (it) => it.section === "sounds"
         ? Promise.reject(err) : Promise.resolve(),
       progress: () => {},
+      installed: () => false,
       fishArrived: () => {},
+      soundsArrived: () => {},
       stopped: () => false,
     });
     expect(r.failed.map((f) => f.inner)).toEqual(["AZ_WAVES"]);
@@ -155,7 +187,9 @@ describe("runStarter", () => {
       install: (it) => it.section === "sounds"
         ? Promise.reject(null) : Promise.resolve(),
       progress: () => {},
+      installed: () => false,
       fishArrived: () => {},
+      soundsArrived: () => {},
       stopped: () => false,
     });
     expect(r.failed.map((f) => f.inner)).toEqual(["AZ_WAVES"]);
@@ -167,7 +201,9 @@ describe("runStarter", () => {
       install: (it) => it.section === "gravel"
         ? Promise.reject(null) : Promise.resolve(),
       progress: () => {},
+      installed: () => false,
       fishArrived: () => {},
+      soundsArrived: () => {},
       stopped: () => false,
     });
     expect(r.failed.map((f) => f.inner)).toEqual(["brownsand"]);
@@ -184,7 +220,9 @@ describe("runStarter", () => {
           ? Promise.reject(new Error("nope")) : Promise.resolve();
       },
       progress: () => {},
+      installed: () => false,
       fishArrived: () => {},
+      soundsArrived: () => {},
       stopped: () => false,
     });
     expect(calls).toContain("AZ_WAVES");
@@ -200,10 +238,48 @@ describe("runStarter", () => {
         return Promise.resolve();
       },
       progress: () => {},
+      installed: () => false,
       fishArrived: () => {},
+      soundsArrived: () => {},
       stopped: () => stopped,
     });
     expect(calls).toEqual(["banggai"]);
     expect(r.failed).toEqual([]);
+  });
+
+  it("skips what the tank already has and counts only the rest", async () => {
+    const calls: string[] = [];
+    const seen: [number, number][] = [];
+    const have = new Set(["banggai", "brownsand"]);
+    const r = await runStarter(set, {
+      install: (it) => { calls.push(it.inner); return Promise.resolve(); },
+      installed: (it) => have.has(it.inner),
+      progress: (i, total) => seen.push([i, total]),
+      fishArrived: () => {},
+      soundsArrived: () => {},
+      stopped: () => false,
+    });
+    expect(calls).not.toContain("banggai");
+    expect(calls).not.toContain("brownsand");
+    expect(calls).toHaveLength(set.length - have.size);
+    expect(seen).toEqual(calls.map((_, i) => [i, set.length - have.size]));
+    expect(r.failed).toEqual([]);
+  });
+
+  it("reports the sound bank only when it lands", async () => {
+    const landed: string[] = [];
+    const hooks = (fail: boolean) => ({
+      install: (it: Importable) => fail && it.section === "sounds"
+        ? Promise.reject(new Error("bank fetch died")) : Promise.resolve(),
+      installed: () => false,
+      progress: () => {},
+      fishArrived: () => {},
+      soundsArrived: (it: Importable) => { landed.push(it.inner); },
+      stopped: () => false,
+    });
+    await runStarter(set, hooks(true));
+    expect(landed).toEqual([]);
+    await runStarter(set, hooks(false));
+    expect(landed).toEqual(["AZ_WAVES"]);
   });
 });
