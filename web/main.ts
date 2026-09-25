@@ -60,7 +60,8 @@ import { claimTank } from "./tankclaim.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
 import { stateLabel } from "./overviewmodel.js";
-import { initCrt, sanitizeCrtConfig } from "./crt.js";
+import { crtClientToTank, crtTankToClient, initCrt, sanitizeCrtConfig }
+  from "./crt.js";
 import { bubbleOffset, bubblePops, drawAir, drawBubblePop,
          drawBubbles, drawFood, drawLight, drawMurk, drawRefraction,
          drawSurface, feedPinch, sunFactor, tapBubble } from "./water.js";
@@ -547,15 +548,46 @@ let canvasRect: DOMRect | null = null;
 function tankRect(): DOMRect {
   return canvasRect ??= canvas.getBoundingClientRect();
 }
-window.addEventListener("resize", () => { canvasRect = null; });
-document.addEventListener("scroll", () => { canvasRect = null; },
-                          { capture: true });
+// The CRT canvas spans the whole glass; its box is cached the same way.
+const crtEl = document.getElementById("crt")!;
+let crtRect: DOMRect | null = null;
+function crtClientRect(): DOMRect {
+  return crtRect ??= crtEl.getBoundingClientRect();
+}
+const dropRects = (): void => { canvasRect = null; crtRect = null; };
+window.addEventListener("resize", dropRects);
+document.addEventListener("scroll", dropRects, { capture: true });
 
-/** CSS-pixel pointer coords → tank-space point; null in the
- * letterbox bars (object-fit: contain inside the element box). */
+/** True while the tube draws (body.crt, a power-off collapse
+ * included): #crt then covers the glass and takes the pointer, and
+ * its picture is moved and warped by the geometry pots and the tube,
+ * so pointer input maps through the same warp (web/crt.ts). */
+const crtMapsPointer = (): boolean => crt?.enabled === true;
+
+/** CSS-pixel pointer coords → the tank-space point the picture shows
+ * there; null over the letterbox bars (object-fit: contain inside the
+ * element box) or, with the CRT on, over black glass. */
 function tankPoint(clientX: number, clientY: number):
     { x: number; y: number } | null {
+  if (crtMapsPointer())
+    return crtClientToTank(clientX, clientY, crtClientRect(),
+                           rasterInGlass(machine), crtCfg, TANK);
   return containPoint(clientX, clientY, tankRect(), TANK);
+}
+
+/** The element whose box holds the picture: #crt while the tube
+ * draws, else #tank. */
+const pictureEl = (): HTMLElement => crtMapsPointer() ? crtEl : canvas;
+
+/** Where a tank point shows, in client px; `r` is pictureEl()'s
+ * client rect. The inverse of tankPoint. */
+function tankToClient(x: number, y: number, r: DOMRect):
+    { x: number; y: number } {
+  if (crtMapsPointer())
+    return crtTankToClient(x, y, r, rasterInGlass(machine), crtCfg, TANK);
+  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
+  return { x: r.left + (r.width - TANK.width * s) / 2 + x * s,
+           y: r.top + (r.height - TANK.height * s) / 2 + y * s };
 }
 
 /** The fish under a tank point. None in the air above the waterline:
@@ -579,20 +611,21 @@ let mouseClient: { x: number; y: number } | null = null;
 function setFeedHover(on: boolean): void {
   if (on === overFeedZone) return;
   overFeedZone = on;
-  canvas.style.cursor = on ? "crosshair" : "";
+  canvas.style.cursor = crtEl.style.cursor = on ? "crosshair" : "";
   requestPaint();
 }
 function syncFeedHover(): void {
   if (!lastClient) { setFeedHover(false); return; }
-  const p = containPoint(lastClient.x, lastClient.y,
-                         tankRect(), TANK);
+  const p = tankPoint(lastClient.x, lastClient.y);
   // Paused drops the affordance too — the click below is gated the
   // same way, so the cursor mustn't promise a feed that won't land.
   setFeedHover(p !== null && !paused &&
                isFeedZone(p.x, p.y, waterline));
 }
 
-canvas.addEventListener("pointerdown", (e) => {
+// The tank's pointer handlers listen on #tank and on #crt, which
+// covers the glass while the tube draws.
+function onTankDown(e: PointerEvent): void {
   if (bootT0 !== null) { skipBoot(); return; } // a click skips the boot
   if (e.button !== 0) return; // ignore right/middle clicks
   const p = tankPoint(e.clientX, e.clientY);
@@ -639,7 +672,7 @@ canvas.addEventListener("pointerdown", (e) => {
     noteGlassTap();
   }
   requestPaint();
-});
+}
 // The nearest calm fish notices the hovering pointer and drifts over
 // to look — hunger and panic still outrank curiosity in the sim. The
 // pointer's last real move is kept here: a resting pointer loses the
@@ -701,7 +734,7 @@ function placeTip(e: { clientX: number; clientY: number }): void {
     innerHeight - fishTip.offsetHeight - 4))}px`;
 }
 
-canvas.addEventListener("pointermove", (e) => {
+function onTankMove(e: PointerEvent): void {
   // Primary-only invariant: lastClient, hover, and curiosity follow the
   // primary pointer. Any other handler that writes lastClient must apply
   // the same guard, since pointerleave ignores non-primary pointers.
@@ -716,8 +749,8 @@ canvas.addEventListener("pointermove", (e) => {
   if (!tip) { fishTip.style.display = "none"; return; }
   fishTip.textContent = tip;
   placeTip(e);
-});
-canvas.addEventListener("pointerleave", (e) => {
+}
+function onTankLeave(e: PointerEvent): void {
   // A second finger lifting must not clear the primary pointer's hover:
   // lastClient and the feed crosshair follow the primary only, and
   // syncFeedHover() re-reads lastClient every frame.
@@ -736,7 +769,12 @@ canvas.addEventListener("pointerleave", (e) => {
   fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
   seePointer(null);
-});
+}
+for (const el of [canvas, crtEl]) {
+  el.addEventListener("pointerdown", onTankDown);
+  el.addEventListener("pointermove", onTankMove);
+  el.addEventListener("pointerleave", onTankLeave);
+}
 
 // ---- fish Get-Info card -------------------------------------------------
 // A tiny Mac window that follows the ⌥-clicked fish — its name, hunger
@@ -794,16 +832,15 @@ function layoutInfo(): void {
   const f = card.fish;
   if (!sim.fish.includes(f)) { closeInfo(); return; }
   // Fixed on body, so card space is viewport coordinates.
-  const r = canvas.getBoundingClientRect();
-  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
-  const ox = r.left + (r.width - TANK.width * s) / 2;
-  const oy = r.top + (r.height - TANK.height * s) / 2;
+  const r = pictureEl().getBoundingClientRect();
+  const at = tankToClient(f.x, f.y, r);
   const cw = card.root.offsetWidth, ch = card.root.offsetHeight;
-  let px = ox + f.x * s - cw / 2;
-  let py = oy + f.y * s - ch - 8;
-  if (py < r.top) py = oy + f.y * s + 16; // too near the surface: go under
-  // Clamp inside the tank rect — the card can't slide under the
-  // case's bezel edge or off the window.
+  let px = at.x - cw / 2;
+  let py = at.y - ch - 8;
+  if (py < r.top) py = at.y + 16; // too near the surface: go under
+  // Clamp inside the picture's rect (the tank, or the glass with the
+  // CRT on): the card can't slide under the case's bezel edge or off
+  // the window.
   card.root.style.left =
     `${Math.max(r.left, Math.min(px, r.right - cw))}px`;
   card.root.style.top =
@@ -2041,7 +2078,6 @@ let lastGlare = -1;
 const machineEl = document.getElementById("machine")!;
 const shellEl = document.getElementById("shell")!;
 const screenEl = document.getElementById("screen")!;
-const crtEl = document.getElementById("crt")!;
 // Cosmetic layer — recreate #screenback and enforce sibling order when
 // stale markup is detected (#machine/#shell/#screen must still exist).
 let backEl = document.getElementById("screenback");
@@ -2062,7 +2098,7 @@ if (!backEl.isConnected ||
   machineEl.before(backEl, screenEl);
 
 function layoutMachine(): void {
-  canvasRect = null; // the tank may have moved with the aperture
+  dropRects(); // the tank and glass may have moved with the aperture
   // The browser's menu bar is fixed over the page top — letterbox
   // into the room below it so it never covers the case's crown or,
   // on Bare, the tank's top feed rows. Hidden/absent (zen, native,
