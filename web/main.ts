@@ -41,6 +41,7 @@ import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
 import { bootPhase, drawBoot, fadeProgress, paradeIcon }
   from "./boot.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
+import { claimTank } from "./tankclaim.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
 import { stateLabel } from "./overviewmodel.js";
@@ -296,6 +297,26 @@ const placeholderIds = new Set<number>();
 if (roster.length || keepEmpty) for (const f of roster) sim.addFish(f);
 else for (const f of DEFAULT_FISH) placeholderIds.add(sim.addFish(f).id);
 
+// Two same-origin tank tabs would both simulate, both answer every
+// mutating bus op, and both write SAVE_KEY — last writer wins and the
+// saves interleave. The first tab holds a lease; a second runs the
+// tank view-only — sim and render still go, but nothing saves and no
+// bus message is answered — until the owner's lease lapses or its
+// pagehide releases it, then reloads to take over.
+const claim = claimTank(() => location.reload()); // lease stolen
+                                                  // mid-session
+const tankOwner = claim.owned;
+if (!tankOwner) {
+  setInterval(() => { if (claim.ownerGone()) location.reload(); },
+              1_500);
+  showAlert({
+    icon: "note",
+    text: "Finsical is already open in another window. This copy is " +
+          "view only — it won't save.",
+    buttons: [{ title: "OK", default: true, cancel: true }],
+  });
+}
+
 function tankSnapshot(): SavedTank {
   return {
     v: rosterComplete ? 2 : 1,
@@ -325,7 +346,8 @@ window.addEventListener("pageshow", (e) => {
   if (e.persisted && suppressSave) location.reload();
 });
 function saveTank(): void {
-  if (suppressSave) return;
+  // A spectator never writes the shared save.
+  if (suppressSave || !tankOwner) return;
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(tankSnapshot()));
   } catch { /* storage unavailable — the tank still runs */ }
@@ -1196,6 +1218,8 @@ let stateTimer = 0, stateDue = 0, lastStatePost = 0;
  * state. A queued push reschedules earlier when a caller asks for a
  * shorter wait, never later. */
 function postState(minWait = STATE_MIN_MS): void {
+  // A spectator stays silent — the owning tab answers the panels.
+  if (!tankOwner) return;
   const now = Date.now();
   const due = Math.max(now, lastStatePost + minWait);
   if (stateTimer && due >= stateDue) return;
@@ -1366,6 +1390,7 @@ function fishOutAfter(remove: () => void): void {
 }
 
 function onBusMessage(m: BusMsg): void {
+  if (!tankOwner) return; // view-only: the owner answers everything
   if (m.op === "hello") postState(HELLO_MIN_MS);
   else if (m.op === "focusFish") {
     // The Overview's selection spotlights a fish — null lifts it.
