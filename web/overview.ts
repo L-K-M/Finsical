@@ -265,6 +265,11 @@ listEl.addEventListener("keydown", (e) => {
   }
 });
 
+// A file dropped here would navigate this borderless window to the
+// raw file, with no way back — swallow drops like the tank page does.
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
+
 // Place a thumbnail at whole-pixel offsets inside its box — flex
 // centering would put odd sizes on half pixels and blur the art.
 function placeThumb(img: HTMLImageElement): void {
@@ -300,11 +305,11 @@ function row(it: Item, need: Set<string>): HTMLElement {
   return r;
 }
 
-// Rows are only rebuilt when membership or order changes — a full
-// rebuild on every 2s state push would reset the list under the
-// pointer. Live labels refresh in place instead. A rebuild a push
-// forces (fish reordering under the Status sort) keeps the scroll
-// where it is; a new sort starts from the top.
+// Rows are only rebuilt when membership changes — a full rebuild on
+// every 2s state push would reset the list under the pointer, and a
+// re-sort on every push would shuffle rows out from under it as fish
+// hunger flips their Status text. Live labels refresh in place while
+// the displayed order stands; a new sort still starts from the top.
 let lastStructure = "";
 function render(scroll: ListScroll = "keep"): void {
   const s = tankState;
@@ -318,9 +323,12 @@ function render(scroll: ListScroll = "keep"): void {
     summary(fishN, addonN, s.waterQuality ?? 1, s.tickCount ?? 0);
   centerText(summaryEl);
 
-  const structure = JSON.stringify(next.map((i) => i.key));
+  // Membership, not order: a status-text re-sort alone must not rebuild.
+  const structure = JSON.stringify(next.map((i) => i.key).sort());
   if (structure === lastStructure) {
-    next.forEach((it, i) => {
+    const byKey = new Map(next.map((it) => [it.key, it]));
+    items = items.map((old) => byKey.get(old.key) ?? old);
+    items.forEach((it, i) => {
       const r = list.rows[i];
       const st = r?.querySelector(".ocell-status");
       if (st && st.textContent !== it.status) {
@@ -328,7 +336,6 @@ function render(scroll: ListScroll = "keep"): void {
         r!.setAttribute("aria-label", `${it.name}, ${it.kind}, ${it.status}`);
       }
     });
-    items = next;
     return;
   }
   lastStructure = structure;
@@ -356,8 +363,11 @@ function render(scroll: ListScroll = "keep"): void {
 // hello until a state push arrives (it also posts on every save).
 let tries = 0;
 const greet = setInterval(() => {
-  if (greeted || ++tries > 60) clearInterval(greet); // give up after 30s
-  else bus.post({ op: "hello" });
+  if (greeted || ++tries > 60) {
+    clearInterval(greet); // give up after 30s — say so rather than wait on
+    if (!greeted)
+      list.setEmpty("The tank isn't answering — is Finsical running?");
+  } else bus.post({ op: "hello" });
 }, 500);
 bus.post({ op: "hello" });
 // Poll while the window is visible — the overview reads live, and this
