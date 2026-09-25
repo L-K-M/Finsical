@@ -181,13 +181,16 @@ body.crt canvas#tank { opacity: 0; }
 #pfcrt { display: flex; width: max-content; }
 /* Lines up with the Lighting pane's pop-ups (82 px titles, 6 px gap). */
 #pflamp { display: flex; width: max-content; margin-left: 88px; }
-#crt-warn { position: absolute; left: 196px; right: 0; top: 0; }
+/* In the flow under the switch — an absolute overlay would run into
+   the preset row or a trait group whenever it wraps to a third line. */
+#crt-warn { margin-top: 6px; }
 /* One-click picture-tube presets under the CRT switch. */
 #pfpresets {
   display: flex; flex-wrap: wrap; gap: 6px;
   margin-top: 10px; margin-bottom: 2px;
 }
 #pfpresets .pfpreset { min-width: 0; }
+#pfpresets[hidden] { display: none; }
 .pfgroup { padding: 12px 11px 6px; }
 /* The preset row clears the checkbox — the groups need less air. */
 #pftraits .pfgroup:first-child { margin-top: 12px; }
