@@ -470,7 +470,7 @@ function setFeedHover(on: boolean): void {
 function syncFeedHover(): void {
   if (!lastClient) { setFeedHover(false); return; }
   const p = containPoint(lastClient.x, lastClient.y,
-                         canvas.getBoundingClientRect(), TANK);
+                         tankRect(), TANK);
   // Paused drops the affordance too — the click below is gated the
   // same way, so the cursor mustn't promise a feed that won't land.
   setFeedHover(p !== null && !paused &&
@@ -552,7 +552,8 @@ function tipForPoint(p: { x: number; y: number }): string | null {
   const f = fishToName(p);
   if (f) return fishTipLabel(f);
   if (anyOverlayOpen()) return null;
-  return isFeedZone(p.x, p.y, waterline) ? "Click to feed" : null;
+  return !paused && isFeedZone(p.x, p.y, waterline)
+    ? "Click to feed" : null;
 }
 
 function placeTip(e: { clientX: number; clientY: number }): void {
