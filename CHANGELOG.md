@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- New machine cases: Performa 450 (II), Performa 5200 and 5200
+  (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
+  20th Anniversary Mac, iMac G3 and G4 and the bare tank.
 - Preferences fits its window again. The Picture pane's Color group
   ran past the line above the description at the bottom, and the
   Monitor pane's lower group ended right on it, since Skew and
@@ -28,6 +31,20 @@
   picture to fill the whole screen glass. On machines whose glass is
   taller than the tank, such as the Performa 450, the stretched
   picture used to be cut off by black bars above and below it.
+- The tank now lives the way the original AquaZone's did, reimplemented
+  from its Mac and Windows engines. Water has a temperature, pH,
+  hardness, oxygen, CO2, nitrate, ammonia, chlorine and dissolved food,
+  each fish needs the ranges its species' pack records, and time passes
+  in real time, including while Finsical is closed. Fish get hungry
+  over a day, age over years, and can fall sick with White Spot,
+  Tailrot, Bellworm, Chilodonella or Water Mold when their health runs
+  down; a sick fish can infect others. Fish that die float belly-up and
+  sink, and you are told why they died.
+- Tank Stats shows the water and has a heater, Clean Filter, a water
+  change with amount and temperature, a medicine cabinet (three remedies
+  and five water treatments) and a Time setting from real time to 100
+  times faster. The filter is what aerates the water, as in the
+  original.
 - The tank plays AquaZone's own sound effects. Finsical downloads the
   game's 25 sounds (AZ_WAVES) from the Internet Archive: the first-run
   starter set now includes them, and Import Add-ons lists them under
@@ -165,8 +182,9 @@
   hidden there.
 
 - On first launch, a Mac OS 8 alert welcomes you and offers to stock
-  the tank: Stock the Tank downloads three fish, a gravel, a plant and
-  a background (about 1 MB) from the Internet Archive, shows its
+  the tank: Stock the Tank downloads three fish, a gravel, a plant, a
+  background and the game's sound effects (about 2 MB) from the
+  Internet Archive, shows its
   progress (Stop ends it), and replaces the four stand-in fish. If the
   download fails, the alert says so and offers Try Again. Knock on the
   glass too often and you get the aquarium's sign: "Please don't tap

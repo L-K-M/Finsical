@@ -1,7 +1,8 @@
 import { openBus } from "./bus.js";
 import { CRT_DEFAULTS, CRT_PRESETS, presetTube, sanitizeCrtConfig }
   from "./crt.js";
-import { MACHINES, previewMarkup } from "./machines.js";
+import { MACHINES, previewMarkup, savedMachineId }
+  from "./machines.js";
 import type { CrtConfig, CrtPreset } from "./crt.js";
 import { centerText, hostWindow, mountList, mountPopup, pushButton,
          registerSprites, setEnabled, trackHighlight, trackPress }
@@ -12,6 +13,7 @@ import { hourLabel, LIGHTING_DEFAULTS, sanitizeLighting }
 import type { Lighting, LightMode } from "../core/light.js";
 import { SOUND_DEFAULTS, sanitizeSoundConfig } from "./audio.js";
 import type { SoundConfig } from "./audio.js";
+import { tubeCaption } from "./caption.js";
 
 // Preferences window: a Mac OS 8 control panel with five panes: the
 // machine case, the CRT tube effect, the monitor's picture controls,
@@ -19,6 +21,16 @@ import type { SoundConfig } from "./audio.js";
 // rendering: this page renders the state it pushes back (op:"state"
 // carries `crt`, `machine`, `lighting` and `sound` snapshots) and posts
 // intents: crtEnabled, crtConfig, machine, lighting, soundConfig.
+
+// A file dropped on this window must not navigate it to the file —
+// only the tank page and the Add-ons window accept drops.
+window.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  // Reject file drops with the OS "no drop" cursor instead of a copy cursor.
+  if (e.dataTransfer?.types.includes("Files"))
+    e.dataTransfer.dropEffect = "none";
+});
+window.addEventListener("drop", (e) => e.preventDefault());
 
 interface SliderSpec {
   key: keyof CrtConfig;
@@ -168,6 +180,10 @@ const dragging = new Set<keyof CrtConfig>();
 // times out so a dropped post can't wedge the checkbox.
 let onTouched = false;
 let onTouchTimer: ReturnType<typeof setTimeout> | undefined;
+// The tank reports whether the CRT effect can run at all. While it
+// can't, the switch and everything hanging off it stay dimmed and the
+// pane caption explains why.
+let crtAvail = true;
 // Machine picks latch the same way: pushes already in flight still
 // carry the previous case and would snap the list back mid-browse.
 let machinePending: string | null = null;
@@ -198,6 +214,8 @@ const bus = openBus((m) => {
   const firstState = !greeted;
   greeted = true;
   const crt = (m.crt ?? {}) as CrtSnap;
+  const availChanged = crtAvail !== (crt.available !== false);
+  crtAvail = crt.available !== false;
   if (firstState || !onTouched || crt.available === false ||
       (crt.on === true) === onBox.checked) {
     onTouched = false;
@@ -206,7 +224,14 @@ const bus = openBus((m) => {
   }
   // Only warn when the tank explicitly reports the effect can't run —
   // a missing field just means an older page build.
-  warnEl.hidden = crt.available !== false;
+  warnEl.hidden = crtAvail;
+  setEnabled(onBox, crtAvail);
+  // The warning sits in the flow where the preset row would draw over
+  // it; hide the presets while they can't apply anyway.
+  presetHost.hidden = !crtAvail;
+  // Refresh the pane caption on a transition only — every push would
+  // wipe a live slider's hover text on the other panes.
+  if (availChanged) describe(null);
   if (crt.cfg !== undefined) cfg = sanitizeCrtConfig(crt.cfg);
   if (m.sound !== undefined) takeSound(sanitizeSoundConfig(m.sound));
   const mc = m.machine as { id?: unknown } | undefined;
@@ -260,17 +285,36 @@ function describe(spec: SliderSpec | LightSpec | SoundItem | null,
       return;
     }
   }
+  // `pane` is a closed PaneId union and PANES covers every pane, so
+  // this lookup cannot miss; both hint paths below share it. Only the
+  // Monitor and Picture panes mount "key" sliders, both define offHint,
+  // and syncEnabled dims exactly those sliders while off — onBox is the
+  // switch they depend on, not some other pane's.
+  const p = PANES.find((x) => x.id === pane)!;
   if (!spec) {
-    const p = PANES.find((x) => x.id === pane)!;
-    descEl.textContent = !onBox.checked && p.offHint ? p.offHint : p.hint;
+    descEl.textContent = !crtAvail && p.offHint
+      ? "This Mac can't show the CRT effect. Settings are kept."
+      : !onBox.checked && p.offHint ? p.offHint : p.hint;
     return;
   }
-  const [label, blurb] = "key" in spec
-    ? [`${spec.label}: ${(spec.fmt ?? pct)(cfg[spec.key])}`, spec.blurb]
-    : "input" in spec
-      ? [spec.value ? `${spec.label}: ${spec.value()}` : spec.label,
-         spec.blurb]
-      : [`${spec.label}: ${spec.value()}`, spec.blurb()];
+  // A dimmed tube slider explains the switch instead of showing a
+  // value that cannot apply (tubeCaption pins the wording).
+  if ("key" in spec) {
+    const c = tubeCaption({
+      label: spec.label,
+      valueText: (spec.fmt ?? pct)(cfg[spec.key]),
+      blurb: spec.blurb,
+      offHint: p.offHint,
+      crtOn: onBox.checked && crtAvail,
+    });
+    if (c.label === "") descEl.textContent = c.tail;
+    else descEl.append(el("span", "osm-label", c.label), c.tail);
+    return;
+  }
+  const [label, blurb] = "input" in spec
+    ? [spec.value ? `${spec.label}: ${spec.value()}` : spec.label,
+       spec.blurb]
+    : [`${spec.label}: ${spec.value()}`, spec.blurb()];
   descEl.append(el("span", "osm-label", label), ` — ${blurb}`);
 }
 
@@ -291,6 +335,7 @@ function showPane(id: PaneId, focus = false): void {
   defaultsBtn.hidden = id === "machine";
   document.getElementById("pffoot")!
     .classList.toggle("pfdefaults", !defaultsBtn.hidden);
+  syncEnabled();
   describe(null);
   try { localStorage.setItem(PANE_KEY, id); } catch { /* unavailable */ }
 }
@@ -510,6 +555,10 @@ const endDrags = () => {
 };
 window.addEventListener("pointerup", endDrags);
 window.addEventListener("pointercancel", endDrags);
+// A file dropped here would navigate this borderless window to the
+// raw file, with no way back — swallow drops like the tank page does.
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
 
 function syncControls(): void {
   for (const spec of ALL_SPECS) {
@@ -526,10 +575,18 @@ syncControls();
 // The sliders only act through the CRT effect: they dim while it's off,
 // the way Mac OS 8 dims controls that depend on an off switch.
 function syncEnabled(): void {
-  for (const input of sliders.values()) setEnabled(input, onBox.checked);
-  for (const btn of presetBtns) btn.disabled = !onBox.checked;
+  // A stored "on" can echo back while the effect can't run (WebGL
+  // gone): the box stays checked as a kept setting, but nothing that
+  // acts through the tube may come live.
+  const live = crtAvail && onBox.checked;
+  for (const input of sliders.values()) setEnabled(input, live);
+  for (const btn of presetBtns) btn.disabled = !live;
+  // Defaults only resets CRT sliders — dim it where none are live
+  // (it still resets Sound on that pane, CRT or not).
+  defaultsBtn.disabled = !live &&
+    PANES.find((p) => p.id === pane)!.keys.length > 0;
   document.getElementById("pfpanes")!
-    .classList.toggle("pfcrtoff", !onBox.checked);
+    .classList.toggle("pfcrtoff", !live);
   // A preset caption is only useful while the effect can take it —
   // fall back to the pane hint (which switches to offHint when off).
   if (describedPreset) describe(null);
@@ -809,6 +866,14 @@ showPane(initial);
 // The machine list takes the arrow keys as soon as the window opens.
 if (initial === "machine") machineList.element.focus({ preventScroll: true });
 
+// Seed the pane from the tank's own choice. Without a tank — or before
+// the first state push — showMachine() never runs and the list shows no
+// selection with a blank preview well. The first push overwrites this;
+// select(..., false) keeps the seed from posting a machine change.
+// savedMachineId owns the storage try/catch, so a render failure can't
+// be mistaken for blocked storage.
+showMachine(savedMachineId());
+
 // The tank page may still be loading when the window opens — retry the
 // hello until a state push arrives.
 let tries = 0;
@@ -830,4 +895,13 @@ setInterval(() => {
 // tank isn't there yet.
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) bus.post({ op: "hello" });
+});
+// Right-click inside a borderless WebKit window surfaces WebKit's
+// generic menu (Reload etc.) — nothing in it applies to a desk
+// accessory, so swallow it like the tank page does.
+window.addEventListener("contextmenu", (e) => {
+  // Editable fields keep their native Cut/Copy/Paste menu.
+  if ((e.target as HTMLElement).closest(
+      "input, textarea, select, [contenteditable]")) return;
+  e.preventDefault();
 });

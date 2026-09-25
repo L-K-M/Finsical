@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FEEDBACK_MAX_S, SOUND_DEFAULTS, sanitizeSoundConfig, TankAudio }
-  from "./audio.js";
+import { FEEDBACK_MAX_S, gainForVolume, loadSoundConfig, panFor,
+         SOUND_DEFAULTS, sanitizeSoundConfig,
+         TankAudio } from "./audio.js";
 import type { AzpackManifest } from "../core/data/azpack.js";
 
 // A minimal stand-in for WebAudio: records connections, gain values,
@@ -18,9 +19,20 @@ class FakeNode {
   connect<T extends FakeNode>(n: T): T { this.out.push(n); return n; }
 }
 class FakeGain extends FakeNode { gain = new FakeParam(); }
+class FakePanner extends FakeNode { pan = new FakeParam(); }
+class FakeBuffer {
+  readonly numberOfChannels = 1;
+  constructor(readonly duration: number,
+              readonly sampleRate: number,
+              private readonly bytes: Uint8Array) {}
+  getChannelData(_ch: number): Float32Array {
+    return Float32Array.from(this.bytes);
+  }
+}
 class FakeSource extends FakeNode {
-  buffer: { duration: number } | null = null;
+  buffer: FakeBuffer | null = null;
   loop = false;
+  playbackRate = new FakeParam();
   onended: (() => void) | null = null;
   starts = 0;
   stops: (number | undefined)[] = [];
@@ -40,14 +52,21 @@ class FakeContext {
     this.gains.push(g);
     return g;
   }
+  panners: FakePanner[] = [];
+  createStereoPanner(): FakePanner {
+    const p = new FakePanner();
+    this.panners.push(p);
+    return p;
+  }
   createBufferSource(): FakeSource {
     const s = new FakeSource();
     this.sources.push(s);
     return s;
   }
   // The "WAV" byte count doubles as the clip's length in seconds.
-  decodeAudioData(buf: ArrayBuffer): Promise<{ duration: number }> {
-    return Promise.resolve({ duration: buf.byteLength });
+  decodeAudioData(buf: ArrayBuffer): Promise<FakeBuffer> {
+    return Promise.resolve(
+      new FakeBuffer(buf.byteLength, 8000, new Uint8Array(buf)));
   }
   // State changes settle on a microtask, like the real ones.
   resume(): Promise<void> {
@@ -91,18 +110,36 @@ beforeEach(() => {
 });
 // restoreAllMocks too: a spy (console.warn in the load test) would
 // otherwise stay mocked for every later test in the file.
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => {
+  vi.unstubAllGlobals(); vi.restoreAllMocks();
+  delete (navigator as { userActivation?: unknown }).userActivation;
+});
+
+// Shadow only userActivation on the real navigator — stubGlobal would
+// blank every other navigator property for the test's duration.
+const stubActivation = (isActive: boolean): void => {
+  Object.defineProperty(navigator, "userActivation",
+    { configurable: true, get: () => ({ isActive }) });
+};
+
+describe("gainForVolume", () => {
+  it("is quadratic over the slider range", () => {
+    expect(gainForVolume(0)).toBe(0);
+    expect(gainForVolume(1)).toBe(1);
+    expect(gainForVolume(0.5)).toBe(0.25);
+  });
+});
 
 describe("TankAudio master gain", () => {
   it("routes every sound through the master and maps the volume", async () => {
     const { audio, ac, master } = await tank({ bubble: 1, drop: 1 });
-    expect(master.gain.value).toBe(SOUND_DEFAULTS.volume);
+    expect(master.gain.value).toBe(gainForVolume(SOUND_DEFAULTS.volume));
     audio.bubble();
     audio.feed();
     expect(ac.sources).toHaveLength(2);
     for (const s of ac.sources) expect(sinkOf(s)).toBe(master);
-    audio.setVolume(0.25);
-    expect(level(master.gain)).toBe(0.25);
+    audio.setVolume(0.5);
+    expect(level(master.gain)).toBe(0.25); // quadratic: -12 dB at 50%
     audio.setVolume(3);
     expect(level(master.gain)).toBe(1);
   });
@@ -114,7 +151,8 @@ describe("TankAudio master gain", () => {
     await audio.addWavs([{ name: "bubble", wav: wav(1) }]);
     expect(FakeContext.last!.gains[0]!.gain.value).toBe(0);
     audio.setMuted(false);
-    expect(level(FakeContext.last!.gains[0]!.gain)).toBe(0.4);
+    expect(level(FakeContext.last!.gains[0]!.gain))
+      .toBe(gainForVolume(0.4));
   });
 
   it("mute sets the master to 0 and unmute restores the volume", async () => {
@@ -125,7 +163,7 @@ describe("TankAudio master gain", () => {
     audio.setVolume(0.9); // adjusting while muted stays silent
     expect(level(master.gain)).toBe(0);
     audio.setMuted(false);
-    expect(level(master.gain)).toBe(0.9);
+    expect(level(master.gain)).toBe(gainForVolume(0.9));
   });
 
   it("glides a live level change instead of stepping it", async () => {
@@ -158,6 +196,110 @@ describe("TankAudio.load", () => {
     audio.bubble(); // the bad entry is skipped, the good one plays
     expect(ac.sources).toHaveLength(1);
     expect(sinkOf(ac.sources[0]!)).toBe(master);
+  });
+
+  const manifestOf = (...names: string[]): AzpackManifest => ({
+    format: "azpack/1", tag: "T", version: 1, chunks: [], names: [],
+    sounds: names.map((name) => ({ name, file: `s/${name}.wav` })),
+  });
+  const wavs = new Map<string, Uint8Array>();
+  beforeEach(() => wavs.clear());
+  const readWav = async (path: string): Promise<Uint8Array> => {
+    const w = wavs.get(path);
+    if (!w) throw new Error(`no fixture for ${path}`); // loud, not a decode-skip
+    return w;
+  };
+
+  it("a second pack's load keeps the first pack's other sounds", async () => {
+    // Manifests merge: pack B replaces its same-named entries, not the
+    // whole table — dropping two .azpacks must not mute pack A.
+    const audio = new TankAudio();
+    wavs.set("s/drop.wav", wav(1)); wavs.set("s/bubble.wav", wav(1));
+    await audio.load(readWav, manifestOf("drop"));
+    await audio.load(readWav, manifestOf("bubble"));
+    const ac = FakeContext.last!;
+    audio.bubble();
+    audio.feed(); // plays pack A's "drop" — wiped before the fix
+    expect(ac.sources).toHaveLength(2);
+  });
+
+  it("restarts the ambient loop when a pack replaces its bubbling",
+     async () => {
+    const audio = new TankAudio();
+    wavs.set(`s/${LOOP}.wav`, wav(30));
+    await audio.load(readWav, manifestOf(LOOP));
+    audio.startAmbient();
+    const ac = FakeContext.last!;
+    expect(ac.loops()).toBe(1);
+    wavs.set(`s/${LOOP}.wav`, wav(60)); // same name, new take
+    await audio.load(readWav, manifestOf(LOOP));
+    const loops = ac.sources.filter((s) => s.loop);
+    expect(loops[0]!.stops).toHaveLength(1); // old loop stopped
+    expect(loops[1]!.starts).toBe(1);        // replacement running
+    expect(ac.loops()).toBe(1);
+  });
+
+  it("leaves the loop alone when a load doesn't touch its bubbling",
+     async () => {
+    const audio = new TankAudio();
+    wavs.set(`s/${LOOP}.wav`, wav(30)); wavs.set("s/bubble.wav", wav(1));
+    await audio.load(readWav, manifestOf(LOOP));
+    audio.startAmbient();
+    const ac = FakeContext.last!;
+    await audio.load(readWav, manifestOf("bubble"));
+    const loop = ac.sources.filter((s) => s.loop)[0]!;
+    expect(loop.stops).toHaveLength(0);
+  });
+
+  it("re-loading the same pack leaves the loop running", async () => {
+    // A re-drop decodes to a fresh AudioBuffer for identical bytes —
+    // object identity would restart the loop on a semantic no-op.
+    const audio = new TankAudio();
+    wavs.set(`s/${LOOP}.wav`, wav(30));
+    await audio.load(readWav, manifestOf(LOOP));
+    audio.startAmbient();
+    const ac = FakeContext.last!;
+    await audio.load(readWav, manifestOf(LOOP)); // same take again
+    const loop = ac.sources.filter((s) => s.loop)[0]!;
+    expect(loop.stops).toHaveLength(0);
+  });
+
+  it("restarts the loop on a same-length re-encode", async () => {
+    // Same name and duration, and identical endpoints — a remaster
+    // that only differs mid-clip. Duration or an endpoint probe can't
+    // tell it from the original; the sparse probe can.
+    const audio = new TankAudio();
+    wavs.set(`s/${LOOP}.wav`, wav(30));
+    await audio.load(readWav, manifestOf(LOOP));
+    audio.startAmbient();
+    const ac = FakeContext.last!;
+    // Derive the remaster from the original bytes and flip a middle
+    // run — identical endpoints by construction, so an endpoint-only
+    // probe would wrongly call this the same clip.
+    const remaster = wavs.get(`s/${LOOP}.wav`)!.slice();
+    for (let i = 8; i < 16; i++) remaster[i] = 255 - remaster[i]!;
+    wavs.set(`s/${LOOP}.wav`, remaster);
+    await audio.load(readWav, manifestOf(LOOP));
+    const loops = ac.sources.filter((s) => s.loop);
+    expect(loops[0]!.stops).toHaveLength(1); // old loop stopped
+    expect(loops[1]!.starts).toBe(1);        // replacement running
+    // And it's the new clip looping, not a stale restart of the old.
+    expect(loops[1]!.buffer).not.toBe(loops[0]!.buffer);
+    expect(loops[1]!.buffer!.getChannelData(0)[12]).toBe(remaster[12]);
+    expect(ac.loops()).toBe(1);
+  });
+
+  it("starts ambient once bubbling arrives after an empty start", async () => {
+    // startAmbient on an empty bank records ambientKey "" — the state
+    // that must trigger a late start when bubbling lands.
+    const audio = new TankAudio();
+    wavs.set("s/bubble.wav", wav(1)); // a pack without the bubbling loop
+    await audio.load(readWav, manifestOf("bubble"));
+    audio.startAmbient();
+    expect(FakeContext.last!.loops()).toBe(0); // empty start stays silent
+    wavs.set(`s/${LOOP}.wav`, wav(30));
+    await audio.load(readWav, manifestOf(LOOP));
+    expect(FakeContext.last!.loops()).toBe(1); // begins, not silent
   });
 });
 
@@ -241,9 +383,173 @@ describe("TankAudio install feedback", () => {
     await Promise.resolve();
     expect(ac.sources).toHaveLength(0);
   });
+
+  it("waits out the lock when the install gesture is still held",
+     async () => {
+    // The Add-to-Tank click/drop is a user activation: the cue it
+    // triggered must resume and play, not drop on the locked context.
+    const { audio, ac } = await tank({ a: 1 });
+    ac.state = "suspended";
+    stubActivation(true);
+    audio.playImported("a");
+    await flush();
+    expect(ac.sources).toHaveLength(1);
+  });
+
+  it("rides an unlock() resume already in flight after the gesture " +
+     "lapses", async () => {
+    // The drop handler unlocks during the gesture; the WAV decode can
+    // finish after isActive lapses — the cue must still land.
+    const { audio, ac } = await tank({ a: 1 });
+    ac.state = "suspended";
+    audio.unlock(); // gesture's resume: pending, no activation needed
+    audio.playImported("a"); // decode landing late
+    await flush();
+    expect(ac.sources).toHaveLength(1);
+  });
+
+  it("a pack load kills a feedback cue still waiting on resume",
+     async () => {
+    const { audio, ac } = await tank({ a: 1 });
+    ac.state = "suspended";
+    stubActivation(true);
+    audio.playImported("a"); // deferred behind the locked context
+    await audio.load(async () => wav(1), {
+      format: "azpack/1", tag: "T", version: 1, chunks: [], names: [],
+      sounds: [{ name: "b", file: "s/b.wav" }],
+    });
+    await flush();
+    expect(ac.sources).toHaveLength(0); // superseded — must not play
+  });
+
+  it("a live gesture starts a fresh resume rather than riding a " +
+     "parked one", async () => {
+    const { audio, ac } = await tank({ a: 1 });
+    ac.state = "suspended";
+    // A gesture-less unlock() resume can stay pending forever on an
+    // autoplay-blocked context.
+    ac.resume = () => new Promise<void>(() => {});
+    audio.unlock();
+    // The gesture arrives with the decode — the cue must not wait on
+    // the parked promise.
+    ac.resume = () =>
+      Promise.resolve().then(() => { ac.state = "running"; });
+    stubActivation(true);
+    audio.playImported("a");
+    await flush();
+    expect(ac.sources).toHaveLength(1);
+  });
+
+  it("drops the cue rather than looping when resume leaves the " +
+     "context suspended", async () => {
+    const { audio, ac } = await tank({ a: 1 });
+    ac.state = "suspended";
+    let resumes = 0;
+    // A quirky embedder can resolve resume() without running.
+    ac.resume = () => { resumes++; return Promise.resolve(); };
+    stubActivation(true);
+    audio.playImported("a");
+    await flush();
+    expect(ac.sources).toHaveLength(0);
+    expect(resumes).toBe(1); // retried once, then dropped — no loop
+  });
+
+  it("a pack load stops the previous pack's feedback", async () => {
+    // load() merges sound tables; the old pack's feedback must not
+    // overlap the new one's install cue.
+    const { audio, ac } = await tank({ a: 1 });
+    audio.playImported("a");
+    await audio.load(async () => wav(1), {
+      format: "azpack/1", tag: "T", version: 1, chunks: [], names: [],
+      sounds: [{ name: "b", file: "s/b.wav" }],
+    });
+    expect(ac.sources[0]!.stops).toHaveLength(1);
+    expect(ac.sources).toHaveLength(1); // load decodes nothing live
+  });
 });
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+describe("TankAudio behind a locked context", () => {
+  it("drops one-shots instead of bursting them at the first gesture",
+     async () => {
+    const { audio, ac } = await tank({ drop: 1, IntoWater: 2 });
+    ac.state = "suspended"; // no user gesture yet
+    audio.feed();
+    audio.splash();
+    audio.tap(160, 100, 320, 200);
+    ac.state = "running";
+    await flush();
+    expect(ac.sources).toHaveLength(0);
+    // The first gesture unlocks only what is still wanted.
+    audio.unlock();
+    await flush();
+    expect(ac.sources).toHaveLength(0);
+  });
+
+  it("still defers only the ambient loop behind the lock", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    ac.state = "suspended";
+    audio.startAmbient();
+    audio.feed(); // a one-shot in between — dropped, never queued
+    await flush();
+    // Only the loop's deferred start replayed; the feed is gone.
+    expect(ac.sources).toHaveLength(1);
+    expect(ac.loops()).toBe(1);
+    audio.unlock();
+    await flush();
+    expect(ac.loops()).toBe(1); // no stacking, no burst
+  });
+});
+
+describe("TankAudio ambient restarts", () => {
+  it("does not restart the loop for an identical re-import", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.startAmbient();
+    const loop = ac.sources[0]!;
+    expect(loop.loop).toBe(true);
+    // soundsLoaded reloads re-decode the same bytes — a new buffer
+    // object for the same record. The loop keeps playing, no blip.
+    await audio.addWavs([{ name: LOOP, wav: wav(30) }]);
+    expect(loop.stops).toHaveLength(0);
+    expect(ac.loops()).toBe(1);
+  });
+
+  it("restarts the loop when the bubbling record actually changes",
+     async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.startAmbient();
+    const loop = ac.sources[0]!;
+    // A different recording under the same name takes the slot.
+    await audio.addWavs([{ name: LOOP, wav: wav(45) }]);
+    expect(loop.stops).toHaveLength(1);
+    expect(ac.loops()).toBe(1);
+    expect(ac.sources[1]!.buffer?.duration).toBe(45);
+  });
+
+  it("does not blip when the changed record re-imports identically",
+     async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.startAmbient();
+    await audio.addWavs([{ name: LOOP, wav: wav(45) }]); // record changes
+    const loop = ac.sources[1]!;
+    // A reload of the new record and removing an unrelated name must
+    // leave the live loop alone — the restart refreshed ambientKey.
+    await audio.addWavs([{ name: LOOP, wav: wav(45) }]);
+    audio.removeWavs(["unrelated"]);
+    expect(loop.stops).toHaveLength(0);
+    expect(ac.loops()).toBe(1);
+  });
+
+  it("stops the loop when every bubbling record is removed", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.startAmbient();
+    const loop = ac.sources[0]!;
+    audio.removeWavs([LOOP]);
+    expect(loop.stops).toHaveLength(1);
+    expect(ac.loops()).toBe(0);
+  });
+});
 
 describe("TankAudio.setHidden", () => {
   it("keeps the device asleep when a gesture unlocks while hidden", async () => {
@@ -344,11 +650,124 @@ describe("TankAudio event sounds", () => {
     expect(ac.sources).toHaveLength(0);
   });
 
+  it("bounds substring matches so song titles can't hijack a tap",
+     async () => {
+    const { audio, ac } = await tank({
+      "Top of the World": 1, "Sideways Stories": 2,
+    });
+    audio.tap(160, 100, 320, 200); // center glass — nothing close named
+    audio.tap(10, 100, 320, 200);  // side — "Sideways" is too long too
+    expect(ac.sources).toHaveLength(0);
+  });
+
+  it("still reaches bank names a few characters past the needle",
+     async () => {
+    const { audio, ac } = await tank({ "TOP*": 4, IntoWaterBig: 3 });
+    audio.tap(160, 10, 320, 200); // near the top edge
+    audio.sceneryIn();
+    expect(ac.sources.map((s) => s.buffer?.duration)).toEqual([4, 3]);
+  });
+
   it("splashes for a water change when the set has no sound for it",
      async () => {
     const { audio, ac } = await tank({ IntoWater: 5 });
     audio.changeWater();
     expect(played(ac)).toEqual([5]);
+  });
+
+  it("a song can't take the glass-tap sound", async () => {
+    const { audio, ac } = await tank({
+      "Centerfold": 1, "CENTER*": 7, "SIDE": 8,
+    });
+    audio.tap(160, 100, 320, 200); // middle of the glass -> center
+    audio.tap(10, 100, 320, 200); // near the edge -> side
+    expect(played(ac)).toEqual([7, 8]);
+  });
+
+  it("stays silent on tap with only a song installed", async () => {
+    const { audio, ac } = await tank({ "Centerfold": 1 });
+    audio.tap(160, 100, 320, 200);
+    audio.tap(10, 100, 320, 200);
+    expect(ac.sources).toHaveLength(0);
+  });
+
+  // The original game's sound bank ships these names (sndbank.ts) —
+  // the ones TankAudio has events for each resolve through their own
+  // event, and the unexercised ones prove nothing hijacks a needle
+  // from outside its family.
+  it("reaches each exercised 'snd ' bank name through its event",
+     async () => {
+    const { audio, ac } = await tank({
+      "CENTER*": 1, SIDE: 2, "TOP*": 3, "BOTTOM*": 4, Drop: 5,
+      IntoWater: 6, ChangeWater: 7, Switch: 8, IntoWaterBig: 9,
+      letoutWater: 10, "AZ bubble 9003": 30, aqua: 12, TimerOnOff: 13,
+      WashFilter: 14, pipopa: 15, EventPreg: 16, EventSick: 17, add: 18,
+      set: 19, EventTiyu: 20, EventCouple: 21, EventEgg: 22,
+      TimerSet: 23, EventDead: 24,
+    });
+    audio.tap(160, 100, 320, 200); // center
+    audio.tap(10, 100, 320, 200);  // side
+    audio.tap(160, 10, 320, 200);  // top
+    audio.tap(160, 190, 320, 200); // bottom
+    audio.feed();        // Drop
+    audio.splash();      // IntoWater
+    audio.changeWater(); // ChangeWater
+    audio.lampSwitch();  // Switch
+    audio.sceneryIn();   // IntoWaterBig
+    audio.fishOut();     // letoutWater
+    expect(ac.sources.map((s) => s.buffer?.duration))
+      .toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+});
+
+describe("TankAudio behind a locked context", () => {
+  it("drops stale one-shots instead of bursting them on the first click",
+     async () => {
+    const { audio, ac } = await tank({ bubble: 1, "center": 1 });
+    ac.state = "suspended"; // autoplay-gated, like a fresh browser tab
+    audio.bubble();         // sim-driven sounds while the user hasn't
+    audio.bubble();         // clicked yet must not queue
+    audio.tap(160, 100, 320, 200);
+    audio.unlock();         // first real gesture
+    await flush();
+    expect(ac.sources).toHaveLength(0);
+  });
+
+  it("still waits out the lock for a sound answering the gesture itself",
+     async () => {
+    const { audio, ac } = await tank({ "center": 1 });
+    ac.state = "suspended";
+    stubActivation(true);
+    audio.tap(160, 100, 320, 200); // the click that unlocks also taps
+    await flush();
+    expect(ac.sources).toHaveLength(1);
+  });
+
+  it("always waits for the ambient loop", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    ac.state = "suspended";
+    audio.startAmbient();
+    await flush();
+    expect(ac.sources).toHaveLength(1);
+    expect(ac.sources[0]!.loop).toBe(true);
+  });
+});
+
+describe("TankAudio event-sound name matching", () => {
+  it("a long recording that merely contains an event name is skipped",
+     async () => {
+    const { audio, ac } = await tank({
+      "Center stage (live at the Fillmore)": 240, "knock on the side": 1,
+    });
+    audio.tap(160, 100, 320, 200); // wants "center" — the song is no knock
+    expect(ac.sources.map((s) => s.buffer?.duration)).toEqual([1]);
+  });
+
+  it("a long record stays out even under an event's exact name",
+     async () => {
+    const { audio, ac } = await tank({ center: 240 });
+    audio.tap(160, 100, 320, 200);
+    expect(ac.sources).toHaveLength(0);
   });
 });
 
@@ -404,6 +823,44 @@ describe("TankAudio bubbles, as the original plays them", () => {
   });
 });
 
+describe("TankAudio stereo placement", () => {
+  it("panFor maps tank x to ±0.8 and clamps outside it", () => {
+    expect(panFor(0, 320)).toBe(-0.8);
+    expect(panFor(160, 320)).toBe(0);
+    expect(panFor(320, 320)).toBe(0.8);
+    expect(panFor(-50, 320)).toBe(-0.8);
+    expect(panFor(999, 320)).toBe(0.8);
+    expect(panFor(10, 0)).toBe(0); // degenerate width, centered
+  });
+
+  it("a tap near an edge plays through a panner at that edge",
+     async () => {
+    const { audio, ac } = await tank({ side: 1, center: 2 });
+    audio.tap(10, 100, 320, 200);
+    const src = ac.sources[0]!;
+    const panner = src.out[0]! as FakePanner;
+    expect(panner).toBeInstanceOf(FakePanner);
+    expect(panner.pan.value).toBeCloseTo(-0.75, 5);
+    expect(panner.out[0]!.out[0]).toBe(ac.gains[0]); // into the master
+  });
+
+  it("a centre tap keeps the direct path — no panner at all",
+     async () => {
+    const { audio, ac } = await tank({ center: 1 });
+    audio.tap(160, 100, 320, 200);
+    expect(ac.panners).toHaveLength(0);
+    expect(ac.sources[0]!.out[0]).toBeInstanceOf(FakeGain);
+  });
+
+  it("bubbles get a small random pitch", async () => {
+    const { audio, ac } = await tank({ "bubble pop": 2 });
+    audio.bubble(0.5);
+    const rate = ac.sources[0]!.playbackRate.value;
+    expect(rate).toBeGreaterThanOrEqual(0.94);
+    expect(rate).toBeLessThanOrEqual(1.06);
+  });
+});
+
 // Trust boundary for localStorage and the Preferences bus messages.
 describe("sanitizeSoundConfig", () => {
   it("returns defaults for non-objects", () => {
@@ -412,22 +869,64 @@ describe("sanitizeSoundConfig", () => {
   });
 
   it("keeps valid values and drops unknown keys", () => {
-    const c = sanitizeSoundConfig({ volume: 0.3, muted: true, bogus: 1 });
+    const c = sanitizeSoundConfig(
+      { volume: 0.3, muted: true, bogus: 1, v: 2 });
     expect(c).toEqual({ ...SOUND_DEFAULTS, volume: 0.3, muted: true });
     expect("bogus" in c).toBe(false);
   });
 
   it("clamps the volume and rejects wrong types", () => {
-    expect(sanitizeSoundConfig({ volume: 5 }).volume).toBe(1);
-    expect(sanitizeSoundConfig({ volume: -1 }).volume).toBe(0);
+    expect(sanitizeSoundConfig({ volume: 5, v: 2 }).volume).toBe(1);
+    expect(sanitizeSoundConfig({ volume: -1, v: 2 }).volume).toBe(0);
     const c = sanitizeSoundConfig({
       volume: NaN, muted: "yes", bubbles: 0, ambient: null,
     });
     expect(c).toEqual(SOUND_DEFAULTS);
   });
 
+  it("maps a pre-quadratic volume to the slider that replays it", () => {
+    // Before v: 2 the saved number was the gain itself; under the new
+    // curve the same level sits at sqrt(volume).
+    const c = loadSoundConfig({ volume: 0.49 });
+    expect(c.volume).toBeCloseTo(0.7, 10);
+    expect(c.v).toBe(2);
+    // Idempotent: re-loading the migrated config does not move it.
+    expect(loadSoundConfig(c).volume).toBeCloseTo(0.7, 10);
+    // A missing or non-numeric volume doesn't migrate the default.
+    expect(loadSoundConfig({ muted: true }).volume)
+      .toBe(SOUND_DEFAULTS.volume);
+  });
+
+  it("migrates an explicit v: 1 marker, but never v: 2 or newer", () => {
+    const mig = loadSoundConfig({ volume: 0.49, v: 1 });
+    expect(mig.volume).toBeCloseTo(0.7, 10);
+    // The output must carry the current marker — copying r.v through
+    // would re-migrate an already-quadratic volume on the next load.
+    expect(mig.v).toBe(2);
+    // A future or malformed marker keeps the volume verbatim — sqrt
+    // on an already-quadratic value would be a silent drift.
+    for (const v of [2, 3, "2", null])
+      expect(loadSoundConfig({ volume: 0.49, v }).volume)
+        .toBe(0.49);
+    // An integer marker newer than this build survives the round-trip;
+    // string/null and non-integer markers normalize to the schema.
+    expect(loadSoundConfig({ volume: 0.49, v: 3 }).v).toBe(3);
+    for (const v of ["2", 2.5, Infinity])
+      expect(loadSoundConfig({ volume: 0.49, v }).v).toBe(2);
+  });
+
+  it("never migrates a v-less bus partial", () => {
+    // A { volume } update from the Sound pane carries no marker; the
+    // sanitizer must treat it as the current schema, not a legacy
+    // save — only loadSoundConfig rewrites volumes.
+    const c = sanitizeSoundConfig({ volume: 0.49 });
+    expect(c.volume).toBe(0.49);
+    expect(c.v).toBe(2);
+  });
+
   it("round-trips a full config as a copy", () => {
-    const off = { volume: 0, muted: true, bubbles: false, ambient: false };
+    const off = { volume: 0, muted: true, bubbles: false,
+                  ambient: false, v: 2 };
     expect(sanitizeSoundConfig(off)).toEqual(off);
     const c = sanitizeSoundConfig(SOUND_DEFAULTS);
     expect(c).toEqual(SOUND_DEFAULTS);
