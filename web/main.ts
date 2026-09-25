@@ -3063,12 +3063,15 @@ function drawNight(now: Date): void {
   const cycle = (sim.tickCount % DAY_TICKS) / DAY_TICKS;
   const tint = twilightTint(lighting, minutesOfDay(now), cycle);
   if (tint) {
-    // Warmest at the surface, where the low sun comes in.
+    // Warmest at the surface, where the low sun comes in. Soft-light
+    // leaves black black and warms midtones — source-over lifted the
+    // whole tank toward brown mud instead.
     const rgb = `${tint.r},${tint.g},${tint.b}`;
     const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, `rgba(${rgb},${tint.a.toFixed(3)})`);
-    g.addColorStop(1, `rgba(${rgb},${(tint.a * 0.3).toFixed(3)})`);
-    ctx.globalCompositeOperation = "source-over";
+    g.addColorStop(0,
+      `rgba(${rgb},${Math.min(1, 2 * tint.a).toFixed(3)})`);
+    g.addColorStop(1, `rgba(${rgb},${(0.6 * tint.a).toFixed(3)})`);
+    ctx.globalCompositeOperation = "soft-light";
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
   }
