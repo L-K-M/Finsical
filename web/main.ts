@@ -668,6 +668,9 @@ let lastHover: { x: number; y: number } | null = null;
 /** Whether it is dark enough for a hovering pointer to light the
  * torch (see render()). */
 const torchOn = (): boolean => torchShows(sim.light, nightFloor(lighting));
+/** Whether the last frame painted the torch, so leaving the tank
+ * repaints to put it out even if the light has changed since. */
+let torchLit = false;
 
 /** The hover tip for a tank point: the fish's name, or in the air
  * strip a hint that a click drops food there. fishToName already
@@ -725,7 +728,7 @@ canvas.addEventListener("pointerleave", (e) => {
   mouseClient = null;
   lastClient = null;
   lastHover = null;
-  if (torchOn()) requestPaint(); // put the torch out, even while paused
+  if (torchLit) requestPaint(); // put the torch out, even while paused
   fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
   sim.notice = null;
@@ -3188,6 +3191,7 @@ function render(hidePauseOverlay = false): void {
   // A mouse or pen hovering the dark tank lights it like a torch, in
   // the colors the scene has before the night veil goes on.
   const torch = lastHover && torchOn() ? lastHover : null;
+  torchLit = torch !== null;
   if (torch) keepTorch(ctx, torch.x, torch.y, 1 - sun);
   drawNight(new Date());
   if (torch) drawTorch(ctx);
