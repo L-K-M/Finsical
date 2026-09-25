@@ -11,8 +11,8 @@
  *  - R/B misconvergence that grows toward the screen edges
  *  - RGB grille stripes at device-pixel pitch, so the mask is far finer
  *    than the game pixels
- *  - gentle barrel curvature, corner vignette, flicker + rolling band,
- *    faint grain
+ *  - gentle barrel curvature with rounded, anti-aliased raster
+ *    corners, corner vignette, flicker + rolling band, faint grain
  *  - service-menu geometry: raster position, skew and a perspective
  *    keystone
  * The beam smear runs first, once per game row, into an offscreen
@@ -136,6 +136,9 @@ uniform float uDegauss; // degauss wobble amplitude (0 = settled)
 // share of the neutral raster's width or height.
 const float POS_RANGE = 0.10;
 
+// Corner radius of the raster, in game px.
+const float RASTER_CORNER = 6.0;
+
 // The smeared scanline signal at lp. Like gamePx, rows sample sharp:
 // the linear filter blends columns, and rows only across the one
 // device px where they meet.
@@ -220,6 +223,17 @@ void main() {
   // Logical game pixel under this output pixel (post-warp).
   vec2 lp = uv * uTank;
 
+  // The raster's own edge: rounded corners, and coverage faded across
+  // the last device px instead of a 1-bit cut, so the bowed edges don't
+  // stair-step. sd is the distance outside the rounded rect, in game px.
+  vec2 q = abs(lp - 0.5 * uTank) - (0.5 * uTank - RASTER_CORNER);
+  float sd = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - RASTER_CORNER;
+  float edge = clamp(0.5 - sd * min(pxScale.x, pxScale.y), 0.0, 1.0);
+  if (edge <= 0.0) {
+    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    return;
+  }
+
   // The scanline, already smeared along the scan by the rows pass.
   vec3 c = rowPx(lp);
 
@@ -260,6 +274,8 @@ void main() {
   else if (stripe < 1.5) mask.g = 1.0;
   else mask.b = 1.0;
   c *= mix(vec3(1.0), mask * 1.18, uGrill); // 1.18 compensates dimming
+
+  c *= edge;
 
   // Glass vignette, faint flicker (plus a slow rolling brightness
   // band — the beam never sits perfectly in sync), and grain.
