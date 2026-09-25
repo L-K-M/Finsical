@@ -252,9 +252,14 @@ function syncKeeping(w: WaterStats | null): void {
 let greeted = false;
 let tankBoot: string | undefined;
 let lastStats: TankStats | null = null;
+let lastStateAt = 0;
+let tankGone = false;
 const bus = openBus((m: BusMsg) => {
   if (m.op !== "state") return;
   greeted = true;
+  lastStateAt = Date.now();
+  if (tankGone) { tankGone = false;
+                rowsEl.classList.remove("osm-dimmed"); }
   if (typeof m.boot === "string") {
     // A restarted tank is a different tank: its water and hunger must
     // not merge into the trends and sparklines the old one drew.
@@ -358,6 +363,23 @@ pushButton(copyBtn, () => {
 setInterval(() => {
   if (!document.hidden) bus.post({ op: "hello" });
 }, 2000);
+// A hello earns a state push within ~750 ms — six quiet seconds after
+// the last one means the tank tab is gone or reloading. Dim the stale
+// readings and say so instead of showing them as live.
+setInterval(() => {
+  const gone = greeted && Date.now() - lastStateAt > 6000;
+  if (gone === tankGone) return;
+  tankGone = gone;
+  if (gone) {
+    rowsEl.classList.add("osm-dimmed");
+    careEl.textContent = "";
+    careEl.appendChild(el("div", "scareline", "Waiting for the tank…"));
+  } else if (lastStats) {
+    rowsEl.classList.remove("osm-dimmed");
+    render(lastStats);
+    syncKeeping(lastStats.water);
+  }
+}, 1000);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) bus.post({ op: "hello" });
 });

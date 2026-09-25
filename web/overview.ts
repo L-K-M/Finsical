@@ -89,9 +89,15 @@ let tankBoot: string | undefined;
 // needs — not crypto strength.
 const pageId = crypto.randomUUID?.() ??
   `o-${Date.now()}-${Math.random()}`;
+let lastStateAt = 0;
+// True while the tank has gone quiet — the list keeps its last rows
+// (dimmed) but Remove mustn't post into the void.
+let tankGone = false;
 const bus = openBus((m) => {
   if (m.op === "state") {
     greeted = true;
+    lastStateAt = Date.now();
+    if (tankGone) { tankGone = false; render(); }
     // A tank restart loses any in-flight wantThumbs — a new boot id
     // resets ask state so missing thumbs are requested again (stored
     // thumbs still serve; only empty boxes re-ask).
@@ -174,8 +180,8 @@ listEl.focus({ preventScroll: true });
 
 function syncRemove(): void {
   const it = items[list.selected];
-  removeBtn.disabled = !it;
-  useBtn.disabled = !it?.use;
+  removeBtn.disabled = tankGone || !it;
+  useBtn.disabled = tankGone || !it?.use;
 }
 const armOrRemove = (): void => {
   const it = items[list.selected];
@@ -314,6 +320,7 @@ let lastStructure = "";
 function render(scroll: ListScroll = "keep"): void {
   const s = tankState;
   if (!s) return;
+  listEl.classList.remove("osm-dimmed");
   // Only now is "empty" a fact rather than "not heard from the tank".
   list.setEmpty("The tank is empty. Import add-ons to stock it.");
   const fishN = (s.fish ?? []).length;
@@ -377,6 +384,20 @@ bus.post({ op: "hello" });
 setInterval(() => {
   if (!document.hidden) bus.post({ op: "hello" });
 }, 2000);
+// A hello earns a state push within ~750 ms — six quiet seconds after
+// the last one means the tank tab is gone or reloading, and the rows
+// still on screen are stale. Dim them and stand the buttons down
+// rather than let Remove post into the void.
+setInterval(() => {
+  const gone = greeted && Date.now() - lastStateAt > 6000;
+  if (gone === tankGone) return;
+  tankGone = gone;
+  if (!gone) return; // the state handler's render() restores
+  summaryEl.textContent = "Waiting for the tank…";
+  centerText(summaryEl);
+  listEl.classList.add("osm-dimmed");
+  syncRemove();
+}, 1000);
 // Snap to fresh state the moment the window is shown again.
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) bus.post({ op: "hello" });

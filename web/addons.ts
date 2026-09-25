@@ -12,10 +12,16 @@ import { hostWindow } from "osmium-ui";
 // BroadcastChannel.
 
 let greeted = false;
+let lastStateAt = 0;
 const bus = openBus((m) => {
-  if (m.op === "state") greeted = true;
+  if (m.op === "state") { greeted = true; lastStateAt = Date.now(); }
   panel.notify(m);
 });
+// The tank pushes on every save and answers each hello — six quiet
+// seconds means the tab is gone or reloading, so Add to Tank would
+// just spin to its timeout.
+const tankConnected = (): boolean =>
+  greeted && Date.now() - lastStateAt < 6000;
 
 const win = document.getElementById("awin")!;
 hostWindow(win, {
@@ -30,7 +36,8 @@ const panel = mountImportPanel({
   onSheets: () => {},
   onImages: () => {},
   preview: previewOf,
-}, { host: win.querySelector<HTMLElement>(".osm-content")!, remote: bus });
+}, { host: win.querySelector<HTMLElement>(".osm-content")!, remote: bus,
+     connected: tankConnected });
 panel.open();
 
 // Sound files dropped on the window: decoded/encoded bytes persist to
