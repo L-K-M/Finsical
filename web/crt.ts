@@ -16,8 +16,8 @@
  *    pixels
  *  - gentle barrel curvature with rounded, anti-aliased raster
  *    corners, corner vignette, flicker + rolling band, faint grain
- *  - service-menu geometry: raster position, skew and a perspective
- *    keystone
+ *  - service-menu geometry: raster position, horizontal and vertical
+ *    skew and a perspective keystone
  * The beam smear runs first, once per game row, into an offscreen
  * target as wide as the raster's device px, and the bloom and halation
  * blur the frame at game size or below; the tube pass then reads the
@@ -188,7 +188,8 @@ uniform float uContr; // picture contrast around mid level
 uniform float uZoom;  // overscan crop (0 = full raster)
 uniform float uHSize; // raster width pot (0.5 = neutral)
 uniform float uVSize; // raster height pot (0.5 = neutral)
-uniform float uSkew;  // raster shear pot (0.5 = square)
+uniform float uSkew;  // raster shear pots (0.5 = square)
+uniform float uVSkew;
 uniform float uPersp; // horizontal keystone (0.5 = head-on)
 uniform float uHPos;  // raster position pots (0.5 = centered)
 uniform float uVPos;
@@ -209,6 +210,21 @@ const float RASTER_CORNER = ${glslFloat(RASTER_CORNER)};
 // At full swing the raster's far edge keeps 1 / (1 + K/2) of the
 // looming edge's height: 71% at 0.8.
 const float KEYSTONE = ${glslFloat(KEYSTONE)};
+
+// Light the bloom, halation, overdrive and the grille's lit stripe
+// add at full slider. The highlight shoulder's peak is built from the
+// same gains, so they live in one place.
+const float BLOOM_GAIN = 0.60;
+const float HALO_GAIN = 0.10;
+const float OVER_GAIN = 0.60;
+const float MASK_BOOST = 1.18; // compensates the grille's dimming
+// The shoulder leaves everything below KNEE alone and reaches full
+// output at WHITE_SHARE of the way from 1 to the peak drive. Rolling
+// off the whole headroom instead dimmed real tank frames by over 2%;
+// this share keeps their mean within 1.7% at defaults and clips under
+// 1% of their pixels, down from about 14% with a hard clip.
+const float KNEE = 0.85;
+const float WHITE_SHARE = 0.25;
 
 // The smeared scanline signal at lp. Like gamePx, rows sample sharp:
 // the linear filter blends columns, and rows only across the one
@@ -273,6 +289,19 @@ vec3 spotArea(vec3 var) { return min(sqrt(6.2831853 * var), 1.0); }
 vec3 toLight(vec3 v) { return v * v; }
 vec3 toSignal(vec3 l) { return sqrt(max(l, 0.0)); }
 
+// Highlight shoulder: bloom, halation, overdrive and the grille's
+// boost drive bright channels past what the display shows, and a hard
+// clip there flattens the brightest detail into one level. Values
+// below KNEE pass untouched; above it an extended Reinhard curve
+// (slope 1 at the knee, so no visible crease) rolls KNEE..white into
+// KNEE..1, and only drive past white still clips. At white 1 it is
+// the identity.
+vec3 shoulder(vec3 c, float white) {
+  vec3 over = max(c - KNEE, 0.0);
+  float k = 1.0 / (1.0 - KNEE) - 1.0 / (white - KNEE);
+  return min(c, KNEE) + over / (1.0 + k * over);
+}
+
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
 }
@@ -280,8 +309,8 @@ float hash(vec2 p) {
 void main() {
   vec2 uv = (gl_FragCoord.xy - uRect.xy) / uRect.zw;
   // Overscan and the size pots below scale the raster up; the
-  // keystone corrects this per fragment below, while skew (a pure
-  // shear — area-preserving), curvature and the warm-up squeeze are
+  // keystone corrects this per fragment below, while skew (pure
+  // shears — area-preserving), curvature and the warm-up squeeze are
   // left out of the estimate. crtRowColumns() mirrors the x term.
   pxScale = uRect.zw / uTank * (1.0 + 0.12 * uZoom) *
             vec2(0.75 + 0.5 * uHSize, 0.75 + 0.5 * uVSize);
@@ -311,14 +340,16 @@ void main() {
                          0.75 + 0.5 * uVSize) + 0.5;
   // Geometry pots, still in raster space so the warped matte edges
   // bow with the tube. Skew slides the top edge sideways, leaning
-  // the raster into a parallelogram. Perspective is a horizontal
+  // the raster into a parallelogram, and vertical skew slides the
+  // right edge up or down, sloping it. Perspective is a horizontal
   // keystone — the sample window compresses toward the receding
   // edge and opens toward the looming one, so the raster reads as
-  // swung on its stand. Both are centered: 0.5 leaves uv alone.
+  // swung on its stand. All are centered: 0.5 leaves uv alone.
   // The keystone is normalized by its looming side, whose edge stays
   // where it sits head-on (depth 1) while only the far edge shrinks
   // (see KEYSTONE).
   uv.x -= (uSkew - 0.5) * 0.5 * (uv.y - 0.5);
+  uv.y -= (uVSkew - 0.5) * 0.5 * (uv.x - 0.5);
   float keyA = (uPersp - 0.5) * KEYSTONE;
   float depth = (1.0 - keyA * (uv.x - 0.5)) / (1.0 + 0.5 * abs(keyA));
   uv = (uv - 0.5) / depth + 0.5;
@@ -418,10 +449,11 @@ void main() {
   // rather than casting sharp copies of itself.
   if (uBloom > 0.0) {
     vec2 t = lp / uTank;
-    c += texture2D(uBloomTex, t).rgb * (0.60 * uBloom);
-    c += texture2D(uHaloTex, t).rgb * (0.10 * uBloom);
+    c += texture2D(uBloomTex, t).rgb * (BLOOM_GAIN * uBloom);
+    c += texture2D(uHaloTex, t).rgb * (HALO_GAIN * uBloom);
   }
-  c *= 1.0 + (0.60 * uOver) * smoothstep(0.5, 1.0, max(c.r, max(c.g, c.b)));
+  c *= 1.0 + (OVER_GAIN * uOver) *
+             smoothstep(0.5, 1.0, max(c.r, max(c.g, c.b)));
 
   // Phosphor mask at device-pixel pitch: each device px lights one
   // RGB channel fully and the other two at 0.72. The patterns follow
@@ -434,19 +466,19 @@ void main() {
   //  - Shadow mask: dot triads, 2 px dots on a 6 px pitch, each row
   //    shifted by half a triad so the dots sit in a delta pattern.
   // Every pattern lights each channel equally often, and the gain
-  // puts the mean back where the unmasked picture was (1.18, with the
-  // slot mask's gaps compensated on top), so switching type at the
-  // same strength keeps the picture's level.
+  // puts the mean back where the unmasked picture was (MASK_BOOST,
+  // with the slot mask's gaps compensated on top), so switching type
+  // at the same strength keeps the picture's level.
   vec2 dp = floor(gl_FragCoord.xy);
   float stripe;
-  float gain = 1.18;
+  float gain = MASK_BOOST;
   float gap = 1.0;
   if (uMask < 0.5) {
     stripe = mod(dp.x, 3.0);
   } else if (uMask < 1.5) {
     stripe = mod(dp.x, 3.0);
     if (mod(dp.y + floor(dp.x / 3.0), 2.0) < 0.5) gap = SLOT_GAP;
-    gain = 1.18 * 2.0 / (1.0 + SLOT_GAP);
+    gain = MASK_BOOST * 2.0 / (1.0 + SLOT_GAP);
   } else {
     // 3 * y mod 6, kept small for mediump.
     stripe = floor(mod(dp.x + 3.0 * mod(dp.y, 2.0), 6.0) / 2.0);
@@ -456,6 +488,20 @@ void main() {
   else if (stripe < 1.5) mask.g = 1.0;
   else mask.b = 1.0;
   c *= mix(vec3(1.0), mask * (gap * gain), uGrill);
+
+  // Roll the highlights off before the vignette and picture controls.
+  // After the grille rather than before it: the lit stripe's boost is
+  // part of the drive, and a shoulder ending at 1 before it would
+  // still clip every lit stripe above 1 / gain, while one ending
+  // at 1 / gain would dim white by up to a quarter. peak is the
+  // drive a full-level rows signal reaches with the active traits. It
+  // is a nominal bound, not a strict one (overlapping beam spots can
+  // lift c slightly above 1 before bloom), and only sets the white
+  // point. With the traits all off it is 1 and the picture is
+  // untouched.
+  float peak = (1.0 + (BLOOM_GAIN + HALO_GAIN) * uBloom) *
+               (1.0 + OVER_GAIN * uOver) * mix(1.0, gain, uGrill);
+  if (peak > 1.0) c = shoulder(c, 1.0 + WHITE_SHARE * (peak - 1.0));
 
   c *= edge;
 
@@ -529,6 +575,8 @@ export interface CrtConfig {
   vsize: number;
   /** Sideways lean of the raster — 0.5 is square. */
   skew: number;
+  /** Up-or-down slope of the raster — 0.5 is square. */
+  vskew: number;
   /** Keystone warp, the raster swung about its vertical axis —
    * 0.5 faces the viewer. */
   perspective: number;
@@ -550,7 +598,7 @@ export const CRT_DEFAULTS: Readonly<CrtConfig> = Object.freeze<CrtConfig>({
   misconvergence: 0.35, grille: 1.0, mask: "aperture",
   curvature: 0.45, vignette: 0.35, flicker: 0.30, grain: 0.30,
   brightness: 0.50, contrast: 0.50, zoom: 0.0,
-  hsize: 0.50, vsize: 0.50, skew: 0.50, perspective: 0.50,
+  hsize: 0.50, vsize: 0.50, skew: 0.50, vskew: 0.50, perspective: 0.50,
   hpos: 0.50, vpos: 0.50,
   red: 0.50, green: 0.50, blue: 0.50,
 });
@@ -597,7 +645,7 @@ export interface CrtPreset {
  * are the user's. Every other key is the tube itself. */
 export const PICTURE_KEYS: readonly (keyof CrtConfig)[] = Object.freeze([
   "brightness", "contrast", "zoom",
-  "hsize", "vsize", "skew", "perspective", "hpos", "vpos",
+  "hsize", "vsize", "skew", "vskew", "perspective", "hpos", "vpos",
   "red", "green", "blue",
 ]);
 
@@ -681,7 +729,7 @@ export function crtRasterRect(bufW: number, bufH: number,
 
 /** The pots that move or warp the raster, read by the pointer mirror. */
 export type CrtGeometry = Pick<CrtConfig, "zoom" | "hsize" | "vsize" |
-  "skew" | "perspective" | "curvature" | "hpos" | "vpos">;
+  "skew" | "vskew" | "perspective" | "curvature" | "hpos" | "vpos">;
 
 /** A point in raster uv: 0-1 across the neutral raster rect (FRAG's
  * uRect), y up like gl_FragCoord. */
@@ -698,13 +746,14 @@ const posShift = (pot: number): number => (pot - 0.5) * (2 * POS_RANGE);
 const overscanScale = (zoom: number): number => 1 + 0.12 * zoom;
 const sizeScale = (pot: number): number => 0.75 + 0.5 * pot;
 const skewShear = (g: CrtGeometry): number => (g.skew - 0.5) * 0.5;
+const vskewShear = (g: CrtGeometry): number => (g.vskew - 0.5) * 0.5;
 const keystoneA = (g: CrtGeometry): number =>
   (g.perspective - 0.5) * KEYSTONE;
 const barrelK = (g: CrtGeometry): number => 0.10 * g.curvature;
 
 /** Where the screen point (u, v) of the neutral raster rect samples
  * the raster once the pots and the tube have moved and warped it:
- * FRAG's uv chain in order (position pots, overscan, size pots, skew,
+ * FRAG's uv chain in order (position pots, overscan, size pots, skews,
  * keystone, barrel) for the settled tube (no warm-up squeeze or
  * degauss wobble). Null where the shader draws black: outside the
  * raster or past its rounded corners, whose radius is in `tank` px.
@@ -718,6 +767,7 @@ export function crtScreenToRaster(u: number, v: number, g: CrtGeometry,
   x = (x - 0.5) / sizeScale(g.hsize) + 0.5;
   y = (y - 0.5) / sizeScale(g.vsize) + 0.5;
   x -= skewShear(g) * (y - 0.5);
+  y -= vskewShear(g) * (x - 0.5);
   const a = keystoneA(g);
   const depth = (1 - a * (x - 0.5)) / (1 + 0.5 * Math.abs(a));
   // Past the keystone's vanishing line the shader samples garbage
@@ -772,6 +822,8 @@ export function crtRasterToScreen(x: number, y: number,
   const depth = (1 - a * t) / n;
   u = t + 0.5;
   v = (v - 0.5) * depth + 0.5;
+  // The shears undo in reverse: vertical skew read the sheared x.
+  v += vskewShear(g) * (u - 0.5);
   u += skewShear(g) * (v - 0.5);
   u = (u - 0.5) * sizeScale(g.hsize) + 0.5;
   v = (v - 0.5) * sizeScale(g.vsize) + 0.5;
@@ -1033,7 +1085,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     vignette: "uVig", flicker: "uFlick", grain: "uGrain",
     brightness: "uBright", contrast: "uContr", zoom: "uZoom",
     hsize: "uHSize", vsize: "uVSize", hpos: "uHPos", vpos: "uVPos",
-    skew: "uSkew", perspective: "uPersp",
+    skew: "uSkew", vskew: "uVSkew", perspective: "uPersp",
     red: "uRed", green: "uGreen", blue: "uBlue",
   };
   const traitKeys = Object.keys(TRAIT_UNIFORMS) as CrtLevel[];

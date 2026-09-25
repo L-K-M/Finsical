@@ -60,6 +60,13 @@ describe("sanitizeCrtConfig", () => {
     expect(c.hsize).toBe(0.8);
   });
 
+  it("squares the picture for a config saved before vertical skew", () => {
+    const c = sanitizeCrtConfig({ skew: 0.8 });
+    expect(c.vskew).toBe(0.5);
+    expect(c.skew).toBe(0.8);
+    expect(sanitizeCrtConfig({ vskew: 0.2 }).vskew).toBe(0.2);
+  });
+
   it("defaults the mask to the aperture grille", () => {
     expect(CRT_DEFAULTS.mask).toBe("aperture");
     expect(sanitizeCrtConfig({}).mask).toBe("aperture");
@@ -244,6 +251,7 @@ describe("crtScreenToRaster", () => {
   it("keeps the center fixed under every warp but the position pots", () => {
     for (const g of [CRT_DEFAULTS, at({ curvature: 1, zoom: 1 }),
       at({ hsize: 0, vsize: 1 }), at({ skew: 1 }), at({ skew: 0 }),
+      at({ vskew: 1 }), at({ skew: 1, vskew: 0 }),
       at({ perspective: 0 }), at({ perspective: 1 })]) {
       const r = crtScreenToRaster(0.5, 0.5, g);
       expect(r!.x).toBeCloseTo(0.5, 12);
@@ -286,6 +294,14 @@ describe("crtScreenToRaster", () => {
       .toBeCloseTo(0.625, 12);
   });
 
+  it("slopes the right edge by an eighth of the height at full vertical skew",
+    () => {
+      expect(crtScreenToRaster(1, 0.5, at({ vskew: 1 }))!.y)
+        .toBeCloseTo(0.375, 12);
+      expect(crtScreenToRaster(0, 0.5, at({ vskew: 1 }))!.y)
+        .toBeCloseTo(0.625, 12);
+    });
+
   it("keeps the looming edge in place and blacks out the far side", () => {
     // Perspective 1 looms on the left, 0 on the right.
     const right = at({ perspective: 1 }), left = at({ perspective: 0 });
@@ -317,7 +333,8 @@ describe("crtScreenToRaster", () => {
   it("round-trips through the inverse within 0.01 tank px", () => {
     const cases: CrtGeometry[] = [CRT_DEFAULTS,
       at({ curvature: 1, zoom: 1, hsize: 0, vsize: 1, skew: 0.8,
-           perspective: 0.2, hpos: 0.9, vpos: 0.1 }),
+           vskew: 0.3, perspective: 0.2, hpos: 0.9, vpos: 0.1 }),
+      at({ skew: 0.1, vskew: 0.9 }),
       at({ curvature: 1, perspective: 1 })];
     for (const g of cases)
       for (let i = 0; i <= 20; i++)

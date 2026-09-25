@@ -52,15 +52,22 @@
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.
+- A hungry fish between two pellets picks one and eats it. Near the
+  midpoint it used to roll back and forth between them, sometimes for a
+  minute, while both sank and fouled the water.
+- Adding a big fish add-on stalls the tank for less time: decoding
+  the gup, discus and angel packs' sprites takes under a third as
+  long, which shortens the pause while one goes in.
 - At night, the pointer works as a torch. When you hover over the dark
   tank with a mouse or pen, a warm, soft circle of light shows the
   fish and plants under it in their daytime colors while the rest of
   the tank stays moonlit. The beam widens as the night deepens and
   follows the pointer even while the tank is paused.
-- The CRT's Geometry group gains two pots. Skew leans the whole
-  picture into a parallelogram, and Perspective swings it like the
-  tube turning on its stand — one edge looming large while the
-  other shrinks back.
+- The CRT's Geometry group gains three pots. Horizontal skew leans the
+  whole picture into a parallelogram, Vertical skew slopes it up or
+  down, and Perspective swings it like the tube turning on its stand —
+  one edge looming large while the other shrinks back. The Preferences
+  window is a little taller to fit them.
 - The CRT Softening control now smears only along each scanline, as
   its description says. The rows used to blend into each other at
   every setting, so the whole picture turned soft, and even Sharp and

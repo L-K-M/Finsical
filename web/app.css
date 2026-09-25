@@ -173,7 +173,7 @@ body.crt canvas#tank { opacity: 0; }
    native window (.osm-page, .osm-page-window). */
 
 /* ---- Preferences (web/prefs.ts) ----------------------------------------
-   A fixed-size control panel, 564 x 456 (native window 565 x 457 with
+   A fixed-size control panel, 564 x 517 (native window 565 x 518 with
    the shadow). Pane buttons down an 80px strip on the left, parted from
    the pane by a gray/black/white line, as in Desktop Pictures, and
    sized like its pane buttons: 54 x 40, on a 70px pitch. */
@@ -192,10 +192,10 @@ body.crt canvas#tank { opacity: 0; }
 .pfpane[hidden] { display: none; }
 
 /* Machine: the cases in a list box beside a preview well. */
-#pfmachines { position: absolute; left: 0; top: 0; width: 190px; height: 322px; }
+#pfmachines { position: absolute; left: 0; top: 0; width: 190px; height: 383px; }
 #pfmachines .osm-row { padding-left: 4px; font: var(--osm-font-system); }
 #pfpreview {
-  position: absolute; left: 204px; right: 0; top: 0; height: 322px;
+  position: absolute; left: 204px; right: 0; top: 0; height: 383px;
   display: flex; align-items: center; justify-content: center;
   background: #fff;
 }

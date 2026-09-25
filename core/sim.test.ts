@@ -860,6 +860,31 @@ describe("Sim", () => {
     }
   });
 
+  it("a fish between two pellets picks one instead of spinning", () => {
+    // Near the midpoint the roll's drift carried the fish across the
+    // tie line, so the other pellet was nearest and behind it again:
+    // one fish rolled 164 times in 1800 ticks while both pellets rot.
+    const worst: string[] = [];
+    for (const facing of [1, -1] as const) {
+      for (let x = 157; x <= 163; x += 0.25) {
+        const sim = new Sim({ width: 320, height: 200 }, 3);
+        const f = sim.addFish({ x, y: 80, facing, hunger: 0.9,
+                                cruise: 1.4, speed: 0.2 });
+        const a = sim.dropFood(40)!, b = sim.dropFood(280)!;
+        let rolls = 0, prev = f.state;
+        for (let i = 0; i < 400 && !a.eaten && !b.eaten; i++) {
+          sim.tick();
+          if (f.state === "turn" && prev !== "turn") rolls++;
+          prev = f.state;
+        }
+        if (rolls > 1 || (!a.eaten && !b.eaten))
+          worst.push(`x ${x} facing ${facing}: ${rolls} rolls, ` +
+                     `ate a=${a.eaten} b=${b.eaten}`);
+      }
+    }
+    expect(worst).toEqual([]);
+  });
+
   it("rolls once toward food dropped behind it, then seeks", () => {
     const sim = new Sim({ width: 300, height: 100 }, 7);
     const f = sim.addFish({ x: 280, y: 50, facing: 1, heading: 0,
