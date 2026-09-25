@@ -640,7 +640,7 @@ export async function importAddon(url: string): Promise<PackResult[]> {
       const img = decodeBmp(d);
       if (!img)
         throw new Error(`${url}: stored picture is not a 256-color BMP`);
-      return [{ sheets: new Map(), images: new Map([[url, img]]),
+      return [{ entry: url, sheets: new Map(), images: new Map([[url, img]]),
                 sounds: [] }];
     }
     if (!isPack(d)) throw new Error(`${url}: stored data is not a pack`);

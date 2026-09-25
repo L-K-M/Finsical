@@ -31,6 +31,8 @@ describe("a dropped picture at launch", () => {
     stored.set("local:MyBackdrop.bmp", bmp(640, 480));
     const rs = await importAddon("local:MyBackdrop.bmp");
     expect(rs).toHaveLength(1);
+    // Local packs name their one entry by the url, as a stored pack does.
+    expect(rs[0]!.entry).toBe("local:MyBackdrop.bmp");
     expect(rs[0]!.sheets.size + rs[0]!.sounds.length).toBe(0);
     expect([...rs[0]!.images.values()].map((i) => [i.w, i.h]))
       .toEqual([[640, 480]]);
