@@ -52,6 +52,7 @@ import { nextNotice, noticePoint } from "./curiosity.js";
 import type { Notice } from "./curiosity.js";
 import { containPoint, isFeedZone } from "./feedzone.js";
 import { mountNameTags } from "./nametags.js";
+import { cleanFishName, fishLabel, NAME_MAX } from "./fishname.js";
 import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
          PAW_GAP_RANGE, PAW_H, PAW_W, pawPose, pawSpawnX, pawSwatAt }
   from "./catpaw.js";
@@ -358,6 +359,8 @@ function sanitizeSavedFish(f: Partial<Fish> & { x: number; y: number }):
   if (Number.isInteger(f.sheetIdx) && f.sheetIdx! >= 0)
     out.sheetIdx = f.sheetIdx!;
   if (typeof f.pack === "string") out.pack = f.pack;
+  const name = cleanFishName(f.name);
+  if (name) out.name = name;
   if (typeof f.z === "number" && Number.isFinite(f.z))
     out.z = Math.min(1, Math.max(0, f.z));
   const life = sanitizeLife(f.life);
@@ -401,7 +404,7 @@ function collectEvents(): void {
   const ev = sim.aquarium.events.splice(0);
   for (const e of ev) {
     const f = sim.fish.find((x) => x.id === e.fish);
-    pendingNotices.push(eventText(e, f?.species || "A fish"));
+    pendingNotices.push(eventText(e, f?.name || f?.species || "A fish"));
   }
   if (ev.length) { requestPaint(); saveTank(); }
 }
@@ -450,6 +453,7 @@ function tankSnapshot(): SavedTank {
       bandY: f.bandY, z: f.z, hunger: f.hunger, scale: f.scale,
       ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
       ...(f.pack !== undefined ? { pack: f.pack } : {}),
+      ...(f.name ? { name: f.name } : {}),
       ...(f.life ? { life: f.life } : {}),
     })),
     addons: installedAddons,
@@ -735,7 +739,7 @@ const anyOverlayOpen = (): boolean =>
 const fishToName = (p: { x: number; y: number }): Fish | null =>
   anyOverlayOpen() ? null : fishAtPoint(p);
 const fishTipLabel = (f: Fish): string =>
-  (f.species || "Fish") +
+  fishLabel(f) +
   (f.life?.dead || f.life?.sick ? ` — ${conditionLabel(conditionOf(f))}`
     : f.state === "drift" ? "" : ` — ${stateLabel(f.state)}`);
 function conditionOf(f: Fish): { health?: number; sick?: number | null;
@@ -828,10 +832,66 @@ for (const el of tankSurfaces) {
 // ---- fish Get-Info card -------------------------------------------------
 // A tiny Mac window that follows the ⌥-clicked fish — its name, hunger
 // and mood. Closed by its close box, Escape, an ⌥-click on empty water,
-// or the fish leaving the tank.
+// or the fish leaving the tank. Clicking the name renames the fish.
 let infoCard: {
-  root: HTMLElement; hunger: HTMLElement; mood: HTMLElement; fish: Fish;
+  root: HTMLElement; name: HTMLElement; kind: HTMLElement;
+  hunger: HTMLElement; mood: HTMLElement; fish: Fish;
+  /** The rename field, while the name is being edited. */
+  edit: HTMLInputElement | null;
 } | null = null;
+
+/** Give `f` the name `raw` (cleaned; blank clears it back to the
+ * species) and save. From the Get Info card and Overview's Rename. */
+function renameFish(f: Fish, raw: unknown): void {
+  const name = cleanFishName(raw);
+  if (name === f.name) return;
+  if (name === undefined) delete f.name;
+  else f.name = name;
+  saveTank(); // also pushes the new name to Overview and Stats
+  requestPaint(); // tags relabel at once, even while paused
+}
+
+/** Swap the card's title for a text field holding the fish's name.
+ * Return or leaving the field keeps the edit; Escape drops it. */
+function editInfoName(): void {
+  const card = infoCard;
+  if (!card || card.edit) return;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "finedit";
+  input.value = card.fish.name ?? "";
+  // Empty, the fish goes by its species: say so where the name goes.
+  input.placeholder = card.fish.species || "Fish";
+  // UTF-16 units, not characters: room for NAME_MAX of anything, and
+  // cleanFishName makes the exact cut.
+  input.maxLength = NAME_MAX * 2;
+  input.spellcheck = false;
+  input.autocomplete = "off";
+  input.setAttribute("aria-label", "Fish name");
+  let done = false;
+  const finish = (keep: boolean): void => {
+    if (done) return;
+    done = true;
+    if (keep) renameFish(card.fish, input.value);
+    card.edit = null;
+    card.name.textContent = fishLabel(card.fish);
+    if (input.isConnected) input.replaceWith(card.name);
+    if (infoCard === card) layoutInfo();
+  };
+  input.addEventListener("keydown", (e) => {
+    // Typing a name mustn't feed the fish (F) or toggle the lamp (L):
+    // the tank's bare-key shortcuts listen on window.
+    e.stopPropagation();
+    if (e.isComposing) return; // Return picks an IME candidate
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener("blur", () => finish(true));
+  card.edit = input;
+  card.name.replaceWith(input);
+  input.focus({ preventScroll: true });
+  input.select();
+}
 
 function closeInfo(): void {
   infoCard?.root.remove();
@@ -852,22 +912,28 @@ function openInfo(f: Fish): void {
   close.type = "button";
   close.setAttribute("aria-label", "Close");
   close.addEventListener("click", () => closeInfo());
-  const name = document.createElement("div");
+  // A button, so the keyboard can reach the rename too.
+  const name = document.createElement("button");
+  name.type = "button";
   name.className = "finname";
-  name.textContent = f.species || "Fish";
+  name.title = "Click to rename";
+  name.textContent = fishLabel(f);
+  name.addEventListener("click", editInfoName);
   title.append(close, name);
   const body = document.createElement("div");
   body.className = "finbody";
+  // The species, once a name has taken its place in the title.
+  const kind = document.createElement("div");
   const hunger = document.createElement("div");
   const mood = document.createElement("div");
-  body.append(hunger, mood);
+  body.append(kind, hunger, mood);
   root.append(title, body);
   // A press on the card is on the card — never feed or tap through it.
   root.addEventListener("pointerdown", (e) => e.stopPropagation());
   // On body, not #screen: #screen's stacking context paints under
   // #machine, so a card inside it slid under the glass reflections.
   document.body.appendChild(root);
-  infoCard = { root, hunger, mood, fish: f };
+  infoCard = { root, name, kind, hunger, mood, fish: f, edit: null };
   // Position now, not next frame: unpositioned the card would paint
   // once at its in-flow default (the end of body) before landing.
   layoutInfo();
@@ -899,6 +965,14 @@ function layoutInfo(): void {
     : `Health  ${f.life?.health ?? 100}%  Hunger  ${Math.round(f.hunger * 100)}%`;
   const mood = f.life?.sick && !f.life.dead
     ? conditionLabel(conditionOf(f)) : stateLabel(f.state);
+  // A rename from Overview lands here too. The title waits while the
+  // field is up, so the edit isn't overwritten under the typing.
+  const label = fishLabel(f);
+  if (!card.edit && card.name.textContent !== label)
+    card.name.textContent = label;
+  const kind = f.name ? f.species || "Fish" : "";
+  if (card.kind.textContent !== kind) card.kind.textContent = kind;
+  card.kind.hidden = !kind;
   if (card.hunger.textContent !== hunger)
     card.hunger.textContent = hunger;
   if (card.mood.textContent !== mood) card.mood.textContent = mood;
@@ -1556,8 +1630,9 @@ function sendState(): void {
     scenery: { backdrop: backdropSrc, gravel: gravelSrc },
     // `pack` lets the panel tell pack-bound fish from loose ones —
     // a fish add-on with a living fish doesn't repeat in Add-ons.
-    fish: sim.fish.map(({ id, species, hunger, state, pack, life }) =>
+    fish: sim.fish.map(({ id, species, name, hunger, state, pack, life }) =>
       ({ id, species, hunger, state,
+         ...(name ? { name } : {}),
          // Starter stand-ins read as such in the Overview — they
          // leave when real fish arrive.
          ...(placeholderIds.has(id) ? { standIn: true } : {}),
@@ -1729,7 +1804,10 @@ function onBusMessage(m: BusMsg): void {
   }
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
-  else if (m.op === "removeFish" && typeof m.id === "number") {
+  else if (m.op === "renameFish" && typeof m.id === "number") {
+    const f = sim.fish.find((x) => x.id === m.id);
+    if (f) renameFish(f, m.name);
+  } else if (m.op === "removeFish" && typeof m.id === "number") {
     if (sim.removeFish(m.id)) {
       audio.fishOut();
       sweepThumbs();
@@ -2200,7 +2278,7 @@ function syncNameTags(): void {
     const hh = (f.halfH ?? PLACEHOLDER_HALF_H) * f.scale;
     const top = tankToClient(f.x, f.y - hh, r);
     const bottom = tankToClient(f.x, f.y + hh, r);
-    return { id: f.id, label: f.species || "Fish", x: top.x,
+    return { id: f.id, label: fishLabel(f), x: top.x,
              top: top.y, bottom: bottom.y };
   }), CLIENT_MAP, r, surface);
 }

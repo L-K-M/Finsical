@@ -2,6 +2,8 @@ import { openBus, TANK_QUIET_MS } from "./bus.js";
 import { COLUMNS, itemsOf, sortItems, summary } from "./overviewmodel.js";
 import type { Column, Item, TankState } from "./overviewmodel.js";
 import { centerText, hostWindow, mountList, pushButton } from "osmium-ui";
+import { alertOpen, showAlert } from "./alert.js";
+import { NAME_MAX } from "./fishname.js";
 import type { ListScroll } from "osmium-ui";
 
 // Tank Overview: what's in the tank, as a Mac OS 8 Finder list view —
@@ -44,6 +46,7 @@ const listEl = document.getElementById("olist")!;
 const useBtn = document.getElementById("ouse") as HTMLButtonElement;
 const emptyBtn = document.getElementById("oempty") as HTMLButtonElement;
 const removeBtn = document.getElementById("oremove") as HTMLButtonElement;
+const renameBtn = document.getElementById("orename") as HTMLButtonElement;
 // A hidden live region confirms a removal to screen readers (visually
 // hidden, not display:none — some screen readers won't announce those).
 const removeStatus = document.createElement("span");
@@ -162,6 +165,12 @@ listEl.focus({ preventScroll: true });
 function syncRemove(): void {
   const it = items[list.selected];
   removeBtn.disabled = tankGone || !it;
+  // Rename (fish) and Use (scenery add-ons) share one slot, so the
+  // strip fits the narrowest window: a fish row, or none, shows Rename.
+  const fishRow = !it || it.fishId !== undefined;
+  renameBtn.hidden = !fishRow;
+  useBtn.hidden = fishRow;
+  renameBtn.disabled = tankGone || it?.fishId === undefined;
   useBtn.disabled = tankGone || !it?.use;
 }
 // A double-click's second press lands before the tank's state push
@@ -190,6 +199,31 @@ const removeSelected = (): void => {
   bus.post(it.remove);
 };
 pushButton(removeBtn, removeSelected);
+
+// Rename asks for the selected fish's name in an alert with a text
+// field; the tank cleans it and pushes the new name back. An empty
+// name returns the fish to its species.
+const renameSelected = (): void => {
+  const id = items[list.selected]?.fishId;
+  const f = tankState?.fish?.find((x) => x.id === id);
+  if (!f || tankGone || alertOpen()) return;
+  const species = f.species || "Fish";
+  showAlert({
+    icon: "note",
+    text: `Name this ${f.species || "fish"}. Leave the name empty to ` +
+          `call it “${species}” again.`,
+    field: { value: f.name ?? "", placeholder: species,
+             label: "Fish name", maxLength: NAME_MAX * 2 },
+    buttons: [
+      { title: "Cancel", cancel: true },
+      { title: "Rename", default: true, action: (a) => {
+        bus.post({ op: "renameFish", id: f.id, name: a.value });
+        a.close();
+      } },
+    ],
+  });
+};
+pushButton(renameBtn, renameSelected);
 // "Use" swaps a scenery pack into view (backdrop/gravel by aspect);
 // the next state push re-tags the rows "Showing"/"In tank".
 pushButton(useBtn, () => {
@@ -229,6 +263,13 @@ pushButton(emptyBtn, () => {
 // selected line, like the button. Auto-repeat is ignored so a held key
 // releases one fish, not the whole list.
 listEl.addEventListener("keydown", (e) => {
+  // Return renames the selected fish, as it renames in the Finder.
+  if (e.key === "Enter" && !e.repeat && !e.isComposing &&
+      items[list.selected]?.fishId !== undefined) {
+    e.preventDefault();
+    renameSelected();
+    return;
+  }
   if ((e.key === "Backspace" || e.key === "Delete") && !e.altKey &&
       !e.ctrlKey && !e.repeat && items[list.selected]) {
     e.preventDefault();
@@ -295,8 +336,11 @@ function render(scroll: ListScroll = "keep"): void {
     summary(fishN, addonN, s.waterQuality ?? 1, s.tickCount ?? 0);
   centerText(summaryEl);
 
-  // Membership, not order: a status-text re-sort alone must not rebuild.
-  const structure = JSON.stringify(next.map((i) => i.key).sort());
+  // Membership and names, not order: a status-text re-sort alone must
+  // not rebuild, but a renamed fish needs its row (and its place in a
+  // Name sort) redrawn.
+  const structure =
+    JSON.stringify(next.map((i) => [i.key, i.name]).sort());
   if (structure === lastStructure) {
     const byKey = new Map(next.map((it) => [it.key, it]));
     items = items.map((old) => byKey.get(old.key) ?? old);

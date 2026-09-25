@@ -29,6 +29,18 @@ export interface AlertSpec {
   buttons: readonly AlertButton[];
   /** 0 to 1 shows a progress bar under the text; omitted, none. */
   progress?: number;
+  /** A one-line text field under the text, focused with its value
+   * selected; omitted, none. Return in it presses the default button
+   * and Escape the cancel one. Read what was typed from `value`. */
+  field?: AlertField;
+}
+
+export interface AlertField {
+  value: string;
+  /** Its accessible name: the alert text says what to type. */
+  label: string;
+  placeholder?: string;
+  maxLength?: number;
 }
 
 export interface Alert {
@@ -39,6 +51,8 @@ export interface Alert {
   progress(text: string, value: number): void;
   close(): void;
   readonly isOpen: boolean;
+  /** The text field's contents; "" when the alert has none. */
+  readonly value: string;
 }
 
 /** Widest alert, as wide as Mac OS 8's standard alerts. */
@@ -111,8 +125,14 @@ export function showAlert(spec: AlertSpec): Alert {
   const track = div("osm-progress-track");
   track.append(div("osm-progress-fill"));
   bar.append(track);
+  const field = document.createElement("input");
+  field.type = "text";
+  field.className = "alertfield";
+  field.spellcheck = false;
+  field.autocomplete = "off";
+  field.hidden = true;
   const row = div("alertbuttons");
-  win.append(icon, text, bar, row);
+  win.append(icon, text, field, bar, row);
   scrim.append(win);
 
   // Nothing under a modal alert may act: presses outside it are
@@ -129,21 +149,31 @@ export function showAlert(spec: AlertSpec): Alert {
       e.stopPropagation();
     });
 
-  // Keyboard stays inside the modal alert: Tab cycles its buttons (the
-  // page behind can't take focus), and Escape cancels even while a
-  // button has focus, where bindDialogKeys stands aside.
+  // Keyboard stays inside the modal alert: Tab cycles its field and
+  // buttons (the page behind can't take focus), and Escape cancels even
+  // while a button or the field has focus, where bindDialogKeys stands
+  // aside. Return in the field presses the default button.
+  let okBtn: HTMLButtonElement | null = null;
   let cancelBtn: HTMLButtonElement | null = null;
   win.addEventListener("keydown", (e) => {
+    const t = e.target as HTMLElement;
+    const inField = t === field;
     if (e.key === "Tab") {
       e.preventDefault();
-      const bs = Array.from(row.querySelectorAll("button"));
-      const i = bs.indexOf(document.activeElement as HTMLButtonElement);
-      const next = focusStep(bs.length, i, e.shiftKey);
-      (next < 0 ? win : bs[next]!).focus();
+      const stops: HTMLElement[] = [
+        ...(field.hidden ? [] : [field]),
+        ...Array.from(row.querySelectorAll("button")),
+      ];
+      const i = stops.indexOf(document.activeElement as HTMLElement);
+      const next = focusStep(stops.length, i, e.shiftKey);
+      (next < 0 ? win : stops[next]!).focus();
     } else if ((e.key === "Escape" || (e.metaKey && e.key === ".")) &&
-               (e.target as HTMLElement).closest("button") && cancelBtn) {
+               (inField || t.closest("button")) && cancelBtn) {
       e.preventDefault();
       cancelBtn.click();
+    } else if (e.key === "Enter" && inField && !e.isComposing && okBtn) {
+      e.preventDefault();
+      okBtn.click();
     }
   });
 
@@ -173,6 +203,14 @@ export function showAlert(spec: AlertSpec): Alert {
       icon.style.backgroundImage = `var(--osm-sprite-alert-${s.icon})`;
       text.textContent = s.text;
       setProgress(s.progress);
+      field.hidden = !s.field;
+      if (s.field) {
+        field.value = s.field.value;
+        field.placeholder = s.field.placeholder ?? "";
+        field.setAttribute("aria-label", s.field.label);
+        if (s.field.maxLength) field.maxLength = s.field.maxLength;
+        else field.removeAttribute("maxlength");
+      }
       const gen = ++generation;
       const hadFocus = win.contains(document.activeElement);
       row.replaceChildren();
@@ -191,6 +229,7 @@ export function showAlert(spec: AlertSpec): Alert {
         if (b.default) ok = el;
         if (b.cancel) cancel = el;
       }
+      okBtn = ok;
       cancelBtn = cancel;
       // A focused button that was just replaced drops focus to the
       // page; hand it back to the alert.
@@ -222,12 +261,14 @@ export function showAlert(spec: AlertSpec): Alert {
       if (opener?.isConnected) opener.focus({ preventScroll: true });
     },
     get isOpen() { return open; },
+    get value() { return field.hidden ? "" : field.value; },
   };
 
   openCount++;
   document.body.append(scrim);
   alert.update(spec);
-  win.focus({ preventScroll: true });
+  if (field.hidden) win.focus({ preventScroll: true });
+  else { field.focus({ preventScroll: true }); field.select(); }
   ro.observe(win);
   window.addEventListener("resize", place);
   return alert;

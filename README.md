@@ -64,6 +64,7 @@ rest until it arrives or you choose **Not Now** or **Stop**.
 | See a fish's name | Point at it: a balloon names it and says what it is doing |
 | See every fish's name | Press N, or choose Fish Names from the Tank menu: each fish wears a name tag until you turn them off |
 | Get Info on a fish | Option-click it: a card follows it with its health, hunger and mood |
+| Name a fish | Click its name in the Get Info card and type, or select it in Tank Overview and choose **Rename…** (or press Return). An empty name gives it back its species name |
 | Move the window | In the app, drag the computer case around the tank, or the top edge of the window |
 
 A fish nearby comes over to look at the pointer while you hover over
@@ -202,7 +203,7 @@ yet.
 | Window | What it does |
 | --- | --- |
 | Preferences | **Machine**: the computer case around the tank (Macintosh Plus, Performa 450 and 5200, 20th Anniversary Mac, iMac G3 and G4, PowerBook G3, iBook, or a bare tank). **Monitor**: the CRT effect, presets and its picture tube sliders. **Picture**: the monitor's front-panel controls. **Lighting**: the day and night cycle, a light timer that follows your Mac's clock, or lights always on, and the lamp. **Sound**: volume, mute, and switches for bubble sounds and the water ambience (see [Sounds](#sounds)). |
-| Tank Overview | Everything in the tank as a sortable Name, Kind and Status list, with **Remove**, **Use** for scenery and **Empty Tank…** |
+| Tank Overview | Everything in the tank as a sortable Name, Kind and Status list, with **Remove**, **Rename…** for fish, **Use** for scenery and **Empty Tank…** |
 | Import Add-ons | The archive.org add-on browser described above |
 | Tank Stats | **General**: water quality and average hunger with recent history, the hungriest fish, fish and food counts, day or night, tank age and care hints. **Water**: the water's readings per litre. **Keeping**: the heater, filter, water changes, medicine and how fast time runs. **Copy Summary** puts the readings on the clipboard. |
 
