@@ -180,12 +180,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         frameKey: "FinsicalAddons", size: NSSize(width: 621, height: 441),
         minSize: NSSize(width: 441, height: 301)))
     /// The stats page clips rather than scrolls (Mac OS 8 windows
-    /// without scroll bars), so its minimum keeps the water readings,
-    /// two care hints and the Keeping controls visible.
+    /// without scroll bars), so its minimum keeps every tab's fields,
+    /// two care hints and the Keeping controls visible. Its frame key
+    /// changed when the readings moved onto tabs: frames saved before
+    /// were at least 560 points tall, sized for one long pane.
     private lazy var stats = host.add(OsmiumWindowSpec(
         url: page("stats.html"), title: "Tank Stats",
-        frameKey: "FinsicalStats", size: NSSize(width: 380, height: 640),
-        minSize: NSSize(width: 340, height: 560)))
+        frameKey: "FinsicalStatsTabs", size: NSSize(width: 380, height: 360),
+        minSize: NSSize(width: 340, height: 330)))
 
     private func page(_ name: String) -> URL {
         URL(string: "\(WebHandler.scheme)://app/\(name)")!

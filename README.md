@@ -71,8 +71,8 @@ the tank, unless it is hungry or startled.
 The tank lives like the original AquaZone's, in real time: a fed fish
 gets hungry again after most of a day, and time passes while Finsical
 is closed (see [docs/ORIGINAL-SIM.md](docs/ORIGINAL-SIM.md) for the
-rules). Tank Stats shows the water, as mg per litre, and has the
-controls to keep it:
+rules). Tank Stats shows the water on its Water tab, as mg per litre,
+and has the controls to keep it on its Keeping tab:
 
 - **Heater:** holds the water at the temperature you set.
 - **Filter:** aerates the water and, once it has some dirt in it,
@@ -197,7 +197,7 @@ yet.
 | Preferences | **Machine**: the computer case around the tank (Macintosh Plus, Performa 450 and 5200, 20th Anniversary Mac, iMac G3 and G4, PowerBook G3, iBook, or a bare tank). **Monitor**: the CRT effect, presets and its picture tube sliders. **Picture**: the monitor's front-panel controls. **Lighting**: the day and night cycle, a light timer that follows your Mac's clock, or lights always on, and the lamp. **Sound**: volume, mute, and switches for bubble sounds and the water ambience (see [Sounds](#sounds)). |
 | Tank Overview | Everything in the tank as a sortable Name, Kind and Status list, with **Remove**, **Use** for scenery and **Empty Tank…** |
 | Import Add-ons | The archive.org add-on browser described above |
-| Tank Stats | Water quality and average hunger with recent history, the hungriest fish, fish and food counts, day or night, tank age, care hints, and **Change Water** |
+| Tank Stats | **General**: water quality and average hunger with recent history, the hungriest fish, fish and food counts, day or night, tank age and care hints. **Water**: the water's readings per litre. **Keeping**: the heater, filter, water changes, medicine and how fast time runs. **Copy Summary** puts the readings on the clipboard. |
 
 ## Your data
 
