@@ -498,8 +498,12 @@ canvas.addEventListener("pointerdown", (e) => {
   if (paused) return;
   if (isFeedZone(p.x, p.y, waterline)) {
     const pellet = sim.dropFood(p.x);
-    audio.feed();
-    splashAt(pellet.x, pellet.y, PUSH.pellet);
+    if (pellet) {
+      audio.feed();
+      splashAt(pellet.x, pellet.y, PUSH.pellet);
+    } else {
+      noteFoodRefused();
+    }
   } else {
     sim.tap(p.x, p.y); audio.tap(p.x, p.y, TANK.width, TANK.height);
     // A rising bubble under the tap pops early — the knock already
@@ -676,6 +680,19 @@ function noteGlassTap(): void {
   glassTaps = [];
   showAlert({ icon: "caution",
               text: "Please don't tap on the glass. It frightens the fish.",
+              buttons: [{ title: "OK", default: true, cancel: true }] });
+}
+
+// A refused feed (the tank already holds MAX_UNEATEN pellets) says so
+// once — a silent no-op would read as a broken click.
+let foodRefusedAt = -Infinity; // first refusal always shows
+function noteFoodRefused(): void {
+  const now = performance.now();
+  if (now - foodRefusedAt < 60_000) return;
+  foodRefusedAt = now;
+  showAlert({ icon: "note",
+              text: "The tank is full of food the fish haven't eaten. " +
+                    "More would only foul the water.",
               buttons: [{ title: "OK", default: true, cancel: true }] });
 }
 
@@ -1863,6 +1880,7 @@ function feedFish(): void {
     setTimeout(() => {
       if (paused) return; // paused since the pinch was scattered
       const pellet = sim.dropFood(x + p.dx);
+      if (!pellet) { noteFoodRefused(); return; }
       splashAt(pellet.x, pellet.y, PUSH.pellet);
       requestPaint();
     }, p.delay);
@@ -1882,6 +1900,7 @@ function feederDrop(): void {
   for (const p of feedPinch(Math.random, 0)) {
     if (sim.food.length >= AUTOFEED_MAX_FOOD) break; // cap, not just a gate
     const pellet = sim.dropFood(x + p.dx);
+    if (!pellet) break; // a racer refilled the tank past MAX_UNEATEN
     splashAt(pellet.x, pellet.y, PUSH.pellet);
   }
   audio.feederChime();

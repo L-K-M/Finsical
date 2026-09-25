@@ -131,8 +131,13 @@ const FOOD_SINK = 0.35;
 const GOLDEN_ODDS = 1 / 50;
 /** Ticks a settled pellet takes to dissolve away (~45 s at 30 tps). */
 export const FOOD_ROT_TICKS = 30 * 45;
-/** Quality drained per tick per rotting pellet (~0.2 over a full rot). */
-const WASTE_PER_TICK = 1 / 6000;
+/** Uneaten pellets the tank holds before dropFood refuses: past it a
+ * feed only adds waste. Even at the cap, six rotting pellets drain
+ * quality ~7x faster than the filter recovers it, so sustained
+ * overfeeding still fouls the tank without a water change. */
+export const MAX_UNEATEN = 6;
+/** Quality drained per tick per rotting pellet (~0.14 over a full rot). */
+const WASTE_PER_TICK = 1 / 10000;
 /** Filtration: recovers a fouled tank over ~7 min of clean water. */
 const FILTER_PER_TICK = 1 / 12000;
 /** Below this water quality fish start gasping: wander targets pull
@@ -374,8 +379,11 @@ export class Sim {
   }
 
   /** Drop a food pellet at x (kept off the side glass); it sinks to the
-   * gravel. Returns the pellet, so callers can mark where it went in. */
-  dropFood(x: number): Food {
+   * gravel. Returns the pellet, so callers can mark where it went in —
+   * or null when the tank already holds MAX_UNEATEN uneaten pellets. */
+  dropFood(x: number): Food | null {
+    if (this.food.filter((f) => !f.eaten).length >= MAX_UNEATEN)
+      return null;
     const cx = Math.min(Math.max(x, MARGIN), this.tank.width - MARGIN);
     const pellet = { x: cx, y: FOOD_ENTRY_Y, eaten: false, settled: 0,
                      golden: this.rand() < GOLDEN_ODDS };
