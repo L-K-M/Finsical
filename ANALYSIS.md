@@ -4032,7 +4032,10 @@ minute of calm tank; pointermove performs no layout reads.
   P-10 (CRT shader cost).
 - Sixteenth pass: P-1 and P-3 of `tmp.md` shipped in **PR #263**
   (see the sixteenth-pass Completed section) — the `drawAir` shade
-  gradient and the two per-frame `Date`s. The rect and layout reads
+  gradient and the two per-frame `Date`s. P-2 and P-5 map here too:
+  the `Date` fix covered P-2's clock reads, and P-5's pointermove
+  layout reads are the `tankPoint`/`placeTip` items below. The rect
+  and layout reads
   landed separately: `tankPoint` now reads the cached `tankRect()`
   (`web/main.ts:543-555`), and `pointermove` keeps `lastClient` only,
   so hover is evaluated from the frame loop. Still open here:
@@ -4759,8 +4762,10 @@ things that reach it), `node_modules/osmium-ui/osmium.css:676-681`
 (the in-house ellipsis precedent). Read at `06f7935`; wrapping not
 measured.
 
-**Change.** `-webkit-line-clamp: 3` with `display: -webkit-box` (the
-clamp supplies the `...` on the last line), or keep the box layout and
+**Change.** `-webkit-line-clamp: 3` with `display: -webkit-box` and
+`-webkit-box-orient: vertical` (the clamp needs all three; the
+orientation supplies the `...` on the last line), or keep the box
+layout and
 shorten any hint that would exceed three lines. Prefer the clamp: it
 needs no per-pane measurement. Re-check that the
 `#pffoot.pfdefaults` `right: 76px` shift, which narrows the box when
