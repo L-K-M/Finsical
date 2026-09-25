@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The Mac app opens its tank when you run it from where you unzipped
+  it, such as your Downloads folder. macOS runs an app opened there
+  from a hidden temporary location, and from there the app refused to
+  load any of its own files: you saw a menu bar and no tank. If the
+  tank ever can't load, an alert now says so instead of showing
+  nothing.
 - If you close Finsical before answering the offer to stock your tank,
   the next launch asks again. The offer used to be lost for good, and
   the game's sounds then downloaded without asking. If stocking the

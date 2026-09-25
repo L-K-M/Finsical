@@ -43,6 +43,17 @@ jobs:
       # compiled copy inside the JavaScript. A byte compare, so a
       # stale or wrong copy fails too.
       - run: diff -u core/data/mace.ts /Applications/Finsical.app/Contents/Resources/core/data/mace.ts
+      # Launch the app: --smoke-test loads the tank page, checks that its
+      # script ran and the case art went in, and exits 0 (1 broken page,
+      # 2 load failed, 3 timed out after 30 s). The /private/tmp copy runs
+      # from the same kind of path App Translocation gives an app opened
+      # where it was unzipped, which once served no files at all.
+      - run: /Applications/Finsical.app/Contents/MacOS/Finsical --smoke-test
+        timeout-minutes: 2
+      - run: |
+          ditto /Applications/Finsical.app /private/tmp/Finsical.app
+          /private/tmp/Finsical.app/Contents/MacOS/Finsical --smoke-test
+        timeout-minutes: 2
       # Swift 6 language mode: its data-race checks cover Osmium UI's
       # window host too, which the app compiles in. Warnings fail the
       # build: a delegate method that only nearly matches its
