@@ -1180,6 +1180,50 @@ describe("lifecycle", () => {
 
 });
 
+describe("B-57 drift steering", () => {
+  it("doesn't step the drift stroke on the tick a turn begins", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 11);
+    const f = sim.addFish({ x: 200, y: 100, facing: 1, hunger: 1 });
+    // The pellet lands behind the fish: the seek must roll first.
+    sim.dropFood(60);
+    let entered = false;
+    for (let i = 0; i < 60 && !entered; i++) {
+      const px = f.x, py = f.y;
+      sim.tick();
+      if (f.state === "turn") {
+        entered = true;
+        expect(f.x).toBe(px);
+        expect(f.y).toBe(py);
+      }
+    }
+    expect(entered).toBe(true);
+    // The roll completes within a few turn windows — a guard that
+    // trapped the fish in "turn" would fail here — and the meal lands,
+    // which only happens once seeking has resumed.
+    for (let i = 0; i < TURN_TICKS * 6 && f.state === "turn"; i++)
+      sim.tick();
+    expect(f.state).not.toBe("turn");
+    const pellet = sim.food[0]!;
+    expect(pellet).toBeDefined(); // the dropped pellet
+    expect(pellet.eaten).toBe(false); // and not eaten mid-roll
+    for (let i = 0; i < 400 && !pellet.eaten; i++) sim.tick();
+    expect(pellet.eaten).toBe(true);
+  });
+
+  it("eats a pellet beyond its room by sliding along the wall", () => {
+    // halfW 50 keeps this fish's centre at x >= 40; a pellet dropped at
+    // MARGIN (16) sits outside its room, but the eat reach spans the
+    // gap — the seeker must still get the meal, not press forever.
+    const sim = new Sim({ width: 320, height: 200 }, 3);
+    const f = sim.addFish({ x: 60, y: 150, facing: -1, hunger: 1,
+                            halfW: 50, halfH: 30, scale: 1 });
+    sim.dropFood(16);
+    const pellet = sim.food[0]!;
+    for (let i = 0; i < 400 && !pellet.eaten; i++) sim.tick();
+    expect(pellet.eaten).toBe(true);
+  });
+});
+
 describe("B-58 hunger and vigor", () => {
   it("brakes a weakened seeker — the floor is pre-vigor", () => {
     // A latched brake past its decay lands on the floor; a fish whose
