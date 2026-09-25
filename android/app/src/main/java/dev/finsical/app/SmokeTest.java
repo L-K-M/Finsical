@@ -14,10 +14,10 @@ import java.util.Optional;
 /**
  * A self check for CI's emulator job, in debuggable builds only. Launched
  * with the boolean extra {@link #EXTRA}, it opens Tank Stats from the tank
- * and waits for the stats page to render rows. The page renders them only
- * after a state push from the tank crossed BroadcastChannel into the panel,
- * so a pass proves the web root is served, both pages run, window.open
- * makes a panel, and the bus works between WebViews.
+ * and waits for the stats page to render its water-quality meter. The page
+ * renders it only after a state push from the tank crossed BroadcastChannel
+ * into the panel, so a pass proves the web root is served, both pages run,
+ * window.open makes a panel, and the bus works between WebViews.
  *
  * <p>The result is one logcat line, tag {@value MainActivity#LOG_TAG}:
  * exactly "FINSICAL_SMOKE PASS" or "FINSICAL_SMOKE FAIL: reason".
@@ -31,7 +31,9 @@ final class SmokeTest {
     // Named like the page's own Window menu does (web/menubar.ts), so a
     // later menu open reuses this window.
     private static final String OPEN_STATS_JS = "window.open('stats.html', 'finsical-stats') !== null";
-    private static final String ROWS_JS = "document.querySelector('#srows')?.childElementCount > 0";
+    // Not just any row: until a state arrives, #srows holds a "Waiting for
+    // the tank" row (web/stats.ts). Only a state renders meters (.smeter).
+    private static final String READINGS_JS = "document.querySelector('#srows .smeter') !== null";
     private static final String JS_TRUE = "true";
 
     private final PanelLayer panels;
@@ -98,12 +100,12 @@ final class SmokeTest {
             retryOrFail("the Tank Stats panel never opened");
             return;
         }
-        stats.get().evaluateJavascript(ROWS_JS, result -> {
+        stats.get().evaluateJavascript(READINGS_JS, result -> {
             if (JS_TRUE.equals(result)) {
                 pass();
                 return;
             }
-            retryOrFail("Tank Stats rendered no rows: no state reached it from the tank over BroadcastChannel");
+            retryOrFail("Tank Stats rendered no readings: no state reached it from the tank over BroadcastChannel");
         });
     }
 

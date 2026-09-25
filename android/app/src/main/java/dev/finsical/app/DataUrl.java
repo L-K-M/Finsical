@@ -4,9 +4,11 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * The header of a data: URL (RFC 2397), which is how Take a Picture hands
- * its PNG to the WebView's DownloadListener. Plain Java, so it is unit
- * tested on the JVM; decoding the payload is the caller's job.
+ * The header of a data: URL (RFC 2397), the form every download reaches
+ * the save path in: Take a Picture's fallback hands its PNG to the
+ * DownloadListener as one, and the tank page reads blob: downloads into
+ * one (BlobDownload). Plain Java, so it is unit tested on the JVM;
+ * decoding the payload is the caller's job.
  */
 final class DataUrl {
     private static final String SCHEME = "data:";

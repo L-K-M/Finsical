@@ -8,7 +8,13 @@
 
     <string name="picture_saved">Picture saved.</string>
     <string name="picture_failed">Couldn’t save the picture.</string>
-    <string name="picture_lost">The picture was lost while you chose where to save it. Take it again.</string>
-    <string name="picture_no_app">No app on this device can save files, so the picture can’t be saved.</string>
+    <string name="tank_saved">Tank exported.</string>
+    <string name="tank_failed">Couldn’t export the tank.</string>
+    <string name="file_saved">File saved.</string>
+    <string name="file_failed">Couldn’t save the file.</string>
+    <string name="save_lost">The file was lost while you chose where to save it. Try again.</string>
+    <string name="save_busy">Finish saving the other file first.</string>
+    <string name="save_no_app">No app on this device can save files.</string>
+    <string name="open_no_app">No app on this device can open files.</string>
     <string name="link_no_app">No app on this device can open web links.</string>
 </resources>

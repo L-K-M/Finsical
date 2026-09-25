@@ -3,6 +3,7 @@ package dev.finsical.app;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
@@ -24,7 +25,9 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.webkit.ConsoleMessage;
+import android.webkit.JavascriptInterface;
 import android.webkit.RenderProcessGoneDetail;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -42,26 +45,39 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.TimeZone;
+import java.util.UUID;
 
 /**
  * Finsical's Android shell: the tank page full screen in its browser mode,
  * with the page's own Mac OS 8 menu bar and Add-ons button, served from the
  * APK's assets on the app origin (AppOrigin, AssetServer).
  *
- * <p>There is no JS bridge. The page opens Preferences, Tank Overview, Tank
- * Stats and Import Add-ons with window.open; each becomes a panel over the
- * tank (PanelLayer), and the pages talk to the tank over BroadcastChannel,
- * which spans every WebView in the app. Back closes the top panel.
+ * <p>The page opens Preferences, Tank Overview, Tank Stats and Import
+ * Add-ons with window.open; each becomes a panel over the tank
+ * (PanelLayer), and the pages talk to the tank over BroadcastChannel,
+ * which spans every WebView in the app. Back closes the top panel. The one
+ * JS bridge is the tank's {@value BlobDownload#INTERFACE_NAME}, which only
+ * hands blob: downloads back to the shell (see BlobDownload).
  */
 public final class MainActivity extends Activity {
     static final String LOG_TAG = "Finsical";
 
-    private static final int REQUEST_SAVE_PICTURE = 1;
-    private static final String PNG = "image/png";
+    private static final int REQUEST_SAVE_DOWNLOAD = 1;
+    private static final int REQUEST_OPEN_DOCUMENT = 2;
+    /**
+     * What the document picker offers the page's file inputs: Import Tank
+     * accepts ".fins,application/json", and .fins has no MIME type the
+     * picker could filter on.
+     */
+    private static final String ANY_TYPE = "*/*";
+    /** How evaluateJavascript reports a script that completed with true. */
+    private static final String JS_TRUE = "true";
     /** Longest URL a log line quotes: data: URLs run to hundreds of KB. */
     private static final int MAX_LOGGED_URL = 100;
     private static final int MESSAGE_PADDING_DP = 24;
@@ -69,6 +85,17 @@ public final class MainActivity extends Activity {
 
     /** What a WebView is for; configure differs only in the background. */
     private enum Role { TANK, PANEL }
+
+    /** A download's bytes while the user picks where to save them. */
+    private static final class PendingSave {
+        final byte[] bytes;
+        final DownloadTarget.Kind kind;
+
+        PendingSave(byte[] bytes, DownloadTarget.Kind kind) {
+            this.bytes = bytes;
+            this.kind = kind;
+        }
+    }
 
     private FrameLayout root;
     private WebView tank;
@@ -78,8 +105,19 @@ public final class MainActivity extends Activity {
     private SmokeTest smoke;
     /** Registered while a panel is open, on API 33+; see syncBackCallback. */
     private OnBackInvokedCallback panelBack;
-    /** The Take a Picture PNG while the user picks where to save it. */
-    private byte[] pendingPicture;
+    // Back to the UI thread from PageBridge (WebView's JavaBridge thread)
+    // and from the thread that writes a saved file.
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    /**
+     * blob: downloads the tank page is reading: token -> kind. UI thread
+     * only. A read whose page reloaded before answering stays until the
+     * Activity goes, a few bytes.
+     */
+    private final Map<String, DownloadTarget.Kind> pendingReads = new HashMap<>();
+    /** Set while the save picker is open; one save at a time. */
+    private PendingSave pendingSave;
+    /** The page's file input waiting for the document picker's answer. */
+    private ValueCallback<Uri[]> pendingFileChooser;
     private boolean restarting;
 
     @Override
@@ -99,6 +137,9 @@ public final class MainActivity extends Activity {
         client = new ShellClient(new AssetServer(getAssets()));
         panels = new PanelLayer(this, this::syncBackCallback);
         tank = newWebView(Role.TANK);
+        // Before the first load, which is when it appears on the page. The
+        // tank only: popups lose interfaces when WebView binds them.
+        tank.addJavascriptInterface(new PageBridge(), BlobDownload.INTERFACE_NAME);
         root.addView(tank, matchParent());
         root.addView(panels, matchParent());
         smoke = SmokeTest.startIfRequested(this, getIntent(), panels);
@@ -189,7 +230,8 @@ public final class MainActivity extends Activity {
         settings.setTextZoom(100);
         view.setWebViewClient(client);
         view.setWebChromeClient(chrome);
-        view.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> onDownload(url));
+        view.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) ->
+                onDownload(url, mimeType));
         if (role == Role.PANEL) {
             // Client pages are transparent around the window they draw (the
             // corner notches of its 1 px shadow); the tank shows through.
@@ -198,18 +240,23 @@ public final class MainActivity extends Activity {
         return view;
     }
 
-    // ---- Downloads: Take a Picture --------------------------------------
+    // ---- Downloads: Take a Picture, Export Tank --------------------------
 
     /**
-     * Take a Picture clicks an {@code <a download>} holding a data: PNG,
-     * which WebView hands here as the full data: URL (the file name is not
-     * passed on). The user picks where to save it (no storage permission,
-     * one code path for every API level).
+     * The page's {@code <a download>} clicks. Take a Picture and Export
+     * Tank hand over blob: URLs, which the tank page reads for the shell
+     * (readBlob); Take a Picture falls back to a data: PNG where
+     * canvas.toBlob fails. WebView does not pass on the file name, so
+     * DownloadTarget names the file from its type, and the user picks where
+     * to save it (no storage permission, one code path for every API level).
      */
-    private void onDownload(String url) {
-        Optional<DataUrl> data = DataUrl.parse(url);
-        if (data.isPresent()) {
-            savePicture(url, data.get());
+    private void onDownload(String url, String mimeType) {
+        if (DataUrl.parse(url).isPresent()) {
+            saveDataUrl(url);
+            return;
+        }
+        if (BlobDownload.isBlob(url)) {
+            readBlob(url, mimeType);
             return;
         }
         Uri uri = Uri.parse(url);
@@ -220,68 +267,193 @@ public final class MainActivity extends Activity {
         Log.w(LOG_TAG, "Ignored a download this app cannot handle: " + forLog(url));
     }
 
-    private void savePicture(String url, DataUrl data) {
-        if (!PNG.equals(data.mimeType) || !data.base64) {
-            Log.w(LOG_TAG, "Ignored a data: download that is not a base64 PNG: " + forLog(url));
+    /**
+     * Asks the tank page to read a blob: download at once (the page revokes
+     * the URL seconds after the click) and hand it back as a data: URL
+     * through PageBridge. The tank reads it even when a panel made the
+     * blob: only the tank has the interface, and every page of the origin
+     * can read the origin's blob: URLs.
+     */
+    private void readBlob(String url, String mimeType) {
+        DownloadTarget.Kind kind = targetFor(mimeType).kind;
+        if (!BlobDownload.isAppBlob(url)) {
+            Log.w(LOG_TAG, "Ignored a blob: download that is not the app's: " + forLog(url));
             return;
         }
-        byte[] png;
+        if (!tankOnAppOrigin()) {
+            Log.e(LOG_TAG, "Cannot read a blob: download: the tank is not showing the app");
+            toast(failedMessage(kind));
+            return;
+        }
+
+        // A random token ties the answer to this request, so a stray call
+        // to the interface cannot start a save.
+        String token = UUID.randomUUID().toString();
+        pendingReads.put(token, kind);
+        tank.evaluateJavascript(BlobDownload.readerScript(url, token), started -> {
+            // A destroyed tank (tank == null) has nothing left to report to.
+            if (JS_TRUE.equals(started) || tank == null) {
+                return;
+            }
+            pendingReads.remove(token);
+            Log.e(LOG_TAG, "The tank page could not start reading a download (it has no "
+                    + BlobDownload.INTERFACE_NAME + ")");
+            toast(failedMessage(kind));
+        });
+    }
+
+    /**
+     * The tank page's way back to the shell, as window.FinsicalAndroid
+     * (BlobDownload.INTERFACE_NAME); only the reader script calls it.
+     * WebView calls these methods on its JavaBridge thread while the page
+     * waits for them to return, so they only hand over to the UI thread.
+     */
+    private final class PageBridge {
+        @JavascriptInterface
+        public void deliver(String token, String dataUrl) {
+            mainHandler.post(() -> {
+                if (claimRead(token).isPresent()) {
+                    saveDataUrl(dataUrl);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void fail(String token, String reason) {
+            mainHandler.post(() -> {
+                Optional<DownloadTarget.Kind> kind = claimRead(token);
+                if (kind.isPresent()) {
+                    Log.e(LOG_TAG, "The tank page could not read a download: " + reason);
+                    toast(failedMessage(kind.get()));
+                }
+            });
+        }
+    }
+
+    /**
+     * The kind of the pending read that `token` names, which it removes;
+     * empty for a call the shell did not ask for or from a tank that has
+     * left the app origin.
+     */
+    private Optional<DownloadTarget.Kind> claimRead(String token) {
+        if (!tankOnAppOrigin()) {
+            Log.w(LOG_TAG, "Ignored a download report: the tank is not showing the app");
+            return Optional.empty();
+        }
+        // HashMap takes a null key: a token-less call is simply unknown.
+        Optional<DownloadTarget.Kind> kind = Optional.ofNullable(pendingReads.remove(token));
+        if (!kind.isPresent()) {
+            Log.w(LOG_TAG, "Ignored a download report the shell did not ask for");
+        }
+        return kind;
+    }
+
+    /** Whether the tank exists and shows a page of the app origin. */
+    private boolean tankOnAppOrigin() {
+        if (tank == null) {
+            return false;
+        }
+        String url = tank.getUrl();
+        if (url == null) {
+            return false;
+        }
+        Uri uri = Uri.parse(url);
+        return AppOrigin.isApp(uri.getScheme(), uri.getHost(), uri.getPort());
+    }
+
+    /** Decodes a base64 data: download and asks the user where to save it. */
+    private void saveDataUrl(String url) {
+        Optional<DataUrl> parsed = DataUrl.parse(url);
+        DownloadTarget target = targetFor(parsed.isPresent() ? parsed.get().mimeType : null);
+        if (!parsed.isPresent() || !parsed.get().base64) {
+            Log.e(LOG_TAG, "Cannot save a download that is not a base64 data: URL: " + forLog(url));
+            toast(failedMessage(target.kind));
+            return;
+        }
+        if (url.length() > BlobDownload.MAX_DATA_URL_CHARS) {
+            Log.e(LOG_TAG, "Refused a " + url.length() + "-character download; the limit is "
+                    + BlobDownload.MAX_DATA_URL_CHARS);
+            toast(failedMessage(target.kind));
+            return;
+        }
+        if (pendingSave != null) {
+            Log.w(LOG_TAG, "Refused a download while the save picker is open for another");
+            toast(R.string.save_busy);
+            return;
+        }
+
+        byte[] bytes;
         try {
-            png = Base64.decode(url.substring(data.payloadStart), Base64.DEFAULT);
+            bytes = Base64.decode(url.substring(parsed.get().payloadStart), Base64.DEFAULT);
         } catch (IllegalArgumentException e) {
-            Log.e(LOG_TAG, "Take a Picture handed over a PNG that is not valid base64", e);
-            toast(R.string.picture_failed);
+            Log.e(LOG_TAG, "A download handed over data that is not valid base64", e);
+            toast(failedMessage(target.kind));
             return;
         }
 
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
                 .addCategory(Intent.CATEGORY_OPENABLE)
-                .setType(PNG)
-                .putExtra(Intent.EXTRA_TITLE, PictureName.of(new Date(), TimeZone.getDefault()));
+                .setType(target.documentMimeType)
+                .putExtra(Intent.EXTRA_TITLE, target.fileName);
         try {
-            startActivityForResult(intent, REQUEST_SAVE_PICTURE);
+            startActivityForResult(intent, REQUEST_SAVE_DOWNLOAD);
         } catch (ActivityNotFoundException e) {
-            Log.e(LOG_TAG, "No app can create a document to save the picture in", e);
-            toast(R.string.picture_no_app);
+            Log.e(LOG_TAG, "No app can create a document to save the download in", e);
+            toast(R.string.save_no_app);
             return;
         }
-        pendingPicture = png;
+        pendingSave = new PendingSave(bytes, target.kind);
+    }
+
+    private static DownloadTarget targetFor(String mimeType) {
+        return DownloadTarget.forMimeType(mimeType, new Date(), TimeZone.getDefault());
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode != REQUEST_SAVE_PICTURE) {
-            super.onActivityResult(requestCode, resultCode, data);
-            return;
+        switch (requestCode) {
+            case REQUEST_SAVE_DOWNLOAD:
+                onSaveDocumentChosen(resultCode, data);
+                break;
+            case REQUEST_OPEN_DOCUMENT:
+                onOpenDocumentChosen(resultCode, data);
+                break;
+            default:
+                super.onActivityResult(requestCode, resultCode, data);
+                break;
         }
-        byte[] png = pendingPicture;
-        pendingPicture = null;
-        Uri document = data == null ? null : data.getData();
-        if (resultCode != RESULT_OK || document == null) {
-            Log.i(LOG_TAG, "Saving the picture was cancelled");
-            return;
-        }
-        if (png == null) {
-            // The process was killed while the picker was open, and the
-            // picture with it. Remove the empty file the picker created.
-            Log.e(LOG_TAG, "The picture was lost while the file picker was open");
-            deleteDocument(document);
-            toast(R.string.picture_lost);
-            return;
-        }
-        writePicture(document, png);
     }
 
-    private void writePicture(Uri document, byte[] png) {
+    private void onSaveDocumentChosen(int resultCode, Intent data) {
+        PendingSave save = pendingSave;
+        pendingSave = null;
+        Uri document = data == null ? null : data.getData();
+        if (resultCode != RESULT_OK || document == null) {
+            Log.i(LOG_TAG, "Saving the download was cancelled");
+            return;
+        }
+        if (save == null) {
+            // The process was killed while the picker was open, and the
+            // download with it. Remove the empty file the picker created.
+            Log.e(LOG_TAG, "The download was lost while the file picker was open");
+            deleteDocument(document);
+            toast(R.string.save_lost);
+            return;
+        }
+        writeDocument(document, save);
+    }
+
+    private void writeDocument(Uri document, PendingSave save) {
         ContentResolver resolver = getContentResolver();
         Context app = getApplicationContext();
-        Handler main = new Handler(Looper.getMainLooper());
+        int saved = savedMessage(save.kind);
+        int failed = failedMessage(save.kind);
         // Off the UI thread: the document may live with a slow provider
         // (a cloud drive).
         new Thread(() -> {
-            int message = write(resolver, document, png) ? R.string.picture_saved : R.string.picture_failed;
-            main.post(() -> Toast.makeText(app, message, Toast.LENGTH_LONG).show());
-        }, "finsical-save-picture").start();
+            int message = write(resolver, document, save.bytes) ? saved : failed;
+            mainHandler.post(() -> Toast.makeText(app, message, Toast.LENGTH_LONG).show());
+        }, "finsical-save-download").start();
     }
 
     private static boolean write(ContentResolver resolver, Uri document, byte[] bytes) {
@@ -292,7 +464,7 @@ public final class MainActivity extends Activity {
             out.write(bytes);
             return true;
         } catch (IOException | SecurityException e) {
-            Log.e(LOG_TAG, "Cannot write the picture to " + document, e);
+            Log.e(LOG_TAG, "Cannot write the download to " + document, e);
             return false;
         }
     }
@@ -300,10 +472,108 @@ public final class MainActivity extends Activity {
     private void deleteDocument(Uri document) {
         try {
             if (!DocumentsContract.deleteDocument(getContentResolver(), document)) {
-                Log.w(LOG_TAG, "Cannot delete the empty picture file " + document);
+                Log.w(LOG_TAG, "Cannot delete the empty file " + document);
             }
         } catch (RuntimeException | IOException e) {
-            Log.w(LOG_TAG, "Cannot delete the empty picture file " + document, e);
+            Log.w(LOG_TAG, "Cannot delete the empty file " + document, e);
+        }
+    }
+
+    private static int savedMessage(DownloadTarget.Kind kind) {
+        switch (kind) {
+            case PICTURE:
+                return R.string.picture_saved;
+            case TANK:
+                return R.string.tank_saved;
+            default:
+                return R.string.file_saved;
+        }
+    }
+
+    private static int failedMessage(DownloadTarget.Kind kind) {
+        switch (kind) {
+            case PICTURE:
+                return R.string.picture_failed;
+            case TANK:
+                return R.string.tank_failed;
+            default:
+                return R.string.file_failed;
+        }
+    }
+
+    // ---- File inputs: Import Tank ---------------------------------------
+
+    /**
+     * An {@code <input type=file>} click, from any WebView. The page gets
+     * the picked documents' content: URIs, or null when the user cancels or
+     * nothing can pick; exactly once either way, as WebView requires.
+     */
+    private boolean showFileChooser(ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params) {
+        // An unanswered earlier request would leave its page waiting.
+        cancelFileChooser();
+        boolean multiple = params.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType(ANY_TYPE)
+                .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
+        try {
+            startActivityForResult(intent, REQUEST_OPEN_DOCUMENT);
+        } catch (ActivityNotFoundException e) {
+            Log.e(LOG_TAG, "No app can open a document for the page's file input", e);
+            toast(R.string.open_no_app);
+            callback.onReceiveValue(null);
+            return true;
+        }
+        pendingFileChooser = callback;
+        return true;
+    }
+
+    private void onOpenDocumentChosen(int resultCode, Intent data) {
+        ValueCallback<Uri[]> callback = pendingFileChooser;
+        pendingFileChooser = null;
+        if (callback == null) {
+            // The process or Activity was recreated while the picker was
+            // open: the page that asked is gone, and so is its callback.
+            Log.w(LOG_TAG, "Dropped a picked document: the page that asked for it is gone");
+            return;
+        }
+        if (resultCode != RESULT_OK) {
+            Log.i(LOG_TAG, "Opening a document was cancelled");
+            callback.onReceiveValue(null);
+            return;
+        }
+        callback.onReceiveValue(pickedDocuments(data));
+    }
+
+    /** The documents in a picker result, or null for none. */
+    private static Uri[] pickedDocuments(Intent data) {
+        if (data == null) {
+            return null;
+        }
+        List<Uri> uris = new ArrayList<>();
+        // With EXTRA_ALLOW_MULTIPLE the picks come as ClipData, and some
+        // pickers also put a single pick there.
+        ClipData clip = data.getClipData();
+        if (clip != null) {
+            for (int i = 0; i < clip.getItemCount(); i++) {
+                Uri uri = clip.getItemAt(i).getUri();
+                if (uri != null) {
+                    uris.add(uri);
+                }
+            }
+        }
+        if (uris.isEmpty() && data.getData() != null) {
+            uris.add(data.getData());
+        }
+        return uris.isEmpty() ? null : uris.toArray(new Uri[0]);
+    }
+
+    /** Answers a waiting file input with "nothing picked". */
+    private void cancelFileChooser() {
+        ValueCallback<Uri[]> callback = pendingFileChooser;
+        pendingFileChooser = null;
+        if (callback != null) {
+            callback.onReceiveValue(null);
         }
     }
 
@@ -402,6 +672,8 @@ public final class MainActivity extends Activity {
     }
 
     private void destroyWebViews() {
+        // While the WebViews can still take the answer.
+        cancelFileChooser();
         if (panels != null) {
             panels.destroyAll();
         }
@@ -440,6 +712,9 @@ public final class MainActivity extends Activity {
     }
 
     private static String forLog(String url) {
+        if (url == null) {
+            return "null";
+        }
         return url.length() <= MAX_LOGGED_URL ? url : url.substring(0, MAX_LOGGED_URL) + "...";
     }
 
@@ -558,7 +833,10 @@ public final class MainActivity extends Activity {
         }
     }
 
-    /** Turns window.open into panels and forwards the pages' console. */
+    /**
+     * Turns window.open into panels, answers file inputs and forwards the
+     * pages' console.
+     */
     private final class ShellChromeClient extends WebChromeClient {
         /**
          * Every child starts as a pending panel: no URL is known yet (see
@@ -584,6 +862,11 @@ public final class MainActivity extends Activity {
                 return;
             }
             panels.close(window);
+        }
+
+        @Override
+        public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+            return showFileChooser(callback, params);
         }
 
         /** The page focused an open named window (its Window menu). */
