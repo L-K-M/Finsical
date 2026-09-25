@@ -15,6 +15,16 @@ import type { StatsInput, TankStats, WaterStats } from "./statsmodel.js";
 // it pushes (same contract as the other client windows). The window
 // chrome goes through Osmium UI's hostWindow.
 
+// A file dropped on this window must not navigate it to the file —
+// only the tank page and the Add-ons window accept drops.
+window.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  // Reject file drops with the OS "no drop" cursor instead of a copy cursor.
+  if (e.dataTransfer?.types.includes("Files"))
+    e.dataTransfer.dropEffect = "none";
+});
+window.addEventListener("drop", (e) => e.preventDefault());
+
 const win = document.getElementById("swin")!;
 const rowsEl = document.getElementById("srows")!;
 const careEl = document.getElementById("scare")!;
@@ -127,6 +137,7 @@ function render(st: TankStats): void {
     : "none"));
   field("Light", text(st.lightLabel));
   field("Tank age", text(w ? days(w.days) : uptime(st.uptimeMin)));
+  if (st.milestone) field("Diary", text(st.milestone));
 
   careEl.textContent = "";
   careEl.appendChild(el("div", "osm-label scarehead", "Care:"));
@@ -239,10 +250,17 @@ function syncKeeping(w: WaterStats | null): void {
 }
 
 let greeted = false;
+let tankBoot: string | undefined;
 let lastStats: TankStats | null = null;
 const bus = openBus((m: BusMsg) => {
   if (m.op !== "state") return;
   greeted = true;
+  if (typeof m.boot === "string") {
+    // A restarted tank is a different tank: its water and hunger must
+    // not merge into the trends and sparklines the old one drew.
+    if (tankBoot !== undefined && m.boot !== tankBoot) history.length = 0;
+    tankBoot = m.boot;
+  }
   const st = deriveStats(m as StatsInput);
   lastStats = st;
   history.push({ t: Date.now(), avgHunger: st.avgHunger,
@@ -258,6 +276,11 @@ const bus = openBus((m: BusMsg) => {
   syncKeeping(st.water);
 });
 
+// A file dropped here would navigate this borderless window to the
+// raw file, with no way back — swallow drops like the tank page does.
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
+
 // ---- window chrome -------------------------------------------------------
 // Zoom toggles to the standard size; the grow box keeps every field
 // and two care hints visible (the window clips rather than scrolls).
@@ -267,13 +290,21 @@ hostWindow(win, {
   grow: { min: { w: 340, h: 60 } },
 });
 
+// Until the first state push lands the window says what it is waiting
+// for — a blank fields grid reads as broken, not as loading.
+let waiting = text("Waiting for the tank…");
+field("Tank", waiting);
+
 // The tank page may still be loading when the window opens — retry the
 // hello until a state push arrives, then keep a live heartbeat so the
 // numbers stay current (same cadence the panel uses).
 let tries = 0;
 const greet = setInterval(() => {
-  if (greeted || ++tries > 60) clearInterval(greet); // give up after 30s
-  else bus.post({ op: "hello" });
+  if (greeted || ++tries > 60) {
+    clearInterval(greet); // give up after 30s — say so rather than wait on
+    if (!greeted)
+      waiting.textContent = "The tank isn't answering — is Finsical running?";
+  } else bus.post({ op: "hello" });
 }, 500);
 bus.post({ op: "hello" });
 
@@ -283,9 +314,15 @@ bus.post({ op: "hello" });
 const copyBtn = document.getElementById("scopy") as HTMLButtonElement;
 pushButton(copyBtn, () => {
   const st = lastStats;
+  let copyTimer: ReturnType<typeof setTimeout> | undefined;
   const done = (label: string): void => {
     copyBtn.textContent = label;
-    setTimeout(() => { copyBtn.textContent = "Copy Summary"; }, 1500);
+    // A re-click inside the window restarts the feedback, not just
+    // the label — a stale reset must not erase the newer one early.
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => {
+      copyBtn.textContent = "Copy Summary";
+    }, 1500);
   };
   if (!st) { done("No data yet"); return; }
   const text = summaryText(st);
@@ -324,3 +361,7 @@ setInterval(() => {
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) bus.post({ op: "hello" });
 });
+// Right-click inside a borderless WebKit window surfaces WebKit's
+// generic menu (Reload etc.) — nothing in it applies to a desk
+// accessory, so swallow it like the tank page does.
+window.addEventListener("contextmenu", (e) => e.preventDefault());

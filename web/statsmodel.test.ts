@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { curesFor, deriveStats, deriveWater, hungerLabel, SPARK_H, SPARK_SLOT_MS, SPARK_W,
-         sparkColumns, sparkRow, summaryText, trend, uptime } from "./statsmodel.js";
+import { curesFor, deriveStats, deriveWater, hungerLabel, milestone,
+         SPARK_H, SPARK_SLOT_MS, SPARK_W, sparkColumns, sparkRow,
+         summaryText, trend, uptime } from "./statsmodel.js";
 import { DAY_TICKS, Sim } from "../core/sim.js";
 import { HUNGER_SEEK } from "../core/tuning.js";
 
@@ -162,8 +163,31 @@ describe("labels", () => {
     expect(s.foodSettled).toBe(0);
     expect(s.bubbles).toBe(0);
     expect(s.uptimeMin).toBe(0);
+    expect(s.milestone).toBeNull();
     // A NaN must not silently suppress the rotting-food hint — zero
     // genuinely means none settled, so this just mustn't read "NaN".
+  });
+
+  it("carries the tank-age milestone", () => {
+    // 90 min in the base fixture: past the first hour.
+    expect(deriveStats(base).milestone).toMatch(/First hour/);
+  });
+});
+
+describe("milestone", () => {
+  it("stays quiet before the first hour", () => {
+    expect(milestone(0)).toBeNull();
+    expect(milestone(59)).toBeNull();
+  });
+
+  it("names the highest anniversary reached", () => {
+    expect(milestone(60)).toMatch(/First hour/);
+    expect(milestone(24 * 60)).toMatch(/full day/);
+    expect(milestone(7 * 24 * 60)).toMatch(/week/);
+    expect(milestone(30 * 24 * 60)).toMatch(/month/);
+    // A veteran tank keeps its senior title, not the junior ones —
+    // and "or more": a year-old tank isn't exactly one month old.
+    expect(milestone(365 * 24 * 60)).toMatch(/month or more/);
   });
 });
 

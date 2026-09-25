@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FEEDBACK_MAX_S, SOUND_DEFAULTS, sanitizeSoundConfig, TankAudio }
-  from "./audio.js";
+import { FEEDBACK_MAX_S, panFor, SOUND_DEFAULTS, sanitizeSoundConfig,
+         TankAudio } from "./audio.js";
 import type { AzpackManifest } from "../core/data/azpack.js";
 
 // A minimal stand-in for WebAudio: records connections, gain values,
@@ -18,6 +18,7 @@ class FakeNode {
   connect<T extends FakeNode>(n: T): T { this.out.push(n); return n; }
 }
 class FakeGain extends FakeNode { gain = new FakeParam(); }
+class FakePanner extends FakeNode { pan = new FakeParam(); }
 class FakeBuffer {
   readonly numberOfChannels = 1;
   constructor(readonly duration: number,
@@ -30,6 +31,7 @@ class FakeBuffer {
 class FakeSource extends FakeNode {
   buffer: FakeBuffer | null = null;
   loop = false;
+  playbackRate = new FakeParam();
   onended: (() => void) | null = null;
   starts = 0;
   stops: (number | undefined)[] = [];
@@ -48,6 +50,12 @@ class FakeContext {
     const g = new FakeGain();
     this.gains.push(g);
     return g;
+  }
+  panners: FakePanner[] = [];
+  createStereoPanner(): FakePanner {
+    const p = new FakePanner();
+    this.panners.push(p);
+    return p;
   }
   createBufferSource(): FakeSource {
     const s = new FakeSource();
@@ -359,6 +367,87 @@ describe("TankAudio install feedback", () => {
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
+describe("TankAudio behind a locked context", () => {
+  it("drops one-shots instead of bursting them at the first gesture",
+     async () => {
+    const { audio, ac } = await tank({ drop: 1, IntoWater: 2 });
+    ac.state = "suspended"; // no user gesture yet
+    audio.feed();
+    audio.splash();
+    audio.tap(160, 100, 320, 200);
+    ac.state = "running";
+    await flush();
+    expect(ac.sources).toHaveLength(0);
+    // The first gesture unlocks only what is still wanted.
+    audio.unlock();
+    await flush();
+    expect(ac.sources).toHaveLength(0);
+  });
+
+  it("still defers only the ambient loop behind the lock", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    ac.state = "suspended";
+    audio.startAmbient();
+    audio.feed(); // a one-shot in between — dropped, never queued
+    await flush();
+    // Only the loop's deferred start replayed; the feed is gone.
+    expect(ac.sources).toHaveLength(1);
+    expect(ac.loops()).toBe(1);
+    audio.unlock();
+    await flush();
+    expect(ac.loops()).toBe(1); // no stacking, no burst
+  });
+});
+
+describe("TankAudio ambient restarts", () => {
+  it("does not restart the loop for an identical re-import", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.startAmbient();
+    const loop = ac.sources[0]!;
+    expect(loop.loop).toBe(true);
+    // soundsLoaded reloads re-decode the same bytes — a new buffer
+    // object for the same record. The loop keeps playing, no blip.
+    await audio.addWavs([{ name: LOOP, wav: wav(30) }]);
+    expect(loop.stops).toHaveLength(0);
+    expect(ac.loops()).toBe(1);
+  });
+
+  it("restarts the loop when the bubbling record actually changes",
+     async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.startAmbient();
+    const loop = ac.sources[0]!;
+    // A different recording under the same name takes the slot.
+    await audio.addWavs([{ name: LOOP, wav: wav(45) }]);
+    expect(loop.stops).toHaveLength(1);
+    expect(ac.loops()).toBe(1);
+    expect(ac.sources[1]!.buffer?.duration).toBe(45);
+  });
+
+  it("does not blip when the changed record re-imports identically",
+     async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.startAmbient();
+    await audio.addWavs([{ name: LOOP, wav: wav(45) }]); // record changes
+    const loop = ac.sources[1]!;
+    // A reload of the new record and removing an unrelated name must
+    // leave the live loop alone — the restart refreshed ambientKey.
+    await audio.addWavs([{ name: LOOP, wav: wav(45) }]);
+    audio.removeWavs(["unrelated"]);
+    expect(loop.stops).toHaveLength(0);
+    expect(ac.loops()).toBe(1);
+  });
+
+  it("stops the loop when every bubbling record is removed", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.startAmbient();
+    const loop = ac.sources[0]!;
+    audio.removeWavs([LOOP]);
+    expect(loop.stops).toHaveLength(1);
+    expect(ac.loops()).toBe(0);
+  });
+});
+
 describe("TankAudio.setHidden", () => {
   it("keeps the device asleep when a gesture unlocks while hidden", async () => {
     const { audio, ac } = await tank({ [LOOP]: 30, bubble: 1 });
@@ -458,11 +547,108 @@ describe("TankAudio event sounds", () => {
     expect(ac.sources).toHaveLength(0);
   });
 
+  it("bounds substring matches so song titles can't hijack a tap",
+     async () => {
+    const { audio, ac } = await tank({
+      "Top of the World": 1, "Sideways Stories": 2,
+    });
+    audio.tap(160, 100, 320, 200); // center glass — nothing close named
+    audio.tap(10, 100, 320, 200);  // side — "Sideways" is too long too
+    expect(ac.sources).toHaveLength(0);
+  });
+
+  it("still reaches bank names a few characters past the needle",
+     async () => {
+    const { audio, ac } = await tank({ "TOP*": 4, IntoWaterBig: 3 });
+    audio.tap(160, 10, 320, 200); // near the top edge
+    audio.sceneryIn();
+    expect(ac.sources.map((s) => s.buffer?.duration)).toEqual([4, 3]);
+  });
+
   it("splashes for a water change when the set has no sound for it",
      async () => {
     const { audio, ac } = await tank({ IntoWater: 5 });
     audio.changeWater();
     expect(played(ac)).toEqual([5]);
+  });
+
+  // The original game's sound bank ships these names (sndbank.ts) —
+  // the ones TankAudio has events for each resolve through their own
+  // event, and the unexercised ones prove nothing hijacks a needle
+  // from outside its family.
+  it("reaches each exercised 'snd ' bank name through its event",
+     async () => {
+    const { audio, ac } = await tank({
+      "CENTER*": 1, SIDE: 2, "TOP*": 3, "BOTTOM*": 4, Drop: 5,
+      IntoWater: 6, ChangeWater: 7, Switch: 8, IntoWaterBig: 9,
+      letoutWater: 10, "AZ bubble 9003": 30, aqua: 12, TimerOnOff: 13,
+      WashFilter: 14, pipopa: 15, EventPreg: 16, EventSick: 17, add: 18,
+      set: 19, EventTiyu: 20, EventCouple: 21, EventEgg: 22,
+      TimerSet: 23, EventDead: 24,
+    });
+    audio.tap(160, 100, 320, 200); // center
+    audio.tap(10, 100, 320, 200);  // side
+    audio.tap(160, 10, 320, 200);  // top
+    audio.tap(160, 190, 320, 200); // bottom
+    audio.feed();        // Drop
+    audio.splash();      // IntoWater
+    audio.changeWater(); // ChangeWater
+    audio.lampSwitch();  // Switch
+    audio.sceneryIn();   // IntoWaterBig
+    audio.fishOut();     // letoutWater
+    expect(ac.sources.map((s) => s.buffer?.duration))
+      .toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+});
+
+describe("TankAudio behind a locked context", () => {
+  it("drops stale one-shots instead of bursting them on the first click",
+     async () => {
+    const { audio, ac } = await tank({ bubble: 1, "center": 1 });
+    ac.state = "suspended"; // autoplay-gated, like a fresh browser tab
+    audio.bubble();         // sim-driven sounds while the user hasn't
+    audio.bubble();         // clicked yet must not queue
+    audio.tap(160, 100, 320, 200);
+    audio.unlock();         // first real gesture
+    await flush();
+    expect(ac.sources).toHaveLength(0);
+  });
+
+  it("still waits out the lock for a sound answering the gesture itself",
+     async () => {
+    const { audio, ac } = await tank({ "center": 1 });
+    ac.state = "suspended";
+    vi.stubGlobal("navigator", { userActivation: { isActive: true } });
+    audio.tap(160, 100, 320, 200); // the click that unlocks also taps
+    await flush();
+    expect(ac.sources).toHaveLength(1);
+  });
+
+  it("always waits for the ambient loop", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    ac.state = "suspended";
+    audio.startAmbient();
+    await flush();
+    expect(ac.sources).toHaveLength(1);
+    expect(ac.sources[0]!.loop).toBe(true);
+  });
+});
+
+describe("TankAudio event-sound name matching", () => {
+  it("a long recording that merely contains an event name is skipped",
+     async () => {
+    const { audio, ac } = await tank({
+      "Center stage (live at the Fillmore)": 240, "knock on the side": 1,
+    });
+    audio.tap(160, 100, 320, 200); // wants "center" — the song is no knock
+    expect(ac.sources.map((s) => s.buffer?.duration)).toEqual([1]);
+  });
+
+  it("a long record stays out even under an event's exact name",
+     async () => {
+    const { audio, ac } = await tank({ center: 240 });
+    audio.tap(160, 100, 320, 200);
+    expect(ac.sources).toHaveLength(0);
   });
 });
 
@@ -515,6 +701,44 @@ describe("TankAudio bubbles, as the original plays them", () => {
     audio.unlock();
     await flush();
     expect(FakeContext.last!.sources).toHaveLength(0);
+  });
+});
+
+describe("TankAudio stereo placement", () => {
+  it("panFor maps tank x to ±0.8 and clamps outside it", () => {
+    expect(panFor(0, 320)).toBe(-0.8);
+    expect(panFor(160, 320)).toBe(0);
+    expect(panFor(320, 320)).toBe(0.8);
+    expect(panFor(-50, 320)).toBe(-0.8);
+    expect(panFor(999, 320)).toBe(0.8);
+    expect(panFor(10, 0)).toBe(0); // degenerate width, centered
+  });
+
+  it("a tap near an edge plays through a panner at that edge",
+     async () => {
+    const { audio, ac } = await tank({ side: 1, center: 2 });
+    audio.tap(10, 100, 320, 200);
+    const src = ac.sources[0]!;
+    const panner = src.out[0]! as FakePanner;
+    expect(panner).toBeInstanceOf(FakePanner);
+    expect(panner.pan.value).toBeCloseTo(-0.75, 5);
+    expect(panner.out[0]!.out[0]).toBe(ac.gains[0]); // into the master
+  });
+
+  it("a centre tap keeps the direct path — no panner at all",
+     async () => {
+    const { audio, ac } = await tank({ center: 1 });
+    audio.tap(160, 100, 320, 200);
+    expect(ac.panners).toHaveLength(0);
+    expect(ac.sources[0]!.out[0]).toBeInstanceOf(FakeGain);
+  });
+
+  it("bubbles get a small random pitch", async () => {
+    const { audio, ac } = await tank({ "bubble pop": 2 });
+    audio.bubble(0.5);
+    const rate = ac.sources[0]!.playbackRate.value;
+    expect(rate).toBeGreaterThanOrEqual(0.94);
+    expect(rate).toBeLessThanOrEqual(1.06);
   });
 });
 
