@@ -2170,7 +2170,9 @@ function takePicture(): void {
     document.body.append(a);
     a.click();
     a.remove();
-    if (revoke) URL.revokeObjectURL(href);
+    // Revoking in the same tick can abort the download where blob
+    // saves start asynchronously (Safari, Firefox).
+    if (revoke) setTimeout(() => URL.revokeObjectURL(href), 5000);
   };
   const saveBlob = (blob: Blob | null): void => {
     if (!blob) { save(out.toDataURL("image/png")); return; }
@@ -2182,6 +2184,12 @@ function takePicture(): void {
         const url = typeof r.result === "string" ? r.result : "";
         bus.post({ op: "savePicture", name,
                    png: url.slice(url.indexOf(",") + 1) });
+      };
+      // Without this the picture just vanishes — try the anchor as a
+      // last resort (ignored by WKWebView, harmless elsewhere).
+      r.onerror = () => {
+        console.warn("takePicture: FileReader failed:", r.error);
+        save(URL.createObjectURL(blob), true);
       };
       r.readAsDataURL(blob);
       return;

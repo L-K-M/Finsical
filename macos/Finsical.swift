@@ -620,18 +620,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         }
     }
 
+    /// Set while a Take a Picture save panel is up — repeated menu
+    /// clicks must not stack overlapping NSSavePanels.
+    private var picturePanelOpen = false
+
     /// Take a Picture's save: decode the base64 PNG the page posted and
     /// offer it to a real save panel (WKWebView ignores <a download>).
     private func savePicturePng(_ base64: String, suggestedName: String) {
-        guard let data = Data(base64Encoded: base64) else {
-            NSLog("Finsical: savePicture payload was not base64 data")
+        guard let data = Data(base64Encoded: base64),
+              data.starts(with: [0x89, 0x50, 0x4E, 0x47]) else {
+            NSLog("Finsical: savePicture payload was not PNG data")
             return
         }
+        guard !picturePanelOpen else { return }
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = suggestedName
+        // The page names the file; strip any path parts anyway.
+        panel.nameFieldStringValue =
+            (suggestedName as NSString).lastPathComponent
         panel.allowedContentTypes = [.png]
         panel.canCreateDirectories = true
-        panel.begin { response in
+        picturePanelOpen = true
+        panel.begin { [self] response in
+            picturePanelOpen = false
             guard response == .OK, let url = panel.url else { return }
             do { try data.write(to: url, options: .atomic) }
             catch {
