@@ -923,10 +923,16 @@ function noteGlassTap(): void {
               buttons: [{ title: "OK", default: true, cancel: true }] });
 }
 
-// A refused feed (the tank already holds MAX_UNEATEN pellets) says so
-// once — a silent no-op would read as a broken click.
+// With hints on, a refused feed (the tank already holds MAX_UNEATEN
+// pellets) says why, at most once a minute. Hints are opt-in: off, a
+// refused feed is silent.
+const HINTS_KEY = "finsical:hints";
+let hintsOn = false;
+try { hintsOn = localStorage.getItem(HINTS_KEY) === "on"; }
+catch { /* storage unavailable */ }
 let foodRefusedAt = -Infinity; // first refusal always shows
 function noteFoodRefused(): void {
+  if (!hintsOn) return;
   const now = performance.now();
   if (now - foodRefusedAt < 60_000) return;
   foodRefusedAt = now;
@@ -2662,6 +2668,11 @@ mountTankMenuBar({
     try { localStorage.setItem(SCOLD_KEY, scoldOn ? "on" : "off"); }
     catch { /* storage unavailable */ }
   },
+  toggleHints: () => {
+    hintsOn = !hintsOn;
+    try { localStorage.setItem(HINTS_KEY, hintsOn ? "on" : "off"); }
+    catch { /* storage unavailable */ }
+  },
   toggleBoot: () => {
     bootEnabled = !bootEnabled;
     try { localStorage.setItem(BOOT_KEY, bootEnabled ? "on" : "off"); }
@@ -2669,7 +2680,8 @@ mountTankMenuBar({
   },
   state: () => ({ autoFeed, crtUsable: crt?.usable ?? false, crtOn,
                   lampOn: lighting.lamp, muted: soundCfg.muted, paused,
-                  zen, scoldOn, bootOn: bootEnabled, names: namesOn }),
+                  zen, scoldOn, hintsOn, bootOn: bootEnabled,
+                  names: namesOn }),
 });
 // The bar may have mounted after the first layout — place the case
 // below it now rather than waiting for a resize.

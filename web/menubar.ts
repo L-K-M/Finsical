@@ -115,13 +115,15 @@ export interface TankMenuActions {
   toggleNames(): void;
   toggleZen(): void;
   toggleScold(): void;
+  toggleHints(): void;
   toggleBoot(): void;
   /** Live state, read each time a menu opens. Osmium's items have no
    * checkmark, so toggles name the action they would take instead,
    * like System 8's Show Balloons / Hide Balloons. */
   state(): { autoFeed: boolean; crtUsable: boolean; crtOn: boolean;
              lampOn: boolean; muted: boolean; paused: boolean;
-             zen: boolean; scoldOn: boolean; bootOn: boolean;
+             zen: boolean; scoldOn: boolean; hintsOn: boolean;
+             bootOn: boolean;
              names: boolean };
 }
 
@@ -360,6 +362,8 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
             action: a.toggleMute },
           { title: s.scoldOn ? "Turn Tap Sign Off" : "Turn Tap Sign On",
             action: a.toggleScold },
+          { title: s.hintsOn ? "Turn Hints Off" : "Turn Hints On",
+            action: a.toggleHints },
           { title: s.bootOn ? "Turn Startup Screen Off"
                             : "Turn Startup Screen On",
             action: a.toggleBoot },
