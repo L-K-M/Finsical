@@ -2500,7 +2500,10 @@ dropMsg.hidden = true;
 document.getElementById("screen")!.appendChild(dropMsg);
 let dropMsgTimer: ReturnType<typeof setTimeout> | undefined;
 function dropSay(text: string): void {
-  dropMsg.textContent = text;
+  // A live region only announces a change — an identical repeat (two
+  // bad drops in a row) needs a cleared frame between writes to speak.
+  dropMsg.textContent = "";
+  requestAnimationFrame(() => { dropMsg.textContent = text; });
   dropMsg.hidden = false;
   clearTimeout(dropMsgTimer);
   dropMsgTimer = setTimeout(() => {
