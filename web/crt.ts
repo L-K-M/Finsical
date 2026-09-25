@@ -11,8 +11,8 @@
  *  - R/B misconvergence that grows toward the screen edges
  *  - RGB grille stripes at device-pixel pitch, so the mask is far finer
  *    than the game pixels
- *  - gentle barrel curvature, corner vignette, flicker + rolling band,
- *    faint grain
+ *  - gentle barrel curvature with rounded, anti-aliased raster
+ *    corners, corner vignette, flicker + rolling band, faint grain
  *  - service-menu geometry: raster skew and a perspective keystone
  * WebGL setup failure returns null and the plain pixelated path stays.
  */
@@ -61,6 +61,9 @@ uniform float uDegauss; // degauss wobble amplitude (0 = settled)
 
 // Device px per game px, set at the top of main().
 vec2 pxScale;
+
+// Corner radius of the raster, in game px.
+const float RASTER_CORNER = 6.0;
 
 // Sharp-bilinear: the texel center nearest to x, except within one
 // device px of a texel boundary, where it fades to the neighbor. Pure
@@ -153,6 +156,17 @@ void main() {
   // Logical game pixel under this output pixel (post-warp).
   vec2 lp = uv * uTank;
 
+  // The raster's own edge: rounded corners, and coverage faded across
+  // the last device px instead of a 1-bit cut, so the bowed edges don't
+  // stair-step. sd is the distance outside the rounded rect, in game px.
+  vec2 q = abs(lp - 0.5 * uTank) - (0.5 * uTank - RASTER_CORNER);
+  float sd = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - RASTER_CORNER;
+  float edge = clamp(0.5 - sd * min(pxScale.x, pxScale.y), 0.0, 1.0);
+  if (edge <= 0.0) {
+    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    return;
+  }
+
   // Horizontal beam smear: a 9-tap gaussian along the scan. The first
   // 40% of the slider fades in a beam about one game px wide (sigma
   // ~0.9 px); beyond that the beam itself widens, to 2.5x at the top.
@@ -209,6 +223,8 @@ void main() {
   else if (stripe < 1.5) mask.g = 1.0;
   else mask.b = 1.0;
   c *= mix(vec3(1.0), mask * 1.18, uGrill); // 1.18 compensates dimming
+
+  c *= edge;
 
   // Glass vignette, faint flicker (plus a slow rolling brightness
   // band — the beam never sits perfectly in sync), and grain.
