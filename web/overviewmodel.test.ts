@@ -87,8 +87,31 @@ describe("sortItems", () => {
     expect(sortItems(items, "name").map((i) => i.name))
       .toEqual(["Angelfish", "Blue.grv", "Clownfish", "tang.fsh"]);
   });
-  it("sorts by status", () => {
-    expect(sortItems(items, "status")[0]!.status).toBe("In tank");
+  it("sorts by status: hunger bands, then a fixed state order", () => {
+    const rows = sortItems(items, "status").map((i) => i.name);
+    // Hungry Angelfish ahead of full Clownfish; add-ons after the fish.
+    expect(rows).toEqual(["Angelfish", "Clownfish", "Blue.grv", "tang.fsh"]);
+  });
+  it("a turning fish reads and sorts as Swimming", () => {
+    // A roll lasts ~10 ticks — "Turning" churned the Status column.
+    const withTurn = itemsOf({ ...STATE, addons: [],
+      fish: [{ id: 1, species: "Clownfish", hunger: 0.2,
+               state: "turn" }] });
+    expect(withTurn[0]!.status).toBe("Swimming, full");
+    // ...and it keeps the same sort seat a drifting twin would take.
+    const both = itemsOf({ ...STATE, addons: [], fish: [
+      { id: 1, species: "Clownfish", hunger: 0.2, state: "turn" },
+      { id: 2, species: "Angelfish", hunger: 0.2, state: "drift" },
+    ] });
+    expect(sortItems(both, "status").map((i) => i.name))
+      .toEqual(["Angelfish", "Clownfish"]); // name tiebreak, stable
+  });
+  it("a startle can't outrank a hungrier calm fish", () => {
+    const rows = sortItems(itemsOf({ ...STATE, addons: [], fish: [
+      { id: 1, species: "Zebra", hunger: 0.9, state: "drift" },
+      { id: 2, species: "Alpha", hunger: 0.5, state: "startle" },
+    ] }), "status");
+    expect(rows.map((i) => i.name)).toEqual(["Zebra", "Alpha"]);
   });
 });
 

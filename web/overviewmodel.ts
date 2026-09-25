@@ -6,6 +6,7 @@ import type { Importable } from "./import.js";
 import type { FishState } from "../core/sim.js";
 import { conditionLabel } from "./lifecopy.js";
 import { hungerLabel, uptime } from "./statsmodel.js";
+import { HUNGER_SEEK } from "../core/tuning.js";
 
 export interface FishSnap {
   id: number; species: string; hunger: number; state: string;
@@ -39,6 +40,10 @@ export interface Item {
   use?: BusMsg | undefined;
   /** Fish rows carry the sim id so a selection can spotlight it. */
   fishId?: number;
+  /** Status-column order: ailing fish first, then hunger bands, then
+   * a fixed state order — a fish turning or startling for a second
+   * must not reshuffle the list under the pointer. */
+  statusRank: number;
 }
 
 export type Column = "name" | "kind" | "status";
@@ -68,6 +73,16 @@ export function stateLabel(state: string): string {
   return STATES[state as FishState] ?? state;
 }
 
+// Status-column ordering: hunger band first (hungrier sorts earlier),
+// then a fixed per-state rank. Transient states share a rank where
+// they read the same — a barrel roll is Swimming for list purposes.
+const hungerBand = (h: number): number =>
+  // !(h >= …) so a non-finite bus value sorts with "full".
+  !(h >= HUNGER_SEEK) ? 2 : h >= 0.66 ? 0 : 1;
+const STATE_ORDER: Record<FishState, number> = {
+  startle: 0, seek: 1, sleep: 2, turn: 3, drift: 3, dead: 0,
+};
+
 /** The Finder-style header line: "8 fish, 3 add-ons, water 96%, up
  * 2h 3m" (the sim ticks 30 times a second). */
 export function summary(fish: number, addons: number, water: number,
@@ -82,21 +97,29 @@ export function summary(fish: number, addons: number, water: number,
  * pre-pack rosters). */
 export function itemsOf(s: TankState): Item[] {
   const fish = s.fish ?? [];
-  const items: Item[] = fish.map((f) => ({
-    key: fishThumbKey(f),
-    thumb: fishThumbKey(f),
-    name: f.standIn ? `${f.species || "Fish"} (stand-in)`
-                    : f.species || "Fish",
-    kind: "Fish",
-    // Bus data is untrusted: an unknown state reads as swimming.
-    status: typeof f.dead === "number" || typeof f.sick === "number"
-      ? conditionLabel(f)
-      : `${STATES[f.state as FishState] ?? "Swimming"}, ` +
-        hungerLabel(f.hunger),
-    rank: 0,
-    remove: { op: "removeFish", id: f.id },
-    fishId: f.id,
-  }));
+  const items: Item[] = fish.map((f) => {
+    const ailing = typeof f.dead === "number" || typeof f.sick === "number";
+    // A roll in progress reads "Turning" for ~10 ticks — transient
+    // enough that the row and its sort should show Swimming instead.
+    const stateTxt = f.state === "turn" ? "Swimming"
+      : STATES[f.state as FishState] ?? "Swimming";
+    return {
+      key: fishThumbKey(f),
+      thumb: fishThumbKey(f),
+      name: f.standIn ? `${f.species || "Fish"} (stand-in)`
+                      : f.species || "Fish",
+      kind: "Fish",
+      // Bus data is untrusted: an unknown state reads as swimming.
+      status: ailing ? conditionLabel(f)
+                     : `${stateTxt}, ${hungerLabel(f.hunger)}`,
+      rank: 0,
+      remove: { op: "removeFish", id: f.id },
+      fishId: f.id,
+      statusRank: ailing ? 0
+        : 10 + hungerBand(f.hunger) * 10 +
+          (STATE_ORDER[f.state as FishState] ?? 3),
+    };
+  });
   const showing = new Set(
     [s.scenery?.backdrop, s.scenery?.gravel].filter(
       (u): u is string => typeof u === "string" && u !== ""));
@@ -112,6 +135,7 @@ export function itemsOf(s: TankState): Item[] {
       kind: KINDS[a.section] ?? a.section,
       status: on ? "Showing" : "In tank",
       rank: 1,
+      statusRank: 50, // add-ons sit after every fish
       remove: { op: "removeAddon", url: a.url },
       use: !on && USABLE.has(a.section)
         ? { op: "useAddon", url: a.url } : undefined,
@@ -125,6 +149,6 @@ export function sortItems(items: Item[], by: Column): Item[] {
     a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   return [...items].sort((a, b) =>
     by === "kind" ? a.kind.localeCompare(b.kind) || name(a, b)
-    : by === "status" ? a.status.localeCompare(b.status) || name(a, b)
+    : by === "status" ? a.statusRank - b.statusRank || name(a, b)
     : name(a, b) || a.kind.localeCompare(b.kind));
 }
