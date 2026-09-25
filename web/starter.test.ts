@@ -162,6 +162,18 @@ describe("runStarter", () => {
     expect(r.problem).toBeInstanceOf(Error);
   });
 
+  it("counts a null rejection from an art item as a failure", async () => {
+    const r = await runStarter(set, {
+      install: (it) => it.section === "fish"
+        ? Promise.reject(null) : Promise.resolve(),
+      progress: () => {},
+      fishArrived: () => {},
+      stopped: () => false,
+    });
+    expect(r.failed).toHaveLength(3);
+    expect(r.problem).toBeInstanceOf(Error);
+  });
+
   it("still installs the sounds when every fish fails", async () => {
     const calls: string[] = [];
     await runStarter(set, {

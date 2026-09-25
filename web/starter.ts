@@ -99,7 +99,9 @@ export async function runStarter(
     } catch (e) {
       console.warn(`starter set: couldn't add ${it.inner}:`, e);
       failed.push(it);
-      problem ??= e;
+      // A bare Promise.reject() leaves e nullish — the modal's retry
+      // still needs a real error to report.
+      problem ??= e ?? new Error("install failed");
       continue;
     }
     if (it.section === "fish") {
