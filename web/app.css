@@ -25,18 +25,38 @@ html, body { margin: 0; height: 100%; background: #000; }
    canvases get their own compositing layers. The add-on window layer
    (.ov, z 10) and #opentrigger (z 5) stay above all three. */
 #screenback { position: fixed; z-index: 0; background: #050505; display: none; }
-#screen { position: absolute; z-index: 1; cursor: default; }
+/* touch-action lives on the aperture, not the raster-sized canvas —
+   a gesture starting in the letterbox margins must not pan/zoom. */
+#screen { position: absolute; z-index: 1; cursor: default;
+          touch-action: none; }
+/* Drop cue: the classic-Mac border-invert, on the glass, while files
+   hover the window. */
+body.dragging #screen::after {
+  content: "Drop to add";
+  position: absolute; inset: 4px; z-index: 3;
+  border: 1px dashed rgba(255,255,255,.85);
+  background: rgba(0,0,80,.28);
+  display: grid; place-items: end center; padding-bottom: 8px;
+  box-sizing: border-box;
+  font: var(--osm-font-small); color: rgba(255,255,255,.92);
+  pointer-events: none;
+}
 #machine { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
 #shell {
   position: absolute; inset: 0; width: 100%; height: 100%;
   user-select: none;
 }
 body.tankpage { cursor: grab; }
-body.tankpage:active { cursor: grabbing; }
+/* JS-set, not :active — a native performDrag owns the mouse and the
+ * page may never see the pointerup that ends :active. */
+body.tankpage.grabbing { cursor: grabbing; }
+/* Size and position come from layoutMachine(): upscales snap to
+   integer multiples of the 320x200 raster so pixels stay uniform. */
 canvas#tank {
-  display: block; width: 100%; height: 100%; object-fit: contain;
+  display: block; position: absolute;
   image-rendering: pixelated; /* keep the crunch */
-  touch-action: none;
+  /* Fallback until layoutMachine() sets the snapped inline size. */
+  width: 100%; height: 100%; object-fit: contain;
 }
 /* CRT pass: full-window WebGL canvas over the (kept-live) tank canvas.
    The 2D canvas stays as the texture source — opacity 0 hides it while
@@ -282,6 +302,13 @@ body.crt canvas#tank { opacity: 0; }
   position: fixed; z-index: 5; pointer-events: none;
   background: #ffc; border: 1px solid #000; border-radius: 4px;
   padding: 2px 6px; font: var(--osm-font-small); color: #000;
+}
+
+/* Zen mode (Tank ▸ Zen Mode, or bare Z): every piece of chrome hides;
+   the tank and its sounds keep running. !important beats the inline
+   display the tip and trigger set on themselves. */
+body.zen #menubar, body.zen #fishtip, body.zen #opentrigger {
+  display: none !important;
 }
 
 /* ---- the add-on browser (web/import.ts) ----------------------------------
