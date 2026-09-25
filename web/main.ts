@@ -43,7 +43,7 @@ import { coverCrop, decorCanvases, imageCanvas, isBackdropImage,
          isGravelImage,
          previewOf, soundIcon, swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
-import { partName } from "./tankmodel.js";
+import { capRefusal, partName } from "./tankmodel.js";
 import { nextNotice, noticePoint } from "./curiosity.js";
 import type { Notice } from "./curiosity.js";
 import { containPoint, isFeedZone } from "./feedzone.js";
@@ -875,13 +875,14 @@ function usePack(pack: { sheets: Map<string, SpriteSheet>;
  * it: those fish were installed before the cap existed. */
 type CapRule = "enforce" | "bypass";
 
-/** Why the tank refuses a new fish, or null when there is room. Both
- * install paths (the in-page panel and the Import Add-ons window) ask
- * this before fetching, so neither reports a fish that never spawns. */
-function fishRefusal(section: string): string | null {
-  if (section !== "fish" || sim.fish.length < FISH_CAP) return null;
-  return `The tank is full: ${FISH_CAP} fish is plenty. ` +
-         "Release one from Tank Overview first.";
+/** Why the tank refuses `fish` new fish, or null when there is room.
+ * Both install paths (the in-page panel and the Import Add-ons window)
+ * ask this before fetching, so neither reports a fish that never
+ * spawns; the Import Add-ons path asks again with the add-on's real
+ * fish count once it has fetched. */
+function fishRefusal(section: string, fish = 1): string | null {
+  if (section !== "fish") return null;
+  return capRefusal(sim.fish.length, fish, FISH_CAP);
 }
 
 /** A newly installed fish pack adds one fish bound to its sheet —
@@ -1349,7 +1350,7 @@ const importPanel = mountImportPanel({
     // A boot in progress marches each restored add-on in as an icon.
     if (bootT0 !== null) { paradeIcons.push(paradeIcon(it.section)); }
   },
-  refuse: (it) => fishRefusal(it.section),
+  refuse: (it, fish) => fishRefusal(it.section, fish),
   preview: previewOf,
 });
 
@@ -1857,6 +1858,9 @@ async function downloadAddon(it: Importable): Promise<void> {
   const usable = usablePacks(rs, it.section);
   if (!usable.length) throw new Error(usableProblem(it.section));
   const parts = usable.filter((r) => r.sheets.size).length;
+  // Every pack of a multi-pack fish add-on adds a fish: all or none.
+  const refusal = fishRefusal(it.section, parts);
+  if (refusal) throw new Error(refusal);
   for (const r of usable) {
     if (r.sheets.size)
       handleSheets(r.sheets, it.inner, it.url, it.section, true,

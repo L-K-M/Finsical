@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A fish add-on whose fish don't all fit in the tank is refused as a
+  whole, with a note of how much room is left. It used to add as many
+  as fit and report success.
 - A fish add-on that holds several fish names each after its own pack.
   Adding angels.zip used to give two fish both called "angels"; they
   are now "angel" and "blackangel".

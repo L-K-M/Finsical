@@ -22,3 +22,18 @@ export function partName(inner: string, entry: string,
                          parts: number): string {
   return parts > 1 ? entryStem(entry) : inner;
 }
+
+/** Why a tank holding `have` fish refuses an install adding `adding`
+ * more under a cap of `cap`, or null when they all fit. A multi-pack
+ * add-on adds a fish per pack, so it goes in whole or not at all:
+ * adding some and reporting success would hide the rest. */
+export function capRefusal(have: number, adding: number,
+                           cap: number): string | null {
+  const room = cap - have;
+  if (adding <= 0 || adding <= room) return null;
+  if (room <= 0)
+    return `The tank is full: ${cap} fish is plenty. ` +
+           "Release one from Tank Overview first.";
+  return `This add-on brings ${adding} fish, and the tank has room for ` +
+         `${room} more. Release some from Tank Overview first.`;
+}

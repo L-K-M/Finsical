@@ -757,8 +757,10 @@ export interface ImportHandlers {
   onRestore?(it: Importable, soundNames: string[]): void;
   /** Why the tank can't take this add-on right now (e.g. it is full),
    * or null. Asked before a local install; the Import Add-ons window
-   * gets the same answer from the tank page as an installFailed. */
-  refuse?(it: Importable): string | null;
+   * gets the same answer from the tank page as an installFailed.
+   * `fish` is how many fish the install adds: one per sheet pack in a
+   * fish add-on, 0 for any other section. */
+  refuse?(it: Importable, fish: number): string | null;
   /** Render decoded packs to a preview canvas; null = nothing to show. */
   preview(rs: PackResult[]): HTMLCanvasElement | null;
 }
@@ -1301,7 +1303,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
             "The tank isn't running — is Finsical open?";
           return;
         }
-        const refusal = remote ? null : h.refuse?.(it) ?? null;
+        const fish = it.section === "fish"
+          ? usable.filter((x) => x.sheets.size).length : 0;
+        const refusal = remote ? null : h.refuse?.(it, fish) ?? null;
         if (refusal) {
           status.textContent = refusal;
           return;
