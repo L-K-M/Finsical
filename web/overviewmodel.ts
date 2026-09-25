@@ -173,11 +173,17 @@ function cmpKey(a: readonly number[], b: readonly number[]): number {
   return a.length - b.length;
 }
 
-export function sortItems(items: Item[], by: Column): Item[] {
+/** `dir` mirrors the header's direction: 1 ascending (a column's first
+ * click), -1 the reverse of it, tie-breakers included — a descending
+ * list is the ascending one read backwards, with rows that compare
+ * equal still holding their place. */
+export function sortItems(items: Item[], by: Column, dir: 1 | -1 = 1):
+  Item[] {
   const name = (a: Item, b: Item) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-  return [...items].sort((a, b) =>
+  const cmp = (a: Item, b: Item) =>
     by === "kind" ? a.kind.localeCompare(b.kind) || name(a, b)
     : by === "status" ? cmpKey(a.statusKey, b.statusKey) || name(a, b)
-    : name(a, b) || a.kind.localeCompare(b.kind));
+    : name(a, b) || a.kind.localeCompare(b.kind);
+  return [...items].sort((a, b) => dir * cmp(a, b));
 }

@@ -226,6 +226,11 @@ body.crt canvas#tank { opacity: 0; }
 .pfrow { display: flex; gap: 20px; }
 .pfrow + .pfrow { margin-top: 6px; }
 .pfslider { flex: none; width: 125px; }
+/* A disabled slider dims its track and thumb (osmium.css) but left
+   its ticks at full strength, which read as half-on under a gray
+   track. The upstream fix belongs in osmium-ui; until the pin moves,
+   this pane's own stylesheet finishes the job. */
+.pfslider .osm-slider.osm-disabled::after { opacity: .45; }
 .pflabel { display: block; padding-left: 4px; margin-bottom: 5px; }
 .pfends { display: flex; justify-content: space-between; margin-top: 2px; padding: 0 1px 0 3px; }
 /* CRT off: the sliders and preset buttons are disabled and their
@@ -323,6 +328,25 @@ body.crt canvas#tank { opacity: 0; }
 }
 #olist[data-sort="name"] .ocell-name, #olist[data-sort="kind"] .ocell-kind,
 #olist[data-sort="status"] .ocell-status { background: #ddd; }
+/* The Finder's direction triangle rides in the sorted header: up for
+ * ascending, and down once the column is turned around. The header
+ * button is the triangle's containing block — without this the
+ * absolute offsets resolve against the window instead. */
+.osm-colhead { position: relative; }
+.osm-colhead.osm-sorted::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  top: 8px;
+  width: 0;
+  height: 0;
+  border: 3px solid transparent;
+  border-bottom-color: #000;
+}
+#oheads[data-sort-dir="desc"] .osm-colhead.osm-sorted::after {
+  border-bottom-color: transparent;
+  border-top-color: #000;
+}
 .othumb {
   position: absolute; left: 6px; top: 2px; width: 38px; height: 28px;
   overflow: hidden;

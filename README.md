@@ -1,6 +1,6 @@
 # Finsical
 
-**Latest release:** v<!-- version -->0.3.0<!-- /version --> · [Download](https://github.com/L-K-M/Finsical/releases/latest) · [Changelog](CHANGELOG.md)
+**Latest release:** v<!-- version -->0.4.0<!-- /version --> · [Download](https://github.com/L-K-M/Finsical/releases/latest) · [Changelog](CHANGELOG.md)
 
 ![Screenshot showing a Performa backdrop](media-sources/screenshot.png)
 
@@ -127,7 +127,7 @@ Keys on the tank page, in the app and the browser build (see
 | M | Mute or unmute the sound |
 | P | Pause or resume the tank |
 | C | Toggle the CRT effect |
-| S | Open Tank Stats in a tab (browser only) |
+| S | Open Tank Stats in a window of its own (browser only) |
 | Ctrl-I or Cmd-I | Open the add-on browser over the tank (browser only; the app's Cmd-I opens the Import Add-ons window) |
 | Esc | Close the Get Info card or the front window |
 
