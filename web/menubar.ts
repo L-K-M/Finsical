@@ -112,6 +112,7 @@ export interface TankMenuActions {
   toggleLamp(): void;
   toggleMute(): void;
   togglePause(): void;
+  toggleNames(): void;
   toggleZen(): void;
   toggleScold(): void;
   toggleBoot(): void;
@@ -120,7 +121,8 @@ export interface TankMenuActions {
    * like System 8's Show Balloons / Hide Balloons. */
   state(): { autoFeed: boolean; crtUsable: boolean; crtOn: boolean;
              lampOn: boolean; muted: boolean; paused: boolean;
-             zen: boolean; scoldOn: boolean; bootOn: boolean };
+             zen: boolean; scoldOn: boolean; bootOn: boolean;
+             names: boolean };
 }
 
 /** True while a pull-down menu is open — the tank page's bare-key
@@ -264,6 +266,7 @@ function shortcutsContent(c: HTMLElement): void {
     ["M", "Mute or unmute the sound"],
     ["P", "Pause or resume the tank"],
     ["C", "Toggle the CRT effect"],
+    ["N", "Show or hide every fish's name"],
     ["S", "Open Tank Stats"],
     ["⌘I / Ctrl-I", "Import add-ons"],
     ["Esc", "Close the front window"],
@@ -367,6 +370,8 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
           { title: "Degauss",
             ...(s.crtOn && s.crtUsable ? { action: a.degauss } : {}) },
           MENU_SEPARATOR,
+          { title: s.names ? "Hide Fish Names" : "Show Fish Names",
+            action: a.toggleNames },
           { title: s.zen ? "Leave Zen Mode" : "Enter Zen Mode",
             action: a.toggleZen },
           MENU_SEPARATOR,

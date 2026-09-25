@@ -75,6 +75,10 @@
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.
+- Fish Names, from AquaZone's Options menu: press N, or choose Fish
+  Names from the Tank menu, and every fish wears a name tag that swims
+  with it. Pointing names only one fish at a time, and never on a touch
+  screen. The setting is remembered.
 - You can use your own picture as the backdrop, as in AquaZone: drag a
   256-color BMP of at least 160 by 100 pixels onto the tank. It is
   kept, so it comes back at every launch, and Tank Overview lists it

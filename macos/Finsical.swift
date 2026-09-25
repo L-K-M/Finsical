@@ -527,6 +527,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 if let p = body["paused"] as? Bool {
                     syncPauseMenu(paused: p)
                 }
+                if let n = body["names"] as? Bool {
+                    namesOn = n
+                }
                 // Retune the frame to the case outline.
                 if let mc = body["machine"] as? [String: Any],
                    let mid = mc["id"] as? String,
@@ -680,6 +683,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         }
     }
 
+    @objc func toggleNames() {
+        let js = "window.finsical?.toggleNames ? window.finsical.toggleNames()" +
+                 " : (() => { throw new Error('window.finsical.toggleNames missing') })()"
+        webView?.evaluateJavaScript(js) { result, error in
+            if let error {
+                NSLog("Finsical: toggleNames JS failed: \(error.localizedDescription)")
+                return
+            }
+            // toggleNames returns the new flag: the checkmark is right
+            // even before the state push lands.
+            if let on = result as? Bool { self.namesOn = on }
+        }
+    }
+
     @objc func togglePause() {
         let js = "window.finsical?.togglePause ? window.finsical.togglePause()" +
                  " : (() => { throw new Error('window.finsical.togglePause missing') })()"
@@ -737,6 +754,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     private var crtAvailable = false
     private var lampOn = true
     private var soundMuted = false
+    private var namesOn = false
 
     /// UserDefaults keys for the tank's Window-menu toggles. Both
     /// default on, which is how the tank behaved before they existed.
@@ -784,6 +802,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             menuItem.state = lampOn ? .on : .off
         case #selector(toggleMute):
             menuItem.state = soundMuted ? .on : .off
+        case #selector(toggleNames):
+            menuItem.state = namesOn ? .on : .off
         case #selector(toggleFloat):
             menuItem.state = defaults.bool(forKey: WindowPref.float)
                 ? .on : .off
@@ -1035,6 +1055,10 @@ enum FinsicalApp {
         tankMenu.addItem(withTitle: "Lamp On",
                          action: #selector(AppDelegate.toggleLights),
                          keyEquivalent: "l")
+        // No key equivalent: ⌘N is New. The tank takes a bare N.
+        tankMenu.addItem(withTitle: "Fish Names",
+                         action: #selector(AppDelegate.toggleNames),
+                         keyEquivalent: "")
         let muteItem = tankMenu.addItem(withTitle: "Mute Sound",
                                         action: #selector(AppDelegate.toggleMute),
                                         keyEquivalent: "s")

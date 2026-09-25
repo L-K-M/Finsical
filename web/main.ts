@@ -51,6 +51,7 @@ import { capRefusal, entryKey, entryOfSlot, entryStem, legacyEntries,
 import { nextNotice, noticePoint } from "./curiosity.js";
 import type { Notice } from "./curiosity.js";
 import { containPoint, isFeedZone } from "./feedzone.js";
+import { mountNameTags } from "./nametags.js";
 import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
          PAW_GAP_RANGE, PAW_H, PAW_W, pawPose, pawSpawnX, pawSwatAt }
   from "./catpaw.js";
@@ -758,7 +759,8 @@ let torchLit = false;
  * declines while Get Info, a menu or an alert is up — the hint
  * follows the same rule. */
 function tipForPoint(p: { x: number; y: number }): string | null {
-  const f = fishToName(p);
+  // With Fish Names on every fish already wears its tag.
+  const f = !namesOn && fishToName(p);
   if (f) return fishTipLabel(f);
   if (anyOverlayOpen()) return null;
   return !paused && isFeedZone(p.x, p.y, waterline)
@@ -834,6 +836,7 @@ let infoCard: {
 function closeInfo(): void {
   infoCard?.root.remove();
   infoCard = null;
+  requestPaint(); // the fish's name tag comes back, even while paused
 }
 
 function openInfo(f: Fish): void {
@@ -1534,6 +1537,7 @@ function sendState(): void {
     op: "state",
     boot,
     paused,
+    names: namesOn,
     // The native shell retunes the window's aspect to the machine's
     // viewBox outline; prefs needs just the id.
     machine: { id: machine.id, w: machine.vbW, h: machine.vbH,
@@ -2025,6 +2029,29 @@ function setPaused(on: boolean): boolean {
 try { paused = localStorage.getItem(PAUSE_KEY) === "1"; }
 catch { /* storage unavailable */ }
 
+// ---- fish names -----------------------------------------------------------
+// AquaZone's Options > Names: a tag on every fish at once (the hover
+// balloon names one). Keyboard N / Tank > Fish Names; remembered.
+// Declared here for the TDZ reason above: postState() reads it.
+let namesOn = false;
+const NAMES_KEY = "finsical:names";
+try { namesOn = localStorage.getItem(NAMES_KEY) === "1"; }
+catch { /* storage unavailable */ }
+/** Turn the name tags on or off; returns the new flag for the native
+ * menu's checkmark. */
+function setNames(on: boolean): boolean {
+  if (namesOn !== on) {
+    namesOn = on;
+    if (!on) nameTags.clear();
+    else fishTip.style.display = "none"; // the tags replace the tip
+    requestPaint(); // tags follow the next render
+    try { localStorage.setItem(NAMES_KEY, on ? "1" : "0"); }
+    catch { /* storage unavailable — session-only */ }
+    postState();
+  }
+  return namesOn;
+}
+
 // ---- CRT effect ------------------------------------------------------------
 // Optional tube emulation (web/crt.ts): the 320×200 canvas becomes a
 // texture for a device-resolution shader. Off = untouched 2D path.
@@ -2148,6 +2175,29 @@ let lastGlare = -1;
 const machineEl = document.getElementById("machine")!;
 const shellEl = document.getElementById("shell")!;
 const screenEl = document.getElementById("screen")!;
+// On body, like the Get Info card: #screen's stacking context paints
+// under #machine, so tags inside it slid under the glass reflections.
+const nameTags = mountNameTags(document.body);
+/** Half the drawn height of a stand-in fish, whose sheet reports none. */
+const PLACEHOLDER_HALF_H = 6;
+/** Tags are placed in viewport pixels already, so their map is 1:1. */
+const CLIENT_MAP = { s: 1, ox: 0, oy: 0 };
+/** Put a tag on every fish but the one whose Get Info card is open
+ * (the card names it, right where its tag would go). Placed through
+ * tankToClient like the card, so the tags follow the CRT's warp. */
+function syncNameTags(): void {
+  if (!namesOn) return;
+  const r = pictureEl().getBoundingClientRect();
+  const carded = infoCard?.fish;
+  const surface = tankToClient(TANK.width / 2, SURFACE + 1, r).y;
+  nameTags.sync(sim.fish.filter((f) => f !== carded).map((f) => {
+    const hh = (f.halfH ?? PLACEHOLDER_HALF_H) * f.scale;
+    const top = tankToClient(f.x, f.y - hh, r);
+    const bottom = tankToClient(f.x, f.y + hh, r);
+    return { id: f.id, label: f.species || "Fish", x: top.x,
+             top: top.y, bottom: bottom.y };
+  }), CLIENT_MAP, r, surface);
+}
 // Cosmetic layer — recreate #screenback and enforce sibling order when
 // stale markup is detected (#machine/#shell/#screen must still exist).
 let backEl = document.getElementById("screenback");
@@ -2502,6 +2552,7 @@ const finsicalBridge = {
   toggleCrt: () => { audio.unlock(); setCrt(!crtOn); }, toggleMute,
   // Returns the new flag, so the native menu retitles at once.
   togglePause: () => setPaused(!paused),
+  toggleNames: () => setNames(!namesOn),
 };
 type FinsicalBridge = typeof finsicalBridge;
 declare global {
@@ -2571,6 +2622,8 @@ window.addEventListener("keydown", (e) => {
     degaussTube(); // bare D: ⌘D is Bookmark in browsers
   } else if (bare && k === "p") {
     setPaused(!paused); // bare P: ⌘P is Print; the app's menu owns it
+  } else if (bare && k === "n") {
+    setNames(!namesOn); // bare N: ⌘N is New
   } else if (bare && k === "z") {
     setZen(!zen); // bare Z: ⌘Z is Undo via the Edit menu
   } else if (bare && k === "s" && !inNativeShell()) {
@@ -2598,6 +2651,7 @@ mountTankMenuBar({
   toggleLamp: toggleLights,
   toggleMute,
   togglePause: () => { setPaused(!paused); },
+  toggleNames: () => { setNames(!namesOn); },
   toggleZen: () => setZen(!zen),
   toggleScold: () => {
     scoldOn = !scoldOn;
@@ -2615,7 +2669,7 @@ mountTankMenuBar({
   },
   state: () => ({ autoFeed, crtUsable: crt?.usable ?? false, crtOn,
                   lampOn: lighting.lamp, muted: soundCfg.muted, paused,
-                  zen, scoldOn, bootOn: bootEnabled }),
+                  zen, scoldOn, bootOn: bootEnabled, names: namesOn }),
 });
 // The bar may have mounted after the first layout — place the case
 // below it now rather than waiting for a resize.
@@ -3637,6 +3691,7 @@ function frame(now: number): void {
   if (ticks === 0 && !frameDirty && !crtBusy && bootT0 === null) return;
   frameDirty = false;
   render(frameDate);
+  syncNameTags();
   // A parked cursor doesn't re-hit-test: hide the tip once the fish
   // under it has swum off, and refresh the label while it stays —
   // the state word would otherwise go stale between pointermoves.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SURFACE } from "../core/sim.js";
-import { containPoint, isFeedZone } from "./feedzone.js";
+import { containPoint, isFeedZone, tankMap } from "./feedzone.js";
 
 const TANK = { width: 320, height: 200 };
 /** A flat waterline at rest height, as a column-indexed lookup. */
@@ -89,5 +89,20 @@ describe("containPoint", () => {
     // Hidden canvas → 0×0 rect → scale 0 → non-finite coordinates.
     expect(containPoint(160, 100, { left: 0, top: 0, width: 0, height: 0 },
                         TANK)).toBeNull();
+  });
+});
+
+describe("tankMap", () => {
+  it("is containPoint's forward twin, letterbox included", () => {
+    const canvas = { left: 50, top: 30, width: 700, height: 300 };
+    const host = { left: 20, top: 10 };
+    const m = tankMap(canvas, host, TANK);
+    expect(m.s).toBe(1.5); // height-limited: 300 / 200
+    for (const [x, y] of [[0, 0], [160, 100], [319, 199]] as const) {
+      const back = containPoint(host.left + m.ox + x * m.s,
+                                host.top + m.oy + y * m.s, canvas, TANK);
+      expect(back!.x).toBeCloseTo(x, 9);
+      expect(back!.y).toBeCloseTo(y, 9);
+    }
   });
 });
