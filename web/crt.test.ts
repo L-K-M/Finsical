@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CRT_DEFAULTS, CRT_PRESETS, DEGAUSS_MS, PICTURE_KEYS, crtRasterRect,
-  degaussAmp, presetTube, sanitizeCrtConfig,
+  crtRowColumns, degaussAmp, presetTube, sanitizeCrtConfig,
 } from "./crt.js";
 import type { CrtConfig } from "./crt.js";
 
@@ -130,6 +130,31 @@ describe("crtRasterRect", () => {
     expect(r[0]).toBeCloseTo(0);
     // Box spans top-down 20..120, so y-up 80..180; centered: +18.75.
     expect(r[1]).toBeCloseTo(80 + 18.75);
+  });
+});
+
+// The rows pass smears each scanline once at the raster's device
+// width; too few columns would blur the sharp end of Softening.
+describe("crtRowColumns", () => {
+  const neutral = { zoom: 0, hsize: 0.5 };
+
+  it("draws one column per device px of the neutral raster", () => {
+    expect(crtRowColumns(1280, neutral, 320, 4096)).toBe(1280);
+  });
+
+  it("follows the overscan and width pots like FRAG's pxScale.x", () => {
+    expect(crtRowColumns(1000, { zoom: 1, hsize: 0.5 }, 320, 4096))
+      .toBe(1120);
+    expect(crtRowColumns(1000, { zoom: 0, hsize: 1 }, 320, 4096))
+      .toBe(1250);
+    expect(crtRowColumns(1000, { zoom: 0, hsize: 0 }, 320, 4096))
+      .toBe(750);
+  });
+
+  it("keeps a column per game px and stays inside the target", () => {
+    expect(crtRowColumns(100, neutral, 320, 4096)).toBe(320);
+    expect(crtRowColumns(5120, { zoom: 1, hsize: 1 }, 320, 4096))
+      .toBe(4096);
   });
 });
 
