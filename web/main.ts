@@ -1838,6 +1838,9 @@ async function downloadAddon(it: Importable): Promise<void> {
 // Stops hunger, rot, filtration, and the day/night clock while the app
 // stays interactive (render, CRT, saves). Keyboard P / Tank ▸ Pause.
 let paused = false;
+// Set while takePicture repaints the canvas: the souvenir shouldn't
+// bake in the pause scrim and PAUSED label.
+let shootingPicture = false;
 const PAUSE_KEY = "finsical:paused";
 function setPaused(on: boolean): boolean {
   if (paused !== on) {
@@ -2196,7 +2199,18 @@ function takePicture(): void {
   out.height = TANK.height * 2;
   const c = out.getContext("2d")!;
   c.imageSmoothingEnabled = false;
+  // A paused canvas carries the scrim and the PAUSED label — repaint
+  // without them for the shot, then put the overlay back. Both
+  // renders run inside this task, so nothing flickers.
+  if (paused) {
+    shootingPicture = true;
+    render();
+  }
   c.drawImage(canvas, 0, 0, out.width, out.height);
+  if (shootingPicture) {
+    shootingPicture = false;
+    render();
+  }
   const d = new Date();
   const pad = (n: number): string => String(n).padStart(2, "0");
   const name = `finsical-${d.getFullYear()}${pad(d.getMonth() + 1)}` +
@@ -3159,7 +3173,7 @@ function render(): void {
     if (pose) drawPaw(pose.x, pose.y);
   }
 
-  if (paused) {
+  if (paused && !shootingPicture) {
     ctx.save();
     ctx.fillStyle = "rgba(4,8,24,0.35)";
     ctx.fillRect(0, 0, TANK.width, TANK.height);
