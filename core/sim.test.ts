@@ -434,7 +434,7 @@ describe("Sim", () => {
     well.advanceLife(1);
     weak.advanceLife(1);
     well.fish[0]!.life!.health = 90;
-    // 25 below the stand-in species' threshold of 25: 25% slower.
+    // Health 1 is 24 below the stand-in species' threshold of 25.
     weak.fish[0]!.life!.health = 1;
     let dc = 0, df = 0;
     let pc = { x: 150, y: 100 }, pf = { x: 150, y: 100 };
@@ -456,7 +456,11 @@ describe("Sim", () => {
     sim.advanceLife(60);
     expect(f.state).toBe("dead");
     let top = f.y;
-    for (let i = 0; i < 400; i++) { sim.tick(); top = Math.min(top, f.y); }
+    // The rise runs to just under the surface whatever band the fish
+    // lived in — bound the wait, then confirm it reached the top.
+    for (let i = 0; i < 2000 && f.corpse !== "float"; i++)
+      { sim.tick(); top = Math.min(top, f.y); }
+    expect(f.corpse).toBe("float");
     expect(top).toBeLessThan(40);
     f.deadTicks = 1; // skip the rest of the float
     for (let i = 0; i < 1000; i++) sim.tick();

@@ -799,6 +799,14 @@ export class Sim {
           f.hunger = hungerOf(this.lifeOf(f));
           // A meal puts a little size on — asymptotic toward adult.
           f.scale += (MAX_SCALE - f.scale) * GROWTH;
+          // The stomach grows with the fish, or an adult keeps a
+          // juvenile appetite; preserve fill across the rescale.
+          const life = this.lifeOf(f);
+          const stomach = stomachSize(this.weightOf(f));
+          if (stomach !== life.stomach && life.stomach > 0) {
+            life.ate = Math.round(life.ate / life.stomach * stomach);
+            life.stomach = stomach;
+          }
           this.setState(f, "drift");
           this.decide(f);
           if (food.golden) {
@@ -866,14 +874,19 @@ export class Sim {
    * a while, then sinks and comes to rest on the gravel, where it stays
    * until it is taken out (Do_Dieing_Event). */
   private tickCorpse(f: Fish): void {
-    const { y0, y1 } = this.room(f);
+    // A corpse isn't bound by the fish's living depth band: it floats
+    // just under the surface and finally rests on the gravel
+    // (Do_Dieing_Event), so use tank-wide bounds with a body margin.
+    const y0 = SURFACE + this.halfH(f);
+    const y1 = this.tank.height - this.halfH(f);
     f.speed = 0;
     f.vy = 0;
     f.heading = f.facing > 0 ? 0 : Math.PI;
     switch (f.corpse ?? "rise") {
       case "rise":
         f.y = Math.max(y0, f.y - CORPSE_RISE);
-        f.x += (this.rand() - 0.5) * 0.4;
+        f.x = Math.min(this.tank.width, Math.max(0,
+          f.x + (this.rand() - 0.5) * 0.4));
         if (f.y <= y0) {
           f.corpse = "float";
           f.deadTicks = Math.floor(this.rand() * CORPSE_FLOAT_MAX);

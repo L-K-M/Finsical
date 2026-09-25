@@ -105,7 +105,10 @@ export function parseFsti(p: Uint8Array): SpeciesCare | null {
   // at birth: fall back to the stand-in's, never beyond the span.
   const lifeSpan = raw >= 2 ? raw : DEFAULT_CARE.lifeSpan;
   return {
-    tolerance, breedAge: Math.max(0, v.getInt16(0, true)),
+    // A negative breedAge is as corrupt as a bad lifeSpan — fall back
+    // like the neighbors rather than clamp to breed-at-birth.
+    tolerance, breedAge: v.getInt16(0, true) >= 0
+      ? v.getInt16(0, true) : DEFAULT_CARE.breedAge,
     unhealthy: Math.min(100, Math.max(0, v.getInt16(0x9e, true))),
     adultAge: adultAge > 0 && adultAge < lifeSpan ? adultAge
       : Math.min(DEFAULT_CARE.adultAge, lifeSpan - 1),
