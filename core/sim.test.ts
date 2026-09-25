@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { BAND_HALF, BOTTOM_PAD, DAY_TICKS, FOOD_ROT_TICKS, MARGIN,
-         MAX_UNEATEN, NOTICE_RADIUS, PELLET_UNITS, Sim, SLEEP_LIGHT,
-         SURFACE,
+import { BAND_HALF, BEDTIME_MIN, BEDTIME_SPREAD, BOTTOM_PAD, DAY_TICKS,
+         FOOD_ROT_TICKS, LIE_IN_MIN, LIE_IN_SPREAD, MARGIN, MAX_UNEATEN,
+         NOTICE_RADIUS, PELLET_UNITS, Sim, SLEEP_LIGHT, SURFACE,
          TURN_TICKS, WAKE_LIGHT } from "./sim.js";
 import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
   from "./tuning.js";
 import { CLOCK_NIGHT_LIGHT } from "./light.js";
 import { pitch } from "./pose.js";
+import { DEFAULT_CARE } from "./data/species.js";
 
 // States a fish may be in when it's not seeking food.
 const IDLE_STATES = ["drift", "turn"];
@@ -129,7 +130,7 @@ describe("Sim", () => {
   it("turns around at the walls", () => {
     const sim = new Sim({ width: 100, height: 100 }, 3);
     sim.addFish({ x: 76, y: 50, facing: 1, speed: 2 });
-    for (let i = 0; i < 25; i++) sim.tick();
+    for (let i = 0; i < 40; i++) sim.tick();
     expect(sim.fish[0]!.facing).toBe(-1);
   });
 
@@ -394,7 +395,7 @@ describe("Sim", () => {
     const b = sim.addFish({ x: 200, y: 110, hunger: 0, halfW: 80 });
     const c = sim.addFish({ x: 150, y: 150, hunger: 0, halfW: 80 });
     sim.notice = { x: 160, y: 100 };
-    for (let i = 0; i < 400; i++) sim.tick();
+    for (let i = 0; i < 900; i++) sim.tick();
     const ds = [a, b, c].map((f) => Math.hypot(f.x - 160, f.y - 100));
     for (const d of ds) expect(d).toBeLessThan(NOTICE_RADIUS);
     expect(Math.abs(ds[1]! - ds[0]!)).toBeGreaterThan(2);
@@ -482,23 +483,27 @@ describe("Sim", () => {
   });
 
   it("a weakened fish swims slower", () => {
-    const well = new Sim({ width: 300, height: 200 }, 11);
-    const weak = new Sim({ width: 300, height: 200 }, 11);
-    well.addFish({ x: 150, y: 100, speed: 1 });
-    weak.addFish({ x: 150, y: 100, speed: 1 });
-    well.advanceLife(1);
-    weak.advanceLife(1);
-    well.fish[0]!.life!.health = 90;
-    // Health 1 is 24 below the stand-in species' threshold of 25.
-    weak.fish[0]!.life!.health = 1;
+    // Summed over seeds: hovers and leg lengths are random, so one
+    // pair's paths diverge too much to compare on their own.
     let dc = 0, df = 0;
-    let pc = { x: 150, y: 100 }, pf = { x: 150, y: 100 };
-    for (let i = 0; i < 1000; i++) {
-      well.tick(); weak.tick();
-      const c = well.fish[0]!, f = weak.fish[0]!;
-      dc += Math.hypot(c.x - pc.x, c.y - pc.y);
-      df += Math.hypot(f.x - pf.x, f.y - pf.y);
-      pc = { x: c.x, y: c.y }; pf = { x: f.x, y: f.y };
+    for (let seed = 1; seed <= 8; seed++) {
+      const well = new Sim({ width: 300, height: 200 }, seed);
+      const weak = new Sim({ width: 300, height: 200 }, seed);
+      well.addFish({ x: 150, y: 100, speed: 1 });
+      weak.addFish({ x: 150, y: 100, speed: 1 });
+      well.advanceLife(1);
+      weak.advanceLife(1);
+      well.fish[0]!.life!.health = 90;
+      // Health 1 is 24 below the stand-in species' threshold of 25.
+      weak.fish[0]!.life!.health = 1;
+      let pc = { x: 150, y: 100 }, pf = { x: 150, y: 100 };
+      for (let i = 0; i < 3000; i++) {
+        well.tick(); weak.tick();
+        const c = well.fish[0]!, f = weak.fish[0]!;
+        dc += Math.hypot(c.x - pc.x, c.y - pc.y);
+        df += Math.hypot(f.x - pf.x, f.y - pf.y);
+        pc = { x: c.x, y: c.y }; pf = { x: f.x, y: f.y };
+      }
     }
     expect(df).toBeLessThan(dc * 0.9);
   });
@@ -628,8 +633,8 @@ describe("Sim", () => {
   it("fish bed down for the night and wake at dawn", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const f = sim.addFish({ x: 160, y: 60, cruise: 1.4 });
-    // Fish only sleep after the tank has seen daylight; a fresh demo
-    // cycle opens at 10:00, so this loop is a guard, not a wait.
+    // A fresh demo cycle opens at 10:00, so this loop is a guard, not
+    // a wait.
     for (let i = 0; i < DAY_TICKS && sim.light < WAKE_LIGHT; i++)
       sim.tick();
     // Tick until dark, then let the fish settle — it sinks at
@@ -644,10 +649,10 @@ describe("Sim", () => {
     const x0 = f.x;
     for (let i = 0; i < 300; i++) sim.tick();
     expect(f.x).toBe(x0);
-    // Dawn sends it wandering again.
+    // Dawn sends it wandering again, after its lie-in (under 11 s).
     for (let i = 0; i < DAY_TICKS && sim.light < WAKE_LIGHT; i++)
       sim.tick();
-    for (let i = 0; i < 60; i++) sim.tick();
+    for (let i = 0; i < LIE_IN_MIN + LIE_IN_SPREAD + 80; i++) sim.tick();
     expect(f.state).not.toBe("sleep");
   });
 
@@ -658,9 +663,9 @@ describe("Sim", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const f = sim.addFish({ x: 160, y: 60, cruise: 1.4 });
     sim.setLight(1);
-    sim.tick(); // the tank has seen daylight
+    sim.tick();
     sim.setLight(CLOCK_NIGHT_LIGHT);
-    for (let i = 0; i < 600; i++) sim.tick();
+    for (let i = 0; i < BEDTIME_MIN + BEDTIME_SPREAD + 40; i++) sim.tick();
     expect(f.state).toBe("sleep");
     // Rests level on the gravel, whatever its heading at bedtime.
     expect(Math.abs(pitch(f))).toBeLessThan(1e-9);
@@ -674,6 +679,45 @@ describe("Sim", () => {
     expect(f.state).toBe("sleep");
   });
 
+  it("settles for the night when the tank opens in the dark", () => {
+    // A timer night, or the lamp saved off: no daylight this session.
+    for (const night of [CLOCK_NIGHT_LIGHT, 0.3]) {
+      const sim = new Sim({ width: 320, height: 200 }, 7);
+      const fish = [0, 1, 2, 3, 4, 5].map((i) =>
+        sim.addFish({ x: 40 + i * 45, y: 60, cruise: 1.4 }));
+      sim.setLight(night);
+      sim.tick();
+      // Never knocked out on the first tick…
+      expect(fish.some((f) => f.state === "sleep")).toBe(false);
+      for (let i = 0; i < BEDTIME_MIN + BEDTIME_SPREAD + 40; i++) sim.tick();
+      // …but asleep before long, not awake until the next dawn.
+      expect(fish.map((f) => f.state)).toEqual(Array(6).fill("sleep"));
+    }
+  });
+
+  it("beds fish down and wakes them one at a time, not in unison", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const fish = [0, 1, 2, 3, 4, 5].map((i) =>
+      sim.addFish({ x: 40 + i * 45, y: 60, cruise: 1.4, hunger: 0 }));
+    const bed = new Map<number, number>(), woke = new Map<number, number>();
+    // A demo day: dusk, the night and the next dawn.
+    for (let t = 0; t < DAY_TICKS * 1.2; t++) {
+      sim.tick();
+      for (const f of fish) {
+        f.hunger = 0; // keep appetite out of it
+        if (f.state === "sleep" && !bed.has(f.id)) bed.set(f.id, t);
+        if (bed.has(f.id) && f.state !== "sleep" && !woke.has(f.id))
+          woke.set(f.id, t);
+      }
+    }
+    const span = (m: Map<number, number>) =>
+      Math.max(...m.values()) - Math.min(...m.values());
+    expect(bed.size).toBe(6);
+    expect(woke.size).toBe(6);
+    expect(span(bed)).toBeGreaterThanOrEqual(100);
+    expect(span(woke)).toBeGreaterThanOrEqual(60);
+  });
+
   it("a big fish sleeps inside its room, not in the gravel", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     // Half-height 30: room() keeps its centre 24 px (0.8 of that) off
@@ -682,7 +726,7 @@ describe("Sim", () => {
                             halfW: 40, halfH: 30 });
     const bed = 200 - 30 * 0.8;
     sim.setLight(1);
-    sim.tick(); // the tank has seen daylight
+    sim.tick();
     sim.setLight(CLOCK_NIGHT_LIGHT);
     for (let i = 0; i < 900; i++) {
       sim.tick();
@@ -698,11 +742,13 @@ describe("Sim", () => {
     // Pin a distant target so the whole tick is the acceleration stroke.
     f.tx = 300; f.ty = 100; f.phase = 0; f.latch = -1;
     const speeds = [f.speed];
-    for (let i = 0; i < 10; i++) { sim.tick(); speeds.push(f.speed); }
-    // Quadratic ramp: deltas grow early, then the cruise cap flattens it.
-    expect(speeds[4]! - speeds[3]!).toBeGreaterThan(speeds[2]! - speeds[1]!);
+    for (let i = 0; i < 40; i++) { sim.tick(); speeds.push(f.speed); }
+    // Quadratic ramp: deltas grow early, then the cruise cap flattens it
+    // after about a second (30 ticks).
+    expect(speeds[8]! - speeds[7]!).toBeGreaterThan(speeds[2]! - speeds[1]!);
+    expect(speeds[20]!).toBeLessThan(1.4);
     expect(Math.max(...speeds)).toBeLessThanOrEqual(1.4 + 1e-9);
-    expect(speeds[10]).toBeCloseTo(1.4, 5);
+    expect(speeds[40]).toBeCloseTo(1.4, 5);
   });
 
   it("latches the brake and glides into its destination", () => {
@@ -730,7 +776,7 @@ describe("Sim", () => {
     expect(f.facing).toBe(1);
     // Steering never carries the heading round to the other side; only
     // a roll turns the fish to face the target.
-    for (let i = 0; i < 40 && f.state === "drift"; i++) {
+    for (let i = 0; i < 400 && f.state === "drift"; i++) {
       sim.tick();
       if (f.state === "drift") {
         expect(f.facing).toBe(1);
@@ -744,15 +790,17 @@ describe("Sim", () => {
   it("strokes on toward a far target, then re-decides", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
     const f = sim.addFish({ x: 60, y: 100 });
+    // Slow enough (cruise 0.5) to be short of it after one stroke.
+    f.cruise = 0.5;
     f.tx = 300; f.ty = 30; f.phase = 0; f.latch = -1;
-    for (let i = 0; i < 40; i++) sim.tick();
-    // After 32 ticks the phase wrapped: a new stroke, same destination.
-    expect(f.phase).toBeLessThan(32);
+    for (let i = 0; i < 200; i++) sim.tick();
+    // After 192 ticks the stroke's budget ran out: a new stroke, same
+    // destination, carrying the speed it had.
     expect(f.strokes).toBe(1);
     expect(f.tx).toBe(300);
-    // Out of strokes before arriving (~130 ticks at cruise 1 for ~250
-    // px), the fish picks a new destination.
-    for (let i = 0; i < 100; i++) sim.tick();
+    expect(f.speed).toBeGreaterThan(0.4);
+    // Arrived (~500 ticks for ~250 px), it moves on.
+    for (let i = 0; i < 600; i++) sim.tick();
     expect(f.tx).not.toBe(300);
   });
 
@@ -768,13 +816,13 @@ describe("Sim", () => {
     for (let i = 0; i < 10 && bystander.state !== "startle"; i++)
       sim.tick();
     expect(bystander.state).toBe("startle"); // panic propagated
-    // Propagated darts are capped at half tap strength (3.5 * 0.5);
-    // the bystander is outside the tap radius, so only propagation
-    // could have startled it.
-    expect(bystander.speed).toBeLessThanOrEqual(1.75);
+    // Propagated darts are at most half tap strength; the bystander
+    // is outside the tap radius, so only propagation could have
+    // startled it.
+    expect(bystander.speed).toBeLessThanOrEqual(1 * (1 + 0.5 * 0.5));
   });
 
-  it("caps panic propagation at two hops", () => {
+  it("caps panic propagation at one hop", () => {
     const sim = new Sim({ width: 400, height: 100 }, 5);
     // The tap radius (48px) directly startles the first two fish (hop 0);
     // every fish beyond that is one more hop, 24px apart (< PROP_RADIUS 32).
@@ -782,9 +830,8 @@ describe("Sim", () => {
                                      // point so the dart direction
                                      // is well-defined)
     sim.addFish({ x: 84, y: 50 });   // hop 0 (direct — inside tap radius)
-    sim.addFish({ x: 108, y: 50 });              // hop 1
-    const hop2 = sim.addFish({ x: 132, y: 50 }); // hop 2 — last allowed
-    const far = sim.addFish({ x: 156, y: 50 });  // hop 3 — beyond the cap
+    const hop2 = sim.addFish({ x: 108, y: 50 }); // hop 1 — last allowed
+    const far = sim.addFish({ x: 132, y: 50 });  // hop 2 — beyond the cap
     sim.tap(60, 50);
     let everStartled = false;
     let waveReachedCap = false;
@@ -809,19 +856,22 @@ describe("Sim", () => {
 
   it("starter fish (species \"\") don't school", () => {
     // Without schooling they sit as far apart as strangers: per seed
-    // the difference is noise (about -12 to 21 px); schooling starters
-    // would sit 27-60 px closer on every seed.
+    // the difference is noise (about -50 to 55 px with local wander
+    // legs, averaging near 5 over twelve seeds); schooling starters
+    // would sit 27-100 px closer on almost every seed.
     let gap = 0;
-    for (let seed = 1; seed <= 6; seed++)
+    for (let seed = 1; seed <= 12; seed++)
       gap += pairDistance(seed, "a", "b") - pairDistance(seed, "", "");
-    expect(gap / 6).toBeLessThan(15);
+    expect(gap / 12).toBeLessThan(15);
   });
 
   it("rolls through a turn when the destination is behind it", () => {
     const sim = new Sim({ width: 300, height: 100 }, 7);
     // At the right wall facing right — every wander target is behind.
     const f = sim.addFish({ x: 284, y: 50, facing: 1, heading: 0 });
-    f.tx = 284; f.ty = 50; f.phase = 32; // decide fires on this tick
+    // Out of budget and strokes, pressed to the glass: decide fires
+    // on this tick (no hover — it hasn't arrived anywhere).
+    f.tx = 250; f.ty = 50; f.phase = 1000; f.strokes = 99;
     sim.tick();
     expect(f.state).toBe("turn");
     const seen = new Set<number>();
@@ -841,10 +891,37 @@ describe("Sim", () => {
     for (let seed = 1; seed <= 40; seed++) {
       const sim = new Sim({ width: 300, height: 100 }, seed);
       const f = sim.addFish({ x: 284, y: 50, facing: 1, heading: 0 });
-      f.tx = 284; f.ty = 50; f.phase = 32; // decide fires on this tick
+      // Out of budget and strokes, pressed to the glass: decide fires
+      // on this tick (no hover — it hasn't arrived anywhere).
+      f.tx = 250; f.ty = 50; f.phase = 1000; f.strokes = 99;
       sim.tick();
       expect(f.tx).toBeLessThan(284);
     }
+  });
+
+  it("a fish between two pellets picks one instead of spinning", () => {
+    // Near the midpoint the roll's drift carried the fish across the
+    // tie line, so the other pellet was nearest and behind it again:
+    // one fish rolled 164 times in 1800 ticks while both pellets rot.
+    const worst: string[] = [];
+    for (const facing of [1, -1] as const) {
+      for (let x = 157; x <= 163; x += 0.25) {
+        const sim = new Sim({ width: 320, height: 200 }, 3);
+        const f = sim.addFish({ x, y: 80, facing, hunger: 0.9,
+                                cruise: 1.4, speed: 0.2 });
+        const a = sim.dropFood(40)!, b = sim.dropFood(280)!;
+        let rolls = 0, prev = f.state;
+        for (let i = 0; i < 400 && !a.eaten && !b.eaten; i++) {
+          sim.tick();
+          if (f.state === "turn" && prev !== "turn") rolls++;
+          prev = f.state;
+        }
+        if (rolls > 1 || (!a.eaten && !b.eaten))
+          worst.push(`x ${x} facing ${facing}: ${rolls} rolls, ` +
+                     `ate a=${a.eaten} b=${b.eaten}`);
+      }
+    }
+    expect(worst).toEqual([]);
   });
 
   it("rolls once toward food dropped behind it, then seeks", () => {
@@ -1066,7 +1143,9 @@ describe("Sim", () => {
     const fd = sim.food[0]!;
     for (let i = 0; i < 200 && !fd.eaten; i++) {
       sim.tick();
-      expect(f.state).not.toBe("turn");
+      // After the bite its next leg may lie behind it; that roll is
+      // not one for the pellet.
+      if (!fd.eaten) expect(f.state).not.toBe("turn");
     }
     expect(fd.eaten).toBe(true);
   });
@@ -1196,19 +1275,26 @@ describe("lifecycle", () => {
     expect(f.state).not.toBe("startle");
   });
 
-  it("a thriving pair occasionally has a fry", () => {
+  /** Two guppies of breeding age and full health. */
+  function breedingPair(sim: Sim): void {
+    for (const x of [100, 120]) {
+      const f = sim.addFish({ x, y: 100, species: "guppy", hunger: 0.1,
+                              scale: 1, pack: "p" });
+      sim.residents(); // creates the fish's life
+      f.life!.age = DEFAULT_CARE.breedAge * 1440;
+      f.life!.health = 100;
+    }
+  }
+
+  it("a thriving pair has a fry every couple of weeks of tank time", () => {
     const sim = new Sim({ width: 320, height: 200 }, 42);
-    sim.addFish({ x: 100, y: 100, species: "guppy", hunger: 0.1,
-                  scale: 1, pack: "p" });
-    sim.addFish({ x: 120, y: 110, species: "guppy", hunger: 0.1,
-                  scale: 1, pack: "p" });
-    // The window is 10x the mean roll period: a shifted rand() stream
-    // (any feature change consuming draws) can't flake this test.
-    let fry = 0;
-    for (let i = 0; i < 180000 && !fry; i++) {
-      // Keep the parents thriving: birth rolls are per-tick.
-      for (const f of sim.fish) f.hunger = 0.1;
-      sim.tick();
+    breedingPair(sim);
+    let days = 0, fry = 0;
+    // One tank day at a time; food keeps the parents thriving.
+    for (; days < 200 && !fry; days++) {
+      for (const f of sim.fish) f.life!.ate = f.life!.stomach;
+      sim.advanceLife(24 * 3600);
+      for (const f of sim.fish.slice(0, 2)) f.life!.health = 100;
       fry = sim.events.filter((e) => e.type === "birth").length;
       sim.events.length = 0;
     }
@@ -1218,16 +1304,44 @@ describe("lifecycle", () => {
     expect(baby.species).toBe("guppy");
     expect(baby.scale).toBeLessThan(1); // visibly a juvenile
     expect(baby.pack).toBe("p");
+    expect(baby.life!.age).toBe(0);
+  });
+
+  it("never breeds on the swim clock, however long the tank is watched",
+     () => {
+    const sim = new Sim({ width: 320, height: 200 }, 42);
+    breedingPair(sim);
+    // An hour of ticks within one tank day.
+    for (let i = 0; i < 30 * 3600; i++) sim.tick();
+    sim.advanceLife(3600);
+    expect(sim.events.some((e) => e.type === "birth")).toBe(false);
+  });
+
+  it("fish below breeding age don't breed", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 42);
+    breedingPair(sim);
+    for (const f of sim.fish) f.life!.age = 0;
+    // Kept thriving so only age can hold them back, up to the day
+    // before they come of age.
+    for (let d = 0; d < DEFAULT_CARE.breedAge - 1; d++) {
+      for (const f of sim.fish) f.life!.ate = f.life!.stomach;
+      sim.advanceLife(24 * 3600);
+      for (const f of sim.fish) f.life!.health = 100;
+    }
+    expect(sim.events.some((e) => e.type === "birth")).toBe(false);
   });
 
   it("no births in a full tank", () => {
     const sim = new Sim({ width: 320, height: 200 }, 42);
-    for (let i = 0; i < 24; i++)
-      sim.addFish({ x: 50 + i, y: 100, species: "guppy", hunger: 0.1,
-                    scale: 1 });
-    for (let i = 0; i < 2000; i++) {
-      for (const f of sim.fish) f.hunger = 0.1;
-      sim.tick();
+    for (let i = 0; i < 24; i++) {
+      const f = sim.addFish({ x: 50 + i, y: 100, species: "guppy",
+                              hunger: 0.1, scale: 1 });
+      sim.residents();
+      f.life!.age = DEFAULT_CARE.breedAge * 1440;
+    }
+    for (let d = 0; d < 60; d++) {
+      for (const f of sim.fish) f.life!.ate = f.life!.stomach;
+      sim.advanceLife(24 * 3600);
     }
     expect(sim.fish.length).toBe(24);
     expect(sim.events.every((e) => e.type !== "birth")).toBe(true);
@@ -1332,5 +1446,84 @@ describe("B-58 hunger and vigor", () => {
       sim.tick();
       expect(f.state).toBe("sleep");
     }
+  });
+});
+
+describe("depth among the decor", () => {
+  const plant = { x0: 140, x1: 180, top: 60, depth: 0.6 };
+
+  it("never passes through a piece of decor it overlaps", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 3);
+    sim.cover = [plant];
+    const f = sim.addFish({ x: 160, y: 120, z: 0.8, tz: 0.2 });
+    for (let i = 0; i < 3000; i++) {
+      const before = f.z;
+      sim.tick();
+      const crossed = (before < plant.depth) !== (f.z < plant.depth);
+      if (crossed) expect(f.x > plant.x1 || f.x < plant.x0 ||
+                          f.y < plant.top).toBe(true);
+    }
+  });
+
+  it("wanders through the tank's depth over time", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 5);
+    const f = sim.addFish({ x: 100, y: 100 });
+    let lo = 1, hi = 0;
+    for (let i = 0; i < 30 * 600; i++) {
+      sim.tick();
+      lo = Math.min(lo, f.z); hi = Math.max(hi, f.z);
+    }
+    expect(hi - lo).toBeGreaterThan(0.3);
+  });
+
+  it("a knock sends a fish behind nearby cover, then back out", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    sim.setLight(1);
+    sim.cover = [plant];
+    const f = sim.addFish({ x: 110, y: 120, z: 0.8, tz: 0.8, hunger: 0 });
+    sim.tap(95, 120);
+    expect(f.hideTicks).toBeGreaterThan(0);
+    let hidden = 0;
+    for (let i = 0; i < 90; i++) {
+      sim.tick();
+      if (f.z < plant.depth && f.x > plant.x0 && f.x < plant.x1) hidden++;
+    }
+    expect(hidden).toBeGreaterThan(20);
+    for (let i = 0; i < 300; i++) sim.tick();
+    expect(f.hideTicks).toBe(0);
+  });
+
+  it("a fish darting into the cover's span in front waits beside it",
+     () => {
+    // Knocked from the far side toward a plant it is in front of, the
+    // dart carries it into the span before it can get behind; it must
+    // not then hide in plain sight in front of the art.
+    for (let seed = 1; seed <= 10; seed++) {
+      const sim = new Sim({ width: 320, height: 200 }, seed);
+      sim.setLight(1);
+      sim.cover = [plant];
+      const f = sim.addFish({ x: 136, y: 120, z: 0.9, tz: 0.9, facing: 1,
+                              hunger: 0 });
+      sim.tap(122, 120);
+      let front = 0, hidden = 0;
+      for (let i = 0; i < 240 && f.hideTicks > 0; i++) {
+        sim.tick();
+        const over = f.x > plant.x0 && f.x < plant.x1;
+        if (f.state !== "startle" && over && f.z >= plant.depth) front++;
+        if (over && f.z < plant.depth) hidden++;
+      }
+      // Only the swim out past the art (~1.5 s), not the whole hide.
+      expect(front).toBeLessThan(60);
+      expect(hidden).toBeGreaterThan(0);
+    }
+  });
+
+  it("a knock with no cover in reach is just a dart", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    sim.cover = [{ ...plant, depth: 0.1 }]; // too far back to get behind
+    const f = sim.addFish({ x: 110, y: 120, z: 0.8 });
+    sim.tap(95, 120);
+    expect(f.state).toBe("startle");
+    expect(f.hideTicks).toBe(0);
   });
 });
