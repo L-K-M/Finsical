@@ -1,9 +1,9 @@
 import { openBus } from "./bus.js";
-import { CRT_DEFAULTS, CRT_PRESETS, presetTube, sanitizeCrtConfig }
-  from "./crt.js";
+import { CRT_DEFAULTS, CRT_MASKS, CRT_PRESETS, presetTube,
+         sanitizeCrtConfig } from "./crt.js";
 import { MACHINES, previewMarkup, savedMachineId }
   from "./machines.js";
-import type { CrtConfig, CrtPreset } from "./crt.js";
+import type { CrtConfig, CrtLevel, CrtMask, CrtPreset } from "./crt.js";
 import { centerText, hostWindow, mountList, mountPopup, pushButton,
          registerSprites, setEnabled, trackHighlight, trackPress }
   from "osmium-ui";
@@ -13,7 +13,7 @@ import { hourLabel, LIGHTING_DEFAULTS, sanitizeLighting }
 import type { Lighting, LightMode } from "../core/light.js";
 import { SOUND_DEFAULTS, sanitizeSoundConfig } from "./audio.js";
 import type { SoundConfig } from "./audio.js";
-import { tubeCaption } from "./caption.js";
+import { positionText, tubeCaption } from "./caption.js";
 
 // Preferences window: a Mac OS 8 control panel with five panes: the
 // machine case, the CRT tube effect, the monitor's picture controls,
@@ -33,7 +33,7 @@ window.addEventListener("dragover", (e) => {
 window.addEventListener("drop", (e) => e.preventDefault());
 
 interface SliderSpec {
-  key: keyof CrtConfig;
+  key: CrtLevel;
   label: string;
   /** Captions under the slider's two ends. */
   ends: readonly [string, string];
@@ -41,12 +41,20 @@ interface SliderSpec {
   /** Value label — defaults to a plain percentage. Mid-centered
    * controls (brightness, trims) show a signed offset instead. */
   fmt?: (v: number) => string;
+  /** A pop-up drawn in place of the slider's caption, for a choice
+   * that belongs with it (the mask type over the mask's strength). */
+  titlePopup?: "mask";
 }
 const pct = (v: number): string => `${Math.round(v * 100)}%`;
 const offset = (v: number): string => {
   const d = Math.round((v - 0.5) * 200);
   return d === 0 ? "0" : `${d > 0 ? "+" : ""}${d}`;
 };
+
+// Position pots name the shift direction in the same words as their
+// end captions, so the ends feed both.
+const HPOS_ENDS = ["Left", "Right"] as const;
+const VPOS_ENDS = ["Down", "Up"] as const;
 
 const SPECS: SliderSpec[] = [
   { key: "scanlines", label: "Scanlines", ends: ["Off", "Deep"],
@@ -67,9 +75,10 @@ const SPECS: SliderSpec[] = [
   { key: "overdrive", label: "Bright-color boost", ends: ["Off", "Hot"],
     blurb: "Phosphors overdrive on bright input — vivid colors glow " +
       "hotter than a flat panel shows them." },
-  { key: "grille", label: "Shadow grille", ends: ["Off", "Visible"],
-    blurb: "Fine vertical red/green/blue stripes, like the mask inside " +
-      "an aperture-grille tube — much finer than the game's pixels." },
+  { key: "grille", label: "Phosphor mask", ends: ["Off", "Visible"],
+    titlePopup: "mask",
+    blurb: "How strongly the tube's fine red, green and blue phosphor " +
+      "pattern shows. Pick the pattern in the pop-up above." },
   { key: "curvature", label: "Screen curvature", ends: ["Flat", "Bulging"],
     blurb: "Bows the picture outward, like curved tube glass." },
   { key: "vignette", label: "Vignette", ends: ["Off", "Dark"],
@@ -100,18 +109,22 @@ const PIC_SPECS: SliderSpec[] = [
   { key: "vsize", label: "Height", ends: ["Short", "Tall"], fmt: offset,
     blurb: "The height pot — tubes drifted tall or squat as they " +
       "warmed up, and owners dialed it back by hand." },
-  { key: "hpos", label: "Horizontal position", ends: ["Left", "Right"],
-    fmt: offset,
+  { key: "hpos", label: "Horizontal position", ends: HPOS_ENDS,
+    fmt: (v) => positionText(v, HPOS_ENDS),
     blurb: "The horizontal position pot. Slides the whole picture " +
       "left or right inside the glass, to center a raster that drifted." },
-  { key: "vpos", label: "Vertical position", ends: ["Down", "Up"],
-    fmt: offset,
+  { key: "vpos", label: "Vertical position", ends: VPOS_ENDS,
+    fmt: (v) => positionText(v, VPOS_ENDS),
     blurb: "The vertical position pot. Raises or lowers the whole " +
       "picture inside the glass." },
-  { key: "skew", label: "Skew", ends: ["Leans left", "Leans right"],
-    fmt: offset,
+  { key: "skew", label: "Horizontal skew",
+    ends: ["Leans left", "Leans right"], fmt: offset,
     blurb: "The parallelogram pot — the raster's top edge slides " +
       "sideways, leaning the whole picture." },
+  { key: "vskew", label: "Vertical skew",
+    ends: ["Slopes down", "Slopes up"], fmt: offset,
+    blurb: "The vertical parallelogram pot — the raster's right edge " +
+      "slides up or down, sloping the whole picture." },
   { key: "perspective", label: "Perspective",
     ends: ["Faces left", "Faces right"], fmt: offset,
     blurb: "The keystone pot — swings the raster like the tube " +
@@ -128,11 +141,37 @@ const PIC_SPECS: SliderSpec[] = [
       "nudge restores the water's depth." },
 ];
 const ALL_SPECS: SliderSpec[] = [...SPECS, ...PIC_SPECS];
-const specOf = (k: keyof CrtConfig): SliderSpec =>
+const specOf = (k: CrtLevel): SliderSpec =>
   ALL_SPECS.find((s) => s.key === k)!;
 
 /** Group boxes and the slider rows inside them (three per row). */
-interface Group { title: string; rows: (keyof CrtConfig)[][] }
+interface Group { title: string; rows: CrtLevel[][] }
+
+/** The phosphor mask types, in CRT_MASKS order, as the pop-up names
+ * them. No machine picks one: which tube each case shipped with is
+ * unverified, so the choice stays the user's. */
+const MASK_TYPES: readonly { mask: CrtMask; name: string; blurb: string }[] = [
+  { mask: "aperture", name: "Aperture grille",
+    blurb: "Unbroken vertical red, green and blue phosphor stripes." },
+  { mask: "slot", name: "Slot mask",
+    blurb: "The stripes cut into short slots, staggered like " +
+      "brickwork, the pattern of most TV tubes." },
+  { mask: "shadow", name: "Shadow mask",
+    blurb: "Red, green and blue dots in staggered triads, the pattern " +
+      "of most computer monitors of the era." },
+];
+const maskTypeOf = (): (typeof MASK_TYPES)[number] =>
+  MASK_TYPES.find((t) => t.mask === cfg.mask) ?? MASK_TYPES[0]!;
+
+/** A tube choice the caption area can explain, dimmed like a slider
+ * while the effect is off. */
+interface ChoiceSpec { choice: "mask"; label: string; value(): string;
+                       blurb(): string }
+const MASK_CHOICE: ChoiceSpec = {
+  choice: "mask", label: "Mask type",
+  value: () => maskTypeOf().name, blurb: () => maskTypeOf().blurb,
+};
+
 const MONITOR_GROUPS: Group[] = [
   { title: "Beam & Phosphor",
     rows: [["scanlines", "softening", "misconvergence"],
@@ -140,12 +179,11 @@ const MONITOR_GROUPS: Group[] = [
   { title: "Glass & Signal",
     rows: [["curvature", "vignette"], ["flicker", "grain"]] },
 ];
-// At most four slider rows fit the Picture pane in the fixed 565x457
-// window (app.css, #pfpicture): a fifth runs into the caption area.
 const PICTURE_GROUPS: Group[] = [
   { title: "Picture", rows: [["brightness", "contrast", "zoom"]] },
-  { title: "Geometry", rows: [["hsize", "vsize", "hpos"],
-                             ["skew", "perspective", "vpos"]] },
+  { title: "Geometry", rows: [["hsize", "hpos", "skew"],
+                             ["vsize", "vpos", "vskew"],
+                             ["perspective"]] },
   { title: "Color", rows: [["red", "green", "blue"]] },
 ];
 
@@ -160,7 +198,7 @@ const PANES: { id: PaneId; label: string; icon: string; hint: string;
     hint: "How the picture tube draws the tank. Point at a slider " +
       "to see what it does.",
     offHint: "Turn on Simulate a CRT monitor to adjust the picture tube.",
-    keys: SPECS.map((s) => s.key) },
+    keys: [...SPECS.map((s) => s.key), "mask"] },
   { id: "picture", label: "Picture", icon: "icon-picture",
     hint: "The monitor's front-panel controls, applied after the " +
       "tube. Point at a slider to see what it does.",
@@ -181,7 +219,7 @@ let cfg: CrtConfig = { ...CRT_DEFAULTS };
 let greeted = false;
 // Sliders being dragged ignore state echoes so a push can't tug the
 // knob out from under the pointer.
-const dragging = new Set<keyof CrtConfig>();
+const dragging = new Set<CrtLevel>();
 // After a manual toggle, stale in-flight echoes of the master switch
 // are skipped until the echo reflecting it lands — but a rejection
 // (tank reports the effect can't run) must still apply, and the latch
@@ -196,6 +234,15 @@ let crtAvail = true;
 // carry the previous case and would snap the list back mid-browse.
 let machinePending: string | null = null;
 let machineTimer: ReturnType<typeof setTimeout> | undefined;
+// Mask type picks latch like machine picks.
+let maskPending: CrtMask | null = null;
+let maskTimer: ReturnType<typeof setTimeout> | undefined;
+function latchMask(mask: CrtMask): void {
+  maskPending = mask;
+  clearTimeout(maskTimer);
+  // One round-trip is plenty; after that the next push resyncs.
+  maskTimer = setTimeout(() => { maskPending = null; }, 1500);
+}
 // Slider drags fire input per step — coalesce to one bus post per
 // frame, carrying every trait touched since the last one.
 let pendingCfg: Partial<CrtConfig> | null = null;
@@ -240,7 +287,11 @@ const bus = openBus((m) => {
   // Refresh the pane caption on a transition only — every push would
   // wipe a live slider's hover text on the other panes.
   if (availChanged) describe(null);
-  if (crt.cfg !== undefined) cfg = sanitizeCrtConfig(crt.cfg);
+  if (crt.cfg !== undefined) {
+    cfg = sanitizeCrtConfig(crt.cfg);
+    if (maskPending === cfg.mask) maskPending = null;
+    else if (maskPending !== null) cfg.mask = maskPending;
+  }
   if (m.sound !== undefined) takeSound(sanitizeSoundConfig(m.sound));
   const mc = m.machine as { id?: unknown } | undefined;
   if (typeof mc?.id === "string" &&
@@ -275,9 +326,10 @@ interface SoundItem {
   /** Shown after the label, like a slider's value. */
   value?: () => string;
 }
-let described: SliderSpec | LightSpec | SoundItem | null = null;
+let described: SliderSpec | ChoiceSpec | LightSpec | SoundItem | null =
+  null;
 let describedPreset: CrtPreset | null = null;
-function describe(spec: SliderSpec | LightSpec | SoundItem | null,
+function describe(spec: SliderSpec | ChoiceSpec | LightSpec | SoundItem | null,
                   preset: CrtPreset | null = null): void {
   described = spec;
   describedPreset = preset;
@@ -307,11 +359,12 @@ function describe(spec: SliderSpec | LightSpec | SoundItem | null,
   }
   // A dimmed tube slider explains the switch instead of showing a
   // value that cannot apply (tubeCaption pins the wording).
-  if ("key" in spec) {
+  if ("key" in spec || "choice" in spec) {
     const c = tubeCaption({
       label: spec.label,
-      valueText: (spec.fmt ?? pct)(cfg[spec.key]),
-      blurb: spec.blurb,
+      valueText: "key" in spec ? (spec.fmt ?? pct)(cfg[spec.key])
+        : spec.value(),
+      blurb: "key" in spec ? spec.blurb : spec.blurb(),
       offHint: p.offHint,
       crtOn: onBox.checked && crtAvail,
     });
@@ -463,10 +516,10 @@ for (const p of CRT_PRESETS) {
 }
 
 // ---- sliders ------------------------------------------------------------
-const sliders = new Map<keyof CrtConfig, HTMLInputElement>();
+const sliders = new Map<CrtLevel, HTMLInputElement>();
 
 function queueConfigPost(key: keyof CrtConfig): void {
-  (pendingCfg ??= {})[key] = cfg[key];
+  pendingCfg = { ...pendingCfg, [key]: cfg[key] };
   if (postScheduled) return;
   postScheduled = true;
   requestAnimationFrame(() => {
@@ -482,13 +535,16 @@ function queueConfigPost(key: keyof CrtConfig): void {
 function slider(spec: SliderSpec): HTMLElement {
   const unit = el("div", "pfslider");
   const id = `sl-${spec.key}`;
-  const label = el("label", "osm-caption pflabel", spec.label);
-  label.setAttribute("for", id);
+  const label = spec.titlePopup === "mask"
+    ? maskPopupTitle(unit, spec)
+    : el("label", "osm-caption pflabel", spec.label);
+  if (!spec.titlePopup) label.setAttribute("for", id);
   const track = el("div", "osm-slider");
   const input = document.createElement("input");
   input.type = "range";
   input.id = id;
   input.min = "0"; input.max = "100"; input.step = "1";
+  if (spec.titlePopup) input.setAttribute("aria-label", spec.label);
   track.appendChild(input);
   const ends = el("div", "osm-caption pfends");
   ends.setAttribute("aria-hidden", "true");
@@ -528,6 +584,50 @@ function slider(spec: SliderSpec): HTMLElement {
   });
   sliders.set(spec.key, input);
   return unit;
+}
+
+/** The mask type pop-up, standing in for its strength slider's
+ * caption: the pop-up names the pattern, the slider sets how strongly
+ * it shows. Picks are optimistic; the tank echoes them back. */
+let maskPop: ReturnType<typeof mountPopup> | null = null;
+let maskBtn: HTMLButtonElement | null = null;
+function maskPopupTitle(unit: HTMLElement, spec: SliderSpec): HTMLElement {
+  const host = el("div", "pflabel pftitlepop");
+  const btn = el("button", "osm-popup") as HTMLButtonElement;
+  btn.type = "button";
+  host.appendChild(btn);
+  maskBtn = btn;
+  maskPop = mountPopup(btn, {
+    items: MASK_TYPES.map((t) => t.name),
+    selected: CRT_MASKS.indexOf(cfg.mask),
+    label: MASK_CHOICE.label,
+    onChange(i) {
+      const t = MASK_TYPES[i];
+      if (!t || t.mask === cfg.mask) return;
+      cfg.mask = t.mask;
+      latchMask(t.mask);
+      queueConfigPost("mask");
+      describe(MASK_CHOICE);
+    },
+  });
+  const open = () => btn.getAttribute("aria-expanded") === "true";
+  btn.addEventListener("pointerenter", () => describe(MASK_CHOICE));
+  btn.addEventListener("pointerleave", () => {
+    // Back on the slider's own area; an open menu keeps its caption.
+    if (described === MASK_CHOICE && !open() &&
+        document.activeElement !== btn) describe(spec);
+  });
+  btn.addEventListener("focus", () => describe(MASK_CHOICE));
+  btn.addEventListener("blur", () => {
+    // Opening the menu moves focus into it; the caption stays for it.
+    if (described === MASK_CHOICE && !open() && !unit.matches(":hover"))
+      describe(null);
+  });
+  unit.addEventListener("pointerleave", () => {
+    if (described === MASK_CHOICE && !open() &&
+        document.activeElement !== btn) describe(null);
+  });
+  return host;
 }
 
 function addGroups(groups: Group[], host: HTMLElement): void {
@@ -575,6 +675,9 @@ function syncControls(): void {
     input.value = String(Math.round(cfg[spec.key] * 100));
     input.setAttribute("aria-valuetext", (spec.fmt ?? pct)(cfg[spec.key]));
   }
+  // setSelected closes an open menu, so only touch it when it differs.
+  const mi = CRT_MASKS.indexOf(cfg.mask);
+  if (maskPop && maskPop.selected !== mi) maskPop.setSelected(mi);
   if (described) describe(described);
 }
 syncControls();
@@ -588,6 +691,7 @@ function syncEnabled(): void {
   // acts through the tube may come live.
   const live = crtAvail && onBox.checked;
   for (const input of sliders.values()) setEnabled(input, live);
+  if (maskBtn) maskBtn.disabled = !live;
   for (const btn of presetBtns) btn.disabled = !live;
   // Defaults only resets CRT sliders — dim it where none are live
   // (it still resets Sound on that pane, CRT or not).
@@ -856,12 +960,12 @@ pushButton(defaultsBtn, () => {
   if (!keys.length) return;
   // Drop coalesced slider changes still awaiting their rAF post for
   // these keys — they carry pre-reset values.
-  const reset: Partial<CrtConfig> = {};
-  for (const k of keys) {
-    reset[k] = CRT_DEFAULTS[k];
-    cfg[k] = CRT_DEFAULTS[k];
-    if (pendingCfg) delete pendingCfg[k];
-  }
+  const reset: Partial<CrtConfig> =
+    Object.fromEntries(keys.map((k) => [k, CRT_DEFAULTS[k]]));
+  cfg = { ...cfg, ...reset };
+  for (const k of keys) if (pendingCfg) delete pendingCfg[k];
+  // A pick still awaiting its echo must not win over the reset.
+  if (reset.mask !== undefined) latchMask(reset.mask);
   bus.post({ op: "crtConfig", cfg: reset });
   syncControls();
 });
