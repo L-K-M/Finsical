@@ -476,7 +476,9 @@ public final class MainActivity extends Activity {
             }
             out.write(bytes);
             return true;
-        } catch (IOException | SecurityException e) {
+        } catch (IOException | RuntimeException e) {
+            // RuntimeException too: providers are third-party code, and an
+            // unchecked exception on this bare thread would kill the app.
             Log.e(LOG_TAG, "Cannot write the download to " + document, e);
             return false;
         }
