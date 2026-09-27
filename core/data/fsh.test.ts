@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { fshToSheets, isPack, packChunks } from "./fsh.js";
+import { decodePixels, fshToSheets, isPack, packChunks } from "./fsh.js";
+import { makeRng } from "../rng.js";
 
 const PAL: [number, number, number][] =
   [[0, 0, 0], [255, 0, 0], [0, 0, 255], [0, 255, 0]];
@@ -205,5 +206,91 @@ describe("fshToSheets", () => {
     // `09 00 AA` claims 9 literals but only one remains -> pads the rest.
     const b = [...fshToSheets(buildPack(rawSpriteChunk(4, 1, new Uint8Array([0x09, 0x00, 0xaa])))).values()][0]!;
     expect([...b.frame(0, 0).idx]).toEqual([0xaa, 0, 0, 0]);
+  });
+});
+
+describe("decodePixels", () => {
+  /** The decoder as it was, one closure call per pixel: the reference
+   * the counter version must match byte for byte. */
+  function reference(s: Uint8Array, w: number, h: number): Uint8Array {
+    const total = w * h;
+    const out = new Uint8Array(total);
+    const n = s.length;
+    let o = 0, i = 0;
+    const emit = (c: number) => {
+      if (o < total) out[(o % h) * w + (o / h | 0)] = c;
+      o++;
+    };
+    while (i + 1 < n && o < total) {
+      let v = (s[i] ?? 0) | ((s[i + 1] ?? 0) << 8);
+      if (v >= 0x8000) v -= 0x10000;
+      if (v < 0) {
+        const c = s[i + 2] ?? 0;
+        for (let k = 0; k < -v; k++) emit(c);
+        i += 3;
+      } else if (v > 0) {
+        for (let k = 0; k < v; k++) emit(s[i + 2 + k] ?? 0);
+        i += 2 + v;
+      } else {
+        i += 2;
+      }
+    }
+    return out;
+  }
+
+  /** A random stream of runs, copies and empty records, often cut off
+   * mid-record, with counts that may run past the frame. */
+  function stream(rand: () => number, pixels: number): Uint8Array {
+    const b: number[] = [];
+    const budget = pixels * (0.5 + rand() * 1.2);
+    for (let used = 0; used < budget;) {
+      const kind = rand();
+      const len = 1 + Math.floor(rand() * 40);
+      if (kind < 0.1) { b.push(0, 0); continue; }
+      if (kind < 0.55) {
+        // Some runs at the format's longest, and many of colour 0,
+        // whose writes the decoder skips.
+        const v = 0x10000 - (rand() < 0.03 ? 0x8000 : len);
+        b.push(v & 0xff, v >> 8, rand() < 0.3 ? 0 : Math.floor(rand() * 256));
+      } else {
+        b.push(len & 0xff, len >> 8);
+        for (let k = 0; k < len; k++) b.push(Math.floor(rand() * 256));
+      }
+      used += len;
+    }
+    // Truncate some streams mid-record, and leave an odd byte on others.
+    const cut = rand() < 0.3 ? Math.floor(rand() * b.length) : b.length;
+    return Uint8Array.from(b.slice(0, cut));
+  }
+
+  it("matches the old decoder on random streams, byte for byte", () => {
+    const rand = makeRng(0x9003);
+    for (let t = 0; t < 3000; t++) {
+      const w = 1 + Math.floor(rand() * 24), h = 1 + Math.floor(rand() * 24);
+      const s = stream(rand, w * h);
+      expect(decodePixels(s, w, h)).toEqual(reference(s, w, h));
+    }
+  });
+
+  it("fills pixels down each column, clipping a run past the frame", () => {
+    // 2 wide, 3 tall: a run of 4 fills column 0 then the top of column 1;
+    // a copy of 5 fills the rest and drops what is left over.
+    const s = Uint8Array.from([0xfc, 0xff, 7, 5, 0, 1, 2, 3, 4, 5]);
+    expect([...decodePixels(s, 2, 3)]).toEqual([7, 7, 7, 1, 7, 2]);
+  });
+
+  it("clips a maximum-length run to the frame", () => {
+    // 0x8000 is -32768 as s16: the run fills the whole 2x2 frame and
+    // its other 32764 pixels are dropped.
+    expect([...decodePixels(Uint8Array.of(0x00, 0x80, 9), 2, 2)])
+      .toEqual([9, 9, 9, 9]);
+    // 0x7fff copies up to 32767 bytes; only the frame's 4 are read.
+    const copy = Uint8Array.of(0xff, 0x7f, 1, 2, 3, 4, 5, 6);
+    expect([...decodePixels(copy, 2, 2)]).toEqual([1, 3, 2, 4]);
+  });
+
+  it("reads zeros past the end of a cut stream", () => {
+    const s = Uint8Array.from([3, 0, 9]); // a copy of 3 with 1 byte left
+    expect([...decodePixels(s, 1, 3)]).toEqual([9, 0, 0]);
   });
 });

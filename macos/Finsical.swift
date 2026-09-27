@@ -12,17 +12,32 @@ final class WebHandler: NSObject, WKURLSchemeHandler {
         "wasm": "application/wasm", "bin": "application/octet-stream",
     ]
 
+    /// The bundled file a request path names, or nil when the path
+    /// would climb out of the web root. Containment is decided on the
+    /// path's own components, never by comparing standardized paths:
+    /// standardizing drops a leading /private only when the shorter
+    /// path exists, so in an app run from /private/var/folders/... (App
+    /// Translocation, when it's opened where it was unzipped) every file
+    /// failed the old prefix check against the unstandardized root, and
+    /// the tank never loaded. `urlPath` is already percent-decoded.
+    static func resolve(_ urlPath: String, in root: URL) -> URL? {
+        var path = urlPath
+        if path.isEmpty || path.hasSuffix("/") { path += "index.html" }
+        let parts = path.split(separator: "/")
+        if parts.isEmpty || parts.contains(where: { $0 == ".." }) {
+            return nil
+        }
+        return parts.reduce(root) { $0.appendingPathComponent(String($1)) }
+    }
+
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
         guard let url = task.request.url, url.scheme == WebHandler.scheme,
               let root = Bundle.main.resourceURL?.appendingPathComponent("web") else {
             task.didFailWithError(URLError(.unsupportedURL))
             return
         }
-        var path = url.path
-        if path.isEmpty || path.hasSuffix("/") { path += "index.html" }
-        let file = root.appendingPathComponent(path).standardizedFileURL
         // Stay inside the web root.
-        guard file.path.hasPrefix(root.path + "/") else {
+        guard let file = WebHandler.resolve(url.path, in: root) else {
             task.didFailWithError(URLError(.fileDoesNotExist))
             return
         }
@@ -116,11 +131,30 @@ final class TankWindow: NSWindow {
     }
 }
 
+/// `--smoke-test`: print the verdict as one JSON line for CI (error
+/// text can hold quotes, so it is serialized, not interpolated) and exit.
+private func smokeExit(_ report: [String: String], _ code: Int32) -> Never {
+    // A fixed line keeps the output valid JSON should serialization
+    // ever fail; the exit code still carries the verdict.
+    let fallback = #"{"smoke":"unserializable report"}"#
+    let json = try? JSONSerialization.data(withJSONObject: report,
+                                           options: [.sortedKeys])
+    print(json.map { String(decoding: $0, as: UTF8.self) } ?? fallback)
+    exit(code)
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                          WKNavigationDelegate, WKScriptMessageHandler,
                          NSWindowDelegate, NSMenuItemValidation {
     private var window: TankWindow!
     private var webView: WKWebView!
+    /// The tank page's first load: its failure means nothing will show.
+    private var tankLoad: WKNavigation?
+    /// `--smoke-test`: load the tank, check the page came up, print one
+    /// line and exit (0 ok, 1 page broken, 2 load failed, 3 timed out).
+    /// CI runs it from /Applications and from /private/tmp.
+    private let smokeTest =
+        ProcessInfo.processInfo.arguments.contains("--smoke-test")
     /// Saved window frames, under the keys Finsical has always used.
     private let frames = OsmiumFrameStore(prefix: "FinsicalFrame.")
     /// The client windows (Preferences, Tank Overview, Import Add-ons,
@@ -136,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         })
     private lazy var prefs = host.add(OsmiumWindowSpec(
         url: page("prefs.html"), title: "Preferences",
-        frameKey: "FinsicalPrefs", size: NSSize(width: 565, height: 457)))
+        frameKey: "FinsicalPrefs", size: NSSize(width: 565, height: 518)))
     private lazy var overview = host.add(OsmiumWindowSpec(
         url: page("overview.html"), title: "Tank Overview",
         frameKey: "FinsicalOverview", size: NSSize(width: 521, height: 381),
@@ -146,12 +180,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         frameKey: "FinsicalAddons", size: NSSize(width: 621, height: 441),
         minSize: NSSize(width: 441, height: 301)))
     /// The stats page clips rather than scrolls (Mac OS 8 windows
-    /// without scroll bars), so its minimum keeps the water readings,
-    /// two care hints and the Keeping controls visible.
+    /// without scroll bars), so its minimum keeps every tab's fields,
+    /// two care hints and the Keeping controls visible. Its frame key
+    /// changed when the readings moved onto tabs: frames saved before
+    /// were at least 560 points tall, sized for one long pane.
     private lazy var stats = host.add(OsmiumWindowSpec(
         url: page("stats.html"), title: "Tank Stats",
-        frameKey: "FinsicalStats", size: NSSize(width: 380, height: 640),
-        minSize: NSSize(width: 340, height: 560)))
+        frameKey: "FinsicalStatsTabs", size: NSSize(width: 380, height: 360),
+        minSize: NSSize(width: 340, height: 330)))
 
     private func page(_ name: String) -> URL {
         URL(string: "\(WebHandler.scheme)://app/\(name)")!
@@ -525,6 +561,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 if let p = body["paused"] as? Bool {
                     syncPauseMenu(paused: p)
                 }
+                if let n = body["names"] as? Bool {
+                    namesOn = n
+                }
                 // Retune the frame to the case outline.
                 if let mc = body["machine"] as? [String: Any],
                    let mid = mc["id"] as? String,
@@ -678,6 +717,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         }
     }
 
+    @objc func toggleNames() {
+        let js = "window.finsical?.toggleNames ? window.finsical.toggleNames()" +
+                 " : (() => { throw new Error('window.finsical.toggleNames missing') })()"
+        webView?.evaluateJavaScript(js) { result, error in
+            if let error {
+                NSLog("Finsical: toggleNames JS failed: \(error.localizedDescription)")
+                return
+            }
+            // toggleNames returns the new flag: the checkmark is right
+            // even before the state push lands.
+            if let on = result as? Bool { self.namesOn = on }
+        }
+    }
+
     @objc func togglePause() {
         let js = "window.finsical?.togglePause ? window.finsical.togglePause()" +
                  " : (() => { throw new Error('window.finsical.togglePause missing') })()"
@@ -735,6 +788,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     private var crtAvailable = false
     private var lampOn = true
     private var soundMuted = false
+    private var namesOn = false
 
     /// UserDefaults keys for the tank's Window-menu toggles. Both
     /// default on, which is how the tank behaved before they existed.
@@ -782,6 +836,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             menuItem.state = lampOn ? .on : .off
         case #selector(toggleMute):
             menuItem.state = soundMuted ? .on : .off
+        case #selector(toggleNames):
+            menuItem.state = namesOn ? .on : .off
         case #selector(toggleFloat):
             menuItem.state = defaults.bool(forKey: WindowPref.float)
                 ? .on : .off
@@ -833,6 +889,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             return
         }
         decisionHandler(.allow)
+    }
+
+    /// The tank page couldn't load at all. The window is transparent, so
+    /// without this the app would show a menu bar and nothing else.
+    /// Other failures (a client page, a link handed to the browser, which
+    /// cancels its navigation) only log.
+    func webView(_ webView: WKWebView,
+                 didFailProvisionalNavigation navigation: WKNavigation!,
+                 withError error: any Error) {
+        tankLoadFailed(navigation, error)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!,
+                 withError error: any Error) {
+        tankLoadFailed(navigation, error)
+    }
+
+    private func tankLoadFailed(_ navigation: WKNavigation?,
+                                _ error: any Error) {
+        NSLog("Finsical: page load failed: \(error.localizedDescription)")
+        guard let navigation, navigation === tankLoad else { return }
+        // Quitting (or anything that stops the load) cancels it too;
+        // that is not a failure to report.
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled {
+            return
+        }
+        if smokeTest {
+            smokeExit(["smoke": "load failed",
+                       "error": error.localizedDescription], 2)
+        }
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = "Finsical couldn't open its tank."
+        var info = error.localizedDescription
+        if Bundle.main.bundlePath.contains("/AppTranslocation/") {
+            info += "\n\nMove Finsical to your Applications folder and open it again."
+        }
+        alert.informativeText = info
+        alert.addButton(withTitle: "Quit")
+        alert.runModal()
+        NSApp.terminate(nil)
+    }
+
+    /// `--smoke-test`: the tank page finished loading; check that its
+    /// script ran (the native menu's entry points exist) and the case
+    /// art went in, then exit with the verdict.
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard smokeTest, navigation === tankLoad else { return }
+        let js = "typeof window.finsical?.feedFish === 'function' && " +
+                 "!!document.querySelector('#shell > *')"
+        webView.evaluateJavaScript(js) { result, error in
+            let ok = (result as? Bool) == true
+            var report = ["smoke": ok ? "ok" : "page broken",
+                          "path": Bundle.main.bundlePath]
+            if let error { report["error"] = error.localizedDescription }
+            smokeExit(report, ok ? 0 : 1)
+        }
     }
 
     /// WebContent crash times within the last minute, per webview —
@@ -974,7 +1088,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
             window.makeKeyAndOrderFront(nil)
         }
 
-        webView.load(URLRequest(url: page("index.html")))
+        tankLoad = webView.load(URLRequest(url: page("index.html")))
+        if smokeTest {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
+                smokeExit(["smoke": "timed out"], 3)
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
@@ -1053,6 +1172,10 @@ enum FinsicalApp {
         tankMenu.addItem(withTitle: "Lamp On",
                          action: #selector(AppDelegate.toggleLights),
                          keyEquivalent: "l")
+        // No key equivalent: ⌘N is New. The tank takes a bare N.
+        tankMenu.addItem(withTitle: "Fish Names",
+                         action: #selector(AppDelegate.toggleNames),
+                         keyEquivalent: "")
         let muteItem = tankMenu.addItem(withTitle: "Mute Sound",
                                         action: #selector(AppDelegate.toggleMute),
                                         keyEquivalent: "s")

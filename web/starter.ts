@@ -47,12 +47,32 @@ export function resolveStarter(listing: readonly Importable[]): Importable[] {
  * own. Tanks set up before the set had sounds answered the welcome
  * without them and play nothing. Only a tank that already answered the
  * welcome, holds no sounds and was never given the chance before gets
- * them: a first launch has the welcome offer them, and once they are
- * handled, removing them sticks. */
+ * them: a launch that offers the starter set (the welcome or its retry)
+ * leaves them to it, and once they are handled, removing them sticks. */
 export function wantsStarterSounds(s: { welcomePending: boolean;
                                         soundsHandled: boolean;
                                         hasSounds: boolean }): boolean {
   return !s.welcomePending && !s.soundsHandled && !s.hasSounds;
+}
+
+/** Where the first-run offer stands, as web/welcome.ts stores it:
+ * "pending" while the welcome is up unanswered, "retry" once stocking
+ * started and until it finishes (a failure or Stop leaves it there),
+ * "declined" and "stocked" for good. Before these, "1" meant either
+ * answer. */
+export type WelcomeAnswer = "pending" | "retry" | "declined" | "stocked";
+
+/** What a launch offers: the welcome, the rest of a starter set that
+ * didn't finish installing, or nothing. `answer` is the stored one
+ * (null: never stored); `pristine`: the tank holds only stand-ins and
+ * no add-ons. A tank with no answer that isn't pristine was set up
+ * before the welcome existed; an unknown answer counts as answered. */
+export function welcomeOffer(s: { answer: string | null;
+                                  pristine: boolean }):
+    "welcome" | "retry" | null {
+  if (s.answer === "pending") return "welcome";
+  if (s.answer === "retry") return "retry";
+  return s.answer === null && s.pristine ? "welcome" : null;
 }
 
 /** Outcome of a starter install run: the items that failed, in set
@@ -62,39 +82,45 @@ export interface StarterRun {
   problem: unknown;
 }
 
-/** Install a resolved starter set. The art installs strictly in order
- * — fish first so the stand-ins leave as early as possible — while the
- * sounds, the slowest download, kick off once the first fish lands and
- * overlap the remaining art instead of stacking on the end. The sounds
- * are still awaited last, so progress numbering and failure order keep
- * the set's order. A stopped run returns what it has so far; an
- * in-flight download still lands. */
+/** Install a resolved starter set, skipping the items the tank already
+ * has (a retry after an unfinished run). The art installs strictly in
+ * order — fish first so the stand-ins leave as early as possible —
+ * while the sounds, the slowest download, kick off once the first fish
+ * lands and overlap the remaining art instead of stacking on the end.
+ * The sounds are still awaited last, so progress numbering and
+ * failure order keep the set's order. A stopped run returns what it
+ * has so far; an in-flight download still lands. */
 export async function runStarter(
   items: readonly Importable[],
   hooks: {
     install: (it: Importable) => Promise<unknown>;
-    progress: (index: number, it: Importable) => void;
+    installed: (it: Importable) => boolean;
+    /** `index` of `total`: the items this run installs. */
+    progress: (index: number, total: number, it: Importable) => void;
     fishArrived: (it: Importable) => void;
+    /** The sound bank landed, even after a stop. */
+    soundsArrived: (it: Importable) => void;
     stopped: () => boolean;
   },
 ): Promise<StarterRun> {
+  const todo = items.filter((it) => !hooks.installed(it));
   const failed: Importable[] = [];
   let problem: unknown = null;
   const soundJobs = new Map<Importable, Promise<unknown>>();
   const startSounds = (): void => {
     if (soundJobs.size) return;
-    for (const it of items)
+    for (const it of todo)
       if (it.section === "sounds")
         soundJobs.set(it, Promise.resolve().then(() => hooks.install(it))
-          .then(() => null,
+          .then(() => { hooks.soundsArrived(it); return null; },
                 // A null rejection mustn't read as success.
                 (e: unknown) =>
                   e ?? new Error(`couldn't add ${it.inner}`)));
   };
-  for (const [i, it] of items.entries()) {
+  for (const [i, it] of todo.entries()) {
     if (it.section === "sounds") continue;
     if (hooks.stopped()) return { failed, problem };
-    hooks.progress(i, it);
+    hooks.progress(i, todo.length, it);
     try {
       await hooks.install(it);
     } catch (e) {
@@ -113,11 +139,11 @@ export async function runStarter(
   }
   // No fish landed, or the set has no fish — the sounds still install.
   if (!hooks.stopped()) startSounds();
-  for (const [i, it] of items.entries()) {
+  for (const [i, it] of todo.entries()) {
     const job = soundJobs.get(it);
     if (!job) continue;
     if (hooks.stopped()) return { failed, problem };
-    hooks.progress(i, it);
+    hooks.progress(i, todo.length, it);
     const e = await job;
     if (e !== null) {
       console.warn(`starter set: couldn't add ${it.inner}:`, e);

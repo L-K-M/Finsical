@@ -72,6 +72,15 @@ describe("zipEntries", () => {
       "AQUAZONE マッキンフィッシュ（MAC専用）.zip");
   });
 
+  it("falls back to UTF-8 when a name isn't Shift_JIS either", () => {
+    // Invalid UTF-8 (a stray 0xFF) that Shift_JIS can't map cleanly
+    // either: lenient UTF-8 keeps the readable part.
+    const raw = new Uint8Array(
+      [0x63, 0x61, 0x66, 0xC3, 0xA9, 0xFF, 0x2E, 0x66, 0x73, 0x68]);
+    const z = buildZip(raw, enc.encode("x"));
+    expect(zipEntries(z)[0]!.name).toBe("caf\u00e9\uFFFD.fsh");
+  });
+
   it("rejects non-zip data", () => {
     expect(() => zipEntries(enc.encode("not a zip"))).toThrow(/EOCD|central/);
   });

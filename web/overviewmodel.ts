@@ -5,12 +5,15 @@ import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
 import type { FishState } from "../core/sim.js";
 import { conditionLabel } from "./lifecopy.js";
+import { fishLabel } from "./fishname.js";
 import { hungerLabel, uptime } from "./statsmodel.js";
 import type { HungerBand } from "./statsmodel.js";
 
 export interface FishSnap {
   id: number; species: string; hunger: number; state: string;
   pack?: string;
+  /** The owner's name for it; absent, it goes by its species. */
+  name?: string;
   /** From the life model: health 0..100, disease index, cause of death. */
   health?: number; sick?: number | null; dead?: number | null;
   /** Starter art a fish pack will replace — label it honestly. */
@@ -113,6 +116,15 @@ export function summary(fish: number, addons: number, water: number,
     `water ${Math.round(water * 100)}%, up ${uptime(Math.floor(ticks / 1800))}`;
 }
 
+/** A fish's Name cell: what the tank calls it, with the species in
+ * parentheses once a name has replaced it, and stand-ins marked. */
+export function fishRowName(f: FishSnap): string {
+  const label = fishLabel(f);
+  if (f.standIn) return `${label} (stand-in)`;
+  const named = typeof f.name === "string" && f.name.trim() !== "";
+  return named && f.species ? `${label} (${f.species})` : label;
+}
+
 /** The list's lines from a state push. A fish add-on is represented by
  * its fish — it only lists on its own while no fish is bound to it
  * (same bound test the tank uses: pack url, or species name for
@@ -125,8 +137,7 @@ export function itemsOf(s: TankState): Item[] {
     return {
       key: fishThumbKey(f),
       thumb: fishThumbKey(f),
-      name: f.standIn ? `${f.species || "Fish"} (stand-in)`
-                      : f.species || "Fish",
+      name: fishRowName(f),
       kind: "Fish",
       // Bus data is untrusted: an unknown state reads as swimming.
       status: ailing ? conditionLabel(f)

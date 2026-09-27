@@ -4,6 +4,10 @@ resource forks can't survive a modern filesystem or download unwrapped,
 so the transfer encodings are peeled off here. Stdlib only."""
 import struct
 
+# Most resources of one type read from a file: MAX_FILE_SOUNDS in
+# core/data/sndbank.ts. Real forks hold a few dozen.
+MAX_RESOURCES = 1024
+
 _BINHEX_ALPHABET = (
     b'!"#$%&\'()*+,-012345689@ABCDEFGHIJKLMNPQRSTUVXYZ[`abcdefhijklmpqr')
 _BINHEX_LUT = {c: i for i, c in enumerate(_BINHEX_ALPHABET)}
@@ -166,18 +170,40 @@ class ResFile:
         return out
 
     def resources(self, rtype):
-        """rtype: 4-byte tag. Yields (id, name, attrs, rawbytes)."""
+        """rtype: 4-byte tag. Yields (id, name, attrs, rawbytes).
+
+        Like core/data/snd.ts: only the first entry for the type is
+        read, each payload yields once however many references share
+        it, and at most MAX_RESOURCES resources come back, so a
+        crafted map can't multiply one blob into millions. A reference
+        or payload that runs past the end is skipped, as there.
+        A second id sharing a payload is dropped even under another
+        name, deliberately: see bankSounds in core/data/sndbank.ts."""
         for t, cnt, rbase in self.types():
             if t != rtype:
                 continue
+            seen = set()
+            emitted = 0  # the cap counts what comes back, not refs read
             for j in range(cnt):
+                if emitted >= MAX_RESOURCES:
+                    break
                 r = rbase + j * 12
+                if r + 12 > len(self.data):
+                    break
                 rid = struct.unpack_from('>h', self.data, r)[0]
                 noff = struct.unpack_from('>h', self.data, r + 2)[0]
                 attr = self.data[r + 4]
                 dd = struct.unpack_from('>I', self.data, r + 5)[0] >> 8
-                sz = struct.unpack_from('>I', self.data, self.do + dd)[0]
-                blob = self.data[self.do + dd + 4:self.do + dd + 4 + sz]
+                if dd in seen:
+                    continue
+                seen.add(dd)
+                at = self.do + dd
+                if at + 4 > len(self.data):
+                    continue
+                sz = struct.unpack_from('>I', self.data, at)[0]
+                if at + 4 + sz > len(self.data):
+                    continue
+                blob = self.data[at + 4:at + 4 + sz]
                 name = None
                 # Only -1 is the nameless sentinel; other negatives would
                 # index backwards into the name list (or worse).
@@ -190,7 +216,9 @@ class ResFile:
                         ln = self.data[p]
                         name = self.data[p + 1:p + 1 + ln] \
                             .decode('mac_roman', 'replace')
+                emitted += 1
                 yield rid, name, attr, blob
+            return
 
     def summary(self):
         rows = []

@@ -2,7 +2,8 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { browserGeometry, DECOR_COPIES_MAX, decorCopyRoom, fragDecode,
          fragEncode, importAddon, installProblem, listAddons,
          loadProblem, transientFailure, isListed, orphanedSounds,
-         qualifySoundItemName, recordAddon, usablePacks, usableProblem }
+         qualifySoundItemName, recordAddon, isSavedAddon, usablePacks,
+         usableProblem }
   from "./import.js";
 import type { Importable, PackResult } from "./import.js";
 import type { IndexedImage, SpriteSheet } from "../core/data/azpack.js";
@@ -555,5 +556,34 @@ describe("installProblem", () => {
       .toBe("png: bad signature");
     expect(installProblem("The tank already has 12 fish."))
       .toBe("The tank already has 12 fish.");
+  });
+});
+
+describe("isSavedAddon", () => {
+  it("accepts the records recordAddon saves", () => {
+    // The launch path once demanded plain URL strings here, so every
+    // tank with an add-on loaded as a fresh default tank.
+    const list: Importable[] = [];
+    recordAddon(list, { url: "https://archive.org/a.zip", inner: "a",
+                        section: "sounds" }, ["plip"], "install");
+    recordAddon(list, { url: "https://archive.org/b.zip", inner: "b",
+                        section: "plants" }, [], "install");
+    recordAddon(list, { url: "https://archive.org/b.zip", inner: "b",
+                        section: "plants" }, [], "install");
+    const saved: unknown[] = JSON.parse(JSON.stringify(list));
+    expect(saved.every(isSavedAddon)).toBe(true);
+  });
+
+  it("rejects records the restore path can't use", () => {
+    const ok = { url: "u", inner: "i", section: "fish" };
+    for (const bad of [null, "u", 3, [], { ...ok, url: "" },
+                       { ...ok, url: 7 }, { ...ok, inner: undefined },
+                       { ...ok, section: "boats" },
+                       { ...ok, sounds: "plip" },
+                       { ...ok, sounds: [1] }])
+      expect(isSavedAddon(bad)).toBe(false);
+    expect(isSavedAddon(ok)).toBe(true);
+    expect(isSavedAddon({ ...ok, section: "" })).toBe(true);
+    expect(isSavedAddon({ ...ok, sounds: [] })).toBe(true);
   });
 });

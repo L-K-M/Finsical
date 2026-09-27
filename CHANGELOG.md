@@ -2,6 +2,95 @@
 
 ## Unreleased
 
+- In the Mac app, the Tank Stats, Tank Overview, Preferences and Add-ons
+  windows no longer show a white pixel just outside their top-right
+  and bottom-left corners.
+- You can name your fish. Click the name in a fish's Get Info card and
+  type, or select the fish in Tank Overview and choose Rename… (or
+  press Return). The name shows on its name tag, hover tip, Get Info
+  card, Tank Overview, Tank Stats and notices, and it is saved with the
+  tank. Clear the name to go back to the species name.
+- The Get Info card's text is black again. It had turned white on the
+  card's white background.
+- Fish no longer waggle rapidly up and down after swimming past the
+  spot they were heading for. They now level out and carry on until
+  they turn around.
+- The alert that says the tank is full of uneaten food is now a hint
+  you turn on with Tank > Turn Hints On. It no longer interrupts
+  feeding by default; a refused feed is silent unless hints are on.
+- Alerts no longer show the browser's rounded focus ring around their
+  frame.
+- The Mac app opens its tank when you run it from where you unzipped
+  it, such as your Downloads folder. macOS runs an app opened there
+  from a hidden temporary location, and from there the app refused to
+  load any of its own files: you saw a menu bar and no tank. If the
+  tank ever can't load, an alert now says so instead of showing
+  nothing.
+- If you close Finsical before answering the offer to stock your tank,
+  the next launch asks again. The offer used to be lost for good, and
+  the game's sounds then downloaded without asking. If stocking the
+  tank fails or you stop it, the next launch offers the rest, and each
+  launch after that does too until the rest arrives or you choose Not
+  Now or Stop.
+- With the CRT effect on, clicks, hovering and feeding land where the
+  curved, shifted picture shows the tank. They used to follow the flat
+  tank underneath, so a click could miss by several pixels, and with a
+  raised Height or overscan the feeding strip could sit outside the
+  area that took the click.
+- At full Perspective the CRT picture's near edge now stays at the
+  frame and only the far edge shrinks back. The near edge used to
+  spill past the glass and hide the side of the tank.
+- The CRT gains a choice of phosphor mask in Preferences: the aperture
+  grille it had, a slot mask or a shadow mask. The strength slider,
+  which was called Shadow grille, is now Phosphor mask.
+- Bright CRT highlights now roll off smoothly instead of clipping to
+  flat white patches when bloom and Bright-color boost push them past
+  full brightness.
+- Screen readers now say which way the CRT's position pots move the
+  picture and by how much, such as "4% left" or "Centered", and the
+  Preferences caption shows the same.
+- A tank with any add-on installed comes back on launch again. 0.4.0
+  read such a save as damaged and started a fresh default tank in its
+  place, which then saved over it. A save that can't be fully read is
+  also kept aside as `finsical:tank.unreadable` rather than lost.
+- Tank Stats puts its readings on three Mac OS 8 tabs, General, Water
+  and Keeping, so the window is little more than half as tall. It
+  reopens on the tab you used last. The first time it opens after this
+  update it comes up centered at its new size, since the size you left
+  it at was for the old single pane.
+- The CRT's scanlines now follow the picture's brightness, like a real
+  tube's beam. Dark rows thin to lines with deep gaps, while bright
+  rows swell to nearly fill them, so highlights look painted rather
+  than striped and a lone bright pixel glows as a dot. In a small
+  window the lines fade to their average brightness instead of
+  beating into moire patterns.
+- The CRT's bloom and glass halation are now smooth glows. Small
+  bright shapes such as bubbles used to cast sharp copies of
+  themselves a few pixels to each side.
+- The CRT's Softening blends colors the way a tube's light does, so
+  dithered patterns and the seams between two colors no longer come
+  out darker than they should.
+- The CRT picture's corners are rounded and its curved edges are
+  smooth instead of stair-stepped.
+- The CRT's Geometry group gains Horizontal and Vertical position
+  pots, which shift the picture left, right, up or down on the glass.
+- A tank saved by 0.3.0 or earlier keeps the look of each fish from an
+  add-on that holds several fish. The first launch after the update
+  would otherwise turn them all into the add-on's last fish: angels.zip
+  gave an angel and a black angel, and both came back black angels.
+- A fish add-on whose fish don't all fit in the tank is refused as a
+  whole, with a note of how much room is left. It used to add as many
+  as fit and report success.
+- A fish add-on that holds several fish now names each fish after its
+  own pack. Adding angels.zip used to give two fish both called
+  "angels"; they are now "angel" and "blackangel".
+- A pointer left resting over the tank loses the fish's interest after
+  about 20 seconds, so the fish gathered to look at it swim off again
+  instead of waiting there for hours. Moving the pointer brings them
+  back.
+- A bubble you pop by tapping it now bursts with a soft plip from its
+  side of the tank, or with a sound of your own that has "pop" in its
+  name. The Bubble sounds switch in Preferences turns it off.
 - In a browser, Preferences, Tank Overview and Tank Stats open in
   small windows beside the tank, at the size the app gives them. They
   used to open as full-size tabs that stretched their panes and sent
@@ -10,10 +99,51 @@
 - New machine cases: Performa 450 (II), Performa 5200 and 5200
   (Black), PowerBook G3 and iBook (Tangerine) join the Macintosh Plus,
   20th Anniversary Mac, iMac G3 and G4 and the bare tank.
-- The CRT's Geometry group gains two pots. Skew leans the whole
-  picture into a parallelogram, and Perspective swings it like the
-  tube turning on its stand — one edge looming large while the
-  other shrinks back.
+- Fish Names, from AquaZone's Options menu: press N, or choose Fish
+  Names from the Tank menu, and every fish wears a name tag that swims
+  with it. Pointing names only one fish at a time, and never on a touch
+  screen. The setting is remembered.
+- You can use your own picture as the backdrop, as in AquaZone: drag a
+  256-color BMP of at least 160 by 100 pixels onto the tank. It is
+  kept, so it comes back at every launch, and Tank Overview lists it
+  with Remove. A picture Finsical can't use, such as a 24-bit BMP or
+  a smaller one, gets a note on the glass saying which pictures work.
+- In the Machine list the Performas drop "Macintosh" from their names,
+  so "Performa 5200 (Black)" and "Performa 450 (II)" are no longer cut
+  off mid-letter; a name still too long for the list ends in an
+  ellipsis.
+- Mekasia's G_Debris gravel lists under Gravel and lays a gravel bed.
+  It used to list under Accessories, where adding it dropped a big
+  textured block into the tank; a tank that added it that way gets the
+  gravel instead on its next launch. The Mekasia plant and accessory
+  lists now hold only plants and accessories.
+- A malformed sound file can no longer freeze the tank. A small crafted
+  sound bank or resource fork could list one sound thousands of times
+  and hold the tank up for seconds to minutes, then leave thousands of
+  sounds that came back at every launch. Each sound in a file now
+  imports once, at most 1,024 per file.
+- Fish go to sleep in a tank that opens in the dark. With the light
+  timer past its off hour, or the lamp left off, they used to swim all
+  night, because they only bedded down after seeing daylight first.
+  Fish also settle one at a time, each between 2 and 22 seconds after
+  dark, and wake one by one within 11 seconds of dawn, instead of all
+  on the same instant.
+- A hungry fish between two pellets picks one and eats it. Near the
+  midpoint it used to roll back and forth between them, sometimes for a
+  minute, while both sank and fouled the water.
+- Adding a big fish add-on stalls the tank for less time: decoding
+  the gup, discus and angel packs' sprites takes under a third as
+  long, which shortens the pause while one goes in.
+- At night, the pointer works as a torch. When you hover over the dark
+  tank with a mouse or pen, a warm, soft circle of light shows the
+  fish and plants under it in their daytime colors while the rest of
+  the tank stays moonlit. The beam widens as the night deepens and
+  follows the pointer even while the tank is paused.
+- The CRT's Geometry group gains three pots. Horizontal skew leans the
+  whole picture into a parallelogram, Vertical skew slopes it up or
+  down, and Perspective swings it like the tube turning on its stand —
+  one edge looming large while the other shrinks back. The Preferences
+  window is a little taller to fit them.
 - The CRT Softening control now smears only along each scanline, as
   its description says. The rows used to blend into each other at
   every setting, so the whole picture turned soft, and even Sharp and

@@ -81,15 +81,19 @@ canvas#tank {
   /* Fallback until layoutMachine() sets the snapped inline size. */
   width: 100%; height: 100%; object-fit: contain;
 }
-/* CRT pass: full-window WebGL canvas over the (kept-live) tank canvas.
-   The 2D canvas stays as the texture source — opacity 0 hides it while
-   keeping pointer events; clicks still land on #tank through the
-   pointer-events:none overlay. */
+/* CRT pass: WebGL canvas over the whole glass, above the (kept-live)
+   tank canvas, which stays as the texture source at opacity 0. While
+   it draws, the CRT canvas takes the pointer: its picture moves with
+   the geometry pots, and main.ts maps pointer input through the same
+   warp. Like #tank, a click on it feeds or taps, never drags. */
 canvas#crt {
   display: none; position: absolute; inset: 0; z-index: 1;
   width: 100%; height: 100%; pointer-events: none;
 }
-body.crt canvas#crt { display: block; }
+body.crt canvas#crt {
+  display: block; pointer-events: auto;
+  touch-action: none; cursor: default;
+}
 body.crt canvas#tank { opacity: 0; }
 
 /* ---- browser menu bar (web/menubar.ts) ---------------------------------
@@ -140,6 +144,8 @@ body.crt canvas#tank { opacity: 0; }
   background: #fff; border: 1px solid #000;
   box-shadow: 1px 1px 0 rgba(0, 0, 0, .3);
   font: var(--osm-font-small); line-height: 12px;
+  /* The tank page is color-scheme: dark, whose default text is white. */
+  color: #000;
 }
 .fintitle {
   position: relative; height: 13px;
@@ -158,9 +164,22 @@ body.crt canvas#tank { opacity: 0; }
 .finclose::before { content: ""; position: absolute; inset: -6px; }
 .finclose:active { background: #000; }
 .finname {
+  display: block; width: 100%; height: 13px; box-sizing: border-box;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
   text-align: center; padding: 0 14px;
+  /* A button (the rename) that reads as the window's title. */
+  margin: 0; border: 0; background: none; color: #000;
+  font: inherit; line-height: 12px; cursor: text;
 }
+/* The rename field sits on the title bar between the close box and the
+   right edge, a plain Mac text field like .ifilter. */
+.finedit {
+  position: absolute; left: 14px; right: 3px; top: 0; height: 13px;
+  box-sizing: border-box; padding: 0 2px; border-radius: 0;
+  border: 1px solid #000; background: #fff; color: #000;
+  font: var(--osm-font-small); line-height: 11px; appearance: none;
+}
+.finedit:focus { outline: none; }
 .finbody { padding: 2px 6px 5px; }
 
 /* ---- client windows --------------------------------------------------
@@ -169,7 +188,7 @@ body.crt canvas#tank { opacity: 0; }
    native window (.osm-page, .osm-page-window). */
 
 /* ---- Preferences (web/prefs.ts) ----------------------------------------
-   A fixed-size control panel, 564 x 456 (native window 565 x 457 with
+   A fixed-size control panel, 564 x 517 (native window 565 x 518 with
    the shadow). Pane buttons down an 80px strip on the left, parted from
    the pane by a gray/black/white line, as in Desktop Pictures, and
    sized like its pane buttons: 54 x 40, on a 70px pitch. */
@@ -188,10 +207,15 @@ body.crt canvas#tank { opacity: 0; }
 .pfpane[hidden] { display: none; }
 
 /* Machine: the cases in a list box beside a preview well. */
-#pfmachines { position: absolute; left: 0; top: 0; width: 190px; height: 322px; }
-#pfmachines .osm-row { padding-left: 4px; font: var(--osm-font-system); }
+#pfmachines { position: absolute; left: 0; top: 0; width: 190px; height: 383px; }
+/* Names fit the 190 px list (the Performas drop "Macintosh"); a longer
+   one ends in an ellipsis rather than cut through a glyph. */
+#pfmachines .osm-row {
+  padding-left: 4px; font: var(--osm-font-system);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
 #pfpreview {
-  position: absolute; left: 204px; right: 0; top: 0; height: 322px;
+  position: absolute; left: 204px; right: 0; top: 0; height: 383px;
   display: flex; align-items: center; justify-content: center;
   background: #fff;
 }
@@ -232,6 +256,11 @@ body.crt canvas#tank { opacity: 0; }
    this pane's own stylesheet finishes the job. */
 .pfslider .osm-slider.osm-disabled::after { opacity: .45; }
 .pflabel { display: block; padding-left: 4px; margin-bottom: 5px; }
+/* A pop-up in a slider's caption row (the mask type over its
+   strength): as wide as the track, with just room for "Aperture
+   grille", and no taller than the row. */
+.pftitlepop { padding-left: 0; margin: -3px 0 1px; }
+.pftitlepop .osm-popup { width: 100%; padding-right: 0; }
 .pfends { display: flex; justify-content: space-between; margin-top: 2px; padding: 0 1px 0 3px; }
 /* CRT off: the sliders and preset buttons are disabled and their
    captions dim with them. */
@@ -267,8 +296,13 @@ body.crt canvas#tank { opacity: 0; }
 #pfdefaults[hidden] { display: none; }
 
 /* ---- Tank Stats window (web/stats.ts) ----------------------------------
-   Laid out like a Get Info window. */
-#swin .osm-content { padding: 4px 12px 0; }
+   A tab control filling the window above Copy Summary, its panels laid
+   out like a Get Info window. The panels clip rather than scroll. */
+#swin .osm-content { display: flex; flex-direction: column; padding: 10px 12px 0; }
+#stabs { flex: auto; min-height: 0; }
+.spanel { box-sizing: border-box; height: 100%; padding: 10px 12px 0; overflow: hidden; }
+#sfoot { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+#squiet[hidden] { display: none; }
 /* Bar, right-aligned percentage, trend arrow; the bar sits on rows
    1..14 of its 17px field row, centered on the text's cap height. */
 .smeter { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
@@ -281,8 +315,6 @@ body.crt canvas#tank { opacity: 0; }
 .sval { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #srows { margin-bottom: 6px; }
 #scare { margin-top: 3px; }
-/* Change Water — clear of the grow box, like the overview's Remove. */
-#skeep { margin: 8px 0 10px; }
 .skrow { display: flex; align-items: center; gap: 4px; margin: 3px 0; }
 .skrow > .osm-label, .skrow > .osm-popup-title {
   flex: none; width: 66px; text-align: right;
@@ -356,11 +388,14 @@ body.crt canvas#tank { opacity: 0; }
 #olist .osm-row.osm-selected { background: #fff; color: #000; }
 .osm-selected .oname { background: #000; color: #fff; box-shadow: 1px 0 #000, -1px 0 #000; }
 .osm-selected .othumb img { filter: brightness(0.5); }
-#obar { position: relative; height: 31px; border-top: 1px solid #000; }
-#oremove { position: absolute; right: 22px; top: 5px; }
-#ouse { position: absolute; right: 110px; top: 5px; }
+#obar {
+  height: 31px; border-top: 1px solid #000; box-sizing: border-box;
+  display: flex; align-items: center; gap: 10px; padding: 0 22px;
+}
+#obar .osm-button { flex: none; }
+#obar .osm-button[hidden] { display: none; }
 /* Danger action sits alone on the left, away from Remove. */
-#oempty { position: absolute; left: 22px; top: 5px; color: #a00; }
+#oempty { margin-right: auto; color: #a00; }
 #oempty[data-armed] { font-weight: bold; }
 
 /* Hover a fish: its species in a System 7 Balloon-Help-style tip. */
@@ -378,8 +413,19 @@ body.crt canvas#tank { opacity: 0; }
 /* Zen mode (Tank ▸ Zen Mode, or bare Z): every piece of chrome hides;
    the tank and its sounds keep running. !important beats the inline
    display the tip and trigger set on themselves. */
-body.zen #menubar, body.zen #fishtip, body.zen #opentrigger {
+body.zen #menubar, body.zen #fishtip, body.zen #opentrigger,
+body.zen .nametag {
   display: none !important;
+}
+/* Name tags on every fish (N, Tank > Fish Names; web/nametags.ts): the
+   balloon's look, a size smaller and a little see-through. Fixed on
+   body like .finfo, above the machine art (2) and under the card (5);
+   the same containing-block caveat applies. */
+.nametag {
+  position: fixed; z-index: 4; pointer-events: none;
+  background: #ffc; border: 1px solid #000; border-radius: 3px;
+  padding: 0 3px; font: var(--osm-font-small); color: #000;
+  white-space: nowrap; opacity: 0.85;
 }
 
 /* ---- the add-on browser (web/import.ts) ----------------------------------
@@ -480,6 +526,10 @@ body.zen #menubar, body.zen #fishtip, body.zen #opentrigger {
   -webkit-font-smoothing: none;
   user-select: none; -webkit-user-select: none;
 }
+/* The alert takes focus so Return and Escape reach it; the window
+ * itself is no control, so no browser focus ring around its frame.
+ * Its buttons still ring under keyboard use (osmium.css). */
+.alertwin:focus { outline: none; }
 .alertwin::before {
   content: ""; position: absolute; inset: 3px; pointer-events: none;
   box-shadow: inset 1px 1px #999, inset -1px -1px #fff;
@@ -495,6 +545,19 @@ body.zen #menubar, body.zen #fishtip, body.zen #opentrigger {
 }
 .alerttext { grid-column: 2; min-height: 32px; overflow-wrap: anywhere; }
 .alertprogress { grid-column: 2; margin-top: 9px; }
+/* The Mac text field, as .ifilter draws it, under the alert text. */
+.alertfield {
+  grid-column: 2; margin-top: 9px; height: 19px; width: 100%;
+  box-sizing: border-box; padding: 0 4px; border-radius: 0;
+  border: 1px solid #000; background: #fff; color: #000;
+  font: var(--osm-font-system); appearance: none;
+  user-select: text; -webkit-user-select: text;
+}
+.alertfield:focus { outline: none; box-shadow: 0 0 0 1px #fff, 0 0 0 2px #000; }
+.alertfield[hidden] { display: none; }
+@media (forced-colors: active) {
+  .alertfield:focus { outline: 2px solid Highlight; box-shadow: none; }
+}
 .alertprogress[hidden] { display: none; }
 .alertbuttons {
   grid-column: 1 / -1; margin-top: 15px;

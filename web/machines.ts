@@ -176,7 +176,7 @@ const plus: Machine = {
 };
 
 const performa: Machine = {
-  id: "performa", name: "Macintosh Performa 450",
+  id: "performa", name: "Performa 450",
   blurb: "A pizza-box desktop under an Apple RGB monitor.",
   vbW: 1013, vbH: 1013,
   hole: { x: 135, y: 99, w: 745, h: 541, r: 0 },
@@ -187,7 +187,7 @@ const performa: Machine = {
 };
 
 const performa2: Machine = {
-  id: "performa-2", name: "Macintosh Performa 450 (II)",
+  id: "performa-2", name: "Performa 450 (II)",
   blurb: "Another take on the pizza box — angled, vents showing.",
   vbW: 1132, vbH: 1010,
   hole: { x: 294, y: 113, w: 688, h: 538, r: 0 },
@@ -198,7 +198,7 @@ const performa2: Machine = {
 };
 
 const performa5200: Machine = {
-  id: "performa-5200", name: "Macintosh Performa 5200",
+  id: "performa-5200", name: "Performa 5200",
   blurb: "The PowerPC all-in-one — drives and speakers under the tube.",
   vbW: 1002, vbH: 918,
   hole: { x: 111, y: 105, w: 614, h: 482, r: 0 },
@@ -209,7 +209,7 @@ const performa5200: Machine = {
 };
 
 const performa5200Black: Machine = {
-  id: "performa-5200-black", name: "Macintosh Performa 5200 (Black)",
+  id: "performa-5200-black", name: "Performa 5200 (Black)",
   blurb: "The same all-in-one, in black.",
   vbW: 1005, vbH: 920,
   hole: { x: 113, y: 107, w: 611, h: 480, r: 0 },
