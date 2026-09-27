@@ -40,6 +40,18 @@ describe("itemsOf", () => {
     expect(items[0]!.remove).toEqual({ op: "removeFish", id: 9 });
   });
 
+  it("lists a named fish by its name, with the species after it", () => {
+    const items = itemsOf({ ...STATE,
+      fish: [{ id: 3, species: "Guppy", name: "Wanda", hunger: 0.2,
+               state: "drift" },
+             { id: 4, species: "", name: "Blob", hunger: 0.2,
+               state: "drift" },
+             { id: 5, species: "Guppy", name: "Mo", hunger: 0.2,
+               state: "drift", standIn: true }] });
+    expect(items.slice(0, 3).map((i) => i.name))
+      .toEqual(["Wanda (Guppy)", "Blob", "Mo (stand-in)"]);
+  });
+
   it("removes each line the way the tank expects", () => {
     const items = itemsOf(STATE);
     expect(items[0]!.remove).toEqual({ op: "removeFish", id: 1 });

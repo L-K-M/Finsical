@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { decodeBmp } from "../core/data/bmp.js";
 import { decodeDroppedPacks, dropSection } from "./drop.js";
+
+// The real decoder, wrapped so one test can make a call throw.
+vi.mock("../core/data/bmp.js", async (importOriginal) => {
+  const m = await importOriginal<typeof import("../core/data/bmp.js")>();
+  return { ...m, decodeBmp: vi.fn(m.decodeBmp) };
+});
 
 const PAL: [number, number, number][] =
   [[0, 0, 0], [255, 0, 0], [0, 0, 255], [0, 255, 0]];
@@ -140,5 +147,50 @@ describe("decodeDroppedPacks", () => {
     expect(["a.GRV", "b.plt", "c.acc", "d.azn", "e.rez", "f.fsh", "g"]
       .map(dropSection)).toEqual(["gravel", "plants", "accessories",
       "tanks", "tanks", "fish", "fish"]);
+  });
+
+  it("maps a .bmp picture to the backgrounds", () => {
+    expect(["x.bmp", "Y.BMP"].map(dropSection))
+      .toEqual(["backgrounds", "backgrounds"]);
+  });
+});
+
+describe("decodeDroppedPacks with pictures", () => {
+  it("skips a picture whose decode throws and keeps the rest", () => {
+    // decodeBmp allocates from header-controlled dimensions; a throw
+    // there must cost only that file, as a throwing pack does.
+    vi.mocked(decodeBmp).mockImplementationOnce(() => {
+      throw new RangeError("Array buffer allocation failed");
+    });
+    const got = decodeDroppedPacks([
+      ["Broken.bmp", buildBmpImage(640, 480)],
+      ["Fine.bmp", buildBmpImage(320, 200)],
+    ]);
+    expect(got.map((p) => p.name)).toEqual(["Fine"]);
+  });
+
+  it("takes a 256-color BMP as a backdrop, by its content", () => {
+    const [pic, bare] = decodeDroppedPacks([
+      ["MyBackdrop.bmp", buildBmpImage(640, 480)],
+      // A classic Mac file can carry no extension at all.
+      ["Reef", buildBmpImage(160, 100)],
+    ]);
+    expect([pic!.name, pic!.section, pic!.sheets.size])
+      .toEqual(["MyBackdrop", "backgrounds", 0]);
+    expect([...pic!.images.values()].map((i) => [i.w, i.h]))
+      .toEqual([[640, 480]]);
+    expect([bare!.name, bare!.section, bare!.images.size])
+      .toEqual(["Reef", "backgrounds", 1]);
+  });
+
+  it("skips pictures the tank can't show", () => {
+    const deep = buildBmpImage(640, 480);
+    new DataView(deep.buffer).setUint16(28, 24, true); // 24-bit
+    expect(decodeDroppedPacks([
+      ["Photo.bmp", deep],
+      ["Tiny.bmp", buildBmpImage(64, 40)],
+      ["Narrow.bmp", buildBmpImage(159, 100)],
+      ["Low.bmp", buildBmpImage(160, 99)],
+    ])).toEqual([]);
   });
 });

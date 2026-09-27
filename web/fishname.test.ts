@@ -1,0 +1,56 @@
+import { describe, expect, it } from "vitest";
+import { cleanFishName, fishLabel, NAME_MAX } from "./fishname.js";
+
+describe("cleanFishName", () => {
+  it("trims and folds whitespace", () => {
+    expect(cleanFishName("  Mr   Bubbles \n")).toBe("Mr Bubbles");
+  });
+
+  it("clears on empty, blank or non-string input", () => {
+    expect(cleanFishName("")).toBeUndefined();
+    expect(cleanFishName("   ")).toBeUndefined();
+    expect(cleanFishName(42)).toBeUndefined();
+    expect(cleanFishName(null)).toBeUndefined();
+  });
+
+  it("drops control characters", () => {
+    expect(cleanFishName("Fin\u0000n\u0007y")).toBe("Finny");
+  });
+
+  it("drops invisible format characters and bidi overrides", () => {
+    expect(cleanFishName("\u200b\u200b")).toBeUndefined();
+    expect(cleanFishName("Fi\u202enn\ufeff")).toBe("Finn");
+  });
+
+  it("keeps joiners inside a name, never a name of joiners alone", () => {
+    const family = "\u{1F468}\u200d\u{1F469}\u200d\u{1F467}";
+    expect(cleanFishName(family)).toBe(family);
+    expect(cleanFishName("\u0645\u06cc\u200c\u0634\u0648\u062f"))
+      .toBe("\u0645\u06cc\u200c\u0634\u0648\u062f");
+    expect(cleanFishName("\u200d\u200c \u200d")).toBeUndefined();
+    expect(cleanFishName("\u200dFinn\u200c")).toBe("Finn");
+  });
+
+  it("cuts to NAME_MAX code points without splitting a pair", () => {
+    const long = "a".repeat(NAME_MAX + 10);
+    expect(cleanFishName(long)).toHaveLength(NAME_MAX);
+    const fish = "\u{1F41F}".repeat(NAME_MAX + 1);
+    expect(Array.from(cleanFishName(fish)!)).toHaveLength(NAME_MAX);
+  });
+});
+
+describe("fishLabel", () => {
+  it("prefers the name, then the species, then Fish", () => {
+    expect(fishLabel({ name: "Wanda", species: "Guppy" })).toBe("Wanda");
+    expect(fishLabel({ species: "Guppy" })).toBe("Guppy");
+    expect(fishLabel({ species: "" })).toBe("Fish");
+  });
+
+  it("ignores fields that aren't strings", () => {
+    expect(fishLabel({ name: 7, species: "Guppy" })).toBe("Guppy");
+    expect(fishLabel({ name: null, species: {} })).toBe("Fish");
+    expect(fishLabel({ name: "  ", species: "Guppy" })).toBe("Guppy");
+    expect(fishLabel({ name: " Wanda\u00a0", species: "Guppy" }))
+      .toBe("Wanda");
+  });
+});

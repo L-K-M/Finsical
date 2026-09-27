@@ -1,8 +1,8 @@
 # Finsical
 
-**Latest release:** v<!-- version -->0.4.0<!-- /version --> · [Download](https://github.com/L-K-M/Finsical/releases/latest) · [Changelog](CHANGELOG.md)
+**Latest release:** v<!-- version -->0.5.0<!-- /version --> · [Download](https://github.com/L-K-M/Finsical/releases/latest) · [Changelog](CHANGELOG.md)
 
-![Screenshot showing a Performa backdrop](media-sources/screenshot.png)
+![Screenshot showing a Performa 5200 backdrop](media-sources/screenshot3.png)
 
 > [!IMPORTANT]
 > LLM disclosure: This codebase was written with substantial help from large language models: AI coding agents working from the [`AGENTS.md`](AGENTS.md) brief in this repo.
@@ -95,7 +95,9 @@ stock it with a starter set of Aquazone fish, a gravel, a plant, a
 background and the game's sound effects from the Internet Archive
 (about 2 MB). Choose **Not Now**
 to keep the stand-ins; you can add the same things later from Import
-Add-ons.
+Add-ons. If you close Finsical before answering, it asks again next
+time. If stocking the tank doesn't finish, later launches offer the
+rest until it arrives or you choose **Not Now** or **Stop**.
 
 ## Using Finsical
 
@@ -104,23 +106,26 @@ Add-ons.
 | Feed the fish | Click above the waterline, in the dark strip at the top of the tank (the pointer becomes a crosshair) |
 | Tap the glass | Click in the water; nearby fish startle |
 | See a fish's name | Point at it: a balloon names it and says what it is doing |
+| See every fish's name | Press N, or choose Fish Names from the Tank menu: each fish wears a name tag until you turn them off |
 | Get Info on a fish | Option-click it (Alt-click on Linux, unless your window manager uses Alt-drag to move windows): a card follows it with its health, hunger and mood |
+| Name a fish | Click its name in the Get Info card and type, or select it in Tank Overview and choose **Rename…** (or press Return). An empty name gives it back its species name |
 | Move the window | In the app, drag the computer case around the tank, or the top edge of the window |
 
-On Android, tap instead of clicking. Naming a fish needs a mouse, and
-Get Info a mouse and an Alt key. The tank fills the screen, so neither
+On Android, tap instead of clicking. Pointing at a fish for its name
+needs a mouse, and Get Info a mouse and an Alt key. The tank fills the screen, so neither
 it nor its panels move.
 
 A fish nearby comes over to look at the pointer while you hover over
-the tank, unless it is hungry or startled.
+the tank, unless it is hungry or startled. At night the pointer also
+works as a torch, lighting a warm circle of the dark tank.
 
 ### Keeping the tank
 
 The tank lives like the original AquaZone's, in real time: a fed fish
 gets hungry again after most of a day, and time passes while Finsical
 is closed (see [docs/ORIGINAL-SIM.md](docs/ORIGINAL-SIM.md) for the
-rules). Tank Stats shows the water, as mg per litre, and has the
-controls to keep it:
+rules). Tank Stats shows the water on its Water tab, as mg per litre,
+and has the controls to keep it on its Keeping tab:
 
 - **Heater:** holds the water at the temperature you set.
 - **Filter:** aerates the water and, once it has some dirt in it,
@@ -155,6 +160,7 @@ Menu commands in the app:
 | Change Water (the last change set in Tank Stats) | Tank | |
 | CRT Effect (checked while on) | Tank | Cmd-R |
 | Lamp On (checked while on) | Tank | Cmd-L |
+| Fish Names (checked while on) | Tank | |
 | Mute Sound (checked while muted) | Tank | Option-Cmd-S |
 | Pause Simulation, Resume Simulation | Tank | Cmd-P |
 | Support the Internet Archive | Tank | (opens archive.org/donate in your browser) |
@@ -192,6 +198,7 @@ Keys on the tank page, in the app and the browser build (see
 | M | Mute or unmute the sound |
 | P | Pause or resume the tank |
 | C | Toggle the CRT effect |
+| N | Show or hide name tags on every fish |
 | S | Open Tank Stats in a window of its own (browser only) |
 | Ctrl-I or Cmd-I | Open the add-on browser over the tank (browser only; the app's Cmd-I opens the Import Add-ons window) |
 | Esc | Close the Get Info card or the front window |
@@ -222,6 +229,7 @@ You can also drag files from the Finder onto the tank:
 | --- | --- |
 | An `.azpack` folder (made by the [asset tools](#asset-tools)) | Its fish, art and sounds are imported |
 | Aquazone pack files: fish (`.fsh`), gravel (`.grv`), plants (`.plt`), accessories (`.acc`), tanks (`.azn`), or the base library (`.REZ`, fish and scenery) | Imported into their section and kept, so they come back at every launch |
+| Your own picture: a 256-color BMP (`.bmp`) of at least 160 by 100 pixels | Becomes the backdrop and is kept, like a pack file. A strip at least three times as wide as it is tall becomes the gravel instead. Other pictures, such as 24-bit BMPs, get an alert |
 | Resource files with `snd ` resources: `.rsrc`, MacBinary `.bin`, BinHex `.hqx`, AppleDouble, and the Windows game's sound bank `AZ_WAVES.REZ` | Their sounds are imported and kept |
 | Audio files: `.wav`, `.mp3`, `.aif`, `.aiff`, `.m4a`, `.ogg`, `.flac` | Imported as sounds and kept |
 
@@ -260,9 +268,9 @@ yet.
 | Window | What it does |
 | --- | --- |
 | Preferences | **Machine**: the computer case around the tank (Macintosh Plus, Performa 450 and 5200, 20th Anniversary Mac, iMac G3 and G4, PowerBook G3, iBook, or a bare tank). **Monitor**: the CRT effect, presets and its picture tube sliders. **Picture**: the monitor's front-panel controls. **Lighting**: the day and night cycle, a light timer that follows your Mac's clock, or lights always on, and the lamp. **Sound**: volume, mute, and switches for bubble sounds and the water ambience (see [Sounds](#sounds)). |
-| Tank Overview | Everything in the tank as a sortable Name, Kind and Status list, with **Remove**, **Use** for scenery and **Empty Tank…** |
+| Tank Overview | Everything in the tank as a sortable Name, Kind and Status list, with **Remove**, **Rename…** for fish, **Use** for scenery and **Empty Tank…** |
 | Import Add-ons | The archive.org add-on browser described above |
-| Tank Stats | Water quality and average hunger with recent history, the hungriest fish, fish and food counts, day or night, tank age, care hints, and **Change Water** |
+| Tank Stats | **General**: water quality and average hunger with recent history, the hungriest fish, fish and food counts, day or night, tank age and care hints. **Water**: the water's readings per litre. **Keeping**: the heater, filter, water changes, medicine and how fast time runs. **Copy Summary** puts the readings on the clipboard. |
 
 ## Your data
 
@@ -278,16 +286,17 @@ Everything stays on your device:
   (`finsical:waterChange`), which tab owns the sim
   (`finsical:tank-owner`), the Auto Feed, tap-the-glass sign and
   startup-parade switches (`finsical:autofeed`, `finsical:scoldSign`,
-  `finsical:boot`), whether the first-run offer and its sound-effects
-  download were answered (`finsical:welcomed`,
+  `finsical:boot`), whether fish wear name tags
+  (`finsical:names`), how far the first-run offer got and
+  whether its sound effects were handled (`finsical:welcomed`,
   `finsical:starterSounds`), and the last Preferences pane and
   add-on section (`finsical:prefsPane`, `finsical:addonSection`).
 - **IndexedDB** database `finsical`: downloaded add-on archives,
   thumbnails and archive.org listing pages, so installed add-ons restore
   offline. Cached downloads are evicted least recently used once they pass
-  about 150 MB. Sounds you import and packs you drop onto the tank are
-  stored there too and are never evicted; removing a dropped pack in
-  Tank Overview deletes it.
+  about 150 MB. Sounds you import and packs and pictures you drop onto
+  the tank are stored there too and are never evicted; removing a
+  dropped pack or picture in Tank Overview deletes it.
 - **macOS defaults** (`dev.finsical.app`): window positions.
 
 On Linux the web storage lives in `~/.local/share/finsical/` (web

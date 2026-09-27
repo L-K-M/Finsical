@@ -2,6 +2,7 @@ import os
 import struct
 import tempfile
 import unittest
+from unittest import mock
 
 from tools.az.rsrc import (ResFile, unwrap_appledouble, unwrap_binhex,
                            unwrap_container, unwrap_macbinary)
@@ -31,6 +32,81 @@ class TestRsrc(unittest.TestCase):
             self.assertEqual(len(res), 1)
             rid, name, attr, blob = res[0]
             self.assertEqual((rid, name, blob), (128, "Fish", b"fakepict"))
+
+    def test_offsets_skip_attribute_flags(self):
+        # resPurgeable (0x20) and friends live in the offset's high byte.
+        rf_bytes = build_rsrc({b"snd ": [(1, "a", 0x20, b"one"),
+                                         (2, "b", 0x60, b"two")]})
+        with tempfile.TemporaryDirectory() as td:
+            rf = ResFile(_write(td, rf_bytes))
+            got = [(rid, blob) for rid, _n, _a, blob in
+                   rf.resources(b"snd ")]
+        self.assertEqual(got, [(1, b"one"), (2, b"two")])
+
+    def test_shared_payload_yields_once(self):
+        rf_bytes = bytearray(build_rsrc({b"snd ": [(1, "a", 0, b"one"),
+                                                   (2, "b", 0, b"two")]}))
+        mo = struct.unpack_from(">I", rf_bytes, 4)[0]
+        refs = mo + 28 + 2 + 8
+        # Point the second reference at the first one's payload.
+        rf_bytes[refs + 12 + 5:refs + 12 + 8] = rf_bytes[refs + 5:refs + 8]
+        with tempfile.TemporaryDirectory() as td:
+            rf = ResFile(_write(td, bytes(rf_bytes)))
+            got = [rid for rid, _n, _a, _b in rf.resources(b"snd ")]
+        self.assertEqual(got, [1])
+
+    def test_reads_first_type_entry_only(self):
+        rf_bytes = bytearray(build_rsrc({b"snd ": [(1, "a", 0, b"one")],
+                                         b"xxxx": [(2, "b", 0, b"two")]}))
+        mo = struct.unpack_from(">I", rf_bytes, 4)[0]
+        tbase = mo + struct.unpack_from(">H", rf_bytes, mo + 24)[0]
+        rf_bytes[tbase + 2 + 8:tbase + 2 + 12] = b"snd "
+        with tempfile.TemporaryDirectory() as td:
+            rf = ResFile(_write(td, bytes(rf_bytes)))
+            got = [rid for rid, _n, _a, _b in rf.resources(b"snd ")]
+        self.assertEqual(got, [1])
+
+    def test_ref_list_past_the_end_stops_cleanly(self):
+        rf_bytes = bytearray(build_rsrc({b"snd ": [(1, "a", 0, b"one")]}))
+        mo = struct.unpack_from(">I", rf_bytes, 4)[0]
+        tbase = mo + struct.unpack_from(">H", rf_bytes, mo + 24)[0]
+        # Claim 1000 references where the map holds one.
+        struct.pack_into(">H", rf_bytes, tbase + 2 + 4, 999)
+        with tempfile.TemporaryDirectory() as td:
+            rf = ResFile(_write(td, bytes(rf_bytes)))
+            got = [rid for rid, _n, _a, _b in rf.resources(b"snd ")]
+        self.assertEqual(got, [1])
+
+    def test_payloads_past_the_end_are_skipped(self):
+        rf_bytes = bytearray(build_rsrc({b"snd ": [(1, "a", 0, b"one"),
+                                                   (2, "b", 0, b"two")]}))
+        do, mo = struct.unpack_from(">2I", rf_bytes, 0)
+        refs = mo + 28 + 2 + 8
+        # The first payload's length runs past the end of the file.
+        struct.pack_into(">I", rf_bytes, do, len(rf_bytes))
+        # The second reference points past the end of the file.
+        rf_bytes[refs + 12 + 5:refs + 12 + 8] = (0xFFFFFF).to_bytes(3, "big")
+        with tempfile.TemporaryDirectory() as td:
+            rf = ResFile(_write(td, bytes(rf_bytes)))
+            got = list(rf.resources(b"snd "))
+        self.assertEqual(got, [])
+
+    def test_cap_counts_resources_returned(self):
+        # Skipped references must not use up the cap.
+        rf_bytes = bytearray(build_rsrc({b"snd ": [
+            (1, "a", 0, b"one"), (2, "b", 0, b"two"),
+            (3, "c", 0, b"three"), (4, "d", 0, b"four")]}))
+        mo = struct.unpack_from(">I", rf_bytes, 4)[0]
+        refs = mo + 28 + 2 + 8
+        # The first two references point past the end of the file.
+        for j, off in enumerate((0xFFFFF0, 0xFFFFF1)):
+            p = refs + j * 12 + 5
+            rf_bytes[p:p + 3] = off.to_bytes(3, "big")
+        with tempfile.TemporaryDirectory() as td:
+            rf = ResFile(_write(td, bytes(rf_bytes)))
+            with mock.patch("tools.az.rsrc.MAX_RESOURCES", 2):
+                got = [rid for rid, _n, _a, _b in rf.resources(b"snd ")]
+        self.assertEqual(got, [3, 4])
 
     def test_appledouble_unwrap(self):
         inner = build_rsrc({b"DATA": [(100, None, 0, b"xyz")]})

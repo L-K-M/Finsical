@@ -10,7 +10,7 @@
 
 import { isPack } from "./fsh.js";
 import { mace3Decode } from "./mace.js";
-import { bankSounds } from "./sndbank.js";
+import { bankSounds, MAX_FILE_SOUNDS } from "./sndbank.js";
 
 export { mace3Decode };
 
@@ -170,13 +170,17 @@ function sndResources(d: Uint8Array): SndRes[] {
       continue; // 'snd '
     const cnt = u16be(v, e + 4) + 1;
     const rbase = tbase + u16be(v, e + 6);
-    for (let j = 0; j < cnt; j++) {
+    // As in bankSounds: one record per payload, and a capped count.
+    const seen = new Set<number>();
+    for (let j = 0; j < cnt && out.length < MAX_FILE_SOUNDS; j++) {
       const rr = rbase + j * 12;
       if (rr + 12 > r.length) break;
       const id = i16be(v, rr);
       const noff = i16be(v, rr + 2);
       const dd = u32be(v, rr + 4) & 0xFFFFFF; // +4: attr byte + 24-bit data offset
       const doff = dOff + dd;
+      if (seen.has(doff)) continue;
+      seen.add(doff);
       if (doff + 4 > r.length) continue;
       const sz = u32be(v, doff);
       if (doff + 4 + sz > r.length) continue;
@@ -190,6 +194,7 @@ function sndResources(d: Uint8Array): SndRes[] {
       }
       out.push({ id, name, data: r.subarray(doff + 4, doff + 4 + sz) });
     }
+    break; // a map lists each type once; a second 'snd ' is crafted
   }
   return out;
 }
@@ -356,9 +361,13 @@ export function fileSoundRecords(name: string, data: Uint8Array):
 export function qualifySoundNames(
     recs: { name: string; wav: Uint8Array }[]): void {
   const seen = new Set<string>();
+  // Next suffix to try per base name: each duplicate resumes where the
+  // last one stopped, so n copies of one name cost O(n), not O(n²).
+  const next = new Map<string, number>();
   for (const r of recs) {
-    let n = r.name, i = 2;
+    let n = r.name, i = next.get(r.name) ?? 2;
     while (seen.has(n)) n = `${r.name} (${i++})`;
+    if (n !== r.name) next.set(r.name, i);
     r.name = n;
     seen.add(n);
   }

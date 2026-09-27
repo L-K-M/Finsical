@@ -119,9 +119,9 @@ function rwStrict<T>(store: string, mode: IDBTransactionMode,
   });
 }
 
-/** Dropped packs persist under a `local:` key — the scheme is shared
- * by the store (trim exemption), the importer (decode path) and the
- * tank (mint/delete), so it lives here, defined once. */
+/** Dropped packs and pictures persist under a `local:` key — the
+ * scheme is shared by the store (trim exemption), the importer (decode
+ * path) and the tank (mint/delete), so it lives here, defined once. */
 export const LOCAL_PREFIX = "local:";
 export function isLocalPack(url: string): boolean {
   return url.startsWith(LOCAL_PREFIX);
