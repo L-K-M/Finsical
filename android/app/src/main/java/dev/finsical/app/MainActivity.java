@@ -7,6 +7,7 @@ import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Insets;
@@ -18,6 +19,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.os.SystemClock;
 import android.provider.DocumentsContract;
+import android.provider.OpenableColumns;
 import android.util.Base64;
 import android.util.Log;
 import android.util.TypedValue;
@@ -441,9 +443,11 @@ public final class MainActivity extends Activity {
         }
         if (save == null) {
             // The process was killed while the picker was open, and the
-            // download with it. Remove the empty file the picker created.
+            // download with it. Remove the file the picker created, but
+            // only if it is empty: the user may have picked an existing
+            // file to overwrite, and that must survive.
             Log.e(LOG_TAG, "The download was lost while the file picker was open");
-            deleteDocument(document);
+            deleteIfEmpty(document);
             toast(R.string.save_lost);
             return;
         }
@@ -464,7 +468,9 @@ public final class MainActivity extends Activity {
     }
 
     private static boolean write(ContentResolver resolver, Uri document, byte[] bytes) {
-        try (OutputStream out = resolver.openOutputStream(document)) {
+        // "wt", not the default "w": some providers don't truncate on
+        // "w", so overwriting a larger file would leave its tail behind.
+        try (OutputStream out = resolver.openOutputStream(document, "wt")) {
             if (out == null) {
                 throw new IOException("the document provider returned no stream");
             }
@@ -476,7 +482,17 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void deleteDocument(Uri document) {
+    private void deleteIfEmpty(Uri document) {
+        try (Cursor c = getContentResolver().query(document,
+                new String[] {OpenableColumns.SIZE}, null, null, null)) {
+            if (c == null || !c.moveToFirst() || c.isNull(0) || c.getLong(0) != 0) {
+                Log.w(LOG_TAG, "Leaving " + document + ": it is not known to be empty");
+                return;
+            }
+        } catch (RuntimeException e) {
+            Log.w(LOG_TAG, "Leaving " + document + ": cannot read its size", e);
+            return;
+        }
         try {
             if (!DocumentsContract.deleteDocument(getContentResolver(), document)) {
                 Log.w(LOG_TAG, "Cannot delete the empty file " + document);

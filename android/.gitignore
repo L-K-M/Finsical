@@ -3,3 +3,7 @@
 build/
 captures/
 local.properties
+# Release signing keys (README.md, "Signing Android releases")
+*.jks
+*.keystore
+*.p12

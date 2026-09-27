@@ -155,7 +155,14 @@ jobs:
           keystore="$RUNNER_TEMP/release.p12"
           trap 'rm -f "$keystore"' EXIT
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$keystore"
-          apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          # Whichever build-tools AGP installed for assembleRelease: a
+          # pinned version breaks the day AGP's default moves on.
+          apksigner="$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null \
+            | sort -V | tail -n 1)"
+          if [ -z "$apksigner" ]; then
+            echo "::error::No apksigner under $ANDROID_HOME/build-tools"
+            exit 1
+          fi
           apk="release/Finsical-$VERSION-android.apk"
           mkdir -p release
           # No v4 signature: it is a separate .idsig file, only used for
