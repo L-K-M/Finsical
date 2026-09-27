@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API 26+ adaptive icon. The foreground bitmap is generated at build
+     time (app/build.gradle.kts, generateLauncherIcons); API 24-25 use the
+     generated mipmap-*/ic_launcher.png instead.
+     No monochrome layer (MonochromeLauncherIcon): there is no single-color
+     artwork for the icon yet, and the full-color art as one would theme
+     to a blank tinted shape. Without it, themed-icon launchers show the
+     color icon or derive a themed one themselves. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="MonochromeLauncherIcon">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

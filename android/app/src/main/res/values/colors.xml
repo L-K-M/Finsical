@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The icon art's ocean blue (the average of its left edge), shown
+         where launcher effects move the art off the background. -->
+    <color name="ic_launcher_background">#2374B7</color>
+</resources>

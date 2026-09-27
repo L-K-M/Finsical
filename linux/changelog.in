@@ -1,0 +1,6 @@
+finsical (@VERSION@) unstable; urgency=medium
+
+  * Release @VERSION@. The full release notes are in NEWS.gz and at
+    https://github.com/L-K-M/Finsical/blob/main/CHANGELOG.md
+
+ -- @MAINTAINER@  @DATE@

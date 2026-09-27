@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Finsical</string>
+
+    <string name="webview_missing">Finsical runs in Android System WebView, which is missing or being updated on this device. Install or update “Android System WebView” from the Play Store, then open Finsical again.</string>
+    <!-- %1$d: the device's WebView major version; %2$d: the minimum. -->
+    <string name="webview_too_old">Finsical needs Android System WebView %2$d or later, and this device has version %1$d. Update “Android System WebView” (or Google Chrome, if your device uses it as its WebView) from the Play Store, then open Finsical again.</string>
+
+    <string name="picture_saved">Picture saved.</string>
+    <string name="picture_failed">Couldn’t save the picture.</string>
+    <string name="tank_saved">Tank exported.</string>
+    <string name="tank_failed">Couldn’t export the tank.</string>
+    <string name="file_saved">File saved.</string>
+    <string name="file_failed">Couldn’t save the file.</string>
+    <string name="save_lost">The file was lost while you chose where to save it. Try again.</string>
+    <string name="save_busy">Finish saving the other file first.</string>
+    <string name="save_no_app">No app on this device can save files.</string>
+    <string name="open_no_app">No app on this device can open files.</string>
+    <string name="renderer_keeps_failing">Finsical’s web view stopped several times in a row, so Finsical stopped restarting it. Close Finsical and open it again; if this keeps happening, update “Android System WebView” from the Play Store.</string>
+    <string name="link_no_app">No app on this device can open web links.</string>
+</resources>

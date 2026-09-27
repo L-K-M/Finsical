@@ -1,0 +1,39 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Finsical
+Upstream-Contact: https://github.com/L-K-M/Finsical/issues
+Source: https://github.com/L-K-M/Finsical
+
+Files: *
+Copyright: 2026 Finsical contributors
+License: Unlicense
+
+Files: core/data/mace.ts
+Copyright: 2002 Laszlo Torok
+           Francois Revol
+License: LGPL-2.1+
+Comment: Ported from FFmpeg libavcodec/mace.c. The decoder is compiled
+ into /usr/share/finsical/web/bundle.js and addons.js, which carry its
+ license header. Its readable source ships as
+ /usr/share/finsical/core/data/mace.ts; in the upstream repository,
+ `npm run build` rebuilds the bundles from it. See
+ /usr/share/doc/finsical/THIRD_PARTY_NOTICES.md.
+
+Files: node_modules/fflate/*
+Copyright: 2026 Arjun Barrett
+License: Expat
+Comment: fflate, an npm dependency, is compiled into
+ /usr/share/finsical/web/bundle.js and addons.js.
+
+License: LGPL-2.1+
+ This library is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+ .
+ This library is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+ .
+ On Debian systems, the complete text of the GNU Lesser General Public
+ License version 2.1 can be found in "/usr/share/common-licenses/LGPL-2.1".

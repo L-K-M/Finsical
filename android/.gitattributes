@@ -1,0 +1,5 @@
+# The wrapper scripts break with the other platform's line endings
+# (a core.autocrlf checkout would otherwise convert them).
+/gradlew        text eol=lf
+*.bat           text eol=crlf
+*.jar           binary
