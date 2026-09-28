@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Linux also ships as a Flatpak, which installs on almost any
+  distribution, including from Discover or GNOME Software on Fedora,
+  where the .deb can't be installed. The README explains which Linux
+  download to pick.
+- On Linux, Finsical now uses GTK 4 and WebKitGTK 6. The .deb needs
+  Debian 13, Ubuntu 24.04 or later; on older releases, use the Flatpak.
+- The Linux tarball's icons come in every size instead of one
+  oversized image.
 - Releases now publish themselves once every platform's download is
   attached and verified against its checksums — no manual step. Linux
   also ships as a portable tarball next to the .deb.
