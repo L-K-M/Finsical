@@ -54,9 +54,62 @@ macOS remembers your choice; later launches open normally.
 
 ### Linux
 
-**Requirements:** Debian 12, Ubuntu 22.04 with its updates, or later:
-the package needs WebKitGTK 2.40 or later (`gir1.2-webkit2-4.1`) and
-Python 3.10 or later.
+Finsical for Linux comes in three downloads. They are the same app;
+pick the one that suits your system:
+
+| Download | Use it on | Install with |
+| --- | --- | --- |
+| `Finsical-<version>-linux.flatpak` | Any distribution with Flatpak: Fedora, openSUSE, Arch, and Debian or Ubuntu releases too old for the .deb | Discover, GNOME Software, or `flatpak install` |
+| `Finsical-<version>-linux.deb` | Debian 13, Ubuntu 24.04 or later, and distributions based on them (Linux Mint 22, KDE neon, Pop!_OS 24.04) | apt |
+| `Finsical-<version>-linux.tar.gz` | Other distributions, without Flatpak, if you install GTK and WebKitGTK yourself | unpacking it |
+
+**Which one?**
+
+- **The Flatpak** runs on almost any distribution and brings its own
+  GTK and WebKitGTK, so it is the one to use unless you are on Debian
+  or Ubuntu. It runs sandboxed. Unless another Flatpak app already
+  uses it, its first install also downloads the GNOME runtime from
+  Flathub, about 1 GB once installed, which later Flatpak apps share. On a Wayland desktop it is a native Wayland window, so Float
+  Above Other Windows and Show on All Desktops are unavailable and the
+  desktop decides where the tank opens.
+- **The .deb** is the smaller download on Debian and Ubuntu, and uses
+  the system's GTK and WebKitGTK, which your system updates keep
+  patched. On a Wayland desktop it runs through XWayland, so the tank
+  can float above other windows, show on every desktop and reopen where
+  you left it.
+- **The tarball** is for distributions with neither dpkg nor Flatpak,
+  or for running Finsical without installing anything system-wide.
+
+A KDE or GNOME store can't open the .deb on a distribution that isn't
+Debian-based (it stays on "Loading…" in Discover on Fedora): use the
+Flatpak there.
+
+The Flatpak and the .deb keep separate tanks (see [Your data](#your-data)),
+so switching from one to the other starts a new tank.
+
+#### Flatpak
+
+1. Download `Finsical-<version>-linux.flatpak` from the
+   [latest release](https://github.com/L-K-M/Finsical/releases/latest).
+2. Open it with Discover or GNOME Software and choose **Install**, or
+   install it from a terminal:
+
+   ```sh
+   flatpak install --user Finsical-<version>-linux.flatpak
+   ```
+
+3. Open Finsical from your desktop's applications, or run
+   `flatpak run dev.finsical.app`.
+
+To get Float Above Other Windows and Show on All Desktops on a Wayland
+desktop, let the Flatpak use XWayland as the .deb does:
+`flatpak override --user --socket=x11 dev.finsical.app`.
+
+#### Debian and Ubuntu
+
+**Requirements:** Debian 13, Ubuntu 24.04 or later: the package needs
+GTK 4.12 or later, WebKitGTK 2.40 or later (`gir1.2-webkit-6.0`) and
+Python 3.10 or later. On older releases, use the Flatpak.
 
 1. Download `Finsical-<version>-linux.deb` from the
    [latest release](https://github.com/L-K-M/Finsical/releases/latest).
@@ -68,21 +121,34 @@ Python 3.10 or later.
 
 3. Open Finsical from your desktop's applications, or run `finsical`.
 
-No dpkg? `Finsical-<version>-linux.tar.gz` is the same app as a
-prefix-shaped tree: unpack and run `bin/finsical`, or merge it into
-`~/.local` or `/usr/local` with `tar -xzf … --strip-components=1 -C
-<prefix>` to register the desktop entry, icon and man page. You need
-GTK 3, WebKitGTK 4.1 and PyGObject installed — the same requirements
-as the package above.
+The package includes an AppArmor profile (`/etc/apparmor.d/finsical`)
+that only lets Finsical create the user namespaces WebKitGTK's sandbox
+needs, as Ubuntu's own profiles do for Epiphany and Geary; it restricts
+nothing. Importing AIFF and M4A sounds needs `gstreamer1.0-plugins-bad`, which
+apt installs with Finsical unless you turned off recommended packages.
 
-Finsical prefers X11, and on a Wayland desktop runs through XWayland,
-because only there can it keep the tank above other windows, on every
-desktop, and where you left it. To run it as a native Wayland window
-without those, start it with `GDK_BACKEND=wayland finsical`. Without a
-compositor, the edges of the computer case are cut hard instead of
-blending into the desktop. Importing AIFF and M4A sounds needs
-`gstreamer1.0-plugins-bad`, which apt installs with Finsical unless you
-turned off recommended packages.
+#### Tarball
+
+`Finsical-<version>-linux.tar.gz` is the same app as a prefix-shaped
+tree: unpack and run `bin/finsical`, or merge it into `~/.local` or
+`/usr/local` with `tar -xzf … --strip-components=1 -C <prefix>` to
+register the desktop entry, icon and man page. You need GTK 4.12,
+WebKitGTK 2.40 with its 6.0 API, and PyGObject installed; its
+`README.txt` lists the package names for Debian, Fedora and Arch. On
+Ubuntu 23.10 and later, AppArmor keeps WebKitGTK's sandbox from
+starting for a program without a profile, so Finsical from the tarball
+stops with a message there: use the .deb or the Flatpak instead.
+
+#### X11 and Wayland
+
+The .deb and the tarball prefer X11, and on a Wayland desktop run
+through XWayland, because only there can Finsical keep the tank above
+other windows, on every desktop, and where you left it. To run them as
+a native Wayland window without those, start Finsical with
+`GDK_BACKEND=wayland finsical`. The Flatpak uses X11 only on a desktop
+without Wayland (see above to change that). Without a compositor, the
+edges of the computer case are cut hard instead of blending into the
+desktop.
 
 ### Android
 
@@ -188,8 +254,8 @@ Ctrl-R, Ctrl-L, Ctrl-P and Ctrl-Q as above, Ctrl-Alt-S for Mute Sound,
 F1 for Finsical Help, and Ctrl-W to close the front window (not the
 tank). The tank has no window frame to resize by, so the menu adds
 **Larger** (Ctrl-=) and **Smaller** (Ctrl--). Float Above Other
-Windows and Show on All Desktops are dimmed on native Wayland, which
-doesn't allow them. `man finsical` lists the keys.
+Windows and Show on All Desktops are dimmed on native Wayland (the
+Flatpak on a Wayland desktop), which doesn't allow them. `man finsical` lists the keys.
 
 On Android, the tank uses the browser build's menu bar (below).
 Preferences, Tank Overview and Tank Stats open as panels over the tank;
@@ -310,7 +376,9 @@ Everything stays on your device:
 On Linux the web storage lives in `~/.local/share/finsical/` (web
 caches in `~/.cache/finsical/`), and window positions and the Float
 Above Other Windows and Show on All Desktops choices in
-`~/.config/finsical/`. On Android it is the app's private storage,
+`~/.config/finsical/`. The Flatpak keeps the same folders under
+`~/.var/app/dev.finsical.app/` (`data/finsical/`, `cache/finsical/`
+and `config/finsical/`), so it has a tank of its own. On Android it is the app's private storage,
 which uninstalling deletes. Android's cloud backup covers it only while
 the app's data stays under Android's 25 MB limit, and the add-on cache
 usually grows past that, so don't count on a restore bringing back your
@@ -364,10 +432,20 @@ another interpreter. `--check` also runs `desktop-file-validate`,
 `lintian`). The package is reproducible for a given `SOURCE_DATE_EPOCH`,
 which defaults to the last commit's time. To run the shell from a
 checkout without installing it, install the packages the .deb depends
-on (`python3-gi`, `python3-gi-cairo`, `gir1.2-gtk-3.0`,
-`gir1.2-webkit2-4.1`), run `npm run build`, then `linux/finsical`.
+on (`python3-gi`, `python3-gi-cairo`, `gir1.2-gtk-4.0`,
+`gir1.2-webkit-6.0`), run `npm run build`, then `linux/finsical`.
 `linux/build-tarball.sh` builds `out/Finsical-<version>-linux.tar.gz`,
-the prefix-shaped portable tree the release also ships.
+the prefix-shaped portable tree the release also ships; it renders the
+icons the same way, so it needs PyGObject and GdkPixbuf too.
+
+**Linux Flatpak:** `linux/build-flatpak.sh` builds
+`out/Finsical-<version>-linux.flatpak` from the tarball's tree on the
+GNOME runtime (`linux/dev.finsical.app.yml`), fetching the runtime and
+SDK from Flathub into your user installation on the first run.
+`--install` also installs it for you. It needs `flatpak`,
+`flatpak-builder` and the tarball's requirements. On Ubuntu 24.04,
+bubblewrap needs unprivileged user namespaces, which AppArmor blocks
+by default: `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`.
 
 **Android app:** needs JDK 17 or later and the Android SDK with
 platform `android-37.0` and build tools 36.0.0 (`ANDROID_HOME` pointing
@@ -384,7 +462,8 @@ versionCode is major × 10000 + minor × 100 + patch.
 **Smoke tests:** `finsical --smoke-test` (or `linux/finsical
 --smoke-test` in a checkout) starts the Linux app on a throwaway
 profile, checks the tank, every window, the messages between them and a
-menu action, and exits 0 when all pass; CI runs it under `xvfb-run`. On
+menu action, and exits 0 when all pass; CI runs it under `xvfb-run`,
+for the Flatpak as `flatpak run dev.finsical.app --smoke-test`. On
 Android, `scripts/android-smoke.sh <debug APK>` installs the app on a
 running emulator or device, opens the tank and Tank Stats, and waits
 for the tank's state to reach the panel; CI runs it on an emulator.

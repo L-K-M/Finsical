@@ -873,6 +873,26 @@ class TestTankFrames(unittest.TestCase):
         self.assertEqual(logic.drag_strip_height(None), 22)
 
 
+class TestSandboxBlocked(unittest.TestCase):
+    def test_blocked_only_when_restricted_and_unprofiled(self):
+        self.assertTrue(logic.sandbox_blocked("1\n", "unconfined\n"))
+        # The .deb's profile, unconfined but named.
+        self.assertFalse(
+            logic.sandbox_blocked("1\n", "finsical (unconfined)\n")
+        )
+        self.assertFalse(logic.sandbox_blocked("0\n", "unconfined\n"))
+        self.assertFalse(logic.sandbox_blocked("1\n", "finsical (enforce)\n"))
+        self.assertTrue(logic.sandbox_blocked("1\n", "unconfined (enforce)\n"))
+
+    def test_no_apparmor_is_not_blocked(self):
+        self.assertFalse(logic.sandbox_blocked(None, None))
+        self.assertFalse(logic.sandbox_blocked("1\n", None))
+        self.assertFalse(logic.sandbox_blocked(None, "unconfined\n"))
+
+    def test_label_may_end_in_nul(self):
+        self.assertTrue(logic.sandbox_blocked("1", "unconfined\x00\n"))
+
+
 class TestPicture(unittest.TestCase):
     PNG = logic.PNG_SIGNATURE + b"rest of a png"
 

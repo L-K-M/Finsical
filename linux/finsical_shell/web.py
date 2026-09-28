@@ -12,9 +12,10 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from gi.repository import Gdk, Gio, GLib, Gtk, Soup, WebKit2
+from gi.repository import Gdk, Gio, GLib, Gtk, Soup, WebKit
 
 from . import logic
+from .screen import surface_point
 
 log = logic.log
 
@@ -22,29 +23,32 @@ log = logic.log
 MessageHandler = Callable[[str, Any], None]
 # (value, error) once an evaluated script finishes; exactly one is set.
 ScriptDone = Callable[[Optional[Any], Optional[GLib.Error]], None]
-MenuFactory = Callable[[], Gtk.Menu]
+# The app menu, rebuilt on every open so labels are current.
+MenuFactory = Callable[[], Gio.MenuModel]
 
 _REASON = {logic.HTTP_OK: "OK", logic.HTTP_NOT_FOUND: "Not Found"}
 _WEB_SCHEMES = ("http", "https")
 # WebKit's navigation items make no sense in an app window.
 _NAVIGATION_ITEMS = frozenset(
     {
-        WebKit2.ContextMenuAction.GO_BACK,
-        WebKit2.ContextMenuAction.GO_FORWARD,
-        WebKit2.ContextMenuAction.STOP,
-        WebKit2.ContextMenuAction.RELOAD,
+        WebKit.ContextMenuAction.GO_BACK,
+        WebKit.ContextMenuAction.GO_FORWARD,
+        WebKit.ContextMenuAction.STOP,
+        WebKit.ContextMenuAction.RELOAD,
     }
 )
 
 
 @dataclass(frozen=True)
 class Press:
-    """A button press on a page view, replayable as a window drag."""
+    """A button press on a page view, replayable as a window drag: the
+    point is in the view's surface coordinates, as GDK drags take it."""
 
     button: int
-    x_root: int
-    y_root: int
+    x: float
+    y: float
     time: int
+    device: Gdk.Device
 
 
 def open_in_browser(uri: str) -> None:
@@ -75,12 +79,8 @@ class WebHost:
         self._root = root
         self._console_to_stdout = console_to_stdout
         self._menu_factory: Optional[MenuFactory] = None
-        manager = WebKit2.WebsiteDataManager(
-            base_data_directory=data_dir, base_cache_directory=cache_dir
-        )
-        self._context = WebKit2.WebContext.new_with_website_data_manager(
-            manager
-        )
+        self._session = WebKit.NetworkSession.new(data_dir, cache_dir)
+        self._context = WebKit.WebContext()
         self._context.register_uri_scheme(logic.SCHEME, self._serve)
         security = self._context.get_security_manager()
         # The page needs a secure context (crypto.subtle, storage) and
@@ -96,16 +96,17 @@ class WebHost:
         return PageView(self, handlers)
 
     def _build_view(
-        self, manager: WebKit2.UserContentManager
-    ) -> WebKit2.WebView:
+        self, manager: WebKit.UserContentManager
+    ) -> WebKit.WebView:
         # Autoplay must be a construct-time policy: the settings flag
         # alone leaves AudioContext suspended until a click, and menu
         # actions (Feed Fish) arrive without a user gesture.
-        view = WebKit2.WebView(
+        view = WebKit.WebView(
             web_context=self._context,
+            network_session=self._session,
             user_content_manager=manager,
-            website_policies=WebKit2.WebsitePolicies(
-                autoplay=WebKit2.AutoplayPolicy.ALLOW
+            website_policies=WebKit.WebsitePolicies(
+                autoplay=WebKit.AutoplayPolicy.ALLOW
             ),
         )
         settings = view.get_settings()
@@ -115,7 +116,9 @@ class WebHost:
         )
         # The page draws every visible pixel (the machine case, the Mac
         # OS 8 window); anything it leaves transparent stays so.
-        view.set_background_color(Gdk.RGBA(0, 0, 0, 0))
+        transparent = Gdk.RGBA()
+        transparent.parse("transparent")
+        view.set_background_color(transparent)
         view.connect("decide-policy", self._on_decide_policy)
         view.connect("create", self._on_create)
         view.connect(
@@ -127,8 +130,8 @@ class WebHost:
 
     def _on_web_process_terminated(
         self,
-        view: WebKit2.WebView,
-        reason: WebKit2.WebProcessTerminationReason,
+        view: WebKit.WebView,
+        reason: WebKit.WebProcessTerminationReason,
         limiter: logic.CrashLimiter,
     ) -> None:
         """A crashed page leaves a floating window that paints and
@@ -161,16 +164,30 @@ class WebHost:
         GLib.timeout_add(logic.CRASH_RETRY_DELAY_MS, reload)
 
     def _popup_menu(
-        self, view: WebKit2.WebView, event: Gdk.Event
-    ) -> Optional[Gtk.Menu]:
+        self, view: WebKit.WebView, x: float, y: float
+    ) -> Optional[Gtk.PopoverMenu]:
+        """The app menu at (x, y) in the view. A nested menu, not the
+        sliding kind: submenus open to the side, as in a menu bar. It
+        opens to the pointer's right, top-aligned: GTK flips a popover
+        across its side and slides it along the other axis, so a menu
+        taller than the space below the pointer moves up rather than
+        losing its last items."""
         if self._menu_factory is None:
             return None
-        menu = self._menu_factory()
-        menu.attach_to_widget(view, None)
-        menu.popup_at_pointer(event)
+        menu = Gtk.PopoverMenu.new_from_model_full(
+            self._menu_factory(), Gtk.PopoverMenuFlags.NESTED
+        )
+        menu.set_parent(view)
+        menu.set_has_arrow(False)
+        menu.set_valign(Gtk.Align.START)
+        rect = Gdk.Rectangle()
+        rect.x, rect.y, rect.width, rect.height = int(x), int(y), 1, 1
+        menu.set_pointing_to(rect)
+        menu.set_position(Gtk.PositionType.RIGHT)
+        menu.popup()
         return menu
 
-    def _serve(self, request: WebKit2.URISchemeRequest) -> None:
+    def _serve(self, request: WebKit.URISchemeRequest) -> None:
         try:
             response = self._root.respond(request.get_path())
         except OSError as e:
@@ -185,7 +202,7 @@ class WebHost:
         stream = Gio.MemoryInputStream.new_from_bytes(
             GLib.Bytes.new(response.body)
         )
-        reply = WebKit2.URISchemeResponse.new(stream, len(response.body))
+        reply = WebKit.URISchemeResponse.new(stream, len(response.body))
         reply.set_status(response.status, _REASON.get(response.status))
         if response.content_type is not None:
             reply.set_content_type(response.content_type)
@@ -198,23 +215,23 @@ class WebHost:
 
     def _on_decide_policy(
         self,
-        _view: WebKit2.WebView,
-        decision: WebKit2.PolicyDecision,
-        kind: WebKit2.PolicyDecisionType,
+        _view: WebKit.WebView,
+        decision: WebKit.PolicyDecision,
+        kind: WebKit.PolicyDecisionType,
     ) -> bool:
         """Keep the app's pages in their windows: web links go to the
         browser, anything else that is not the app is refused. Every
         frame gets the same rule; the pages have no iframes."""
         if kind not in (
-            WebKit2.PolicyDecisionType.NAVIGATION_ACTION,
-            WebKit2.PolicyDecisionType.NEW_WINDOW_ACTION,
+            WebKit.PolicyDecisionType.NAVIGATION_ACTION,
+            WebKit.PolicyDecisionType.NEW_WINDOW_ACTION,
         ):
             return False
         uri = decision.get_navigation_action().get_request().get_uri()
         scheme = GLib.Uri.peek_scheme(uri)
         if (
             scheme == logic.SCHEME
-            and kind == WebKit2.PolicyDecisionType.NAVIGATION_ACTION
+            and kind == WebKit.PolicyDecisionType.NAVIGATION_ACTION
         ):
             return False
         decision.ignore()
@@ -225,7 +242,7 @@ class WebHost:
         return True
 
     def _on_create(
-        self, _view: WebKit2.WebView, action: WebKit2.NavigationAction
+        self, _view: WebKit.WebView, action: WebKit.NavigationAction
     ) -> None:
         """window.open: the donate link (import.ts) opens with noopener,
         which arrives here rather than as a NEW_WINDOW decision. The app
@@ -249,18 +266,24 @@ class PageView:
     ) -> None:
         self._host = host
         self._press: Optional[Press] = None
-        self._press_event: Optional[Gdk.Event] = None
-        self._menu: Optional[Gtk.Menu] = None
-        manager = WebKit2.UserContentManager()
-        manager.add_script(
-            WebKit2.UserScript.new(
-                logic.KEEP_CONTEXT_MENU_SCRIPT,
-                WebKit2.UserContentInjectedFrames.TOP_FRAME,
-                WebKit2.UserScriptInjectionTime.START,
-                None,
-                None,
+        # The pointer's last place in view coordinates: where the menu
+        # opens.
+        self._press_at = (0.0, 0.0)
+        self._menu: Optional[Gtk.PopoverMenu] = None
+        manager = WebKit.UserContentManager()
+        for script in (
+            logic.KEEP_CONTEXT_MENU_SCRIPT,
+            logic.RESTORE_LOST_PRESS_SCRIPT,
+        ):
+            manager.add_script(
+                WebKit.UserScript.new(
+                    script,
+                    WebKit.UserContentInjectedFrames.TOP_FRAME,
+                    WebKit.UserScriptInjectionTime.START,
+                    None,
+                    None,
+                )
             )
-        )
         for name, handler in handlers.items():
             manager.connect(
                 f"script-message-received::{name}",
@@ -268,19 +291,30 @@ class PageView:
                 name,
                 handler,
             )
-            if not manager.register_script_message_handler(name):
+            if not manager.register_script_message_handler(name, None):
                 raise RuntimeError(
                     f"could not register message handler {name!r}"
                 )
         self.view = host._build_view(manager)
-        self.view.connect("button-press-event", self._on_button_press)
+        # Watches every button in the capture phase, before WebKit's own
+        # handlers, and never claims the press: the page still gets it.
+        presses = Gtk.GestureClick(button=0)
+        presses.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        presses.connect("pressed", self._on_pressed)
+        self.view.add_controller(presses)
+        self._presses = presses
+        # The pointer's place, for a menu opened from the keyboard
+        # (WebKitGTK 6's context-menu signal carries no event).
+        motion = Gtk.EventControllerMotion()
+        motion.connect("motion", self._on_motion)
+        self.view.add_controller(motion)
         self.view.connect("context-menu", self._on_context_menu)
 
     def load(self, uri: str) -> None:
         self.view.load_uri(uri)
 
     def evaluate(self, script: str, done: Optional[ScriptDone] = None) -> None:
-        def finished(view: WebKit2.WebView, result: Gio.AsyncResult) -> None:
+        def finished(view: WebKit.WebView, result: Gio.AsyncResult) -> None:
             try:
                 value = view.evaluate_javascript_finish(result)
             except GLib.Error as e:
@@ -302,45 +336,34 @@ class PageView:
         message lands would otherwise drag with no button held.
         """
         press = self._press
-        window = self.view.get_window()
+        native = self.view.get_native()
+        surface = native.get_surface() if native is not None else None
         if (
             press is None
             or press.button != Gdk.BUTTON_PRIMARY
-            or window is None
+            or surface is None
         ):
             return
-        pointer = self.view.get_display().get_default_seat().get_pointer()
-        _win, _x, _y, mask = window.get_device_position(pointer)
+        _ok, _x, _y, mask = surface.get_device_position(press.device)
         if not mask & Gdk.ModifierType.BUTTON1_MASK:
             return
         begin(press)
-        self._release_press()
+        self._press = None
+        # The window manager keeps the release: without a reset the
+        # gesture would wait for it and miss the next press. The page
+        # misses it too (logic.RESTORE_LOST_PRESS_SCRIPT).
+        self._presses.reset()
         # The drag leaves focus off the page; its bare keys would go dead.
         self.view.grab_focus()
 
-    def _release_press(self) -> None:
-        """Hand the page the release of the press that began a window
-        drag. The window manager (or GDK's own drag) takes the real
-        release, and a page that never sees it takes the next press
-        for a second button of the same one: a pointermove instead of
-        a pointerdown, so the next click on a box is lost."""
-        if self._press_event is None:
-            return
-        release = self._press_event.copy()
-        release.type = Gdk.EventType.BUTTON_RELEASE
-        release.button.state = (
-            release.button.state | Gdk.ModifierType.BUTTON1_MASK
-        )
-        self.view.event(release)
-
     def _on_message(
         self,
-        _manager: WebKit2.UserContentManager,
-        result: WebKit2.JavascriptResult,
+        _manager: WebKit.UserContentManager,
+        value: Any,
         name: str,
         handler: MessageHandler,
     ) -> None:
-        text = result.get_js_value().to_json(0)
+        text = value.to_json(0)
         if text is None:
             log.warning("ignoring a %s message with no JSON value", name)
             return
@@ -351,28 +374,36 @@ class PageView:
             return
         handler(text, parsed)
 
-    def _on_button_press(
-        self, _view: WebKit2.WebView, event: Gdk.EventButton
-    ) -> bool:
-        if event.type == Gdk.EventType.BUTTON_PRESS:
-            self._press = Press(
-                event.button, int(event.x_root), int(event.y_root), event.time
-            )
-            # GTK's own copy (holding its window and device) to build
-            # the release from.
-            self._press_event = Gtk.get_current_event()
-        return False  # the page still gets the press
+    def _on_motion(
+        self, _controller: Gtk.EventControllerMotion, x: float, y: float
+    ) -> None:
+        self._press_at = (x, y)
+
+    def _on_pressed(
+        self, gesture: Gtk.GestureClick, n_press: int, x: float, y: float
+    ) -> None:
+        self._press_at = (x, y)
+        device = gesture.get_device()
+        if device is None:
+            return
+        sx, sy = surface_point(self.view, x, y)
+        self._press = Press(
+            gesture.get_current_button(),
+            sx,
+            sy,
+            gesture.get_current_event_time(),
+            device,
+        )
 
     def _on_context_menu(
         self,
-        view: WebKit2.WebView,
-        menu: WebKit2.ContextMenu,
-        event: Gdk.Event,
-        hit: WebKit2.HitTestResult,
+        view: WebKit.WebView,
+        menu: WebKit.ContextMenu,
+        hit: WebKit.HitTestResult,
     ) -> bool:
         """Text fields keep WebKit's editing menu (cut, copy, paste in
         the Filter field); everywhere else opens the app menu. That
-        menu is a Gtk.Menu rather than WebKit's own, which cannot show
+        menu is the shell's own rather than WebKit's, which cannot show
         the keyboard shortcuts, and is rebuilt on every open so labels
         and check marks are current."""
         if hit.context_is_editable():
@@ -381,6 +412,7 @@ class PageView:
                     menu.remove(item)
             return False
         if self._menu is not None:
-            self._menu.destroy()
-        self._menu = self._host._popup_menu(view, event)
+            self._menu.popdown()
+            self._menu.unparent()
+        self._menu = self._host._popup_menu(view, *self._press_at)
         return self._menu is not None

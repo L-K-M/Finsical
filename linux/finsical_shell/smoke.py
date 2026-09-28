@@ -38,6 +38,11 @@ class Step(enum.Enum):
         " page's own contextmenu handler",
         10,
     )
+    LOST_PRESS = (
+        "a press the window manager kept the release of still reaches"
+        " every page as a pointerdown",
+        10,
+    )
     MENU_CALL = ("the menu's Pause Simulation reaches the tank and back", 10)
     PICTURE = ("the menu's Take a Picture hands the shell a PNG", 15)
     QUIT = ("quitting saves through the normal quit sequence", 10)
@@ -197,6 +202,35 @@ class SmokeTest(Observer):
                 return
             waiting.discard(name)
             if not waiting:
+                self._check_lost_press(pages)
+
+        for name, page in pages.items():
+            page.evaluate(
+                logic.CONTEXT_MENU_REACHES_SHELL_SCRIPT,
+                lambda v, e, name=name: checked(name, v, e),
+            )
+
+    def _check_lost_press(self, pages: dict[str, Any]) -> None:
+        self._begin(Step.LOST_PRESS)
+        waiting = set(pages)
+
+        def checked(
+            name: str, value: Any, error: Optional[GLib.Error]
+        ) -> None:
+            if self._step is not Step.LOST_PRESS:
+                return
+            if error is not None:
+                self._fail(f"evaluating {name} failed: {error.message}")
+                return
+            if (
+                value is None
+                or not value.is_boolean()
+                or not value.to_boolean()
+            ):
+                self._fail(f"{name} did not get the lost press back")
+                return
+            waiting.discard(name)
+            if not waiting:
                 # The menu's own action, as a click on it runs it.
                 self._begin(Step.MENU_CALL)
                 self._want_paused = True
@@ -205,7 +239,7 @@ class SmokeTest(Observer):
 
         for name, page in pages.items():
             page.evaluate(
-                logic.CONTEXT_MENU_REACHES_SHELL_SCRIPT,
+                logic.LOST_PRESS_RESTORED_SCRIPT,
                 lambda v, e, name=name: checked(name, v, e),
             )
 

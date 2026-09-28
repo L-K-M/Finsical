@@ -85,6 +85,31 @@ def find_web_root(
     )
 
 
+# WebKitGTK's own escape hatch: with it set, no sandbox, so no need for
+# user namespaces.
+WEBKIT_NO_SANDBOX_ENV = "WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS"
+
+
+def sandbox_blocked(
+    restrict_userns: Optional[str], apparmor_label: Optional[str]
+) -> bool:
+    """Whether WebKitGTK's bubblewrap sandbox will fail to start: AppArmor
+    restricts unprivileged user namespaces (Ubuntu 23.10 and later,
+    kernel.apparmor_restrict_unprivileged_userns = 1) and this process
+    has no profile granting them (its label is plain "unconfined"; the
+    .deb's profile reads "finsical (unconfined)"). WebKit then aborts
+    with a core dump rather than an error, so the app checks first.
+    Arguments are the sysctl's and /proc/self/attr's text, or None
+    where there is none."""
+    if restrict_userns is None or restrict_userns.strip() != "1":
+        return False
+    if apparmor_label is None:
+        return False  # unreadable: let WebKit try rather than refuse
+    # The profile name alone: some kernels append the mode, as in
+    # "unconfined (enforce)".
+    return apparmor_label.strip("\0\n ").split(" ", 1)[0] == "unconfined"
+
+
 def read_version(share_dir: str) -> str:
     """The version build-deb.sh recorded, or DEVELOPMENT_VERSION when
     running from a checkout."""
@@ -956,6 +981,40 @@ def scaled_shape_rects(shape: tuple[BoxRect, ...], scale: float) -> list[Rect]:
 KEEP_CONTEXT_MENU_SCRIPT = (
     'window.addEventListener("contextmenu",'
     " (e) => e.stopImmediatePropagation(), true);"
+)
+# WebKitGTK 6 hears of a press only through a GTK click gesture, so a
+# press that becomes a window move or resize never gets its release to
+# the page: the window manager takes it. WebCore then still counts the
+# button as held and sends the next press as a chorded pointermove
+# (button set, no pointerdown), losing the click (GTK 4 cannot make up
+# the release as GTK 3 could). That pointermove has a telltale shape:
+# its `button` changed and is the only one held, where a real chord
+# holds another button too. Hand the page the pointerdown it missed.
+RESTORE_LOST_PRESS_SCRIPT = (
+    "window.addEventListener('pointermove', (e) => {"
+    " if (e.pointerType !== 'mouse' || e.button < 0) return;"
+    " const bit = [1, 4, 2, 8, 16][e.button];"
+    " if (bit === undefined || e.buttons !== bit) return;"
+    " e.target.dispatchEvent(new PointerEvent('pointerdown', {"
+    " bubbles: true, cancelable: true, composed: true, view: window,"
+    " pointerId: e.pointerId, pointerType: 'mouse', isPrimary: e.isPrimary,"
+    " button: e.button, buttons: e.buttons,"
+    " clientX: e.clientX, clientY: e.clientY,"
+    " screenX: e.screenX, screenY: e.screenY,"
+    " ctrlKey: e.ctrlKey, shiftKey: e.shiftKey,"
+    " altKey: e.altKey, metaKey: e.metaKey }));"
+    "}, true);"
+)
+# True when a lost press (above) reaches the page as a pointerdown: the
+# smoke test's check that the script is in place.
+LOST_PRESS_RESTORED_SCRIPT = (
+    "(() => { let down = false;"
+    " const on = () => { down = true; };"
+    " window.addEventListener('pointerdown', on, true);"
+    " document.body.dispatchEvent(new PointerEvent('pointermove',"
+    " {bubbles: true, pointerType: 'mouse', button: 0, buttons: 1}));"
+    " window.removeEventListener('pointerdown', on, true);"
+    " return down; })()"
 )
 # True when a contextmenu event reaches the page uncancelled: the smoke
 # test's check that the listener above is in place and wins.

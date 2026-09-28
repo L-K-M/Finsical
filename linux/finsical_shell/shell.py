@@ -16,6 +16,7 @@ from gi.repository import Gio, GLib, Gtk
 from . import logic
 from .clients import ClientHost, ClientWindow
 from .logic import WindowPref
+from . import x11
 from .screen import is_x11
 from .tank import TankWindow
 from .web import PageView, WebHost, open_in_browser
@@ -108,7 +109,7 @@ class FinsicalApp(Gtk.Application):
         self._about: Optional[Gtk.AboutDialog] = None
         # Take a Picture's save dialog while it is up: repeated clicks
         # must not stack dialogs.
-        self._picture_dialog: Optional[Gtk.FileChooserNative] = None
+        self._picture_dialog: Optional[Gtk.FileDialog] = None
         self.tank: Optional[TankWindow] = None
         self.clients: Optional[ClientHost] = None
 
@@ -126,7 +127,6 @@ class FinsicalApp(Gtk.Application):
             self._config.console_to_stdout,
         )
         self._web.set_menu_factory(self._build_menu)
-        self._accels = Gtk.AccelGroup()
         self._add_actions()
         for signum in (signal.SIGINT, signal.SIGTERM):
             GLib.unix_signal_add(
@@ -136,7 +136,7 @@ class FinsicalApp(Gtk.Application):
     def do_activate(self) -> None:
         # A second launch lands here in the running instance.
         if self.tank is not None:
-            self.tank.window.present_with_time(Gtk.get_current_event_time())
+            self.tank.window.present()
             return
 
         page = self._web.create_view({"finsical": self._on_tank_bus})
@@ -148,12 +148,12 @@ class FinsicalApp(Gtk.Application):
             self._schedule_save,
             self.quit_gracefully,
         )
-        self.tank.window.add_accel_group(self._accels)
+        self._install_shortcuts(self.tank.window)
         self.clients = ClientHost(
             self,
             self._web,
             self._frames,
-            self._accels,
+            self._install_shortcuts,
             self.tank,
             self._on_client_bus,
             lambda c, m: self._observer.client_posted(c, "osmium", m),
@@ -172,8 +172,13 @@ class FinsicalApp(Gtk.Application):
         if self._quitting:
             return
         self._quitting = True
+        # GTK 4 reports no moves: positions are saved on the way out.
+        if self.tank is not None:
+            self.tank.save_frame()
+        if self.clients is not None:
+            self.clients.save_frames()
         for window in self.get_windows():
-            window.hide()
+            window.set_visible(False)
 
         done = False
 
@@ -331,28 +336,38 @@ class FinsicalApp(Gtk.Application):
             self.add_action(action)
         self._action("crt").set_enabled(self._status.crt_available)
 
-        for entry in logic.APP_MENU:
-            if entry is None:
-                continue
-            for accel in entry.accels:
-                key, mods = Gtk.accelerator_parse(accel)
-                self._accels.connect(
-                    key,
-                    mods,
-                    Gtk.AccelFlags.VISIBLE,
-                    self._accel_handler(entry.action),
-                )
-        key, mods = Gtk.accelerator_parse(logic.CLOSE_WINDOW_ACCEL)
-        self._accels.connect(
-            key, mods, Gtk.AccelFlags.VISIBLE, self._on_close_accel
-        )
-
     def _action(self, name: str) -> Gio.SimpleAction:
         action = self.lookup_action(name)
         assert isinstance(action, Gio.SimpleAction), name
         return action
 
-    def _accel_handler(self, name: str) -> Callable[..., bool]:
+    def _install_shortcuts(self, window: Gtk.Window) -> None:
+        """The menu's shortcuts, and Ctrl+W to close a client window. They
+        run in the capture phase, before the page, so a page that
+        swallows a key cannot take a menu command."""
+        controller = Gtk.ShortcutController()
+        controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        for entry in logic.APP_MENU:
+            if entry is None:
+                continue
+            for accel in entry.accels:
+                controller.add_shortcut(
+                    Gtk.Shortcut.new(
+                        Gtk.ShortcutTrigger.parse_string(accel),
+                        Gtk.CallbackAction.new(
+                            self._shortcut_handler(entry.action)
+                        ),
+                    )
+                )
+        controller.add_shortcut(
+            Gtk.Shortcut.new(
+                Gtk.ShortcutTrigger.parse_string(logic.CLOSE_WINDOW_ACCEL),
+                Gtk.CallbackAction.new(self._on_close_shortcut),
+            )
+        )
+        window.add_controller(controller)
+
+    def _shortcut_handler(self, name: str) -> Callable[..., bool]:
         def activate(*_args: Any) -> bool:
             action = self._action(name)
             if action.get_enabled():
@@ -361,42 +376,37 @@ class FinsicalApp(Gtk.Application):
 
         return activate
 
-    def _on_close_accel(
-        self, _group: Gtk.AccelGroup, window: Any, *_args: Any
-    ) -> bool:
+    def _on_close_shortcut(self, widget: Gtk.Widget, *_args: Any) -> bool:
         if self.clients is None:
             return True
-        client = self.clients.client_for(window)
+        client = self.clients.client_for(widget.get_root())
         if client is not None:
             self.clients.hide(client)
         return True  # the tank has no close: quitting takes Ctrl+Q
 
-    def _build_menu(self) -> Gtk.Menu:
-        menu = Gtk.Menu()
+    def _build_menu(self) -> Gio.MenuModel:
+        """The app menu. Boolean actions show as check items; disabled
+        ones grey out. The shortcuts are labels only: the windows'
+        shortcut controllers run them."""
+        menu = Gio.Menu()
+        section = Gio.Menu()
         for entry in logic.APP_MENU:
             if entry is None:
-                menu.append(Gtk.SeparatorMenuItem())
+                menu.append_section(None, section)
+                section = Gio.Menu()
                 continue
-            action = self._action(entry.action)
             label = (
                 logic.pause_label(self._status.paused)
                 if entry.action == "pause"
                 else entry.label
             )
-            state = action.get_state()
-            if state is None:
-                item = Gtk.MenuItem(label=label)
-            else:
-                item = Gtk.CheckMenuItem(label=label)
-                # Set before connecting: set_active emits activate.
-                item.set_active(state.get_boolean())
+            item = Gio.MenuItem.new(label, f"app.{entry.action}")
             if entry.accels:
-                key, mods = Gtk.accelerator_parse(entry.accels[0])
-                item.get_child().set_accel(key, mods)
-            item.set_sensitive(action.get_enabled())
-            item.connect("activate", lambda _i, a=action: a.activate(None))
-            menu.append(item)
-        menu.show_all()
+                item.set_attribute_value(
+                    "accel", GLib.Variant.new_string(entry.accels[0])
+                )
+            section.append_item(item)
+        menu.append_section(None, section)
         return menu
 
     def _sync_status_actions(self) -> None:
@@ -447,8 +457,8 @@ class FinsicalApp(Gtk.Application):
         self._schedule_save()
 
     def _apply_window_prefs(self) -> None:
-        """Float Above Other Windows and Show on All Desktops. GTK makes
-        both no-ops on Wayland, so they show disabled there."""
+        """Float Above Other Windows and Show on All Desktops. Wayland
+        leaves both to the compositor, so they show disabled there."""
         assert self.tank is not None and self.clients is not None
         float_above = self._settings.get(WindowPref.FLOAT_ABOVE)
         all_desktops = self._settings.get(WindowPref.ALL_DESKTOPS)
@@ -456,16 +466,16 @@ class FinsicalApp(Gtk.Application):
         self.clients.set_keep_above(float_above)
         # An About left floating over a normal tank would cover every
         # other app (macOS applyWindowPrefs).
-        if self._about is not None:
-            self._about.set_keep_above(float_above)
-        x11 = is_x11(self.tank.window.get_display())
+        if self._about is not None and self._about.get_mapped():
+            self._apply_about_state(self._about)
+        on_x11 = is_x11(self.tank.window.get_display())
         for name, on in (
             ("float-above", float_above),
             ("all-desktops", all_desktops),
         ):
             action = self._action(name)
             action.set_state(GLib.Variant.new_boolean(on))
-            action.set_enabled(x11)
+            action.set_enabled(on_x11)
 
     def _save_picture(self, msg: dict) -> None:
         """Offer the tank's picture to a save dialog. The page names the
@@ -481,34 +491,43 @@ class FinsicalApp(Gtk.Application):
             log.info("savePicture dropped: a save dialog is open")
             return
         assert self.tank is not None
-        dialog = Gtk.FileChooserNative.new(
-            "Take a Picture",
-            self.tank.window,
-            Gtk.FileChooserAction.SAVE,
-            "_Save",
-            "_Cancel",
-        )
-        dialog.set_do_overwrite_confirmation(True)
-        dialog.set_current_name(name)
         png_filter = Gtk.FileFilter()
         png_filter.set_name("PNG image")
         png_filter.add_mime_type("image/png")
-        dialog.add_filter(png_filter)
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(png_filter)
+        # Asks before overwriting; in a sandbox it is the portal's dialog.
+        dialog = Gtk.FileDialog(
+            title="Take a Picture",
+            initial_name=name,
+            filters=filters,
+            default_filter=png_filter,
+        )
 
-        def respond(_d: Gtk.FileChooserNative, response: int) -> None:
+        def saved(d: Gtk.FileDialog, result: Gio.AsyncResult) -> None:
             self._picture_dialog = None
-            path = dialog.get_filename()
-            dialog.destroy()
-            if response != Gtk.ResponseType.ACCEPT or path is None:
+            try:
+                file = d.save_finish(result)
+            except GLib.Error as e:
+                dismissed = e.matches(
+                    Gtk.DialogError.quark(), Gtk.DialogError.DISMISSED
+                )
+                if not dismissed:
+                    log.warning(
+                        "Take a Picture: the save dialog failed: %s", e.message
+                    )
+                return
+            path = file.get_path() if file is not None else None
+            if path is None:
+                log.warning("Take a Picture: the chosen file has no path")
                 return
             try:
                 logic.write_file_atomic(path, png, 0o666)
             except OSError as e:
                 log.warning("Take a Picture: could not save %s: %s", path, e)
 
-        dialog.connect("response", respond)
         self._picture_dialog = dialog
-        dialog.show()
+        dialog.save(self.tank.window, None, saved)
 
     def _show_about(self) -> None:
         if self._about is not None:
@@ -526,12 +545,19 @@ class FinsicalApp(Gtk.Application):
         )
         if self.tank is not None:
             about.set_transient_for(self.tank.window)
-        # Over the floating tank, or the tank would cover it.
-        about.set_keep_above(self._settings.get(WindowPref.FLOAT_ABOVE))
-        about.connect("response", lambda d, _r: d.destroy())
+        about.connect("map", self._apply_about_state)
         about.connect("destroy", lambda *_: setattr(self, "_about", None))
         self._about = about
         about.present()
+
+    def _apply_about_state(self, about: Gtk.Window) -> None:
+        """Over the floating tank, or the tank would cover it."""
+        if is_x11(about.get_display()):
+            x11.set_state(
+                about.get_surface(),
+                self._settings.get(WindowPref.FLOAT_ABOVE),
+                False,
+            )
 
 
 def default_config(web_root: logic.WebRoot, version: str) -> ShellConfig:

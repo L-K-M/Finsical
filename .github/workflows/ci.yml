@@ -46,7 +46,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             lintian desktop-file-utils appstream xvfb xauth \
-            python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1
+            python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-webkit-6.0
       - run: npm ci
       # --check: desktop-file-validate, appstreamcli and lintian.
       - run: linux/build-deb.sh --check
@@ -54,12 +54,17 @@ jobs:
       - run: sudo apt-get install -y ./out/Finsical-*-linux.deb
       # Loads the tank and every window from the installed package and
       # checks the bus relay end to end (see "Smoke test" in README.md).
+      # Ubuntu's AppArmor user-namespace restriction is on here, so this
+      # also proves the package's profile lets WebKit's sandbox start.
       - run: xvfb-run -a /usr/games/finsical --smoke-test
       # Purge the .deb so the tarball's launcher can only resolve its
       # own share/finsical tree; a /usr fallback would mask a break.
       - run: sudo dpkg --purge finsical
       # The tarball gets the same end-to-end check from its own tree:
-      # bin/finsical finds share/finsical next to itself.
+      # bin/finsical finds share/finsical next to itself. It has no
+      # AppArmor profile, so it runs as on a distribution without
+      # Ubuntu's user-namespace restriction (Fedora, Arch, Debian).
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: |
           mkdir tarball && tar -xzf out/Finsical-*-linux.tar.gz -C tarball
           xvfb-run -a ./tarball/Finsical-*-linux/bin/finsical --smoke-test
@@ -67,6 +72,33 @@ jobs:
         with:
           name: finsical-linux
           path: out/Finsical-*-linux.*
+          if-no-files-found: error
+          retention-days: 7
+  linux-flatpak:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Flatpak's own tools (its portal serves WebKit's sandbox), and
+      # GdkPixbuf for the tarball's icons. Ubuntu 24.04 denies the
+      # unprivileged user namespaces bubblewrap builds and runs in.
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder xvfb xauth \
+            python3-gi gir1.2-gdkpixbuf-2.0
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: npm ci
+      # Fetches the GNOME runtime and SDK from Flathub on the way.
+      - run: linux/build-flatpak.sh --install
+      # The same end-to-end check inside the sandbox.
+      - run: xvfb-run -a dbus-run-session -- flatpak run --user dev.finsical.app --smoke-test
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: finsical-flatpak
+          path: out/Finsical-*-linux.flatpak
           if-no-files-found: error
           retention-days: 7
   android:
