@@ -957,6 +957,40 @@ KEEP_CONTEXT_MENU_SCRIPT = (
     'window.addEventListener("contextmenu",'
     " (e) => e.stopImmediatePropagation(), true);"
 )
+# WebKitGTK 6 hears of a press only through a GTK click gesture, so a
+# press that becomes a window move or resize never gets its release to
+# the page: the window manager takes it. WebCore then still counts the
+# button as held and sends the next press as a chorded pointermove
+# (button set, no pointerdown), losing the click (GTK 4 cannot make up
+# the release as GTK 3 could). That pointermove has a telltale shape:
+# its `button` changed and is the only one held, where a real chord
+# holds another button too. Hand the page the pointerdown it missed.
+RESTORE_LOST_PRESS_SCRIPT = (
+    "window.addEventListener('pointermove', (e) => {"
+    " if (e.pointerType !== 'mouse' || e.button < 0) return;"
+    " const bit = [1, 4, 2, 8, 16][e.button];"
+    " if (bit === undefined || e.buttons !== bit) return;"
+    " e.target.dispatchEvent(new PointerEvent('pointerdown', {"
+    " bubbles: true, cancelable: true, composed: true, view: window,"
+    " pointerId: e.pointerId, pointerType: 'mouse', isPrimary: e.isPrimary,"
+    " button: e.button, buttons: e.buttons,"
+    " clientX: e.clientX, clientY: e.clientY,"
+    " screenX: e.screenX, screenY: e.screenY,"
+    " ctrlKey: e.ctrlKey, shiftKey: e.shiftKey,"
+    " altKey: e.altKey, metaKey: e.metaKey }));"
+    "}, true);"
+)
+# True when a lost press (above) reaches the page as a pointerdown: the
+# smoke test's check that the script is in place.
+LOST_PRESS_RESTORED_SCRIPT = (
+    "(() => { let down = false;"
+    " const on = () => { down = true; };"
+    " window.addEventListener('pointerdown', on, true);"
+    " document.body.dispatchEvent(new PointerEvent('pointermove',"
+    " {bubbles: true, pointerType: 'mouse', button: 0, buttons: 1}));"
+    " window.removeEventListener('pointerdown', on, true);"
+    " return down; })()"
+)
 # True when a contextmenu event reaches the page uncancelled: the smoke
 # test's check that the listener above is in place and wins.
 CONTEXT_MENU_REACHES_SHELL_SCRIPT = (

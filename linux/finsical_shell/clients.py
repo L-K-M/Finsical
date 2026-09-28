@@ -20,7 +20,7 @@ from typing import Any, Callable, Optional
 
 from gi.repository import Gdk, Gtk
 
-from . import logic
+from . import logic, x11
 from .logic import Rect
 from .screen import (
     is_x11,
@@ -30,7 +30,7 @@ from .screen import (
     work_area,
 )
 from .tank import TankWindow
-from .web import PageView, WebHost
+from .web import PageView, Press, WebHost
 
 log = logic.log
 
@@ -38,6 +38,8 @@ log = logic.log
 BusHandler = Callable[["ClientWindow", str, Any], None]
 # (client, parsed) for a client's "osmium" window op, after it is applied.
 OpObserver = Callable[["ClientWindow", Any], None]
+# Adds the app's keyboard shortcuts to a new window.
+ShortcutInstaller = Callable[[Gtk.Window], None]
 
 
 class ClientWindow:
@@ -48,6 +50,8 @@ class ClientWindow:
         self.state = logic.ClientWindowState(spec)
         self.window: Optional[Gtk.ApplicationWindow] = None
         self.page: Optional[PageView] = None
+        # Where to put the window when it next maps (X11 only).
+        self.pending_position: Optional[tuple[int, int]] = None
 
     @property
     def visible(self) -> bool:
@@ -62,7 +66,7 @@ class ClientHost:
         app: Gtk.Application,
         web: WebHost,
         frames: logic.FrameStore,
-        accels: Gtk.AccelGroup,
+        install_shortcuts: ShortcutInstaller,
         tank: TankWindow,
         on_bus: BusHandler,
         on_op: OpObserver,
@@ -71,7 +75,7 @@ class ClientHost:
         self._app = app
         self._web = web
         self._frames = frames
-        self._accels = accels
+        self._install_shortcuts = install_shortcuts
         self._tank = tank
         self._on_bus = on_bus
         self._on_op = on_op
@@ -100,8 +104,8 @@ class ClientHost:
         come up over the floating tank."""
         self._keep_above = keep_above
         for c in self.windows.values():
-            if c.window is not None:
-                c.window.set_keep_above(keep_above)
+            if c.window is not None and c.window.get_mapped():
+                self._apply_state(c.window)
 
     def show(self, name: str) -> None:
         client = self.windows[name]
@@ -114,23 +118,37 @@ class ClientHost:
         reopened = client.state.reopen(frame)
         if reopened is not None:
             self._apply_hints(client)
-            window.resize(reopened.w, reopened.h)
-        # Re-hinting a mapped window (a fold, an unfold, the resize
-        # above) makes GTK drop its position hint, so an X11 window
-        # manager places a hidden window anew when it maps again, and
-        # the configure handler would save that over the user's spot.
+            self._resize(client, reopened.w, reopened.h)
+        # A hidden window maps anew, and an X11 window manager would
+        # place it anew: put it back where hide() saved it.
+        saved = self._frames.get(client.spec.frame_key)
         if (
             reopening
             and not window.get_visible()
-            and is_x11(window.get_display())
+            and self._x11(window)
+            and saved is not None
+            and saved.x is not None
+            and saved.y is not None
         ):
-            window.move(frame.x, frame.y)
-        window.set_keep_above(self._keep_above)
-        window.present_with_time(Gtk.get_current_event_time())
+            client.pending_position = (saved.x, saved.y)
+        window.present()
 
     def hide(self, client: ClientWindow) -> None:
-        if client.window is not None:
-            client.window.hide()
+        if client.window is not None and client.window.get_visible():
+            self._save_frame(client)
+            client.window.set_visible(False)
+
+    def save_frames(self) -> None:
+        """GTK 4 reports no moves: the quit sequence saves positions."""
+        for client in self.visible_clients():
+            self._save_frame(client)
+
+    def _x11(self, window: Gtk.Window) -> bool:
+        return is_x11(window.get_display())
+
+    def _apply_state(self, window: Gtk.Window) -> None:
+        if self._x11(window):
+            x11.set_state(window.get_surface(), self._keep_above, False)
 
     def _create(self, client: ClientWindow) -> None:
         spec = client.spec
@@ -145,15 +163,28 @@ class ClientHost:
         make_transparent(window)
         # The view is the window: the page sizes its drawn window to the
         # viewport, so no decoration or margin may take any of it.
-        window.add(page.view)
-        window.add_accel_group(self._accels)
+        window.set_child(page.view)
+        self._install_shortcuts(window)
         client.window, client.page = window, page
         self._apply_hints(client)
         self._place(client)
-        window.connect("delete-event", lambda w, _e: w.hide_on_delete())
-        window.connect("configure-event", lambda *_: self._save_frame(client))
-        page.view.show()
+        window.connect("close-request", lambda *_: self.hide(client) or True)
+        window.connect("realize", lambda w: self._on_realize(client, w))
+        window.connect("map", lambda w: self._on_map(client, w))
         page.load(spec.url)
+
+    def _on_realize(self, client: ClientWindow, window: Gtk.Window) -> None:
+        window.get_surface().connect(
+            "layout", lambda *_: self._save_frame(client)
+        )
+
+    def _on_map(self, client: ClientWindow, window: Gtk.Window) -> None:
+        if not self._x11(window):
+            return
+        if client.pending_position is not None:
+            x11.move(window.get_surface(), *client.pending_position)
+            client.pending_position = None
+        self._apply_state(window)
 
     def _place(self, client: ClientWindow) -> None:
         """The saved frame (a fixed window only takes its position), else
@@ -167,7 +198,7 @@ class ClientHost:
         else:
             size = logic.Size(saved.w, saved.h)
         window.set_default_size(size.w, size.h)
-        if not is_x11(window.get_display()):
+        if not self._x11(window):
             return
 
         if saved is not None and saved.x is not None and saved.y is not None:
@@ -175,36 +206,38 @@ class ClientHost:
             if logic.intersects_any(
                 frame, monitor_rects(window.get_display())
             ):
-                window.move(frame.x, frame.y)
+                client.pending_position = (frame.x, frame.y)
                 return
         tank_area = work_area(self._tank.window)
         if tank_area is None:
             return
-        x, y = logic.beside_tank(
+        client.pending_position = logic.beside_tank(
             window_frame(self._tank.window), size, tank_area
         )
-        window.move(x, y)
 
     def _apply_hints(self, client: ClientWindow) -> None:
-        assert client.window is not None
+        """GTK 4 has no size hints: the minimum is the content's size
+        request. There is no maximum either, so a fixed window is only
+        held to its size by having no grow box. It stays resizable all
+        the same: GTK never shrinks a non-resizable window to a smaller
+        request, so it could not fold."""
+        assert client.window is not None and client.page is not None
         hints = client.state.hints()
-        geometry = Gdk.Geometry()
-        geometry.min_width, geometry.min_height = hints.min_w, hints.min_h
-        flags = Gdk.WindowHints.MIN_SIZE
-        if hints.max_w is not None and hints.max_h is not None:
-            geometry.max_width, geometry.max_height = hints.max_w, hints.max_h
-            flags |= Gdk.WindowHints.MAX_SIZE
-        client.window.set_geometry_hints(None, geometry, flags)
+        client.page.view.set_size_request(hints.min_w, hints.min_h)
 
-    def _save_frame(self, client: ClientWindow) -> bool:
+    def _resize(self, client: ClientWindow, w: int, h: int) -> None:
         assert client.window is not None
-        frame = client.state.frame_to_save(window_frame(client.window))
-        position = (
-            (frame.x, frame.y) if is_x11(client.window.get_display()) else None
-        )
+        client.window.set_default_size(w, h)
+
+    def _save_frame(self, client: ClientWindow) -> None:
+        window = client.window
+        assert window is not None
+        if not window.get_realized():
+            return
+        frame = client.state.frame_to_save(window_frame(window))
+        position = (frame.x, frame.y) if self._x11(window) else None
         self._frames.put(client.spec.frame_key, frame.w, frame.h, position)
         self._on_frame_changed()
-        return False
 
     def _handle_op(self, client: ClientWindow, msg: Any) -> None:
         if isinstance(msg, dict):
@@ -229,9 +262,9 @@ class ClientHost:
         new = client.state.shade(frame) if on else client.state.unshade(frame)
         if new is None:
             return
-        # The hints change first: GTK clamps the resize to them.
+        # The minimum changes first, or it would hold the fold open.
         self._apply_hints(client)
-        window.resize(new.w, new.h)
+        self._resize(client, new.w, new.h)
 
     def _zoom(self, client: ClientWindow) -> None:
         window = client.window
@@ -239,27 +272,29 @@ class ClientHost:
         new = client.state.zoom(window_frame(window), work_area(window))
         if new is None:
             return
-        window.resize(new.w, new.h)
-        if is_x11(window.get_display()):
-            window.move(new.x, new.y)
+        self._resize(client, new.w, new.h)
+        if self._x11(window):
+            x11.move(window.get_surface(), new.x, new.y)
 
     def _grow(self, client: ClientWindow) -> None:
         window, page = client.window, client.page
         assert window is not None and page is not None
         if not client.state.resizable:
             return
-        # Top-left pinned; the minimum size comes from the hints.
-        page.begin_window_drag(
-            lambda p: window.begin_resize_drag(
-                Gdk.WindowEdge.SOUTH_EAST, p.button, p.x_root, p.y_root, p.time
+
+        # Top-left pinned; the minimum size is the page's size request.
+        def begin(p: Press) -> None:
+            window.get_surface().begin_resize(
+                Gdk.SurfaceEdge.SOUTH_EAST, p.device, p.button, p.x, p.y, p.time
             )
-        )
+
+        page.begin_window_drag(begin)
 
     def _drag(self, client: ClientWindow) -> None:
         window, page = client.window, client.page
         assert window is not None and page is not None
         page.begin_window_drag(
-            lambda p: window.begin_move_drag(
-                p.button, p.x_root, p.y_root, p.time
+            lambda p: window.get_surface().begin_move(
+                p.device, p.button, p.x, p.y, p.time
             )
         )

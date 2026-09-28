@@ -7,12 +7,18 @@ from __future__ import annotations
 
 from typing import Optional
 
-from gi.repository import Gdk, Gtk
+from gi.repository import Gdk, Graphene, Gtk
 
-from . import logic
+from . import logic, x11
 from .logic import Rect
 
 log = logic.log
+
+# Undecorated windows whose page draws every visible pixel.
+_TRANSPARENT_CLASS = "finsical-transparent"
+_TRANSPARENT_CSS = f"window.{_TRANSPARENT_CLASS} {{ background: none; }}"
+# Displays that have the stylesheet (by name: GDK has one per server).
+_styled_displays: set[str] = set()
 
 
 def is_x11(display: Gdk.Display) -> bool:
@@ -21,53 +27,83 @@ def is_x11(display: Gdk.Display) -> bool:
     return display.__gtype__.name == "GdkX11Display"
 
 
+def _monitors(display: Gdk.Display) -> list[Gdk.Monitor]:
+    model = display.get_monitors()
+    return [model.get_item(i) for i in range(model.get_n_items())]
+
+
+def _rect(r: Gdk.Rectangle) -> Rect:
+    return Rect(r.x, r.y, r.width, r.height)
+
+
+def _work_area(monitor: Gdk.Monitor) -> Rect:
+    """The monitor without panels and docks. Only X11 publishes that
+    (_NET_WORKAREA); elsewhere the whole monitor stands in."""
+    if is_x11(monitor.get_display()):
+        from gi.repository import GdkX11
+
+        return _rect(GdkX11.X11Monitor.get_workarea(monitor))
+    return _rect(monitor.get_geometry())
+
+
 def monitor_rects(display: Gdk.Display) -> list[Rect]:
-    rects = []
-    for i in range(display.get_n_monitors()):
-        g = display.get_monitor(i).get_geometry()
-        rects.append(Rect(g.x, g.y, g.width, g.height))
-    return rects
+    return [_rect(m.get_geometry()) for m in _monitors(display)]
 
 
 def work_areas(display: Gdk.Display) -> list[Rect]:
-    """Every monitor's work area (without panels and docks)."""
-    rects = []
-    for i in range(display.get_n_monitors()):
-        a = display.get_monitor(i).get_workarea()
-        rects.append(Rect(a.x, a.y, a.width, a.height))
-    return rects
+    return [_work_area(m) for m in _monitors(display)]
 
 
 def work_area(window: Gtk.Window) -> Optional[Rect]:
-    """The work area of the monitor showing `window` (or the primary
-    one before it is realized)."""
+    """The work area of the monitor showing `window` (or the first one
+    before it is realized)."""
     display = window.get_display()
-    gdk_window = window.get_window()
-    monitor = (
-        display.get_monitor_at_window(gdk_window)
-        if gdk_window
-        else display.get_primary_monitor() or display.get_monitor(0)
-    )
+    surface = window.get_surface()
+    monitor = display.get_monitor_at_surface(surface) if surface else None
+    if monitor is None:
+        monitors = _monitors(display)
+        monitor = monitors[0] if monitors else None
     if monitor is None:
         return None
-    a = monitor.get_workarea()
-    return Rect(a.x, a.y, a.width, a.height)
+    return _work_area(monitor)
 
 
 def make_transparent(window: Gtk.Window) -> None:
     """Let the page's transparent pixels show what is behind the window.
     Needs a compositor; without one they render black (see the tank's
-    XShape fallback)."""
-    visual = window.get_screen().get_rgba_visual()
-    if visual is None:
-        log.warning("no RGBA visual: transparent window areas will be black")
-    else:
-        window.set_visual(visual)
-    window.set_app_paintable(True)
+    X11 outline fallback)."""
+    display = window.get_display()
+    if display.get_name() not in _styled_displays:
+        provider = Gtk.CssProvider()
+        provider.load_from_string(_TRANSPARENT_CSS)
+        Gtk.StyleContext.add_provider_for_display(
+            display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+        _styled_displays.add(display.get_name())
+    window.add_css_class(_TRANSPARENT_CLASS)
 
 
 def window_frame(window: Gtk.Window) -> Rect:
-    """The window's frame; the position is (0, 0) on Wayland."""
-    x, y = window.get_position()
-    w, h = window.get_size()
-    return Rect(x, y, w, h)
+    """The window's frame; the position is (0, 0) on Wayland and before
+    the window is realized."""
+    surface = window.get_surface()
+    if surface is None or not window.get_realized():
+        w, h = window.get_default_size()
+        return Rect(0, 0, w, h)
+    x, y = 0, 0
+    if is_x11(window.get_display()):
+        x, y = x11.position(surface) or (0, 0)
+    return Rect(x, y, surface.get_width(), surface.get_height())
+
+
+def surface_point(widget: Gtk.Widget, x: float, y: float) -> tuple[float, float]:
+    """A point in `widget`'s coordinates, in its surface's: what window
+    drags and moves take."""
+    native = widget.get_native()
+    point = Graphene.Point()
+    point.init(x, y)
+    ok, out = widget.compute_point(native, point)
+    if not ok:
+        out = point
+    dx, dy = native.get_surface_transform()
+    return out.x + dx, out.y + dy

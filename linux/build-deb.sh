@@ -32,7 +32,8 @@ readonly ICON_SIZES=(16 22 24 32 48 64 128 256 512)
 readonly WEB_FILES=(index.html overview.html addons.html prefs.html stats.html
                     bundle.js overview.js addons.js prefs.js stats.js
                     app.css osmium.css)
-readonly DEPENDS="python3 (>= 3.10), python3-gi, python3-gi-cairo, gir1.2-gtk-3.0, gir1.2-webkit2-4.1 (>= 2.40)"
+# GTK 4.12 and WebKitGTK's 6.0 API (2.40): app.py MIN_GTK, MIN_WEBKIT.
+readonly DEPENDS="python3 (>= 3.10), python3-gi (>= 3.42), python3-gi-cairo, gir1.2-gtk-4.0 (>= 4.12), gir1.2-webkit-6.0 (>= 2.40)"
 # GStreamer's AIFF and AAC decoders, for importing .aiff and .m4a sounds.
 readonly RECOMMENDS="gstreamer1.0-plugins-bad"
 # The LGPL decoder's source, relative to the repository root; shipped
@@ -139,25 +140,8 @@ install -m 0644 "$MACE_SOURCE" "$ROOT/$SHARE_DIR/$MACE_SOURCE"
 install -m 0644 "$SCRIPT_DIR/$APP_ID.desktop" "$ROOT/usr/share/applications/"
 sed -e '/<!-- Template:/d' -e "s|@VERSION@|$VERSION|" -e "s|@DATE@|$RELEASE_DAY|" \
   "$SCRIPT_DIR/$APP_ID.metainfo.xml" > "$ROOT/usr/share/metainfo/$APP_ID.metainfo.xml"
-# GdkPixbuf writes no timestamps into the PNGs, so they are reproducible.
-"$PYTHON" - "$ICON_SOURCE" "$ROOT/usr/share/icons/hicolor" "$APP_ID" "${ICON_SIZES[@]}" <<'PY'
-import os
-import sys
-
-import gi
-gi.require_version("GdkPixbuf", "2.0")
-from gi.repository import GdkPixbuf
-
-source, theme, name, *sizes = sys.argv[1:]
-art = GdkPixbuf.Pixbuf.new_from_file(source)
-if art.get_width() != art.get_height():
-    sys.exit(f"build-deb.sh: {source} is not square")
-for size in map(int, sizes):
-    folder = os.path.join(theme, f"{size}x{size}", "apps")
-    os.makedirs(folder, exist_ok=True)
-    icon = art.scale_simple(size, size, GdkPixbuf.InterpType.HYPER)
-    icon.savev(os.path.join(folder, f"{name}.png"), "png", [], [])
-PY
+"$PYTHON" "$SCRIPT_DIR/render-icons.py" "$ICON_SOURCE" \
+  "$ROOT/usr/share/icons/hicolor" "$APP_ID" "${ICON_SIZES[@]}"
 
 # --- Documentation ------------------------------------------------------------
 # copyright: DEP-5, uncompressed (Policy 12.5). The Unlicense and Expat

@@ -13,27 +13,21 @@ from typing import Callable, Optional
 import cairo
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
 
-from . import logic
+from . import logic, x11
 from .logic import Rect, Size
 from .screen import (
     is_x11,
     make_transparent,
+    surface_point,
     window_frame,
     work_area,
     work_areas,
 )
-from .web import PageView
+from .web import PageView, Press
 
 log = logic.log
 
 TANK_TITLE = "Finsical"
-# A machine change sets the new aspect when the window reports its new
-# size, or after this long if the window manager never gives it that.
-ASPECT_FALLBACK_MS = 1000
-# How far the tank's aspect may stray from its case's: one pixel on a
-# minimum-size (about 200 px) tank, so the case art stays within a
-# pixel of its outline.
-TANK_ASPECT_SLACK = 0.005
 
 
 class _Silhouette:
@@ -140,7 +134,14 @@ def load_mask(
 
 class TankWindow:
     """The tank. Its page owns all state; this window follows the
-    machine the page's state pushes name."""
+    machine the page's state pushes name.
+
+    GTK 4 has no aspect hint, so the window manager does not hold the
+    tank to its case: every size the app sets (launch, a machine
+    change, Larger/Smaller) is computed at the case's aspect instead.
+    The tank has no edges to drag, so only a window manager's own
+    resize (a keyboard shortcut, tiling) can leave it off-aspect.
+    """
 
     def __init__(
         self,
@@ -158,10 +159,11 @@ class TankWindow:
         self._silhouette: Optional[_Silhouette] = None
         self._shape_pending = False
         self._size: Optional[tuple[int, int]] = None
-        # The size a machine change asked for, until the window has it
-        # and the machine's aspect can go on (see apply_machine).
-        self._aspect_pending: Optional[Size] = None
-        self._aspect_timer = 0
+        # Where to put the window when it maps (X11 only: GTK 4 cannot
+        # place a window, see x11.py).
+        self._pending_position: Optional[tuple[int, int]] = None
+        self._float_above = False
+        self._all_desktops = False
 
         self.window = Gtk.ApplicationWindow(application=app, title=TANK_TITLE)
         self.window.set_decorated(False)
@@ -170,24 +172,25 @@ class TankWindow:
 
         # The drag strip across the top is the only way to move the
         # Bare tank, which has no case to grab. It sits above the page
-        # (an input-only event box), so presses there never reach it.
+        # and takes the presses there, so they never reach it.
         overlay = Gtk.Overlay()
-        overlay.add(page.view)
-        strip = Gtk.EventBox(
-            visible_window=False, valign=Gtk.Align.START, halign=Gtk.Align.FILL
-        )
+        overlay.set_child(page.view)
+        strip = Gtk.Box(valign=Gtk.Align.START, halign=Gtk.Align.FILL)
         strip.set_size_request(-1, logic.TANK_DRAG_STRIP_HEIGHT)
-        strip.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
-        strip.connect("button-press-event", self._on_strip_press)
+        click = Gtk.GestureClick(button=Gdk.BUTTON_PRIMARY)
+        click.connect("pressed", self._on_strip_press)
+        strip.add_controller(click)
         overlay.add_overlay(strip)
         self._strip = strip
-        self.window.add(overlay)
+        self._overlay = overlay
+        self.window.set_child(overlay)
 
         self._restore_frame()
-        self.window.connect("configure-event", self._on_configure)
-        self.window.connect("delete-event", lambda *_: on_close() or True)
-        self.window.get_screen().connect(
-            "composited-changed", lambda *_: self._schedule_shape()
+        self.window.connect("realize", self._on_realize)
+        self.window.connect("map", self._on_map)
+        self.window.connect("close-request", lambda *_: on_close() or True)
+        self.window.get_display().connect(
+            "notify::composited", lambda *_: self._schedule_shape()
         )
 
     @property
@@ -195,17 +198,30 @@ class TankWindow:
         return self._silhouette.machine if self._silhouette else None
 
     def show(self) -> None:
-        self.window.show_all()
+        self.window.present()
         self.page.view.grab_focus()  # bare keys (F, C, L...) reach the page
 
     def apply_window_prefs(
         self, float_above: bool, all_desktops: bool
     ) -> None:
-        self.window.set_keep_above(float_above)
-        if all_desktops:
-            self.window.stick()
-        else:
-            self.window.unstick()
+        self._float_above = float_above
+        self._all_desktops = all_desktops
+        if self.x11 and self.window.get_mapped():
+            x11.set_state(self.window.get_surface(), float_above, all_desktops)
+
+    def save_frame(self) -> None:
+        """Remember where the tank is. GTK 4 reports no moves, so this
+        runs on every resize and before the window hides."""
+        if not self.window.get_realized():
+            return
+        frame = window_frame(self.window)
+        self._frames.put(
+            logic.TANK_FRAME_KEY,
+            frame.w,
+            frame.h,
+            (frame.x, frame.y) if self.x11 else None,
+        )
+        self._on_frame_changed()
 
     def apply_machine(self, machine: logic.Machine) -> None:
         """Retune the window to a machine case. Only an id change counts:
@@ -231,20 +247,10 @@ class TankWindow:
         area = work_area(self.window) if self.x11 else None
         if area is not None:
             new = logic.clamp_to_visible(new, area)
-        # The new aspect goes on only once the window has its new size. A
-        # window manager that applies a changed aspect to the current size
-        # first (openbox: the 640x400 launch frame grows 825 px tall) also
-        # pushes the window back on screen, and it stays there.
-        self._set_hints(None)
-        self._aspect_pending = Size(new.w, new.h)
-        if self._aspect_timer:
-            GLib.source_remove(self._aspect_timer)
-        self._aspect_timer = GLib.timeout_add(
-            ASPECT_FALLBACK_MS, self._on_aspect_timeout
-        )
-        self.window.resize(new.w, new.h)
+        self._set_min_size()
+        self.window.set_default_size(new.w, new.h)
         if self.x11 and (new.x, new.y) != (frame.x, frame.y):
-            self.window.move(new.x, new.y)
+            self._move(new.x, new.y)
         self._schedule_shape()
 
     def step_size(self, step: logic.SizeStep) -> None:
@@ -253,23 +259,32 @@ class TankWindow:
         if area is None:
             log.warning("no monitor to size the tank against")
             return
-        w, h = self.window.get_size()
+        frame = window_frame(self.window)
         new = logic.stepped_tank_size(
-            Size(w, h),
+            Size(frame.w, frame.h),
             step,
             self._aspect(),
             self._min_size(),
             Size(area.w, area.h),
         )
-        self.window.resize(new.w, new.h)
+        self.window.set_default_size(new.w, new.h)
 
     def drag_from_page(self) -> None:
         """A press on the case: move the window with the mouse."""
-        self.page.begin_window_drag(
-            lambda p: self.window.begin_move_drag(
-                p.button, p.x_root, p.y_root, p.time
+        self.page.begin_window_drag(self._begin_move)
+
+    def _begin_move(self, press: Press) -> None:
+        surface = self.window.get_surface()
+        if surface is not None:
+            surface.begin_move(
+                press.device, press.button, press.x, press.y, press.time
             )
-        )
+
+    def _move(self, x: int, y: int) -> None:
+        if self.window.get_mapped():
+            x11.move(self.window.get_surface(), x, y)
+        else:
+            self._pending_position = (x, y)
 
     def _min_size(self) -> Size:
         machine = self.machine
@@ -277,118 +292,90 @@ class TankWindow:
             return logic.tank_min_size(*logic.TANK_LAUNCH_ASPECT)
         return logic.tank_min_size(machine.w, machine.h)
 
+    def _set_min_size(self) -> None:
+        minimum = self._min_size()
+        self._overlay.set_size_request(minimum.w, minimum.h)
+
     def _aspect(self) -> float:
         machine = self.machine
         if machine is None:
             return logic.TANK_LAUNCH_ASPECT[0] / logic.TANK_LAUNCH_ASPECT[1]
         return machine.w / machine.h
 
-    def _set_hints(self, aspect: Optional[float]) -> None:
-        """The minimum size, and the aspect unless it is None."""
-        minimum = self._min_size()
-        geometry = Gdk.Geometry()
-        geometry.min_width, geometry.min_height = minimum.w, minimum.h
-        # An explicit zero base size: without one GDK sends the minimum
-        # as the base, and ICCCM window managers (openbox) then hold
-        # (size - base) to the aspect, which shrank a restored 310x399
-        # tank to 105x82.
-        geometry.base_width = geometry.base_height = 0
-        flags = Gdk.WindowHints.MIN_SIZE | Gdk.WindowHints.BASE_SIZE
-        if aspect is not None:
-            # A little slack: few integer sizes hit a case's aspect
-            # exactly, and a window manager that enforces it exactly
-            # (openbox) trims a pixel on every resize and every launch.
-            geometry.min_aspect = aspect * (1 - TANK_ASPECT_SLACK)
-            geometry.max_aspect = aspect * (1 + TANK_ASPECT_SLACK)
-            flags |= Gdk.WindowHints.ASPECT
-        self.window.set_geometry_hints(None, geometry, flags)
-
-    def _apply_pending_aspect(self) -> None:
-        if self._aspect_timer:
-            GLib.source_remove(self._aspect_timer)
-            self._aspect_timer = 0
-        if self._aspect_pending is not None:
-            self._aspect_pending = None
-            self._set_hints(self._aspect())
-
-    def _on_aspect_timeout(self) -> bool:
-        self._aspect_timer = 0
-        self._apply_pending_aspect()
-        return GLib.SOURCE_REMOVE
-
     def _restore_frame(self) -> None:
         """Where the user left the tank: its size always, its position
         on X11 when enough of it still lands on a monitor's work area to
         see and grab (a 1 px sliver would be a lost window), else
-        centred."""
+        centred. Wayland leaves placement to the compositor."""
         saved = self._frames.get(logic.TANK_FRAME_KEY)
-        if saved is None:
-            self._set_hints(self._aspect())
-            size = logic.TANK_LAUNCH_SIZE
-        else:
-            # GTK holds even programmatic sizes to the aspect hint, so a
-            # saved frame (already at its machine's aspect) keeps its own
-            # until the first state push names the machine.
-            self._set_hints(saved.w / saved.h)
-            size = Size(saved.w, saved.h)
+        size = (
+            logic.TANK_LAUNCH_SIZE
+            if saved is None
+            else Size(saved.w, saved.h)
+        )
+        self._set_min_size()
         self.window.set_default_size(size.w, size.h)
+        if not self.x11:
+            return
 
         display = self.window.get_display()
         if (
-            self.x11
-            and saved is not None
+            saved is not None
             and saved.x is not None
             and saved.y is not None
             and logic.grabbable_on_any(
                 Rect(saved.x, saved.y, size.w, size.h), work_areas(display)
             )
         ):
-            self.window.move(saved.x, saved.y)
+            self._pending_position = (saved.x, saved.y)
             return
         area = work_area(self.window)
-        if self.x11 and area is not None:
+        if area is not None:
             c = logic.centered(size, area)
-            self.window.move(c.x, c.y)
-        else:
-            self.window.set_position(Gtk.WindowPosition.CENTER)
+            self._pending_position = (c.x, c.y)
 
-    def _on_configure(
-        self, _window: Gtk.Window, _event: Gdk.EventConfigure
-    ) -> bool:
-        frame = window_frame(self.window)
-        self._frames.put(
-            logic.TANK_FRAME_KEY,
-            frame.w,
-            frame.h,
-            (frame.x, frame.y) if self.x11 else None,
-        )
-        self._on_frame_changed()
-        pending = self._aspect_pending
-        if (
-            pending is not None
-            and abs(frame.w - pending.w) <= 1
-            and abs(frame.h - pending.h) <= 1
-        ):
-            self._apply_pending_aspect()
-        if self._size != (frame.w, frame.h):
-            self._size = (frame.w, frame.h)
-            self._schedule_shape()
-        return False
+    def _on_realize(self, window: Gtk.Window) -> None:
+        window.get_surface().connect("layout", self._on_layout)
+
+    def _on_map(self, window: Gtk.Window) -> None:
+        """Placement and the window prefs go on once the window manager
+        has the window: it drops them for an unmapped one."""
+        surface = window.get_surface()
+        if self.x11:
+            if self._pending_position is not None:
+                x11.move(surface, *self._pending_position)
+                self._pending_position = None
+            x11.set_state(surface, self._float_above, self._all_desktops)
+        self._schedule_shape()
+
+    def _on_layout(self, _surface: Gdk.Surface, w: int, h: int) -> None:
+        if self._size == (w, h):
+            return
+        self._size = (w, h)
+        self.save_frame()
+        self._schedule_shape()
 
     def _on_strip_press(
-        self, _strip: Gtk.EventBox, event: Gdk.EventButton
-    ) -> bool:
-        if (
-            event.button != Gdk.BUTTON_PRIMARY
-            or event.type != Gdk.EventType.BUTTON_PRESS
-        ):
-            return False
-        self.window.begin_move_drag(
-            event.button, int(event.x_root), int(event.y_root), event.time
+        self, gesture: Gtk.GestureClick, n_press: int, x: float, y: float
+    ) -> None:
+        device = gesture.get_device()
+        if n_press != 1 or device is None:
+            return
+        gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+        sx, sy = surface_point(self._strip, x, y)
+        self._begin_move(
+            Press(
+                gesture.get_current_button(),
+                sx,
+                sy,
+                gesture.get_current_event_time(),
+                device,
+            )
         )
+        # The window manager keeps the release; see PageView.
+        gesture.reset()
         # Moving leaves focus off the page; bare keys would go dead.
         self.page.view.grab_focus()
-        return True
 
     def _schedule_shape(self) -> None:
         # Resizes arrive in bursts; rebuild the region once they settle.
@@ -397,19 +384,34 @@ class TankWindow:
             GLib.idle_add(self._update_shape)
 
     def _update_shape(self) -> bool:
-        """Clip the window to the case: with a compositor only the input
-        shape (clicks on the transparent corners reach the desktop);
-        without one also the visible shape (XShape), or the corners
-        would show black."""
+        """Clip the window to the case: clicks on the transparent corners
+        reach the desktop (the input region). An X11 server without a
+        compositor would also show those corners black, so there the
+        visible outline is cut too."""
         self._shape_pending = False
-        if self.window.get_window() is None or self._silhouette is None:
+        surface = self.window.get_surface()
+        if (
+            surface is None
+            or not self.window.get_mapped()
+            or self._silhouette is None
+        ):
             return GLib.SOURCE_REMOVE
-        w, h = self.window.get_size()
+        w, h = surface.get_width(), surface.get_height()
         region = self._silhouette.region(w, h)
-        if self.window.get_screen().is_composited():
-            self.window.shape_combine_region(None)
-            self.window.input_shape_combine_region(region)
-        else:
-            self.window.input_shape_combine_region(None)
-            self.window.shape_combine_region(region)
+        if region is None:
+            region = cairo.Region(cairo.RectangleInt(0, 0, w, h))
+        surface.set_input_region(region)
+        if self.x11:
+            composited = self.window.get_display().is_composited()
+            x11.set_outline(
+                surface, None if composited else _region_rects(region)
+            )
         return GLib.SOURCE_REMOVE
+
+
+def _region_rects(region: cairo.Region) -> list[Rect]:
+    rects = []
+    for i in range(region.num_rectangles()):
+        r = region.get_rectangle(i)
+        rects.append(Rect(r.x, r.y, r.width, r.height))
+    return rects

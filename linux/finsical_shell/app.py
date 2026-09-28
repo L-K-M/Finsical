@@ -1,5 +1,5 @@
 """Entry point: options, the web root, and bringing up GTK in the one
-order that gives the app its id and X11 backend.
+order that gives the app its id and backend.
 
 Nothing here imports Gdk or Gtk at module level: which backend GDK
 uses, and the program class, are fixed the moment they are imported.
@@ -16,9 +16,12 @@ import tempfile
 
 from . import logic
 
-# WebKitGTK 2.40 added evaluate_javascript (and the Depends says so).
+# WebKitGTK 2.40 is the first with the 6.0 (GTK 4) API; GTK 4.12 added
+# Widget.compute_point and CssProvider.load_from_string. The Depends
+# say the same.
 MIN_WEBKIT = (2, 40)
-_PACKAGES = "python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1"
+MIN_GTK = (4, 12)
+_PACKAGES = "python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-webkit-6.0"
 
 
 class StartupError(Exception):
@@ -26,9 +29,8 @@ class StartupError(Exception):
 
 
 def _bring_up_gtk() -> None:
-    """Load GTK and WebKit. The order matters: the program name before
-    GDK loads, the backend choice before PyGObject's Gdk override
-    initialises GDK, the program class right after."""
+    """Load GTK and WebKit. The order matters: the program name and the
+    backend choice before GTK opens the display."""
     try:
         import gi
     except ImportError as e:
@@ -36,12 +38,14 @@ def _bring_up_gtk() -> None:
             f"PyGObject is missing ({e}); install {_PACKAGES}"
         ) from e
     try:
-        gi.require_version("Gdk", "3.0")
-        gi.require_version("Gtk", "3.0")
+        gi.require_version("Gdk", "4.0")
+        gi.require_version("GdkX11", "4.0")
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Graphene", "1.0")
         gi.require_version("GdkPixbuf", "2.0")
-        gi.require_version("WebKit2", "4.1")
+        gi.require_version("WebKit", "6.0")
         gi.require_version("Soup", "3.0")
-        # Input and window shapes pass cairo regions (python3-gi-cairo).
+        # Input regions are cairo regions (python3-gi-cairo).
         gi.require_foreign("cairo")
     except (ValueError, ImportError) as e:
         raise StartupError(f"{e}; install {_PACKAGES}") from e
@@ -53,23 +57,28 @@ def _bring_up_gtk() -> None:
     GLib.set_prgname(logic.APP_ID)
     if "GDK_BACKEND" not in os.environ:
         # Prefer X11 (XWayland on a Wayland desktop): only there can the
-        # app keep the tank above, on all desktops, where it was left,
-        # and shaped without a compositor. GDK_BACKEND=wayland opts out.
-        # PyGObject's Gdk override initialises GDK on import, so this
-        # has to go through the raw introspection module.
-        from gi.module import get_introspection_module
+        # app keep the tank above, on all desktops and where it was left
+        # (see x11.py). GDK_BACKEND=wayland opts out, and a sandbox
+        # without X11 access (the Flatpak's fallback-x11 on a Wayland
+        # desktop) gets Wayland anyway.
+        from gi.repository import Gdk
 
-        get_introspection_module("Gdk").set_allowed_backends("x11,wayland")
+        Gdk.set_allowed_backends("x11,wayland")
 
-    from gi.repository import Gdk, WebKit2
+    from gi.repository import Gtk, WebKit
 
-    Gdk.set_program_class(logic.APP_ID)
-    if Gdk.Display.get_default() is None:
+    if not Gtk.init_check():
         raise StartupError(
             "cannot open a display: run inside a desktop session "
             "(DISPLAY or WAYLAND_DISPLAY), or check GDK_BACKEND"
         )
-    webkit = (WebKit2.get_major_version(), WebKit2.get_minor_version())
+    gtk = (Gtk.get_major_version(), Gtk.get_minor_version())
+    if gtk < MIN_GTK:
+        raise StartupError(
+            "GTK %d.%d is too old; %d.%d or later is required"
+            % (gtk + MIN_GTK)
+        )
+    webkit = (WebKit.get_major_version(), WebKit.get_minor_version())
     if webkit < MIN_WEBKIT:
         raise StartupError(
             "WebKitGTK %d.%d is too old; %d.%d or later is required"
