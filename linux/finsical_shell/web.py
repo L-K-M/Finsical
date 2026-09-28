@@ -266,7 +266,8 @@ class PageView:
     ) -> None:
         self._host = host
         self._press: Optional[Press] = None
-        # The last press in view coordinates: where the menu opens.
+        # The pointer's last place in view coordinates: where the menu
+        # opens.
         self._press_at = (0.0, 0.0)
         self._menu: Optional[Gtk.PopoverMenu] = None
         manager = WebKit.UserContentManager()
@@ -302,6 +303,11 @@ class PageView:
         presses.connect("pressed", self._on_pressed)
         self.view.add_controller(presses)
         self._presses = presses
+        # The pointer's place, for a menu opened from the keyboard
+        # (WebKitGTK 6's context-menu signal carries no event).
+        motion = Gtk.EventControllerMotion()
+        motion.connect("motion", self._on_motion)
+        self.view.add_controller(motion)
         self.view.connect("context-menu", self._on_context_menu)
 
     def load(self, uri: str) -> None:
@@ -367,6 +373,11 @@ class PageView:
             log.warning("ignoring a malformed %s message: %s", name, e)
             return
         handler(text, parsed)
+
+    def _on_motion(
+        self, _controller: Gtk.EventControllerMotion, x: float, y: float
+    ) -> None:
+        self._press_at = (x, y)
 
     def _on_pressed(
         self, gesture: Gtk.GestureClick, n_press: int, x: float, y: float

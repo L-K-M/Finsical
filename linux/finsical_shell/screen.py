@@ -96,7 +96,9 @@ def window_frame(window: Gtk.Window) -> Rect:
     return Rect(x, y, surface.get_width(), surface.get_height())
 
 
-def surface_point(widget: Gtk.Widget, x: float, y: float) -> tuple[float, float]:
+def surface_point(
+    widget: Gtk.Widget, x: float, y: float
+) -> tuple[float, float]:
     """A point in `widget`'s coordinates, in its surface's: what window
     drags and moves take."""
     native = widget.get_native()

@@ -14,6 +14,8 @@ import gi
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import GdkPixbuf  # noqa: E402
 
+if len(sys.argv) < 5:
+    sys.exit("usage: render-icons.py SOURCE THEME_DIR NAME SIZE...")
 source, theme, name, *sizes = sys.argv[1:]
 art = GdkPixbuf.Pixbuf.new_from_file(source)
 if art.get_width() != art.get_height():

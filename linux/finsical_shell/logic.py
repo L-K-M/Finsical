@@ -103,9 +103,11 @@ def sandbox_blocked(
     where there is none."""
     if restrict_userns is None or restrict_userns.strip() != "1":
         return False
-    return apparmor_label is not None and apparmor_label.strip(
-        "\0\n "
-    ) == "unconfined"
+    if apparmor_label is None:
+        return False  # unreadable: let WebKit try rather than refuse
+    # The profile name alone: some kernels append the mode, as in
+    # "unconfined (enforce)".
+    return apparmor_label.strip("\0\n ").split(" ", 1)[0] == "unconfined"
 
 
 def read_version(share_dir: str) -> str:

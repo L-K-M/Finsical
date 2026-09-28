@@ -881,10 +881,13 @@ class TestSandboxBlocked(unittest.TestCase):
             logic.sandbox_blocked("1\n", "finsical (unconfined)\n")
         )
         self.assertFalse(logic.sandbox_blocked("0\n", "unconfined\n"))
+        self.assertFalse(logic.sandbox_blocked("1\n", "finsical (enforce)\n"))
+        self.assertTrue(logic.sandbox_blocked("1\n", "unconfined (enforce)\n"))
 
     def test_no_apparmor_is_not_blocked(self):
         self.assertFalse(logic.sandbox_blocked(None, None))
         self.assertFalse(logic.sandbox_blocked("1\n", None))
+        self.assertFalse(logic.sandbox_blocked(None, "unconfined\n"))
 
     def test_label_may_end_in_nul(self):
         self.assertTrue(logic.sandbox_blocked("1", "unconfined\x00\n"))

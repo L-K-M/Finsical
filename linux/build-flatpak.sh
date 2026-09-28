@@ -28,7 +28,7 @@ install_requested=0
 for argument in "$@"; do
   case "$argument" in
     --install) install_requested=1 ;;
-    -h|--help) sed -n '2,4s/^# //p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,5s/^# //p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $argument" >&2; exit 2 ;;
   esac
 done

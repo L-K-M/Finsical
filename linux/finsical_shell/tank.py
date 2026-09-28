@@ -346,6 +346,8 @@ class TankWindow:
                 x11.move(surface, *self._pending_position)
                 self._pending_position = None
             x11.set_state(surface, self._float_above, self._all_desktops)
+        # Again now it is mapped: bare keys (F, C, L...) reach the page.
+        self.page.view.grab_focus()
         self._schedule_shape()
 
     def _on_layout(self, _surface: Gdk.Surface, w: int, h: int) -> None:

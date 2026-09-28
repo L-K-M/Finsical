@@ -285,7 +285,12 @@ class ClientHost:
         # Top-left pinned; the minimum size is the page's size request.
         def begin(p: Press) -> None:
             window.get_surface().begin_resize(
-                Gdk.SurfaceEdge.SOUTH_EAST, p.device, p.button, p.x, p.y, p.time
+                Gdk.SurfaceEdge.SOUTH_EAST,
+                p.device,
+                p.button,
+                p.x,
+                p.y,
+                p.time,
             )
 
         page.begin_window_drag(begin)

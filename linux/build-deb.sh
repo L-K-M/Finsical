@@ -234,6 +234,11 @@ EOF
 cat > "$ROOT/DEBIAN/prerm" <<EOF
 #!/bin/sh
 set -e
+# Unload the profile while its file is still there to name it; the
+# conffile itself stays until purge, and postinst loads it again.
+if [ "\$1" = remove ] && aa-enabled --quiet 2>/dev/null; then
+	apparmor_parser -R /$APPARMOR_PROFILE || true
+fi
 if command -v py3clean >/dev/null 2>&1; then
 	py3clean -p $PACKAGE
 else

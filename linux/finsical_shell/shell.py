@@ -508,8 +508,15 @@ class FinsicalApp(Gtk.Application):
             self._picture_dialog = None
             try:
                 file = d.save_finish(result)
-            except GLib.Error:
-                return  # dismissed
+            except GLib.Error as e:
+                dismissed = e.matches(
+                    Gtk.DialogError.quark(), Gtk.DialogError.DISMISSED
+                )
+                if not dismissed:
+                    log.warning(
+                        "Take a Picture: the save dialog failed: %s", e.message
+                    )
+                return
             path = file.get_path() if file is not None else None
             if path is None:
                 log.warning("Take a Picture: the chosen file has no path")

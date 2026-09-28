@@ -72,7 +72,8 @@ class _Libraries:
         x = ctypes.CDLL("libX11.so.6")
         ext = ctypes.CDLL("libXext.so.6")
         gtk = ctypes.CDLL("libgtk-4.so.1")
-        c_ulong, c_int, c_void_p = ctypes.c_ulong, ctypes.c_int, ctypes.c_void_p
+        c_ulong, c_int = ctypes.c_ulong, ctypes.c_int
+        c_void_p = ctypes.c_void_p
 
         gtk.gdk_x11_display_get_xdisplay.restype = c_void_p
         gtk.gdk_x11_display_get_xdisplay.argtypes = [c_void_p]
