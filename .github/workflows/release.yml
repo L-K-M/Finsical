@@ -206,8 +206,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
-          is_draft=$(gh release view "$GITHUB_REF_NAME" --repo "$REPO" \
-            --json isDraft --jq .isDraft 2>/dev/null || echo absent)
+          # Only a genuine not-found means "proceed"; any other gh
+          # failure must stop the job — mistaking a transient error for
+          # absence would let action-gh-release rewrite a live release.
+          if ! is_draft=$(gh release view "$GITHUB_REF_NAME" --repo "$REPO" \
+            --json isDraft --jq .isDraft 2>/tmp/release-view.err); then
+            if grep -qiE "not found|HTTP 404" /tmp/release-view.err; then
+              is_draft=absent
+            else
+              cat /tmp/release-view.err >&2
+              exit 1
+            fi
+          fi
           if [ "$is_draft" = false ]; then
             echo "published=true" >> "$GITHUB_OUTPUT"
             echo "$GITHUB_REF_NAME is already published; nothing to change."

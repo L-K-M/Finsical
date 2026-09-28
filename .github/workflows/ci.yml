@@ -55,6 +55,9 @@ jobs:
       # Loads the tank and every window from the installed package and
       # checks the bus relay end to end (see "Smoke test" in README.md).
       - run: xvfb-run -a /usr/games/finsical --smoke-test
+      # Purge the .deb so the tarball's launcher can only resolve its
+      # own share/finsical tree; a /usr fallback would mask a break.
+      - run: sudo dpkg --purge finsical
       # The tarball gets the same end-to-end check from its own tree:
       # bin/finsical finds share/finsical next to itself.
       - run: |
