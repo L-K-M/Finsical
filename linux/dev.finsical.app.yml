@@ -1,0 +1,32 @@
+# Flatpak manifest. linux/build-flatpak.sh builds the web app outside
+# the sandbox (the GNOME SDK has no Node.js), stages the Linux tarball's
+# tree in out/flatpak/stage, and builds from that.
+id: dev.finsical.app
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: finsical
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  # X11 only on a desktop without Wayland: there the app keeps the tank
+  # above, on every desktop and where you left it (x11.py). On Wayland
+  # it is a native Wayland window.
+  - --socket=fallback-x11
+  # WebKit's GPU rendering.
+  - --device=dri
+  - --socket=pulseaudio
+  # Downloading add-ons from the Internet Archive.
+  - --share=network
+modules:
+  - name: finsical
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: ../out/flatpak/stage
+    build-commands:
+      - cp -R bin share /app/
+      - install -D -m 0644 -t /app/share/licenses/dev.finsical.app
+        LICENSE THIRD_PARTY_NOTICES.md LICENSES/LGPL-2.1.txt
+      # /app is read-only once installed: compile the shell now.
+      - python3 -m compileall -q /app/share/finsical/finsical_shell

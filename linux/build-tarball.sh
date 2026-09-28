@@ -17,6 +17,11 @@ readonly OUT_DIR="$REPOSITORY_ROOT/out"
 readonly PACKAGE=finsical
 readonly APP_ID=dev.finsical.app
 readonly ICON_SOURCE="$REPOSITORY_ROOT/media-sources/icon-finsical.png"
+# The .deb's sizes (build-deb.sh); a Flatpak refuses an icon larger
+# than its folder says.
+readonly ICON_SIZES=(16 22 24 32 48 64 128 256 512)
+# Renders the icons (GdkPixbuf through PyGObject).
+readonly PYTHON="${PYTHON:-/usr/bin/python3}"
 # The same web payload build-deb.sh installs under /usr/share/finsical.
 readonly WEB_FILES=(index.html overview.html addons.html prefs.html stats.html
                     bundle.js overview.js addons.js prefs.js stats.js
@@ -38,6 +43,9 @@ done
 command -v npm >/dev/null 2>&1 || die "npm not found: install Node.js and npm"
 command -v node >/dev/null 2>&1 || die "node not found: install Node.js"
 command -v tar >/dev/null 2>&1 || die "tar not found"
+"$PYTHON" -c 'import gi; gi.require_version("GdkPixbuf", "2.0"); from gi.repository import GdkPixbuf' 2>/dev/null ||
+  die "$PYTHON cannot load GdkPixbuf through PyGObject (it renders the icons):" \
+      "install python3-gi and gir1.2-gdkpixbuf-2.0, or set PYTHON to a python3 that has them"
 [[ -d "$REPOSITORY_ROOT/node_modules/osmium-ui" ]] ||
   die "node_modules is missing: run npm ci in the repository root"
 
@@ -63,7 +71,7 @@ TOP="$WORK/Finsical-$VERSION-linux"
 install -d -m 0755 "$TOP/bin" "$TOP/share/$PACKAGE/finsical_shell" \
   "$TOP/share/$PACKAGE/web" "$TOP/share/$PACKAGE/core/data" \
   "$TOP/share/applications" "$TOP/share/metainfo" \
-  "$TOP/share/man/man6" "$TOP/share/icons/hicolor/512x512/apps"
+  "$TOP/share/man/man6"
 
 # --- Program ------------------------------------------------------------------
 # The launcher looks for share/finsical next to bin/ (same relative
@@ -91,7 +99,8 @@ sed 's|^Exec=/usr/games/finsical|Exec=finsical|' \
 chmod 0644 "$TOP/share/applications/$APP_ID.desktop"
 sed -e '/<!-- Template:/d' -e "s|@VERSION@|$VERSION|" -e "s|@DATE@|$RELEASE_DAY|" \
   "$SCRIPT_DIR/$APP_ID.metainfo.xml" > "$TOP/share/metainfo/$APP_ID.metainfo.xml"
-install -m 0644 "$ICON_SOURCE" "$TOP/share/icons/hicolor/512x512/apps/$APP_ID.png"
+"$PYTHON" "$SCRIPT_DIR/render-icons.py" "$ICON_SOURCE" \
+  "$TOP/share/icons/hicolor" "$APP_ID" "${ICON_SIZES[@]}"
 # The man page's @VERSION@/@DATE@ get the same fill-in as build-deb.sh.
 sed -e '/^\.\\" Template:/d' -e "s|@VERSION@|$VERSION|" -e "s|@DATE@|$RELEASE_DAY|" \
   "$SCRIPT_DIR/$PACKAGE.6" | gzip -9n > "$TOP/share/man/man6/$PACKAGE.6.gz"
@@ -104,12 +113,15 @@ cat > "$TOP/README.txt" <<EOF
 Finsical $VERSION for Linux
 ===========================
 
-A portable tree for distros without dpkg. It needs GTK 3, WebKitGTK
-4.1 (2.40+) and PyGObject from your distro's packages:
+A portable tree for distros without dpkg. It needs GTK 4.12+,
+WebKitGTK 2.40+ with its 6.0 API, and PyGObject from your distro's
+packages:
 
-    Debian/Ubuntu: python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1
-    Fedora:        python3-gobject gtk3 webkit2gtk4.1
-    Arch:          python-gobject gtk3 webkit2gtk-4.1
+    Debian/Ubuntu: python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-webkit-6.0
+    Fedora:        python3-gobject python3-cairo gtk4 webkitgtk6.0
+    Arch:          python-gobject python-cairo gtk4 webkitgtk-6.0
+
+The Flatpak (Finsical-$VERSION.flatpak) needs none of these.
 
 Run in place:            ./bin/finsical
 Install for yourself:    tar -xzf Finsical-$VERSION-linux.tar.gz \\
