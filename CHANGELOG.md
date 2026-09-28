@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Releases now publish themselves once every platform's download is
+  attached and verified against its checksums — no manual step. Linux
+  also ships as a portable tarball next to the .deb.
 - In the Mac app, the Tank Stats, Tank Overview, Preferences and Add-ons
   windows no longer show a white pixel just outside their top-right
   and bottom-left corners.

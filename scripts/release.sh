@@ -94,7 +94,6 @@ if [[ "$push_option" == "--push" ]]; then
 fi
 
 echo "Created $tag."
-# The Release workflow only uploads a draft, and the README's Download
-# link (releases/latest) skips drafts, so publishing stays a manual step.
-echo "After the Release workflow finishes, review the draft and publish it:"
-echo "  gh release edit $tag --draft=false --latest"
+# The Release workflow publishes itself once every asset is attached
+# and verified against SHA256SUMS.txt — no manual step.
+echo "The Release workflow verifies the assets, then publishes $tag."
