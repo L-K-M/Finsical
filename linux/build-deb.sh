@@ -24,6 +24,9 @@ readonly MAN_SECTION=6
 # Python Policy 5.3); the launcher finds them relative to itself.
 readonly SHARE_DIR="usr/share/$PACKAGE"
 readonly DOC_DIR="usr/share/doc/$PACKAGE"
+# WebKitGTK's sandbox needs user namespaces, which Ubuntu grants only
+# to profiled programs (finsical.apparmor).
+readonly APPARMOR_PROFILE="etc/apparmor.d/$PACKAGE"
 readonly ICON_SOURCE="$REPOSITORY_ROOT/media-sources/icon-finsical.png"
 # 512 is the largest plain size in hicolor's index.theme; AppStream
 # wants at least 64.
@@ -114,7 +117,8 @@ readonly ROOT="$WORK/root"
 install -d -m 0755 "$ROOT/DEBIAN" "$ROOT/$BIN_DIR" "$ROOT/$SHARE_DIR/finsical_shell" \
   "$ROOT/$SHARE_DIR/web" "$ROOT/$SHARE_DIR/core/data" \
   "$ROOT/usr/share/applications" "$ROOT/usr/share/metainfo" \
-  "$ROOT/$DOC_DIR" "$ROOT/usr/share/man/man$MAN_SECTION" "$ROOT/usr/share/lintian/overrides"
+  "$ROOT/$DOC_DIR" "$ROOT/usr/share/man/man$MAN_SECTION" "$ROOT/usr/share/lintian/overrides" \
+  "$ROOT/etc/apparmor.d"
 
 # --- Program ------------------------------------------------------------------
 install -m 0755 "$SCRIPT_DIR/finsical" "$ROOT/$BIN_DIR/$PACKAGE"
@@ -138,6 +142,7 @@ install -m 0644 "$MACE_SOURCE" "$ROOT/$SHARE_DIR/$MACE_SOURCE"
 
 # --- Desktop integration ------------------------------------------------------
 install -m 0644 "$SCRIPT_DIR/$APP_ID.desktop" "$ROOT/usr/share/applications/"
+install -m 0644 "$SCRIPT_DIR/$PACKAGE.apparmor" "$ROOT/$APPARMOR_PROFILE"
 sed -e '/<!-- Template:/d' -e "s|@VERSION@|$VERSION|" -e "s|@DATE@|$RELEASE_DAY|" \
   "$SCRIPT_DIR/$APP_ID.metainfo.xml" > "$ROOT/usr/share/metainfo/$APP_ID.metainfo.xml"
 "$PYTHON" "$SCRIPT_DIR/render-icons.py" "$ICON_SOURCE" \
@@ -213,11 +218,17 @@ EOF
 # postinst-py3compile and prerm-py3clean): compile at install with the
 # system's python3, and remove the bytecode before dpkg removes the
 # directories, or they are left behind.
+# The AppArmor load is what dh_apparmor generates: only where AppArmor
+# is enabled, and never failing the install (the app then says why it
+# cannot start).
 cat > "$ROOT/DEBIAN/postinst" <<EOF
 #!/bin/sh
 set -e
 if command -v py3compile >/dev/null 2>&1; then
 	py3compile -p $PACKAGE /$SHARE_DIR
+fi
+if [ "\$1" = configure ] && aa-enabled --quiet 2>/dev/null; then
+	apparmor_parser -r -T -W /$APPARMOR_PROFILE || true
 fi
 EOF
 cat > "$ROOT/DEBIAN/prerm" <<EOF
@@ -231,9 +242,12 @@ fi
 EOF
 chmod 0755 "$ROOT/DEBIAN/postinst" "$ROOT/DEBIAN/prerm"
 
-(cd "$ROOT" && find . -path ./DEBIAN -prune -o -type f -printf '%P\0' | sort -z |
-  xargs -0 md5sum) > "$ROOT/DEBIAN/md5sums"
-chmod 0644 "$ROOT/DEBIAN/control" "$ROOT/DEBIAN/md5sums"
+# Everything under /etc is a conffile; dpkg tracks those itself, so
+# md5sums leaves them out (as dh_md5sums does).
+printf '/%s\n' "$APPARMOR_PROFILE" > "$ROOT/DEBIAN/conffiles"
+(cd "$ROOT" && find . \( -path ./DEBIAN -o -path ./etc \) -prune -o -type f -printf '%P\0' |
+  sort -z | xargs -0 md5sum) > "$ROOT/DEBIAN/md5sums"
+chmod 0644 "$ROOT/DEBIAN/control" "$ROOT/DEBIAN/md5sums" "$ROOT/DEBIAN/conffiles"
 
 # dpkg-deb only lowers mtimes newer than SOURCE_DATE_EPOCH; set them all.
 find "$ROOT" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +

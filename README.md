@@ -121,7 +121,10 @@ Python 3.10 or later. On older releases, use the Flatpak.
 
 3. Open Finsical from your desktop's applications, or run `finsical`.
 
-Importing AIFF and M4A sounds needs `gstreamer1.0-plugins-bad`, which
+The package includes an AppArmor profile (`/etc/apparmor.d/finsical`)
+that only lets Finsical create the user namespaces WebKitGTK's sandbox
+needs, as Ubuntu's own profiles do for Epiphany and Geary; it restricts
+nothing. Importing AIFF and M4A sounds needs `gstreamer1.0-plugins-bad`, which
 apt installs with Finsical unless you turned off recommended packages.
 
 #### Tarball
@@ -131,7 +134,10 @@ tree: unpack and run `bin/finsical`, or merge it into `~/.local` or
 `/usr/local` with `tar -xzf … --strip-components=1 -C <prefix>` to
 register the desktop entry, icon and man page. You need GTK 4.12,
 WebKitGTK 2.40 with its 6.0 API, and PyGObject installed; its
-`README.txt` lists the package names for Debian, Fedora and Arch.
+`README.txt` lists the package names for Debian, Fedora and Arch. On
+Ubuntu 23.10 and later, AppArmor keeps WebKitGTK's sandbox from
+starting for a program without a profile, so Finsical from the tarball
+stops with a message there: use the .deb or the Flatpak instead.
 
 #### X11 and Wayland
 

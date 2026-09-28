@@ -54,12 +54,17 @@ jobs:
       - run: sudo apt-get install -y ./out/Finsical-*-linux.deb
       # Loads the tank and every window from the installed package and
       # checks the bus relay end to end (see "Smoke test" in README.md).
+      # Ubuntu's AppArmor user-namespace restriction is on here, so this
+      # also proves the package's profile lets WebKit's sandbox start.
       - run: xvfb-run -a /usr/games/finsical --smoke-test
       # Purge the .deb so the tarball's launcher can only resolve its
       # own share/finsical tree; a /usr fallback would mask a break.
       - run: sudo dpkg --purge finsical
       # The tarball gets the same end-to-end check from its own tree:
-      # bin/finsical finds share/finsical next to itself.
+      # bin/finsical finds share/finsical next to itself. It has no
+      # AppArmor profile, so it runs as on a distribution without
+      # Ubuntu's user-namespace restriction (Fedora, Arch, Debian).
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: |
           mkdir tarball && tar -xzf out/Finsical-*-linux.tar.gz -C tarball
           xvfb-run -a ./tarball/Finsical-*-linux/bin/finsical --smoke-test

@@ -13,6 +13,7 @@ import os
 import shutil
 import sys
 import tempfile
+from typing import Optional
 
 from . import logic
 
@@ -86,6 +87,37 @@ def _bring_up_gtk() -> None:
         )
 
 
+def _read_text(path: str) -> Optional[str]:
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def _check_sandbox() -> None:
+    """Fail with instructions where WebKitGTK's sandbox cannot start
+    (logic.sandbox_blocked). Inside a Flatpak, WebKit sandboxes through
+    the Flatpak portal instead."""
+    if os.path.exists("/.flatpak-info") or os.environ.get(
+        logic.WEBKIT_NO_SANDBOX_ENV
+    ):
+        return
+    label = _read_text("/proc/self/attr/apparmor/current")
+    if label is None:
+        label = _read_text("/proc/self/attr/current")
+    if logic.sandbox_blocked(
+        _read_text("/proc/sys/kernel/apparmor_restrict_unprivileged_userns"),
+        label,
+    ):
+        raise StartupError(
+            "this system's AppArmor blocks the user namespaces WebKitGTK's"
+            " sandbox needs, and this copy of Finsical has no profile that"
+            " allows them. Install the .deb (it ships one) or the Flatpak;"
+            " see Linux in the README"
+        )
+
+
 def _parse_args(argv: list[str], version: str) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="finsical", description="A lightweight retro virtual aquarium."
@@ -116,6 +148,7 @@ def main(argv: list[str], share_dir: str, layout: logic.Layout) -> int:
                 os.environ.get(logic.WEB_ROOT_ENV), share_dir, layout
             )
         )
+        _check_sandbox()
         _bring_up_gtk()
     except (logic.WebRootError, StartupError) as e:
         print(f"finsical: {e}", file=sys.stderr)

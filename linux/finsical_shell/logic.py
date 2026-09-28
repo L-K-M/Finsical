@@ -85,6 +85,29 @@ def find_web_root(
     )
 
 
+# WebKitGTK's own escape hatch: with it set, no sandbox, so no need for
+# user namespaces.
+WEBKIT_NO_SANDBOX_ENV = "WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS"
+
+
+def sandbox_blocked(
+    restrict_userns: Optional[str], apparmor_label: Optional[str]
+) -> bool:
+    """Whether WebKitGTK's bubblewrap sandbox will fail to start: AppArmor
+    restricts unprivileged user namespaces (Ubuntu 23.10 and later,
+    kernel.apparmor_restrict_unprivileged_userns = 1) and this process
+    has no profile granting them (its label is plain "unconfined"; the
+    .deb's profile reads "finsical (unconfined)"). WebKit then aborts
+    with a core dump rather than an error, so the app checks first.
+    Arguments are the sysctl's and /proc/self/attr's text, or None
+    where there is none."""
+    if restrict_userns is None or restrict_userns.strip() != "1":
+        return False
+    return apparmor_label is not None and apparmor_label.strip(
+        "\0\n "
+    ) == "unconfined"
+
+
 def read_version(share_dir: str) -> str:
     """The version build-deb.sh recorded, or DEVELOPMENT_VERSION when
     running from a checkout."""

@@ -1,0 +1,14 @@
+# Finsical's pages run in WebKitGTK's bubblewrap sandbox, which needs
+# unprivileged user namespaces. Ubuntu 23.10 and later allow those only
+# to programs with an AppArmor profile that says so, as it does for
+# Epiphany and Geary. Like theirs, this profile confines nothing else.
+
+abi <abi/4.0>,
+include <tunables/global>
+
+profile finsical /usr/games/finsical flags=(unconfined) {
+  userns,
+
+  # Site-specific additions and overrides. See local/README for details.
+  include if exists <local/finsical>
+}
