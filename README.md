@@ -20,8 +20,9 @@ Archive.org integration inspired by [Afterglow](https://morphing.cloud/afterglow
 ## Download and first launch
 
 Each [release](https://github.com/L-K-M/Finsical/releases/latest) has a
-macOS app, a Linux package and an Android app, with `SHA256SUMS.txt`
-next to them so you can check a download.
+macOS app, a Linux package (.deb and a portable tarball) and an
+Android app, with `SHA256SUMS.txt` next to them so you can check a
+download.
 
 ### macOS
 
@@ -66,6 +67,13 @@ Python 3.10 or later.
    ```
 
 3. Open Finsical from your desktop's applications, or run `finsical`.
+
+No dpkg? `Finsical-<version>-linux.tar.gz` is the same app as a
+prefix-shaped tree: unpack and run `bin/finsical`, or merge it into
+`~/.local` or `/usr/local` with `tar -xzf … --strip-components=1 -C
+<prefix>` to register the desktop entry, icon and man page. You need
+GTK 3, WebKitGTK 4.1 and PyGObject installed — the same requirements
+as the package above.
 
 Finsical prefers X11, and on a Wayland desktop runs through XWayland,
 because only there can it keep the tank above other windows, on every
@@ -358,6 +366,8 @@ which defaults to the last commit's time. To run the shell from a
 checkout without installing it, install the packages the .deb depends
 on (`python3-gi`, `python3-gi-cairo`, `gir1.2-gtk-3.0`,
 `gir1.2-webkit2-4.1`), run `npm run build`, then `linux/finsical`.
+`linux/build-tarball.sh` builds `out/Finsical-<version>-linux.tar.gz`,
+the prefix-shaped portable tree the release also ships.
 
 **Android app:** needs JDK 17 or later and the Android SDK with
 platform `android-37.0` and build tools 36.0.0 (`ANDROID_HOME` pointing

@@ -50,14 +50,23 @@ jobs:
       - run: npm ci
       # --check: desktop-file-validate, appstreamcli and lintian.
       - run: linux/build-deb.sh --check
+      - run: linux/build-tarball.sh
       - run: sudo apt-get install -y ./out/Finsical-*-linux.deb
       # Loads the tank and every window from the installed package and
       # checks the bus relay end to end (see "Smoke test" in README.md).
       - run: xvfb-run -a /usr/games/finsical --smoke-test
+      # Purge the .deb so the tarball's launcher can only resolve its
+      # own share/finsical tree; a /usr fallback would mask a break.
+      - run: sudo dpkg --purge finsical
+      # The tarball gets the same end-to-end check from its own tree:
+      # bin/finsical finds share/finsical next to itself.
+      - run: |
+          mkdir tarball && tar -xzf out/Finsical-*-linux.tar.gz -C tarball
+          xvfb-run -a ./tarball/Finsical-*-linux/bin/finsical --smoke-test
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: finsical-linux-deb
-          path: out/Finsical-*-linux.deb
+          name: finsical-linux
+          path: out/Finsical-*-linux.*
           if-no-files-found: error
           retention-days: 7
   android:

@@ -96,8 +96,10 @@ jobs:
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
           linux/build-deb.sh --check
+          linux/build-tarball.sh
           mkdir -p release
           mv "out/Finsical-$VERSION-linux.deb" release/
+          mv "out/Finsical-$VERSION-linux.tar.gz" release/
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-linux
@@ -182,7 +184,7 @@ jobs:
           retention-days: 7
 
   publish:
-    name: Publish draft
+    name: Publish release
     needs: [verify, native-macos, linux-deb, android]
     # A missing Android signing key must not hold back the other
     # platforms; the android job's failure stays visible in the run.
@@ -195,25 +197,82 @@ jobs:
     permissions:
       contents: write
     steps:
+      # A re-run after the release went public must not touch it —
+      # action-gh-release's default on an existing release is to update
+      # it, overwriting same-named assets live.
+      - name: Gate on the release still being a draft
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Only a genuine not-found means "proceed"; any other gh
+          # failure must stop the job — mistaking a transient error for
+          # absence would let action-gh-release rewrite a live release.
+          if ! is_draft=$(gh release view "$GITHUB_REF_NAME" --repo "$REPO" \
+            --json isDraft --jq .isDraft 2>/tmp/release-view.err); then
+            if grep -qiE "not found|HTTP 404" /tmp/release-view.err; then
+              is_draft=absent
+            else
+              cat /tmp/release-view.err >&2
+              exit 1
+            fi
+          fi
+          if [ "$is_draft" = false ]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "$GITHUB_REF_NAME is already published; nothing to change."
+          fi
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: ${{ steps.gate.outputs.published != 'true' }}
         with:
           pattern: release-*
           path: release
           merge-multiple: true
       - name: Checksums
+        if: ${{ steps.gate.outputs.published != 'true' }}
         run: |
           cd release
           sha256sum Finsical-* > SHA256SUMS.txt
           cat SHA256SUMS.txt
       - name: Note a missing APK
-        if: ${{ needs.android.result != 'success' }}
-        run: echo "::warning::The draft has no Android APK because the android job did not succeed."
-      # The README's Download link (releases/latest) skips drafts, so
-      # publishing stays a manual step.
-      - name: Publish draft
+        if: ${{ needs.android.result != 'success' && steps.gate.outputs.published != 'true' }}
+        run: echo "::warning::The release has no Android APK because the android job did not succeed."
+      # Created hidden so a failed run never leaves a public partial
+      # release; the steps below verify, then flip it live.
+      - name: Create draft with assets
+        if: ${{ steps.gate.outputs.published != 'true' }}
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           name: Finsical ${{ needs.verify.outputs.version }}
           draft: true
           generate_release_notes: true
           files: release/*
+      # Re-download everything the release serves and check it against
+      # the sums — assets must match the listed set exactly (a short
+      # sums list would leave assets unverified), then every digest.
+      - name: Verify the uploaded asset set before publishing
+        if: ${{ steps.gate.outputs.published != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p verify && cd verify
+          gh release download "$GITHUB_REF_NAME" --repo "$REPO" --clobber
+          listed=$(sed -E 's/^[0-9a-f]{64} [ *]?//' SHA256SUMS.txt | awk 'NF' | sort)
+          files=$(find . -maxdepth 1 -type f ! -name SHA256SUMS.txt \
+            -printf '%f\n' | sort)
+          if ! diff -u <(printf '%s\n' "$files") <(printf '%s\n' "$listed"); then
+            echo "SHA256SUMS.txt and the uploaded asset set are not a bijection" >&2
+            exit 1
+          fi
+          sha256sum -c --strict SHA256SUMS.txt
+      # Only now: a public release is never partial or unverified.
+      - name: Publish
+        if: ${{ steps.gate.outputs.published != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: >
+          gh release edit "$GITHUB_REF_NAME" --repo "$REPO"
+          --draft=false --latest
