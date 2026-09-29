@@ -237,13 +237,17 @@ class MenuExporter:
             return
         self._snapshot = snapshot
         self._revision += 1
-        self._connection.emit_signal(
-            None,
-            OBJECT_PATH,
-            INTERFACE,
-            "LayoutUpdated",
-            GLib.Variant("(ui)", (self._revision, _ROOT_ID)),
-        )
+        try:
+            self._connection.emit_signal(
+                None,
+                OBJECT_PATH,
+                INTERFACE,
+                "LayoutUpdated",
+                GLib.Variant("(ui)", (self._revision, _ROOT_ID)),
+            )
+        except GLib.Error as e:
+            # The bus went away (logout): the menu has no reader left.
+            log.info("global menu update not sent: %s", e.message)
 
     def _props_snapshot(self) -> list[tuple[int, str]]:
         _root, nodes = build_tree(self._source)
@@ -277,9 +281,11 @@ class MenuExporter:
         params: GLib.Variant,
         invocation: Gio.DBusMethodInvocation,
     ) -> None:
-        args = params.unpack()
-        root, nodes = build_tree(self._source)
+        # Every call gets exactly one reply, or the reader waits out its
+        # timeout.
         try:
+            args = params.unpack()
+            root, nodes = build_tree(self._source)
             reply = self._dispatch(method, args, root, nodes)
         except KeyError as e:
             invocation.return_dbus_error(
@@ -289,6 +295,12 @@ class MenuExporter:
         except ValueError as e:
             invocation.return_dbus_error(
                 "org.freedesktop.DBus.Error.UnknownMethod", str(e)
+            )
+            return
+        except Exception as e:
+            log.warning("global menu: %s failed: %s", method, e)
+            invocation.return_dbus_error(
+                "org.freedesktop.DBus.Error.Failed", str(e)
             )
             return
         invocation.return_value(reply)
@@ -326,7 +338,10 @@ class MenuExporter:
             return None
         if method == "EventGroup":
             (events,) = args
+            # The spec: the ids not found; an error if none is.
             errors = [i for i, *_rest in events if i not in nodes]
+            if events and len(errors) == len(events):
+                raise KeyError(errors[0])
             for node_id, event, _data, _time in events:
                 if node_id in nodes:
                     self._event(nodes, node_id, event)
@@ -338,8 +353,10 @@ class MenuExporter:
             return GLib.Variant("(b)", (False,))
         if method == "AboutToShowGroup":
             (ids,) = args
-            self.refresh()
             errors = [i for i in ids if i not in nodes]
+            if ids and len(errors) == len(ids):
+                raise KeyError(errors[0])
+            self.refresh()
             return GLib.Variant("(aiai)", ([], errors))
         raise ValueError(f"unknown method {method}")
 

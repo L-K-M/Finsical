@@ -150,6 +150,9 @@ class _AppMenu:
             None,
         )
         wl.wl_proxy_wrapper_destroy(wrapper)
+        if not registry:
+            wl.wl_event_queue_destroy(queue)
+            return None
 
         found: list[tuple[int, int]] = []
 
@@ -226,7 +229,7 @@ def announce_appmenu(surface: Gdk.Surface, service: str, path: str) -> None:
     if key not in _appmenus:
         try:
             appmenu: Optional[_AppMenu] = _AppMenu(display)
-        except (OSError, AttributeError) as e:
+        except (OSError, AttributeError, TypeError, ValueError) as e:
             log.info("no Wayland appmenu support: %s", e)
             appmenu = None
         if appmenu is not None and appmenu.manager is None:
