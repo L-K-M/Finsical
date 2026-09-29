@@ -7,6 +7,8 @@ import base64
 import json
 import os
 import pathlib
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -884,6 +886,44 @@ class TestNeedsUtf8Locale(unittest.TestCase):
     def test_utf8_and_other_charsets_stay(self):
         self.assertFalse(logic.needs_utf8_locale(True, "UTF-8"))
         self.assertFalse(logic.needs_utf8_locale(True, "ISO-8859-1"))
+
+
+class TestEnsureUtf8Locale(unittest.TestCase):
+    """app._ensure_utf8_locale in a child process: it changes the
+    process's locale and environment."""
+
+    _CHILD = (
+        "import os\n"
+        "from finsical_shell import app\n"
+        "app._ensure_utf8_locale()\n"
+        "print(os.environ.get('LC_ALL', '<unset>'))\n"
+    )
+
+    def _lc_all_after(self, **locale_env: str) -> str:
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if not k.startswith(("LANG", "LC_"))
+        }
+        env.update(locale_env)
+        env["PYTHONPATH"] = str(pathlib.Path(__file__).parents[1])
+        result = subprocess.run(
+            [sys.executable, "-c", self._CHILD],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+
+    def test_missing_locale_switches_the_environment(self):
+        self.assertEqual(
+            self._lc_all_after(LANG="xx_XX.UTF-8"),
+            logic.UTF8_FALLBACK_LOCALE,
+        )
+
+    def test_utf8_locale_is_left_alone(self):
+        self.assertEqual(self._lc_all_after(LANG="C.UTF-8"), "<unset>")
 
 
 class TestSandboxBlocked(unittest.TestCase):

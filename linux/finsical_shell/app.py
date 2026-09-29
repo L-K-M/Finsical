@@ -101,10 +101,17 @@ def _ensure_utf8_locale() -> None:
         available, locale.nl_langinfo(locale.CODESET)
     ):
         return
+    previous = os.environ.get("LC_ALL")
     os.environ["LC_ALL"] = logic.UTF8_FALLBACK_LOCALE
     try:
         locale.setlocale(locale.LC_ALL, "")
     except locale.Error:
+        # Leave the environment as it was rather than point every
+        # child at a locale that is not there either.
+        if previous is None:
+            del os.environ["LC_ALL"]
+        else:
+            os.environ["LC_ALL"] = previous
         logic.log.warning(
             "no %s locale either; text may be mangled",
             logic.UTF8_FALLBACK_LOCALE,
