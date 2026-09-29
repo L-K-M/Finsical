@@ -442,6 +442,22 @@ class TestGeometry(unittest.TestCase):
         )
         self.assertEqual(size, Size(200, 200))
 
+    def test_aspect_snap_shrinks_the_side_that_overshoots(self):
+        # A Macintosh Plus case (821 x 1059) dragged too wide, then too
+        # tall: the other side stays, so the case fills what was asked.
+        plus = 821 / 1059
+        self.assertEqual(
+            logic.aspect_snapped(Size(900, 800), plus), Size(620, 800)
+        )
+        self.assertEqual(
+            logic.aspect_snapped(Size(620, 1100), plus), Size(620, 800)
+        )
+
+    def test_aspect_snap_leaves_rounding_alone(self):
+        plus = 821 / 1059
+        self.assertIsNone(logic.aspect_snapped(Size(620, 800), plus))
+        self.assertIsNone(logic.aspect_snapped(Size(621, 800), plus))
+
     def test_intersects_any(self):
         monitors = [Rect(0, 0, 1920, 1080), Rect(1920, 0, 1280, 1024)]
         self.assertTrue(
@@ -562,7 +578,7 @@ class TestClientWindowState(unittest.TestCase):
         spec = re.compile(
             r"OsmiumWindowSpec\(\s*url: page\(\"([^\"]+)\"\), "
             r"title: \"([^\"]+)\",\s*frameKey: \"([^\"]+)\", "
-            rf"size: {size}(?:,\s*minSize: {size})?\)"
+            rf"size: {size}(?:,\s*minSize: (?:{size}|nil))?\)"
         )
         macos = [
             (
@@ -574,7 +590,12 @@ class TestClientWindowState(unittest.TestCase):
             )
             for page, title, key, w, h, mw, mh in spec.findall(swift)
         ]
-        self.assertEqual(len(macos), len(logic.CLIENT_SPECS))
+        self.assertEqual(
+            len(macos),
+            len(logic.CLIENT_SPECS),
+            "the pattern no longer matches every OsmiumWindowSpec in"
+            " Finsical.swift; its formatting likely changed",
+        )
         self.assertEqual(
             [
                 (s.page, s.title, s.frame_key, s.size, s.min_size)

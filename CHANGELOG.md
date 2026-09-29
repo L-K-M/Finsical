@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- On Linux, when the window manager resizes the tank (for example with
+  KWin's Alt+right-drag), the tank snaps back to its computer case's
+  shape once you let go, instead of leaving empty space beside it.
 - On Linux and Android, Tank Stats opens at its tabbed size and can be
   made as small as on the Mac, instead of keeping the tall size from
   before the tabs. Preferences opens at the Mac's size again, which

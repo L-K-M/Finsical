@@ -364,6 +364,19 @@ def swapped_machine_frame(
     return Rect(frame.x, frame.y, round(w), round(w * vb_h / vb_w))
 
 
+def aspect_snapped(size: Size, aspect: float) -> Optional[Size]:
+    """The largest size at `aspect` inside `size`, or None when `size`
+    is already there to within a pixel's rounding. GTK 4 cannot hold a
+    window to an aspect ratio while it is resized (macOS uses
+    contentAspectRatio), so the tank snaps back to its case afterwards;
+    shrinking one side keeps it inside what the user dragged out."""
+    w = min(size.w, size.h * aspect)
+    snapped = Size(round(w), round(w / aspect))
+    if abs(snapped.w - size.w) <= 1 and abs(snapped.h - size.h) <= 1:
+        return None
+    return snapped
+
+
 class SizeStep(enum.Enum):
     LARGER = "larger"
     SMALLER = "smaller"
