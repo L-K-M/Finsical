@@ -12,7 +12,7 @@ from typing import Any, Optional
 
 from gi.repository import GLib
 
-from . import logic
+from . import dbusmenu, logic
 from .clients import ClientWindow
 from .shell import FinsicalApp, Observer
 
@@ -41,6 +41,11 @@ class Step(enum.Enum):
     LOST_PRESS = (
         "a press the window manager kept the release of still reaches"
         " every page as a pointerdown",
+        10,
+    )
+    GLOBAL_MENU = (
+        "the global menu serves the menu bar over D-Bus (skipped without"
+        " a session bus)",
         10,
     )
     MENU_CALL = ("the menu's Pause Simulation reaches the tank and back", 10)
@@ -231,17 +236,64 @@ class SmokeTest(Observer):
                 return
             waiting.discard(name)
             if not waiting:
-                # The menu's own action, as a click on it runs it.
-                self._begin(Step.MENU_CALL)
-                self._want_paused = True
-                assert self._app is not None
-                self._app.activate_action("pause", None)
+                self._check_global_menu()
 
         for name, page in pages.items():
             page.evaluate(
                 logic.LOST_PRESS_RESTORED_SCRIPT,
                 lambda v, e, name=name: checked(name, v, e),
             )
+
+    def _check_global_menu(self) -> None:
+        """Fetch the menu bar the way a desktop's global menu does, over
+        the bus, and check its menus and items against MENU_BAR."""
+        self._begin(Step.GLOBAL_MENU)
+        assert self._app is not None
+        menu = self._app.global_menu
+        if menu is None:
+            self._begin_menu_call()
+            return
+
+        def got(connection: Any, result: Any) -> None:
+            if self._step is not Step.GLOBAL_MENU:
+                return
+            try:
+                reply = connection.call_finish(result)
+            except GLib.Error as e:
+                self._fail(f"GetLayout failed: {e.message}")
+                return
+            _revision, (_root, _props, menus) = reply.unpack()
+            titles = [props.get("label") for _id, props, _items in menus]
+            want = [m.title for m in logic.MENU_BAR]
+            if titles != want:
+                self._fail(f"the menus are {titles}, not {want}")
+                return
+            items = sum(len(entries) for _id, _props, entries in menus)
+            want_items = sum(len(m.actions) for m in logic.MENU_BAR)
+            if items != want_items:
+                self._fail(f"{items} menu items, not {want_items}")
+                return
+            self._begin_menu_call()
+
+        menu.connection.call(
+            menu.bus_name,
+            dbusmenu.OBJECT_PATH,
+            dbusmenu.INTERFACE,
+            "GetLayout",
+            GLib.Variant("(iias)", (0, -1, [])),
+            GLib.VariantType("(u(ia{sv}av))"),
+            0,
+            5000,
+            None,
+            got,
+        )
+
+    def _begin_menu_call(self) -> None:
+        # The menu's own action, as a click on it runs it.
+        self._begin(Step.MENU_CALL)
+        self._want_paused = True
+        assert self._app is not None
+        self._app.activate_action("pause", None)
 
     def _step_timeout(self, step: Step) -> bool:
         self._step_timer = 0

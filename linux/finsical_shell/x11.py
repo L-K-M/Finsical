@@ -26,6 +26,8 @@ log = logic.log
 _CLIENT_MESSAGE = 33
 _SUBSTRUCTURE_NOTIFY_MASK = 1 << 19
 _SUBSTRUCTURE_REDIRECT_MASK = 1 << 20
+_XA_STRING = 31
+_PROP_MODE_REPLACE = 0
 _SHAPE_BOUNDING = 0
 _SHAPE_SET = 0
 _UNSORTED = 0
@@ -92,6 +94,10 @@ class _Libraries:
             ctypes.POINTER(c_ulong),
         ]
         x.XFlush.argtypes = [c_void_p]
+        x.XChangeProperty.argtypes = [
+            c_void_p, c_ulong, c_ulong, c_ulong, c_int, c_int,
+            ctypes.c_char_p, c_int,
+        ]
         ext.XShapeCombineRectangles.argtypes = [
             c_void_p, c_ulong, c_int, c_int, c_int,
             ctypes.POINTER(_Rectangle), c_int, c_int, c_int,
@@ -198,6 +204,28 @@ def set_state(surface: Gdk.Surface, above: bool, sticky: bool) -> None:
                 0,
                 _SUBSTRUCTURE_REDIRECT_MASK | _SUBSTRUCTURE_NOTIFY_MASK,
                 ctypes.byref(event),
+            )
+
+
+def set_appmenu(surface: Gdk.Surface, service: str, path: str) -> None:
+    """Point KDE's global menu for this window at the DBusMenu object at
+    `path` on the bus name `service` (dbusmenu.py): the properties
+    KWin reads, as KDE's own apps set them."""
+    with _Request(surface) as r:
+        for name, value in (
+            (b"_KDE_NET_WM_APPMENU_SERVICE_NAME", service),
+            (b"_KDE_NET_WM_APPMENU_OBJECT_PATH", path),
+        ):
+            data = value.encode()
+            r.libs.x.XChangeProperty(
+                r.xdisplay,
+                r.xid,
+                r.libs.x.XInternAtom(r.xdisplay, name, 0),
+                _XA_STRING,
+                8,
+                _PROP_MODE_REPLACE,
+                data,
+                len(data),
             )
 
 

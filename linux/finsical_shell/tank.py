@@ -17,7 +17,7 @@ from . import logic, x11
 from .logic import Rect, Size
 from .screen import (
     is_x11,
-    make_transparent,
+    make_frameless,
     surface_point,
     window_frame,
     work_area,
@@ -166,8 +166,7 @@ class TankWindow:
         self._all_desktops = False
 
         self.window = Gtk.ApplicationWindow(application=app, title=TANK_TITLE)
-        self.window.set_decorated(False)
-        make_transparent(self.window)
+        make_frameless(self.window)
         self.x11 = is_x11(self.window.get_display())
 
         # The drag strip across the top is the only way to move the
