@@ -397,10 +397,14 @@ class TankWindow:
             or self._silhouette is None
         ):
             return GLib.SOURCE_REMOVE
-        w, h = surface.get_width(), surface.get_height()
+        # The case fills the window, which sits inside the surface at an
+        # offset where GTK adds resize borders (client-side decorations).
+        w, h = self.window.get_width(), self.window.get_height()
         region = self._silhouette.region(w, h)
         if region is None:
             region = cairo.Region(cairo.RectangleInt(0, 0, w, h))
+        dx, dy = self.window.get_surface_transform()
+        region.translate(round(dx), round(dy))
         surface.set_input_region(region)
         if self.x11:
             composited = self.window.get_display().is_composited()

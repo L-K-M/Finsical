@@ -31,6 +31,10 @@ class Step(enum.Enum):
         "the tank posts its first state (scheme, script, handler)",
         30,
     )
+    TANK_TRANSPARENT = (
+        "the tank's page view draws no background of its own",
+        10,
+    )
     CLIENTS = ("every client window says hello and reports its fold state", 30)
     STATS_ROWS = ("Tank Stats renders a state relayed from the tank", 20)
     CONTEXT_MENU = (
@@ -84,6 +88,9 @@ class SmokeTest(Observer):
             return
         assert self._app is not None
         if self._step is Step.TANK_STATE:
+            self._begin(Step.TANK_TRANSPARENT)
+            if not self._tank_transparent():
+                return
             self._begin(Step.CLIENTS)
             for spec in logic.CLIENT_SPECS:
                 self._app.show_client(spec.name)
@@ -152,6 +159,16 @@ class SmokeTest(Observer):
         if self._step_timer:
             GLib.source_remove(self._step_timer)
             self._step_timer = 0
+
+    def _tank_transparent(self) -> bool:
+        # An opaque view background shows as a rectangle around the case
+        # (the page's dark canvas) wherever the page is transparent.
+        assert self._app is not None and self._app.tank is not None
+        color = self._app.tank.page.view.get_background_color()
+        if color.alpha != 0:
+            self._fail(f"the tank's view background is {color.to_string()}")
+            return False
+        return True
 
     def _poll_stats(self) -> bool:
         if self._step is not Step.STATS_ROWS:

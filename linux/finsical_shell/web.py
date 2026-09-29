@@ -115,9 +115,12 @@ class WebHost:
             self._console_to_stdout
         )
         # The page draws every visible pixel (the machine case, the Mac
-        # OS 8 window); anything it leaves transparent stays so.
+        # OS 8 window); anything it leaves transparent stays so. Set
+        # field by field: GDK parses no "transparent" keyword, and a new
+        # Gdk.RGBA starts opaque white in the GNOME 50 runtime.
         transparent = Gdk.RGBA()
-        transparent.parse("transparent")
+        transparent.red = transparent.green = transparent.blue = 0.0
+        transparent.alpha = 0.0
         view.set_background_color(transparent)
         view.connect("decide-policy", self._on_decide_policy)
         view.connect("create", self._on_create)

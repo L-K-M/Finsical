@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- In the Linux Flatpak, the tank is shaped like the computer case again
+  instead of sitting in a dark rectangle, and on Wayland it no longer
+  has an invisible title bar above it that caught clicks.
 - The Linux Flatpak no longer crashes at startup on systems whose
   language settings the Flatpak runtime doesn't cover.
 - On KDE Plasma, Finsical's menu also shows in the Global Menu widget,

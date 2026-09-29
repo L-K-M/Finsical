@@ -90,7 +90,10 @@ def make_frameless(window: Gtk.Window) -> None:
     if is_x11(display):
         window.set_decorated(False)
     else:
-        window.set_titlebar(Gtk.Box())
+        # Hidden: the theme styles a title bar like a header bar (46
+        # pixels tall in Adwaita), which would add an invisible band.
+        titlebar = Gtk.Box(visible=False)
+        window.set_titlebar(titlebar)
     if display.get_name() not in _styled_displays:
         provider = Gtk.CssProvider()
         provider.load_from_string(_TRANSPARENT_CSS)
@@ -103,15 +106,18 @@ def make_frameless(window: Gtk.Window) -> None:
 
 def window_frame(window: Gtk.Window) -> Rect:
     """The window's frame; the position is (0, 0) on Wayland and before
-    the window is realized."""
+    the window is realized. The size is the window's own, the one
+    set_default_size takes: a client-decorated surface (Wayland, see
+    make_frameless) is larger by GTK's invisible resize borders."""
     surface = window.get_surface()
-    if surface is None or not window.get_realized():
+    w, h = window.get_width(), window.get_height()
+    if surface is None or not window.get_realized() or w <= 0 or h <= 0:
         w, h = window.get_default_size()
         return Rect(0, 0, w, h)
     x, y = 0, 0
     if is_x11(window.get_display()):
         x, y = x11.position(surface) or (0, 0)
-    return Rect(x, y, surface.get_width(), surface.get_height())
+    return Rect(x, y, w, h)
 
 
 def surface_point(
