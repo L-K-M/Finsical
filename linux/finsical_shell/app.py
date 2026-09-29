@@ -8,6 +8,7 @@ uses, and the program class, are fixed the moment they are imported.
 from __future__ import annotations
 
 import argparse
+import locale
 import logging
 import os
 import shutil
@@ -87,6 +88,29 @@ def _bring_up_gtk() -> None:
         )
 
 
+def _ensure_utf8_locale() -> None:
+    """Switch to C.UTF-8 where the user's locale is unusable
+    (logic.needs_utf8_locale). Through the environment, before GTK
+    starts, so WebKit's helper processes inherit it."""
+    try:
+        locale.setlocale(locale.LC_ALL, "")
+        available = True
+    except locale.Error:
+        available = False
+    if not logic.needs_utf8_locale(
+        available, locale.nl_langinfo(locale.CODESET)
+    ):
+        return
+    os.environ["LC_ALL"] = logic.UTF8_FALLBACK_LOCALE
+    try:
+        locale.setlocale(locale.LC_ALL, "")
+    except locale.Error:
+        logic.log.warning(
+            "no %s locale either; text may be mangled",
+            logic.UTF8_FALLBACK_LOCALE,
+        )
+
+
 def _read_text(path: str) -> Optional[str]:
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
@@ -148,6 +172,7 @@ def main(argv: list[str], share_dir: str, layout: logic.Layout) -> int:
                 os.environ.get(logic.WEB_ROOT_ENV), share_dir, layout
             )
         )
+        _ensure_utf8_locale()
         _check_sandbox()
         _bring_up_gtk()
     except (logic.WebRootError, StartupError) as e:

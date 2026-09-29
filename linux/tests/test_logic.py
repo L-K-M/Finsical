@@ -873,6 +873,19 @@ class TestTankFrames(unittest.TestCase):
         self.assertEqual(logic.drag_strip_height(None), 22)
 
 
+class TestNeedsUtf8Locale(unittest.TestCase):
+    def test_missing_locale_falls_back(self):
+        self.assertTrue(logic.needs_utf8_locale(False, "ANSI_X3.4-1968"))
+        self.assertTrue(logic.needs_utf8_locale(False, "UTF-8"))
+
+    def test_ascii_charset_falls_back(self):
+        self.assertTrue(logic.needs_utf8_locale(True, "ANSI_X3.4-1968"))
+
+    def test_utf8_and_other_charsets_stay(self):
+        self.assertFalse(logic.needs_utf8_locale(True, "UTF-8"))
+        self.assertFalse(logic.needs_utf8_locale(True, "ISO-8859-1"))
+
+
 class TestSandboxBlocked(unittest.TestCase):
     def test_blocked_only_when_restricted_and_unprofiled(self):
         self.assertTrue(logic.sandbox_blocked("1\n", "unconfined\n"))

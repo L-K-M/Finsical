@@ -95,6 +95,14 @@ jobs:
       - run: linux/build-flatpak.sh --install
       # The same end-to-end check inside the sandbox.
       - run: xvfb-run -a dbus-run-session -- flatpak run --user dev.finsical.app --smoke-test
+      # Again with a locale the runtime lacks and a non-ASCII variable:
+      # WebKit hands its whole environment to flatpak-spawn, which
+      # rejected it in the ASCII fallback locale (app.py
+      # _ensure_utf8_locale).
+      - run: xvfb-run -a dbus-run-session -- flatpak run --user dev.finsical.app --smoke-test
+        env:
+          LANG: xx_XX.UTF-8
+          FINSICAL_CI_TEXT: Öffentlich
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: finsical-flatpak

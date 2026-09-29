@@ -90,6 +90,22 @@ def find_web_root(
 WEBKIT_NO_SANDBOX_ENV = "WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS"
 
 
+# Every glibc since 2.35 has it built in, and so does every Flatpak
+# runtime.
+UTF8_FALLBACK_LOCALE = "C.UTF-8"
+_ASCII_CODESETS = frozenset({"ANSI_X3.4-1968", "ASCII", "US-ASCII"})
+
+
+def needs_utf8_locale(locale_available: bool, codeset: str) -> bool:
+    """Whether to fall back to C.UTF-8: the user's locale is missing
+    (a Flatpak runtime without its locale data) or its charset is
+    ASCII. Then GLib takes every non-ASCII byte for an error, and
+    flatpak-spawn, which WebKit launches its sandboxed page process
+    through with the whole environment as arguments, refuses to run:
+    WebKit aborts. The pages are English, so nothing visible changes."""
+    return not locale_available or codeset.upper() in _ASCII_CODESETS
+
+
 def sandbox_blocked(
     restrict_userns: Optional[str], apparmor_label: Optional[str]
 ) -> bool:
