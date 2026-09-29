@@ -24,7 +24,7 @@ from . import logic, x11
 from .logic import Rect
 from .screen import (
     is_x11,
-    make_transparent,
+    make_frameless,
     monitor_rects,
     window_frame,
     work_area,
@@ -159,8 +159,7 @@ class ClientHost:
             }
         )
         window = Gtk.ApplicationWindow(application=self._app, title=spec.title)
-        window.set_decorated(False)
-        make_transparent(window)
+        make_frameless(window)
         # The view is the window: the page sizes its drawn window to the
         # viewport, so no decoration or margin may take any of it.
         window.set_child(page.view)

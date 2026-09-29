@@ -14,9 +14,17 @@ from .logic import Rect
 
 log = logic.log
 
-# Undecorated windows whose page draws every visible pixel.
+# Frameless windows whose page draws every visible pixel. On Wayland
+# they are client-decorated (see make_frameless): no shadow, corner
+# rounding or margin may come from the theme's window decoration.
 _TRANSPARENT_CLASS = "finsical-transparent"
-_TRANSPARENT_CSS = f"window.{_TRANSPARENT_CLASS} {{ background: none; }}"
+_TRANSPARENT_CSS = f"""
+window.{_TRANSPARENT_CLASS} {{ background: none; }}
+window.{_TRANSPARENT_CLASS},
+window.{_TRANSPARENT_CLASS} > decoration {{
+  box-shadow: none; border-radius: 0; margin: 0; outline: none;
+}}
+"""
 # Displays that have the stylesheet (by name: GDK has one per server).
 _styled_displays: set[str] = set()
 
@@ -68,11 +76,21 @@ def work_area(window: Gtk.Window) -> Optional[Rect]:
     return _work_area(monitor)
 
 
-def make_transparent(window: Gtk.Window) -> None:
-    """Let the page's transparent pixels show what is behind the window.
-    Needs a compositor; without one they render black (see the tank's
-    X11 outline fallback)."""
+def make_frameless(window: Gtk.Window) -> None:
+    """No frame, and the page's transparent pixels show what is behind
+    the window. That needs a compositor; without one they render black
+    (see the tank's X11 outline fallback).
+
+    On Wayland, an undecorated GTK window asks KWin for a frame of its
+    own (GTK 4.14 requests server-side decorations for it, and 4.22
+    leaves KWin's server-side default), so KDE drew a title bar and
+    border around the case. A client-decorated window with an empty
+    title bar tells KWin the app draws its own, and draws nothing."""
     display = window.get_display()
+    if is_x11(display):
+        window.set_decorated(False)
+    else:
+        window.set_titlebar(Gtk.Box())
     if display.get_name() not in _styled_displays:
         provider = Gtk.CssProvider()
         provider.load_from_string(_TRANSPARENT_CSS)
