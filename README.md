@@ -1,6 +1,6 @@
 # Finsical
 
-**Latest release:** v<!-- version -->0.6.2<!-- /version --> · [Download](https://github.com/L-K-M/Finsical/releases/latest) · [Changelog](CHANGELOG.md)
+**Latest release:** v<!-- version -->0.6.3<!-- /version --> · [Download](https://github.com/L-K-M/Finsical/releases/latest) · [Changelog](CHANGELOG.md)
 
 ![Screenshot showing a Performa 5200 backdrop](media-sources/screenshot3.png)
 
