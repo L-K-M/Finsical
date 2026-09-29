@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The Linux Flatpak no longer crashes at startup on systems whose
+  language settings the Flatpak runtime doesn't cover.
 - Linux also ships as a Flatpak, which installs on almost any
   distribution, including from Discover or GNOME Software on Fedora,
   where the .deb can't be installed. The README explains which Linux
