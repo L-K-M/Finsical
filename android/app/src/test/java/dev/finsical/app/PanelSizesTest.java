@@ -12,10 +12,10 @@ import org.junit.Test;
 public class PanelSizesTest {
     @Test
     public void pagesUseTheMacWindowSizes() {
-        assertEquals(Optional.of(new Size(565, 457)), PanelSizes.forPath("/prefs.html"));
+        assertEquals(Optional.of(new Size(565, 518)), PanelSizes.forPath("/prefs.html"));
         assertEquals(Optional.of(new Size(521, 381)), PanelSizes.forPath("/overview.html"));
         assertEquals(Optional.of(new Size(621, 441)), PanelSizes.forPath("/addons.html"));
-        assertEquals(Optional.of(new Size(380, 640)), PanelSizes.forPath("/stats.html"));
+        assertEquals(Optional.of(new Size(380, 360)), PanelSizes.forPath("/stats.html"));
     }
 
     @Test

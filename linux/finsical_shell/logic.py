@@ -428,7 +428,7 @@ class ClientSpec:
 
 
 PREFS = ClientSpec(
-    "prefs", "prefs.html", "Preferences", "FinsicalPrefs", Size(565, 457), None
+    "prefs", "prefs.html", "Preferences", "FinsicalPrefs", Size(565, 518), None
 )
 OVERVIEW = ClientSpec(
     "overview",
@@ -446,15 +446,17 @@ ADDONS = ClientSpec(
     Size(621, 441),
     Size(441, 301),
 )
-# The stats page clips rather than scrolls, so its minimum keeps the
-# water readings, two care hints and the Keeping controls visible.
+# The stats page clips rather than scrolls, so its minimum keeps every
+# tab's fields, two care hints and the Keeping controls visible. Its
+# frame key changed when the readings moved onto tabs: frames saved
+# before were at least 560 pixels tall, sized for one long pane.
 STATS = ClientSpec(
     "stats",
     "stats.html",
     "Tank Stats",
-    "FinsicalStats",
-    Size(380, 640),
-    Size(340, 560),
+    "FinsicalStatsTabs",
+    Size(380, 360),
+    Size(340, 330),
 )
 CLIENT_SPECS = (PREFS, OVERVIEW, ADDONS, STATS)
 

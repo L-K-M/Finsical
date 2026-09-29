@@ -51,10 +51,10 @@ final class PanelSizes {
 
     static {
         Map<String, Size> sizes = new HashMap<>();
-        sizes.put("prefs.html", new Size(565, 457));
+        sizes.put("prefs.html", new Size(565, 518));
         sizes.put("overview.html", new Size(521, 381));
         sizes.put("addons.html", new Size(621, 441));
-        sizes.put("stats.html", new Size(380, 640));
+        sizes.put("stats.html", new Size(380, 360));
         PAGE_SIZES_DP = Collections.unmodifiableMap(sizes);
     }
 
