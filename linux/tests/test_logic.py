@@ -926,6 +926,39 @@ class TestEnsureUtf8Locale(unittest.TestCase):
         self.assertEqual(self._lc_all_after(LANG="C.UTF-8"), "<unset>")
 
 
+class TestMenuBar(unittest.TestCase):
+    def test_offers_every_menu_action_once(self):
+        bar = [
+            a for menu in logic.MENU_BAR for a in menu.actions if a is not None
+        ]
+        menu = [e.action for e in logic.APP_MENU if e is not None]
+        self.assertEqual(sorted(bar), sorted(menu))
+        self.assertEqual(len(bar), len(set(bar)))
+
+    def test_no_empty_groups(self):
+        for menu in logic.MENU_BAR:
+            actions = menu.actions
+            self.assertIsNotNone(actions[0], menu.title)
+            self.assertIsNotNone(actions[-1], menu.title)
+            for a, b in zip(actions, actions[1:]):
+                self.assertFalse(a is None and b is None, menu.title)
+
+    def test_shortcuts(self):
+        self.assertEqual(
+            logic.dbusmenu_shortcut("<Control><Shift>s"),
+            ["Control", "Shift", "S"],
+        )
+        self.assertEqual(
+            logic.dbusmenu_shortcut("<Control>comma"), ["Control", ","]
+        )
+        self.assertEqual(logic.dbusmenu_shortcut("F1"), ["F1"])
+        self.assertEqual(
+            logic.dbusmenu_shortcut("<Control>KP_Add"), ["Control", "KP_Add"]
+        )
+        self.assertIsNone(logic.dbusmenu_shortcut("<Hyper>x"))
+        self.assertIsNone(logic.dbusmenu_shortcut("<Control>"))
+
+
 class TestSandboxBlocked(unittest.TestCase):
     def test_blocked_only_when_restricted_and_unprofiled(self):
         self.assertTrue(logic.sandbox_blocked("1\n", "unconfined\n"))

@@ -56,7 +56,8 @@ jobs:
       # checks the bus relay end to end (see "Smoke test" in README.md).
       # Ubuntu's AppArmor user-namespace restriction is on here, so this
       # also proves the package's profile lets WebKit's sandbox start.
-      - run: xvfb-run -a /usr/games/finsical --smoke-test
+      # With a session bus, so the global menu's step runs too.
+      - run: xvfb-run -a dbus-run-session -- /usr/games/finsical --smoke-test
       # Purge the .deb so the tarball's launcher can only resolve its
       # own share/finsical tree; a /usr fallback would mask a break.
       - run: sudo dpkg --purge finsical

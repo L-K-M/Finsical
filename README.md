@@ -257,6 +257,13 @@ tank). The tank has no window frame to resize by, so the menu adds
 Windows and Show on All Desktops are dimmed on native Wayland (the
 Flatpak on a Wayland desktop), which doesn't allow them. `man finsical` lists the keys.
 
+On KDE Plasma, the same commands also appear in the **Global Menu**
+widget or title-bar button, as a menu bar laid out like the Mac's:
+Finsical (About, Preferences, Quit), Tank, Window (Larger, Smaller,
+Float Above Other Windows, Show on All Desktops) and Help. Add the
+Global Menu widget to a panel to see it; it works on X11 and Wayland,
+and from the Flatpak.
+
 On Android, the tank uses the browser build's menu bar (below).
 Preferences, Tank Overview and Tank Stats open as panels over the tank;
 Back closes the front one. Take a Picture and Export Tank ask where to

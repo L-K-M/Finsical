@@ -13,10 +13,9 @@ from typing import Any, Callable, Optional
 
 from gi.repository import Gio, GLib, Gtk
 
-from . import logic
+from . import dbusmenu, logic, wayland, x11
 from .clients import ClientHost, ClientWindow
 from .logic import WindowPref
-from . import x11
 from .screen import is_x11
 from .tank import TankWindow
 from .web import PageView, WebHost, open_in_browser
@@ -112,6 +111,12 @@ class FinsicalApp(Gtk.Application):
         self._picture_dialog: Optional[Gtk.FileDialog] = None
         self.tank: Optional[TankWindow] = None
         self.clients: Optional[ClientHost] = None
+        # The global menu (KDE's Global Menu widget), where there is a
+        # session bus.
+        self._menu: Optional[dbusmenu.MenuExporter] = None
+        self._menu_entries = {
+            e.action: e for e in logic.APP_MENU if e is not None
+        }
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -128,6 +133,12 @@ class FinsicalApp(Gtk.Application):
         )
         self._web.set_menu_factory(self._build_menu)
         self._add_actions()
+        self.connect("window-added", self._on_window_added)
+        bus = dbusmenu.session_bus()
+        if bus is not None:
+            self._menu = dbusmenu.MenuExporter(
+                bus, self._menu_item, self._activate_menu_action
+            )
         for signum in (signal.SIGINT, signal.SIGTERM):
             GLib.unix_signal_add(
                 GLib.PRIORITY_DEFAULT, signum, self._on_signal
@@ -418,6 +429,7 @@ class FinsicalApp(Gtk.Application):
         ):
             self._action(name).set_state(GLib.Variant.new_boolean(on))
         self._action("crt").set_enabled(s.crt_available)
+        self._menu_changed()
 
     def _call_tank(
         self, function: str, then: Optional[Callable[[Any], None]] = None
@@ -444,6 +456,7 @@ class FinsicalApp(Gtk.Application):
             self._status = logic.update_status(
                 self._status, {"paused": value.to_boolean()}
             )
+            self._menu_changed()
 
         self._call_tank("togglePause", paused)
 
@@ -476,6 +489,60 @@ class FinsicalApp(Gtk.Application):
             action = self._action(name)
             action.set_state(GLib.Variant.new_boolean(on))
             action.set_enabled(on_x11)
+        self._menu_changed()
+
+    # -- the global menu ----------------------------------------------------
+
+    @property
+    def global_menu(self) -> Optional[dbusmenu.MenuExporter]:
+        """None where there is no session bus."""
+        return self._menu
+
+    def _menu_item(self, name: str) -> Optional[dbusmenu.Item]:
+        entry = self._menu_entries.get(name)
+        if entry is None:
+            return None
+        action = self._action(name)
+        state = action.get_state()
+        return dbusmenu.Item(
+            action=name,
+            label=(
+                logic.pause_label(self._status.paused)
+                if name == "pause"
+                else entry.label
+            ),
+            enabled=action.get_enabled(),
+            checked=None if state is None else state.get_boolean(),
+            accel=entry.accels[0] if entry.accels else None,
+        )
+
+    def _activate_menu_action(self, name: str) -> None:
+        action = self._action(name)
+        if action.get_enabled():
+            action.activate(None)
+
+    def _menu_changed(self) -> None:
+        if self._menu is not None:
+            self._menu.refresh()
+
+    def _on_window_added(
+        self, _app: Gtk.Application, window: Gtk.Window
+    ) -> None:
+        window.connect("realize", self._announce_menu)
+        if window.get_realized():
+            self._announce_menu(window)
+
+    def _announce_menu(self, window: Gtk.Window) -> None:
+        """Point the desktop's global menu for this window at ours."""
+        surface = window.get_surface()
+        if self._menu is None or surface is None:
+            return
+        service, path = self._menu.bus_name, dbusmenu.OBJECT_PATH
+        display = window.get_display()
+        if is_x11(display):
+            x11.set_appmenu(surface, service, path)
+        elif display.__gtype__.name == "GdkWaylandDisplay":
+            wayland.announce_appmenu(surface, service, path)
 
     def _save_picture(self, msg: dict) -> None:
         """Offer the tank's picture to a save dialog. The page names the

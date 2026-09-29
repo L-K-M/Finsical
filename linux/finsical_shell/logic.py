@@ -1153,6 +1153,85 @@ APP_MENU: tuple[Optional[MenuEntry], ...] = (
 # own close box), and a no-op on the tank.
 CLOSE_WINDOW_ACCEL = "<Control>w"
 
+
+@dataclass(frozen=True)
+class MenuBarMenu:
+    title: str
+    # APP_MENU actions in order; None separates groups.
+    actions: tuple[Optional[str], ...]
+
+
+# The desktop's global menu (KDE's Global Menu widget), laid out like
+# the macOS menu bar. It offers the same actions as APP_MENU, the
+# right-click menu, each once. No Edit menu: text fields have their
+# own cut, copy and paste.
+MENU_BAR: tuple[MenuBarMenu, ...] = (
+    MenuBarMenu("Finsical", ("about", None, "prefs", None, "quit")),
+    MenuBarMenu(
+        "Tank",
+        (
+            "overview",
+            "stats",
+            "import",
+            None,
+            "feed",
+            "water",
+            "crt",
+            "lamp",
+            "mute",
+            "pause",
+            "picture",
+            None,
+            "donate",
+        ),
+    ),
+    MenuBarMenu(
+        "Window",
+        ("larger", "smaller", None, "float-above", "all-desktops"),
+    ),
+    MenuBarMenu("Help", ("help",)),
+)
+
+# GTK key names that DBusMenu readers (Qt's key sequences) spell as
+# the character.
+_SHORTCUT_KEYS = {
+    "comma": ",",
+    "equal": "=",
+    "minus": "-",
+    "plus": "+",
+    "period": ".",
+}
+_SHORTCUT_MODIFIERS = {
+    "control": "Control",
+    "primary": "Control",
+    "ctrl": "Control",
+    "shift": "Shift",
+    "alt": "Alt",
+    "super": "Super",
+}
+
+
+def dbusmenu_shortcut(accel: str) -> Optional[list[str]]:
+    """A GTK accelerator ("<Control><Shift>s") as a DBusMenu shortcut
+    (["Control", "Shift", "S"]), or None if it has a modifier DBusMenu
+    has no name for."""
+    parts: list[str] = []
+    rest = accel
+    while rest.startswith("<"):
+        end = rest.find(">")
+        if end < 0:
+            return None
+        modifier = _SHORTCUT_MODIFIERS.get(rest[1:end].lower())
+        if modifier is None:
+            return None
+        parts.append(modifier)
+        rest = rest[end + 1 :]
+    if not rest:
+        return None
+    key = _SHORTCUT_KEYS.get(rest, rest)
+    parts.append(key.upper() if len(key) == 1 else key)
+    return parts
+
 DONATE_URL = "https://archive.org/donate"
 HELP_URL = "https://github.com/L-K-M/Finsical#readme"
 HOMEPAGE_URL = "https://github.com/L-K-M/Finsical"

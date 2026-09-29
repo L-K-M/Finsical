@@ -4,6 +4,10 @@
 
 - The Linux Flatpak no longer crashes at startup on systems whose
   language settings the Flatpak runtime doesn't cover.
+- On KDE Plasma, Finsical's menu also shows in the Global Menu widget,
+  laid out like the Mac's menu bar: Finsical, Tank, Window and Help.
+- On KDE Plasma under Wayland, the tank and Finsical's other windows no
+  longer get a title bar and frame from KWin around the computer case.
 - Linux also ships as a Flatpak, which installs on almost any
   distribution, including from Discover or GNOME Software on Fedora,
   where the .deb can't be installed. The README explains which Linux
