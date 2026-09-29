@@ -364,6 +364,19 @@ def swapped_machine_frame(
     return Rect(frame.x, frame.y, round(w), round(w * vb_h / vb_w))
 
 
+def aspect_snapped(size: Size, aspect: float) -> Optional[Size]:
+    """The largest size at `aspect` inside `size`, or None when `size`
+    is already there to within a pixel's rounding. GTK 4 cannot hold a
+    window to an aspect ratio while it is resized (macOS uses
+    contentAspectRatio), so the tank snaps back to its case afterwards;
+    shrinking one side keeps it inside what the user dragged out."""
+    w = min(size.w, size.h * aspect)
+    snapped = Size(round(w), round(w / aspect))
+    if abs(snapped.w - size.w) <= 1 and abs(snapped.h - size.h) <= 1:
+        return None
+    return snapped
+
+
 class SizeStep(enum.Enum):
     LARGER = "larger"
     SMALLER = "smaller"
@@ -428,7 +441,7 @@ class ClientSpec:
 
 
 PREFS = ClientSpec(
-    "prefs", "prefs.html", "Preferences", "FinsicalPrefs", Size(565, 457), None
+    "prefs", "prefs.html", "Preferences", "FinsicalPrefs", Size(565, 518), None
 )
 OVERVIEW = ClientSpec(
     "overview",
@@ -446,15 +459,17 @@ ADDONS = ClientSpec(
     Size(621, 441),
     Size(441, 301),
 )
-# The stats page clips rather than scrolls, so its minimum keeps the
-# water readings, two care hints and the Keeping controls visible.
+# The stats page clips rather than scrolls, so its minimum keeps every
+# tab's fields, two care hints and the Keeping controls visible. Its
+# frame key changed when the readings moved onto tabs: frames saved
+# before were at least 560 pixels tall, sized for one long pane.
 STATS = ClientSpec(
     "stats",
     "stats.html",
     "Tank Stats",
-    "FinsicalStats",
-    Size(380, 640),
-    Size(340, 560),
+    "FinsicalStatsTabs",
+    Size(380, 360),
+    Size(340, 330),
 )
 CLIENT_SPECS = (PREFS, OVERVIEW, ADDONS, STATS)
 

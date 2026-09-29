@@ -7,6 +7,7 @@ import base64
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -441,6 +442,22 @@ class TestGeometry(unittest.TestCase):
         )
         self.assertEqual(size, Size(200, 200))
 
+    def test_aspect_snap_shrinks_the_side_that_overshoots(self):
+        # A Macintosh Plus case (821 x 1059) dragged too wide, then too
+        # tall: the other side stays, so the case fills what was asked.
+        plus = 821 / 1059
+        self.assertEqual(
+            logic.aspect_snapped(Size(900, 800), plus), Size(620, 800)
+        )
+        self.assertEqual(
+            logic.aspect_snapped(Size(620, 1100), plus), Size(620, 800)
+        )
+
+    def test_aspect_snap_leaves_rounding_alone(self):
+        plus = 821 / 1059
+        self.assertIsNone(logic.aspect_snapped(Size(620, 800), plus))
+        self.assertIsNone(logic.aspect_snapped(Size(621, 800), plus))
+
     def test_intersects_any(self):
         monitors = [Rect(0, 0, 1920, 1080), Rect(1920, 0, 1280, 1024)]
         self.assertTrue(
@@ -494,12 +511,12 @@ class TestClientWindowState(unittest.TestCase):
         self.assertEqual(state.unshade(Rect(0, 0, 521, 23)).h, 201)
         fixed = ClientWindowState(logic.PREFS)
         fixed.shade(Rect(0, 0, 565, 23))
-        self.assertEqual(fixed.unshade(Rect(0, 0, 565, 23)).h, 457)
+        self.assertEqual(fixed.unshade(Rect(0, 0, 565, 23)).h, 518)
 
     def test_fixed_window_hints(self):
         state = ClientWindowState(logic.PREFS)
-        self.assertEqual(state.hints(), logic.SizeHints(565, 457, 565, 457))
-        state.shade(Rect(0, 0, 565, 457))
+        self.assertEqual(state.hints(), logic.SizeHints(565, 518, 565, 518))
+        state.shade(Rect(0, 0, 565, 518))
         self.assertEqual(state.hints(), logic.SizeHints(565, 23, 565, 23))
 
     def test_zoom_toggles(self):
@@ -541,7 +558,7 @@ class TestClientWindowState(unittest.TestCase):
     def test_reopen_grows_a_saved_sliver(self):
         state = ClientWindowState(logic.STATS)
         self.assertEqual(
-            state.reopen(Rect(5, 6, 380, 23)), Rect(5, 6, 380, 640)
+            state.reopen(Rect(5, 6, 380, 23)), Rect(5, 6, 380, 360)
         )
 
     def test_folded_window_saves_its_expanded_frame(self):
@@ -554,41 +571,37 @@ class TestClientWindowState(unittest.TestCase):
         )
 
     def test_specs_match_the_macos_shell(self):
+        # Read from the Mac app itself, so a change there that misses
+        # this shell fails here.
+        swift = (LINUX_DIR.parent / "macos" / "Finsical.swift").read_text()
+        size = r"NSSize\(width: (\d+), height: (\d+)\)"
+        spec = re.compile(
+            r"OsmiumWindowSpec\(\s*url: page\(\"([^\"]+)\"\), "
+            r"title: \"([^\"]+)\",\s*frameKey: \"([^\"]+)\", "
+            rf"size: {size}(?:,\s*minSize: (?:{size}|nil))?\)"
+        )
+        macos = [
+            (
+                page,
+                title,
+                key,
+                Size(int(w), int(h)),
+                Size(int(mw), int(mh)) if mw else None,
+            )
+            for page, title, key, w, h, mw, mh in spec.findall(swift)
+        ]
+        self.assertEqual(
+            len(macos),
+            len(logic.CLIENT_SPECS),
+            "the pattern no longer matches every OsmiumWindowSpec in"
+            " Finsical.swift; its formatting likely changed",
+        )
         self.assertEqual(
             [
                 (s.page, s.title, s.frame_key, s.size, s.min_size)
                 for s in logic.CLIENT_SPECS
             ],
-            [
-                (
-                    "prefs.html",
-                    "Preferences",
-                    "FinsicalPrefs",
-                    Size(565, 457),
-                    None,
-                ),
-                (
-                    "overview.html",
-                    "Tank Overview",
-                    "FinsicalOverview",
-                    Size(521, 381),
-                    Size(361, 201),
-                ),
-                (
-                    "addons.html",
-                    "Import Add-ons",
-                    "FinsicalAddons",
-                    Size(621, 441),
-                    Size(441, 301),
-                ),
-                (
-                    "stats.html",
-                    "Tank Stats",
-                    "FinsicalStats",
-                    Size(380, 640),
-                    Size(340, 560),
-                ),
-            ],
+            macos,
         )
         self.assertEqual(logic.STATS.url, "finsical://app/stats.html")
 

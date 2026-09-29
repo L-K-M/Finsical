@@ -28,6 +28,15 @@ from .web import PageView, Press
 log = logic.log
 
 TANK_TITLE = "Finsical"
+# How long a window manager's resize must rest before the tank snaps to
+# its case's aspect: snapping mid-drag would fight the pointer.
+_ASPECT_SNAP_DELAY_MS = 250
+# States in which the window manager, not the app, owns the size.
+_MANAGED_SIZE = (
+    Gdk.ToplevelState.MAXIMIZED
+    | Gdk.ToplevelState.FULLSCREEN
+    | Gdk.ToplevelState.TILED
+)
 
 
 class _Silhouette:
@@ -139,8 +148,10 @@ class TankWindow:
     GTK 4 has no aspect hint, so the window manager does not hold the
     tank to its case: every size the app sets (launch, a machine
     change, Larger/Smaller) is computed at the case's aspect instead.
-    The tank has no edges to drag, so only a window manager's own
-    resize (a keyboard shortcut, tiling) can leave it off-aspect.
+    The tank has no edges to drag, but a window manager's own resize
+    (KWin's Alt+right-drag, a keyboard shortcut) can leave it
+    off-aspect, with empty glass beside the case; once such a resize
+    settles, the window snaps back to the case's outline.
     """
 
     def __init__(
@@ -158,6 +169,7 @@ class TankWindow:
         self._on_frame_changed = on_frame_changed
         self._silhouette: Optional[_Silhouette] = None
         self._shape_pending = False
+        self._aspect_timer = 0
         self._size: Optional[tuple[int, int]] = None
         # Where to put the window when it maps (X11 only: GTK 4 cannot
         # place a window, see x11.py).
@@ -355,6 +367,24 @@ class TankWindow:
         self._size = (w, h)
         self.save_frame()
         self._schedule_shape()
+        if self._aspect_timer:
+            GLib.source_remove(self._aspect_timer)
+        self._aspect_timer = GLib.timeout_add(
+            _ASPECT_SNAP_DELAY_MS, self._snap_to_aspect
+        )
+
+    def _snap_to_aspect(self) -> bool:
+        self._aspect_timer = 0
+        surface = self.window.get_surface()
+        if surface is None or surface.get_state() & _MANAGED_SIZE:
+            return GLib.SOURCE_REMOVE
+        # The default size follows the window manager's resizes, and is
+        # the window's own size, without GTK's resize borders.
+        w, h = self.window.get_default_size()
+        snapped = logic.aspect_snapped(Size(w, h), self._aspect())
+        if snapped is not None:
+            self.window.set_default_size(snapped.w, snapped.h)
+        return GLib.SOURCE_REMOVE
 
     def _on_strip_press(
         self, gesture: Gtk.GestureClick, n_press: int, x: float, y: float
@@ -397,10 +427,14 @@ class TankWindow:
             or self._silhouette is None
         ):
             return GLib.SOURCE_REMOVE
-        w, h = surface.get_width(), surface.get_height()
+        # The case fills the window, which sits inside the surface at an
+        # offset where GTK adds resize borders (client-side decorations).
+        w, h = self.window.get_width(), self.window.get_height()
         region = self._silhouette.region(w, h)
         if region is None:
             region = cairo.Region(cairo.RectangleInt(0, 0, w, h))
+        dx, dy = self.window.get_surface_transform()
+        region.translate(round(dx), round(dy))
         surface.set_input_region(region)
         if self.x11:
             composited = self.window.get_display().is_composited()

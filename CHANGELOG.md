@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- On Linux, when the window manager resizes the tank (for example with
+  KWin's Alt+right-drag), the tank snaps back to its computer case's
+  shape once you let go, instead of leaving empty space beside it.
+- On Linux and Android, Tank Stats opens at its tabbed size and can be
+  made as small as on the Mac, instead of keeping the tall size from
+  before the tabs. Preferences opens at the Mac's size again, which
+  its layout has been built for since it grew a vertical skew control.
+- In the Linux Flatpak, the tank is shaped like the computer case again
+  instead of sitting in a dark rectangle, and on Wayland it no longer
+  has an invisible title bar above it that caught clicks.
 - The Linux Flatpak no longer crashes at startup on systems whose
   language settings the Flatpak runtime doesn't cover.
 - On KDE Plasma, Finsical's menu also shows in the Global Menu widget,
