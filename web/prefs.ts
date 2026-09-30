@@ -13,14 +13,17 @@ import { hourLabel, LIGHTING_DEFAULTS, sanitizeLighting }
 import type { Lighting, LightMode } from "../core/light.js";
 import { SOUND_DEFAULTS, sanitizeSoundConfig } from "./audio.js";
 import type { SoundConfig } from "./audio.js";
+import { EFFECTS_DEFAULTS, sanitizeEffects } from "./effects.js";
+import type { EffectsConfig } from "./effects.js";
 import { positionText, tubeCaption } from "./caption.js";
 
-// Preferences window: a Mac OS 8 control panel with five panes: the
+// Preferences window: a Mac OS 8 control panel with six panes: the
 // machine case, the CRT tube effect, the monitor's picture controls,
-// the tank's lighting and sound. The tank page owns persistence and
-// rendering: this page renders the state it pushes back (op:"state"
-// carries `crt`, `machine`, `lighting` and `sound` snapshots) and posts
-// intents: crtEnabled, crtConfig, machine, lighting, soundConfig.
+// the tank's drawn extras, its lighting and its sound. The tank page
+// owns persistence and rendering: this page renders the state it
+// pushes back (op:"state" carries `crt`, `machine`, `effects`,
+// `lighting` and `sound` snapshots) and posts intents: crtEnabled,
+// crtConfig, machine, effectsConfig, lighting, soundConfig.
 
 // A file dropped on this window must not navigate it to the file —
 // only the tank page and the Add-ons window accept drops.
@@ -187,7 +190,8 @@ const PICTURE_GROUPS: Group[] = [
   { title: "Color", rows: [["red", "green", "blue"]] },
 ];
 
-type PaneId = "machine" | "monitor" | "picture" | "lighting" | "sound";
+type PaneId = "machine" | "monitor" | "picture" | "effects" |
+  "lighting" | "sound";
 const PANES: { id: PaneId; label: string; icon: string; hint: string;
                /** Hint while the CRT effect is off (its sliders dim). */
                offHint?: string;
@@ -205,6 +209,10 @@ const PANES: { id: PaneId; label: string; icon: string; hint: string;
     offHint: "These controls adjust the CRT effect. Turn on Simulate a " +
       "CRT monitor in the Monitor pane to use them.",
     keys: PIC_SPECS.map((s) => s.key) },
+  { id: "effects", label: "Effects", icon: "icon-effects",
+    hint: "The extra touches Finsical draws that the original game " +
+      "did not — clear a box for the plainer look. Point at a box " +
+      "to see what it does.", keys: [] },
   { id: "lighting", label: "Lighting", icon: "icon-lighting",
     hint: "How the tank is lit. Point at a pop-up menu to see what it " +
       "does.", keys: [] },
@@ -293,6 +301,7 @@ const bus = openBus((m) => {
     else if (maskPending !== null) cfg.mask = maskPending;
   }
   if (m.sound !== undefined) takeSound(sanitizeSoundConfig(m.sound));
+  if (m.effects !== undefined) takeEffects(sanitizeEffects(m.effects));
   const mc = m.machine as { id?: unknown } | undefined;
   if (typeof mc?.id === "string" &&
       (machinePending === null || mc.id === machinePending)) {
@@ -318,18 +327,19 @@ hostWindow(document.getElementById("pwin")!, { title: "Preferences" });
 // Explains whatever the pointer (or keyboard focus) is on, the way
 // Balloon Help would, and falls back to the pane's own hint.
 let pane: PaneId = "machine";
-/** A Sound pane control the caption area can explain. */
-interface SoundItem {
+/** A captioned control with a plain input — a Sound pane checkbox or
+ * slider, or an Effects pane box. */
+interface CheckItem {
   label: string;
   blurb: string;
   input: HTMLInputElement;
   /** Shown after the label, like a slider's value. */
   value?: () => string;
 }
-let described: SliderSpec | ChoiceSpec | LightSpec | SoundItem | null =
+let described: SliderSpec | ChoiceSpec | LightSpec | CheckItem | null =
   null;
 let describedPreset: CrtPreset | null = null;
-function describe(spec: SliderSpec | ChoiceSpec | LightSpec | SoundItem | null,
+function describe(spec: SliderSpec | ChoiceSpec | LightSpec | CheckItem | null,
                   preset: CrtPreset | null = null): void {
   described = spec;
   describedPreset = preset;
@@ -891,7 +901,7 @@ function syncSound(): void {
 }
 
 /** Point the caption area at a control while it's hovered or focused. */
-function captioned(item: SoundItem, host: HTMLElement): void {
+function captioned(item: CheckItem, host: HTMLElement): void {
   item.input.addEventListener("focus", () => describe(item));
   item.input.addEventListener("blur", () => {
     if (item.input === volInput) volDragging = false;
@@ -945,6 +955,89 @@ for (const id of ["pfmute", "pfbubbles", "pfambient"])
   trackHighlight(document.getElementById(id)!);
 syncSound();
 
+// ---- the Effects pane ---------------------------------------------------
+// A box per extra the tank draws over the original game's picture.
+// Changes post as partial op:"effectsConfig" messages; like the CRT
+// switch, a toggle still awaiting its echo latches so a state push in
+// flight can't flip the box back.
+let effects: EffectsConfig = { ...EFFECTS_DEFAULTS };
+let fxTouched: Partial<EffectsConfig> = {};
+let fxTimer: ReturnType<typeof setTimeout> | undefined;
+
+const FX_SPECS: { key: keyof EffectsConfig; label: string;
+                  blurb: string }[] = [
+  { key: "sunlight", label: "Sun shafts and caustics",
+    blurb: "Daylight slants through the water and a shimmering web " +
+      "of caustics plays over the lower tank and the gravel. Off " +
+      "lights the water evenly, the way the original did." },
+  { key: "surface", label: "Waves on the surface",
+    blurb: "The waterline is a row of springs: splashes, knocks and " +
+      "fish cruising along the top send waves down it, and the view " +
+      "just under it wavers. Off draws the flat line the original " +
+      "had." },
+  { key: "splashes", label: "Ripples and splashes",
+    blurb: "A knock on the glass rings where it lands, and food or a " +
+      "new fish kicks up droplets going in." },
+  { key: "sway", label: "Swaying plants",
+    blurb: "Plants and decor drift in the current, the tips further " +
+      "than the roots. Off draws each piece still." },
+  { key: "murk", label: "Murky water",
+    blurb: "Fouled water shows a green-brown wash with debris " +
+      "drifting in it. Off keeps the water clear however dirty it " +
+      "gets — Tank Stats still reports the readings." },
+  { key: "torch", label: "Pointer torch",
+    blurb: "Hovering over a dark tank lights a warm circle around " +
+      "the pointer, like a torch held to the glass." },
+  { key: "snail", label: "Snail visits",
+    blurb: "Every so often a snail creeps in and crosses the gravel. " +
+      "The cat stays either way — that visitor was the original's " +
+      "own." },
+];
+const fxBoxes = new Map<keyof EffectsConfig, HTMLInputElement>();
+
+function postEffect(patch: Partial<EffectsConfig>): void {
+  effects = { ...effects, ...patch };
+  fxTouched = { ...fxTouched, ...patch };
+  clearTimeout(fxTimer);
+  // One round-trip is plenty; after that the next push resyncs.
+  fxTimer = setTimeout(() => { fxTouched = {}; }, 1500);
+  syncEffects();
+  bus.post({ op: "effectsConfig", cfg: patch });
+}
+
+/** Adopt a state push's flags, except ones still awaiting their echo. */
+function takeEffects(s: EffectsConfig): void {
+  for (const k of Object.keys(s) as (keyof EffectsConfig)[]) {
+    if (k in fxTouched) {
+      if (fxTouched[k] !== s[k]) continue;
+      delete fxTouched[k];
+    }
+    effects = { ...effects, [k]: s[k] };
+  }
+  syncEffects();
+}
+
+function syncEffects(): void {
+  for (const [k, input] of fxBoxes) input.checked = effects[k];
+  if (described) describe(described);
+}
+
+for (const spec of FX_SPECS) {
+  const unit = el("label", "osm-checkbox");
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  unit.append(input, spec.label);
+  document.getElementById("pfxlist")!.appendChild(unit);
+  fxBoxes.set(spec.key, input);
+  input.addEventListener("change", () =>
+    postEffect({ [spec.key]: input.checked } as Partial<EffectsConfig>));
+  trackHighlight(unit);
+  captioned({ label: spec.label, input,
+              value: () => effects[spec.key] ? "On" : "Off",
+              blurb: spec.blurb }, unit);
+}
+syncEffects();
+
 // Defaults restores the visible pane's settings only. The other panes
 // are out of sight and stay as they are.
 pushButton(defaultsBtn, () => {
@@ -954,6 +1047,10 @@ pushButton(defaultsBtn, () => {
   }
   if (pane === "sound") {
     postSound({ ...SOUND_DEFAULTS });
+    return;
+  }
+  if (pane === "effects") {
+    postEffect({ ...EFFECTS_DEFAULTS });
     return;
   }
   const keys = PANES.find((p) => p.id === pane)!.keys;

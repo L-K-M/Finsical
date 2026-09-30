@@ -27,6 +27,7 @@ import { loadSoundConfig, panFor, sanitizeSoundConfig, TankAudio }
 import { drawRipples, drawSplashes, newSplash, tickRipples,
          tickSplashes } from "./fx.js";
 import type { Ripple, Splash } from "./fx.js";
+import { sanitizeEffects } from "./effects.js";
 import { pushButton } from "osmium-ui";
 import { alertOpen, showAlert } from "./alert.js";
 import { recentTaps, shouldScold } from "./scold.js";
@@ -78,6 +79,7 @@ import {
   savedMachineId, SCREENBACK_HOLE_PAD, shellMarkup,
 } from "./machines.js";
 import type { CrtConfig } from "./crt.js";
+import type { EffectsConfig } from "./effects.js";
 import type { WaterMotion } from "./water.js";
 import type { SoundConfig } from "./audio.js";
 import type { Machine } from "./machines.js";
@@ -703,12 +705,14 @@ function onTankDown(e: PointerEvent): void {
       const [b] = sim.bubbles.splice(bi, 1);
       // The same pop ring the waterline path draws — a tap-pop reads
       // as a pop, not a vanish.
-      pops.push({ x: b!.x + bubbleOffset(b!.x, b!.y), y: b!.y, age: 0 });
+      if (effects.splashes)
+        pops.push({ x: b!.x + bubbleOffset(b!.x, b!.y), y: b!.y,
+                    age: 0 });
       audio.pop(panFor(b!.x, TANK.width));
     }
-    ripples.push({ x: p.x, y: p.y, age: 0 });
+    if (effects.splashes) ripples.push({ x: p.x, y: p.y, age: 0 });
     // The glass knock slops the water a little, on the tapped side.
-    disturbSurface(surface, p.x, PUSH.tap, 8);
+    if (effects.surface) disturbSurface(surface, p.x, PUSH.tap, 8);
     noteGlassTap();
   }
   requestPaint();
@@ -1664,6 +1668,7 @@ function sendState(): void {
       cfg: crtCfg,
     },
     sound: soundCfg,
+    effects,
   });
 }
 
@@ -1850,6 +1855,8 @@ function onBusMessage(m: BusMsg): void {
     applyLighting(m.lighting);
   } else if (m.op === "soundConfig") {
     applySoundConfig(m.cfg);
+  } else if (m.op === "effectsConfig") {
+    applyEffects(m.cfg);
   } else if (m.op === "machine" && typeof m.id === "string") {
     const nm = machineById(m.id);
     if (nm && nm.id !== machine.id) { applyMachine(nm); postState(); }
@@ -2233,6 +2240,48 @@ const toggleMute = (): void => {
   audio.unlock(); // Tank > Mute Sound can be the first gesture
   applySoundConfig({ muted: !soundCfg.muted });
 };
+
+// ---- tank effects --------------------------------------------------------
+// The drawn extras the original game never had — each a checkbox on
+// Preferences' Effects pane (web/effects.ts lists them), all on by
+// default so the tank keeps its looks until a box clears. Declared
+// with the other flags: the setCrt call below posts state during
+// module eval, and postState() reads this.
+const EFFECTS_KEY = "finsical:effects";
+let effects: EffectsConfig = (() => {
+  try {
+    return sanitizeEffects(
+      JSON.parse(localStorage.getItem(EFFECTS_KEY) ?? "null"));
+  } catch { return sanitizeEffects(null); /* storage: defaults */ }
+})();
+/** Merge a partial config (the Effects pane's boxes) onto the current
+ * one, persist and apply — a switched-off effect clears its in-flight
+ * visuals at once rather than playing them out. */
+function applyEffects(raw: unknown): void {
+  effects = sanitizeEffects(raw, effects);
+  if (!effects.splashes) {
+    ripples.length = 0;
+    splashes.length = 0;
+    pops.length = 0;
+  }
+  if (!effects.surface) {
+    // Calm the springs: the next render draws the flat resting line
+    // instead of freezing a mid-wave waterline.
+    surface.h.fill(0);
+    surface.v.fill(0);
+  }
+  if (!effects.snail) {
+    snail = null;
+    // Re-arm the wait so a switch back on doesn't invite it in at
+    // once.
+    snailNextAt = sim.tickCount +
+      (10 + Math.random() * 15) * SNAIL_MIN_TICKS;
+  }
+  requestPaint(); // the change shows at once, even while paused
+  try { localStorage.setItem(EFFECTS_KEY, JSON.stringify(effects)); }
+  catch { /* storage unavailable */ }
+  postState();
+}
 
 // ---- auto-feeder ---------------------------------------------------------
 // The original's scheduled feeding: while armed, a pinch of pellets
@@ -3340,8 +3389,8 @@ const WAKE_PUSH = 0.05;
 
 /** Droplets where something enters the water, and the waves it makes. */
 function splashAt(x: number, y: number, push: number): void {
-  splashes.push(newSplash(x, y));
-  disturbSurface(surface, x, push);
+  if (effects.splashes) splashes.push(newSplash(x, y));
+  if (effects.surface) disturbSurface(surface, x, push);
 }
 
 /** Per-tick surface forcing: bubbles popping and fish cruising along
@@ -3371,7 +3420,10 @@ function drawDecor(i: number): void {
   const d = frames[decorFrame(sim.tickCount, frames.length, phase)]!;
   const x = decorX(i, dn, d.width);
   const y = TANK.height - DECOR_FLOOR - d.height;
-  if (waterMotion !== "animated") { ctx.drawImage(d, x, y); return; }
+  if (waterMotion !== "animated" || !effects.sway) {
+    ctx.drawImage(d, x, y);
+    return;
+  }
   // Sway per horizontal band — offsets grow toward the tip, so the
   // planted root stays glued while the top drifts. Runs on the sim
   // clock like decor frames: a paused tank holds still. Each band
@@ -3392,7 +3444,8 @@ function drawDecor(i: number): void {
   }
 }
 function drawMidWater(floor: number): void {
-  drawLight(ctx, sim.light, sim.tickCount, waterMotion, floor);
+  if (effects.sunlight)
+    drawLight(ctx, sim.light, sim.tickCount, waterMotion, floor);
 
   drawFood(ctx, sim.food);
   // The snail crawls the gravel at mid depth, not over the water.
@@ -3485,8 +3538,13 @@ function render(now: Date, target: RenderTarget = "screen"): void {
   // Ambient motion (swell, glint, shimmer) holds still under reduced
   // motion; waves from splashes and taps still play out, like ripples.
   const t = waterMotion === "animated" ? sim.tickCount : 0;
-  surfaceLine(surface, t, waterline);
-  drawRefraction(ctx, t);
+  if (effects.surface) {
+    surfaceLine(surface, t, waterline);
+    drawRefraction(ctx, t);
+  } else {
+    // The original's waterline: the flat resting row.
+    waterline.fill(SURFACE);
+  }
   // The lamp lights the air as brightly as the daylight in the water.
   const sun = sunFactor(sim.light, floor);
   // The glare baked into the iMac renders rides over the tank — dim
@@ -3503,21 +3561,24 @@ function render(now: Date, target: RenderTarget = "screen"): void {
   // The waterline divides feeding from tapping, so it brightens while
   // a click would feed. Under the murk and night overlays, so it dims
   // with the water instead of glowing at night.
-  drawSurface(ctx, waterline, sun, t, overFeedZone);
+  drawSurface(ctx, waterline, sun, effects.surface ? t : 0,
+              overFeedZone);
   drawBubbles(ctx, sim.bubbles, waterline);
-  for (const p of pops) drawBubblePop(ctx, p.x, p.y);
+  if (effects.splashes) {
+    for (const p of pops) drawBubblePop(ctx, p.x, p.y);
 
-  // On the glass, so over the fish: ripples and splashes paint last.
-  drawRipples(ctx, ripples);
-  drawSplashes(ctx, splashes);
+    // On the glass, so over the fish: ripples and splashes paint last.
+    drawRipples(ctx, ripples);
+    drawSplashes(ctx, splashes);
+  }
 
   // Fouled water murks the whole scene.
-  drawMurk(ctx, sim.waterQuality, t);
+  if (effects.murk) drawMurk(ctx, sim.waterQuality, t);
 
   // A mouse or pen hovering the dark tank lights it like a torch, in
   // the colors the scene has before the night veil goes on.
-  const torch = target === "screen" && lastHover && torchOn()
-    ? lastHover : null;
+  const torch = target === "screen" && effects.torch && lastHover &&
+    torchOn() ? lastHover : null;
   torchLit = torch !== null;
   if (torch) keepTorch(ctx, torch.x, torch.y, 1 - sun);
   drawNight(now);
@@ -3640,8 +3701,8 @@ function pawTick(): void {
     // ring the glass, slap the surface.
     sim.tap(sw.x, sw.y);
     audio.tap(sw.x, sw.y, TANK.width, TANK.height);
-    ripples.push({ x: sw.x, y: sw.y, age: 0 });
-    disturbSurface(surface, sw.x, PUSH.tap, 8);
+    if (effects.splashes) ripples.push({ x: sw.x, y: sw.y, age: 0 });
+    if (effects.surface) disturbSurface(surface, sw.x, PUSH.tap, 8);
   }
 }
 
@@ -3672,7 +3733,7 @@ function tickSim(): void {
   const bubbles = sim.bubbles.length;
   const pellets = sim.food.slice();
   sim.notice = noticePoint(notice, sim.tickCount); // curiosity fades
-  stirSurface();
+  if (effects.surface) stirSurface();
   sim.tick();
   // Lifecycle: each transition rings its original event sound. A birth
   // also binds the fry's sprite extents and splashes it in.
@@ -3698,7 +3759,7 @@ function tickSim(): void {
   // Snail visits run on the sim clock so a paused tank's snail waits.
   if (snailNextAt < 0)
     snailNextAt = sim.tickCount + (6 + Math.random() * 8) * SNAIL_MIN_TICKS;
-  if (!snail && sim.tickCount >= snailNextAt)
+  if (!snail && effects.snail && sim.tickCount >= snailNextAt)
     snail = snailSpawn(sim.tickCount, Math.random);
   if (snail && !snailPose(snail, sim.tickCount, TANK.width)) {
     snail = null;
@@ -3715,7 +3776,7 @@ function tickSim(): void {
         decorAnchor(i, decors.length) + (Math.random() - 0.5) * 6,
         TANK.height - DECOR_FLOOR - d.frames[0]!.height * 0.7);
     }
-  tickSurface(surface);
+  if (effects.surface) tickSurface(surface);
   pawTick();
   // Latch on the chime actually sounding: while the AudioContext is
   // suspended dinnerBell() returns false and we keep waiting, so a
@@ -3734,8 +3795,9 @@ function tickSim(): void {
   for (const p of pellets)
     if (p.eaten && !sim.food.includes(p))
       audio.eat(panFor(p.x, TANK.width));
-  for (let i = pops.length - 1; i >= 0; i--)
-    if (++pops[i]!.age > 8) pops.splice(i, 1);
+  if (effects.splashes)
+    for (let i = pops.length - 1; i >= 0; i--)
+      if (++pops[i]!.age > 8) pops.splice(i, 1);
   // Sparse bloops: only some spawns make a sound. Checked per tick so
   // the odds don't depend on how often the tank is drawn.
   if (sim.bubbles.length > bubbles && Math.random() < 0.25) {
