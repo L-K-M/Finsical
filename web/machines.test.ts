@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MACHINES, SCREENBACK_HOLE_PAD, machineById, previewMarkup, rasterInGlass,
-  shellMarkup,
+  rasterZoom, shellMarkup,
 } from "./machines.js";
 
 // Each machine's `shape` is hand-synced to the outer <rect> geometry
@@ -260,5 +260,29 @@ describe("rasterInGlass", () => {
       expect(r.x + r.w, m.id).toBeLessThanOrEqual(1);
       expect(r.y + r.h, m.id).toBeLessThanOrEqual(1);
     }
+  });
+});
+
+describe("rasterZoom", () => {
+  const plus = machineById("plus")!, bare = machineById("bare")!;
+
+  it("snaps a case's upscale to whole device pixels", () => {
+    expect(rasterZoom(plus, 2.18, 1)).toBe(2);
+    expect(rasterZoom(plus, 1.25, 2)).toBe(1);
+    expect(rasterZoom(plus, 1.9, 1.5)).toBeCloseTo(2 / 1.5);
+  });
+
+  it("stretches below 1x", () => {
+    expect(rasterZoom(plus, 0.6, 1)).toBe(0.6);
+    expect(rasterZoom(bare, 0.6, 2)).toBe(0.6);
+  });
+
+  // No case, no bezel: the margin would be transparent, and the
+  // window's edges (resize, move strip) would sit out in it, away
+  // from the water the user sees.
+  it("fills the Bare tank's window edge to edge at any size", () => {
+    expect(rasterZoom(bare, 2.18, 1)).toBe(2.18);
+    expect(rasterZoom(bare, 1.25, 2)).toBe(1.25);
+    expect(rasterZoom(bare, 1.9, 1.5)).toBe(1.9);
   });
 });

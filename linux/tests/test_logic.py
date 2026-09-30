@@ -457,6 +457,49 @@ class TestGeometry(unittest.TestCase):
         plus = 821 / 1059
         self.assertIsNone(logic.aspect_snapped(Size(620, 800), plus))
         self.assertIsNone(logic.aspect_snapped(Size(621, 800), plus))
+        self.assertIsNone(
+            logic.aspect_snapped(Size(621, 800), plus, Size(620, 800))
+        )
+
+    def test_aspect_snap_follows_a_one_edge_drag(self):
+        # The Bare tank (320 x 200) at 640 x 400 with one edge dragged:
+        # the dragged side stays and the other follows, rather than
+        # snapping back to where it was.
+        bare = 320 / 200
+        settled = Size(640, 400)
+        self.assertEqual(
+            logic.aspect_snapped(Size(800, 400), bare, settled),
+            Size(800, 500),
+        )
+        self.assertEqual(
+            logic.aspect_snapped(Size(640, 500), bare, settled),
+            Size(800, 500),
+        )
+        self.assertEqual(
+            logic.aspect_snapped(Size(480, 400), bare, settled),
+            Size(480, 300),
+        )
+
+    def test_aspect_snap_keeps_a_one_edge_drag_inside_the_limit(self):
+        bare = 320 / 200
+        self.assertEqual(
+            logic.aspect_snapped(
+                Size(1900, 400), bare, Size(640, 400), Size(1920, 1080)
+            ),
+            Size(1728, 1080),
+        )
+
+    def test_aspect_snap_shrinks_a_corner_drag(self):
+        # Both sides moved: keep inside what was dragged out.
+        plus = 821 / 1059
+        self.assertEqual(
+            logic.aspect_snapped(Size(900, 850), plus, Size(620, 800)),
+            Size(659, 850),
+        )
+        self.assertEqual(
+            logic.aspect_snapped(Size(700, 1100), plus, Size(620, 800)),
+            Size(700, 903),
+        )
 
     def test_intersects_any(self):
         monitors = [Rect(0, 0, 1920, 1080), Rect(1920, 0, 1280, 1024)]

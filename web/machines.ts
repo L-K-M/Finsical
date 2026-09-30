@@ -70,6 +70,23 @@ export function rasterInGlass(m: Machine): RasterBox {
   };
 }
 
+/** The CSS zoom of the 320x200 raster in a screen rect that fits it `k`
+ * times at devicePixelRatio `dpr`. Upscales snap to integer multiples
+ * on the *device* grid: a fractional contain shimmers, and so does a
+ * CSS-integer multiple under a fractional devicePixelRatio. The margin
+ * reads as the glass's inner bezel. Sub-1x can't be pixel-crisp
+ * anyway, so it fills.
+ *
+ * A machine with no case (Bare) has no bezel to take that margin: it
+ * would be see-through, with the window's edges and drag strip out in
+ * it, away from the water. It fills at every size instead, trading
+ * uniform pixels for water edge to edge. */
+export function rasterZoom(m: Machine, k: number, dpr: number): number {
+  if (!m.image && !m.svg) return k;
+  const dev = Math.floor(k * dpr);
+  return k >= 1 && dev >= 1 ? dev / dpr : k;
+}
+
 /** The shell svg's inner markup — vector art, or the raster image
  * stretched to the viewBox. preserveAspectRatio="none" matters: the
  * native mask stretches the same image to the window, so both must
