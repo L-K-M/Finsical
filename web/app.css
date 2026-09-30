@@ -68,8 +68,9 @@ html.native body.tankpage { cursor: grab; }
 /* JS-set, not :active — a native performDrag owns the mouse and the
  * page may never see the pointerup that ends :active. */
 html.native body.tankpage.grabbing { cursor: grabbing; }
-/* Size and position come from layoutMachine(): upscales snap to
-   integer multiples of the 320x200 raster so pixels stay uniform. */
+/* Size and position come from layoutMachine(): in a case, upscales
+   snap to integer multiples of the 320x200 raster so pixels stay
+   uniform; the caseless Bare tank fills its window. */
 canvas#tank {
   display: block; position: absolute;
   image-rendering: pixelated; /* keep the crunch */

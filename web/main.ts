@@ -75,7 +75,7 @@ import { bubbleOffset, bubblePops, drawAir, drawBubblePop,
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
   from "./surface.js";
 import {
-  glassRect, machineById, MACHINE_KEY, rasterInGlass,
+  glassRect, machineById, MACHINE_KEY, rasterInGlass, rasterZoom,
   savedMachineId, SCREENBACK_HOLE_PAD, shellMarkup,
 } from "./machines.js";
 import type { CrtConfig } from "./crt.js";
@@ -2376,17 +2376,14 @@ function layoutMachine(): void {
   // The CRT canvas spans the whole glass, not just the tank, so the
   // height/width pots can grow the raster into the aperture's black
   // margins. Offsets are relative to #screen, its parent.
-  // Pixel-art scaling: upscales snap to integer multiples of the
-  // 320x200 raster on the *device* grid — a fractional contain
-  // shimmers, and so does a CSS-integer multiple under a fractional
-  // devicePixelRatio. The margin reads as the glass's inner bezel;
-  // containPoint() maps clicks off the canvas's own rect, so the
-  // wider letterbox needs no pointer change.
+  // Pixel-art scaling (rasterZoom): a cased tank's upscales snap to
+  // integer multiples on the device grid and letterbox inside the
+  // glass; Bare fills. containPoint() maps clicks off the canvas's
+  // own rect, so the letterbox needs no pointer change.
   const aw = machine.sw * s, ah = machine.sh * s;
   const k = Math.min(aw / TANK.width, ah / TANK.height);
   const dpr = window.devicePixelRatio || 1;
-  const dev = Math.floor(k * dpr);
-  const ik = k >= 1 && dev >= 1 ? dev / dpr : k;
+  const ik = rasterZoom(machine, k, dpr);
   // Sub-1x can't be pixel-crisp anyway — a smooth downscale beats a
   // ragged pixelated one in a tiny window.
   canvas.style.imageRendering = ik >= 1 ? "pixelated" : "auto";

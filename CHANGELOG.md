@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- The Bare tank's water fills its window edge to edge at every size.
+  It used to keep to whole zoom steps with a see-through border
+  around it, and in the Linux Flatpak that border held the tank's
+  edges and its drag strip, so it seemed it could not be moved or
+  resized.
+- On Linux, dragging just one edge of the tank resizes it and keeps
+  the new size, growing the other side to match, instead of snapping
+  back when you let go. The strip that moves the tank shows a grab
+  hand.
 - On Linux under Wayland, you can resize the tank by its edges again,
   and it keeps its case's shape when you let go. Dragging the case no
   longer sometimes drags a picture of it instead of moving the window.

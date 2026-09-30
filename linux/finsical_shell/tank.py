@@ -154,10 +154,11 @@ class TankWindow:
     GTK 4 has no aspect hint, so the window manager does not hold the
     tank to its case: every size the app sets (launch, a machine
     change, Larger/Smaller) is computed at the case's aspect instead.
-    The tank has no edges to drag, but a window manager's own resize
-    (KWin's Alt+right-drag, a keyboard shortcut) can leave it
-    off-aspect, with empty glass beside the case; once such a resize
-    settles, the window snaps back to the case's outline.
+    A resize by the window's edges (GTK's resize borders on Wayland) or
+    the window manager's own (KWin's Alt+right-drag, a keyboard
+    shortcut) leaves it off-aspect, with empty glass beside the case;
+    once such a resize settles, the window snaps back to the case's
+    outline, keeping the side a one-edge drag moved.
     """
 
     def __init__(
@@ -179,6 +180,9 @@ class TankWindow:
         # The size the last snap asked to leave, and the wait before
         # the next one (see _ASPECT_SNAP_MAX_DELAY_MS).
         self._snap_from: Optional[Size] = None
+        # The last size found at the case's aspect: the side of a later
+        # resize that still matches it was not dragged.
+        self._settled: Optional[Size] = None
         self._snap_delay = _ASPECT_SNAP_DELAY_MS
         self._size: Optional[tuple[int, int]] = None
         # Where to put the window when it maps (X11 only: GTK 4 cannot
@@ -198,6 +202,8 @@ class TankWindow:
         overlay.set_child(page.view)
         strip = Gtk.Box(valign=Gtk.Align.START, halign=Gtk.Align.FILL)
         strip.set_size_request(-1, logic.TANK_DRAG_STRIP_HEIGHT)
+        # The hand the page shows over a case it drags by.
+        strip.set_cursor_from_name("grab")
         click = Gtk.GestureClick(button=Gdk.BUTTON_PRIMARY)
         click.connect("pressed", self._on_strip_press)
         strip.add_controller(click)
@@ -396,8 +402,15 @@ class TankWindow:
         # manager's next configure, which leaves the default behind.
         # Setting the default queues a resize even when unchanged.
         size = Size(self.window.get_width(), self.window.get_height())
-        snapped = logic.aspect_snapped(size, self._aspect())
+        area = work_area(self.window)
+        snapped = logic.aspect_snapped(
+            size,
+            self._aspect(),
+            self._settled,
+            None if area is None else Size(area.w, area.h),
+        )
         if snapped is None:
+            self._settled = size
             self._snap_from = None
             self._snap_delay = _ASPECT_SNAP_DELAY_MS
             return GLib.SOURCE_REMOVE

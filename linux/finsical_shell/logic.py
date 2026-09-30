@@ -364,13 +364,28 @@ def swapped_machine_frame(
     return Rect(frame.x, frame.y, round(w), round(w * vb_h / vb_w))
 
 
-def aspect_snapped(size: Size, aspect: float) -> Optional[Size]:
-    """The largest size at `aspect` inside `size`, or None when `size`
-    is already there to within a pixel's rounding. GTK 4 cannot hold a
-    window to an aspect ratio while it is resized (macOS uses
-    contentAspectRatio), so the tank snaps back to its case afterwards;
-    shrinking one side keeps it inside what the user dragged out."""
-    w = min(size.w, size.h * aspect)
+def aspect_snapped(
+    size: Size,
+    aspect: float,
+    settled: Optional[Size] = None,
+    limit: Optional[Size] = None,
+) -> Optional[Size]:
+    """The size at `aspect` for a window resized to `size`, or None when
+    `size` is already there to within a pixel's rounding. GTK 4 cannot
+    hold a window to an aspect ratio while it is resized (macOS uses
+    contentAspectRatio), so the tank snaps back to its case afterwards.
+
+    When one side still matches `settled` (the last size at the aspect),
+    only one edge was dragged: that side stays and the other follows,
+    no larger than `limit` (the work area). Otherwise the result is the
+    largest size inside `size`, keeping it inside what was dragged out.
+    """
+    if settled is None or (size.w == settled.w) == (size.h == settled.h):
+        w = min(size.w, size.h * aspect)
+    else:
+        w = size.w if size.h == settled.h else size.h * aspect
+        if limit is not None:
+            w = min(w, limit.w, limit.h * aspect)
     snapped = Size(round(w), round(w / aspect))
     if abs(snapped.w - size.w) <= 1 and abs(snapped.h - size.h) <= 1:
         return None
