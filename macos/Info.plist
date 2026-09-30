@@ -7,7 +7,7 @@
 	<key>CFBundleIconFile</key>
 	<string>Finsical</string>
 	<key>CFBundleIdentifier</key>
-	<string>dev.finsical.app</string>
+	<string>ch.lkmc.Finsical</string>
 	<key>CFBundleName</key>
 	<string>Finsical</string>
 	<key>CFBundlePackageType</key>
