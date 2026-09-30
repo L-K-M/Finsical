@@ -153,6 +153,43 @@ const ICON_LIGHTING = [
   "................................",
 ];
 
+/** The Effects pane's icon: a little tank — sparkles over a waved
+ * waterline and caustic flecks in the water. */
+const ICON_EFFECTS = [
+  "................................",
+  "................................",
+  "................................",
+  "..0000000000000000000000000000..",
+  "..0ffffffffffffffffffffffffff0..",
+  "..0f999999999999999999999999f0..",
+  "..0f9......................9f0..",
+  "..0f9.....0..........0.....9f0..",
+  "..0f9....0y0........0y0....9f0..",
+  "..0f9.....0........0yyy0...9f0..",
+  "..0f9...............0y0....9f0..",
+  "..0f9................0.....9f0..",
+  "..0f9......................9f0..",
+  "..0f9.uu...uu...uu...uu....9f0..",
+  "..0f9tuuutttuutttuutttuuttt9f0..",
+  "..0f9tttttttttttttttttttttt9f0..",
+  "..0f9ttuutttttuutttttuutttt9f0..",
+  "..0f9tttttttttttttttttttttt9f0..",
+  "..0f9tttttuutttttuutttttttt9f0..",
+  "..0f9tttttttttttttttttttttt9f0..",
+  "..0f9ttuutttttuutttttuutttt9f0..",
+  "..0f9tttttttttttttttttttttt9f0..",
+  "..0f9tttttttttttttttttttttt9f0..",
+  "..0f999999999999999999999999f0..",
+  "..0ffffffffffffffffffffffffff0..",
+  "..0000000000000000000000000000..",
+  "................................",
+  "................................",
+  "................................",
+  "................................",
+  "................................",
+  "................................",
+];
+
 /** Sound add-ons' icon, 32 x 24 so it sits unscaled in the add-on
  * lists' 38 x 28 thumbnails: a speaker sending out sound waves. Drawn
  * with grays and ICON_PALETTE only (render.ts rasterizes it). */
@@ -213,6 +250,7 @@ export const ICON_SPRITES: Record<string, readonly string[]> = {
   "icon-machine": ICON_MACHINE,
   "icon-monitor": ICON_MONITOR,
   "icon-picture": ICON_PICTURE,
+  "icon-effects": ICON_EFFECTS,
   "icon-lighting": ICON_LIGHTING,
   "icon-sound": ICON_SOUND,
 };
