@@ -2453,6 +2453,11 @@ document.addEventListener("pointerdown", (e) => {
   document.body.classList.add("grabbing");
   bus.post({ op: "dragWindow" }); // native shell → performDrag
 });
+// Nothing on the page is dragged the HTML way. WebKitGTK would start
+// dragging the image under a case press, and its drag and the shell's
+// window move answer the same press: whichever reaches the compositor
+// first gets the pointer, so the window could stay put.
+document.addEventListener("dragstart", (e) => e.preventDefault());
 // The case grab is :active's job done in JS: a native performDrag
 // loops on real mouse state and the page may never see the pointerup,
 // so every plausible release signal clears the class.

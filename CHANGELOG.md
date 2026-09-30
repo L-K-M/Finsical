@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- On Linux under Wayland, you can resize the tank by its edges again,
+  and it keeps its case's shape when you let go. Dragging the case no
+  longer sometimes drags a picture of it instead of moving the window.
 - Preferences grows an Effects pane for the extras Finsical draws that
   the original game did not: sun shafts and caustics, the waving
   waterline, tap ripples and feed splashes, swaying plants, the murk

@@ -31,6 +31,12 @@ TANK_TITLE = "Finsical"
 # How long a window manager's resize must rest before the tank snaps to
 # its case's aspect: snapping mid-drag would fight the pointer.
 _ASPECT_SNAP_DELAY_MS = 250
+# A snap repeated from the same size waits twice as long each time, up
+# to this. A request made mid-drag is dropped and has to be repeated
+# after the release, which the window manager's configure (at the size
+# it last gave) triggers; one it kept refusing would otherwise be asked
+# again four times a second.
+_ASPECT_SNAP_MAX_DELAY_MS = 2000
 # States in which the window manager, not the app, owns the size.
 _MANAGED_SIZE = (
     Gdk.ToplevelState.MAXIMIZED
@@ -170,6 +176,10 @@ class TankWindow:
         self._silhouette: Optional[_Silhouette] = None
         self._shape_pending = False
         self._aspect_timer = 0
+        # The size the last snap asked to leave, and the wait before
+        # the next one (see _ASPECT_SNAP_MAX_DELAY_MS).
+        self._snap_from: Optional[Size] = None
+        self._snap_delay = _ASPECT_SNAP_DELAY_MS
         self._size: Optional[tuple[int, int]] = None
         # Where to put the window when it maps (X11 only: GTK 4 cannot
         # place a window, see x11.py).
@@ -362,28 +372,43 @@ class TankWindow:
         self._schedule_shape()
 
     def _on_layout(self, _surface: Gdk.Surface, w: int, h: int) -> None:
+        # Every layout, even at an unchanged size: a snap asked for
+        # while the window manager still owned the size (mid-drag) is
+        # dropped, and the release's configure repeats the last size.
+        if self._aspect_timer:
+            GLib.source_remove(self._aspect_timer)
+        self._aspect_timer = GLib.timeout_add(
+            self._snap_delay, self._snap_to_aspect
+        )
         if self._size == (w, h):
             return
         self._size = (w, h)
         self.save_frame()
         self._schedule_shape()
-        if self._aspect_timer:
-            GLib.source_remove(self._aspect_timer)
-        self._aspect_timer = GLib.timeout_add(
-            _ASPECT_SNAP_DELAY_MS, self._snap_to_aspect
-        )
 
     def _snap_to_aspect(self) -> bool:
         self._aspect_timer = 0
         surface = self.window.get_surface()
         if surface is None or surface.get_state() & _MANAGED_SIZE:
             return GLib.SOURCE_REMOVE
-        # The default size follows the window manager's resizes, and is
-        # the window's own size, without GTK's resize borders.
-        w, h = self.window.get_default_size()
-        snapped = logic.aspect_snapped(Size(w, h), self._aspect())
-        if snapped is not None:
-            self.window.set_default_size(snapped.w, snapped.h)
+        # The allocated size, not the default size: a snap asked for
+        # mid-drag sets the default but is overruled by the window
+        # manager's next configure, which leaves the default behind.
+        # Setting the default queues a resize even when unchanged.
+        size = Size(self.window.get_width(), self.window.get_height())
+        snapped = logic.aspect_snapped(size, self._aspect())
+        if snapped is None:
+            self._snap_from = None
+            self._snap_delay = _ASPECT_SNAP_DELAY_MS
+            return GLib.SOURCE_REMOVE
+        if size == self._snap_from:
+            self._snap_delay = min(
+                self._snap_delay * 2, _ASPECT_SNAP_MAX_DELAY_MS
+            )
+        else:
+            self._snap_from = size
+            self._snap_delay = _ASPECT_SNAP_DELAY_MS
+        self.window.set_default_size(snapped.w, snapped.h)
         return GLib.SOURCE_REMOVE
 
     def _on_strip_press(
@@ -435,6 +460,13 @@ class TankWindow:
             region = cairo.Region(cairo.RectangleInt(0, 0, w, h))
         dx, dy = self.window.get_surface_transform()
         region.translate(round(dx), round(dy))
+        # The ring around the window is GTK's resize handles; without
+        # it the tank's edges could not be dragged to resize it.
+        handles = cairo.Region(
+            cairo.RectangleInt(0, 0, surface.get_width(), surface.get_height())
+        )
+        handles.subtract(cairo.RectangleInt(round(dx), round(dy), w, h))
+        region.union(handles)
         surface.set_input_region(region)
         if self.x11:
             composited = self.window.get_display().is_composited()
