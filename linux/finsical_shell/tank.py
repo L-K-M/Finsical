@@ -362,25 +362,30 @@ class TankWindow:
         self._schedule_shape()
 
     def _on_layout(self, _surface: Gdk.Surface, w: int, h: int) -> None:
-        if self._size == (w, h):
-            return
-        self._size = (w, h)
-        self.save_frame()
-        self._schedule_shape()
+        # Every layout, even at an unchanged size: a snap asked for
+        # while the window manager still owned the size (mid-drag) is
+        # dropped, and the release's configure repeats the last size.
         if self._aspect_timer:
             GLib.source_remove(self._aspect_timer)
         self._aspect_timer = GLib.timeout_add(
             _ASPECT_SNAP_DELAY_MS, self._snap_to_aspect
         )
+        if self._size == (w, h):
+            return
+        self._size = (w, h)
+        self.save_frame()
+        self._schedule_shape()
 
     def _snap_to_aspect(self) -> bool:
         self._aspect_timer = 0
         surface = self.window.get_surface()
         if surface is None or surface.get_state() & _MANAGED_SIZE:
             return GLib.SOURCE_REMOVE
-        # The default size follows the window manager's resizes, and is
-        # the window's own size, without GTK's resize borders.
-        w, h = self.window.get_default_size()
+        # The allocated size, not the default size: a snap asked for
+        # mid-drag sets the default but is overruled by the window
+        # manager's next configure, which leaves the default behind.
+        # Setting the default queues a resize even when unchanged.
+        w, h = self.window.get_width(), self.window.get_height()
         snapped = logic.aspect_snapped(Size(w, h), self._aspect())
         if snapped is not None:
             self.window.set_default_size(snapped.w, snapped.h)
@@ -435,6 +440,13 @@ class TankWindow:
             region = cairo.Region(cairo.RectangleInt(0, 0, w, h))
         dx, dy = self.window.get_surface_transform()
         region.translate(round(dx), round(dy))
+        # The ring around the window is GTK's resize handles; without
+        # it the tank's edges could not be dragged to resize it.
+        handles = cairo.Region(
+            cairo.RectangleInt(0, 0, surface.get_width(), surface.get_height())
+        )
+        handles.subtract(cairo.RectangleInt(round(dx), round(dy), w, h))
+        region.union(handles)
         surface.set_input_region(region)
         if self.x11:
             composited = self.window.get_display().is_composited()
