@@ -2274,8 +2274,7 @@ function applyEffects(raw: unknown): void {
     snail = null;
     // Re-arm the wait so a switch back on doesn't invite it in at
     // once.
-    snailNextAt = sim.tickCount +
-      (10 + Math.random() * 15) * SNAIL_MIN_TICKS;
+    snailNextAt = snailRevisitAt(sim.tickCount);
   }
   requestPaint(); // the change shows at once, even while paused
   try { localStorage.setItem(EFFECTS_KEY, JSON.stringify(effects)); }
@@ -3359,6 +3358,14 @@ const splashes: Splash[] = [];
 let snail: SnailVisit | null = null;
 let snailNextAt = -1;
 const SNAIL_MIN_TICKS = 1800; // one tank minute at 30 tps
+/** Ticks until the snail's first visit — sooner than a revisit, so
+ * the tank meets it early. */
+const snailFirstVisitAt = (from: number): number =>
+  from + (6 + Math.random() * 8) * SNAIL_MIN_TICKS;
+/** Ticks until the snail's next visit after a crossing ends or its
+ * Effects box clears — one expression so the two arms can't drift. */
+const snailRevisitAt = (from: number): number =>
+  from + (10 + Math.random() * 15) * SNAIL_MIN_TICKS;
 const snailSprite = new Map<string, HTMLCanvasElement>();
 function drawSnail(x: number, paused: boolean, dir: 1 | -1): void {
   const key = `${dir}${paused ? "p" : ""}`;
@@ -3757,13 +3764,12 @@ function tickSim(): void {
       sim.tickCount % AUTOFEED_TICKS === 0)
     feederDrop();
   // Snail visits run on the sim clock so a paused tank's snail waits.
-  if (snailNextAt < 0)
-    snailNextAt = sim.tickCount + (6 + Math.random() * 8) * SNAIL_MIN_TICKS;
+  if (snailNextAt < 0) snailNextAt = snailFirstVisitAt(sim.tickCount);
   if (!snail && effects.snail && sim.tickCount >= snailNextAt)
     snail = snailSpawn(sim.tickCount, Math.random);
   if (snail && !snailPose(snail, sim.tickCount, TANK.width)) {
     snail = null;
-    snailNextAt = sim.tickCount + (10 + Math.random() * 15) * SNAIL_MIN_TICKS;
+    snailNextAt = snailRevisitAt(sim.tickCount);
   }
   // Photosynthesis: while the tank is lit, each plant leaks the odd
   // bubble from its crown — they rise through the same sim path as
