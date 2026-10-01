@@ -197,7 +197,7 @@ const PANES: { id: PaneId; label: string; icon: string; hint: string;
                offHint?: string;
                keys: (keyof CrtConfig)[] }[] = [
   { id: "machine", label: "Machine", icon: "icon-machine",
-    hint: "Choose a computer case or a glass aquarium.", keys: [] },
+    hint: "Choose a computer case, a glass aquarium, or a bare tank.", keys: [] },
   { id: "monitor", label: "Monitor", icon: "icon-monitor",
     hint: "How the picture tube draws the tank. Point at a slider " +
       "to see what it does.",

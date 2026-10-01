@@ -292,4 +292,12 @@ describe("rasterZoom", () => {
     expect(rasterZoom(aquarium, 1.25, 2)).toBe(1.25);
     expect(rasterZoom(aquarium, 1.9, 1.5)).toBe(1.9);
   });
+
+  it("keeps the aquarium feed zone below the native drag strip", () => {
+    // Both desktop shells use these minimum-size and drag-strip values.
+    const NATIVE_MIN_SCALE = 0.25, NATIVE_DRAG_STRIP_HEIGHT = 22;
+    const aquarium = machineById("aquarium")!;
+    expect(aquarium.sy * NATIVE_MIN_SCALE)
+      .toBeGreaterThanOrEqual(NATIVE_DRAG_STRIP_HEIGHT);
+  });
 });

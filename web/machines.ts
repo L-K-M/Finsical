@@ -349,8 +349,9 @@ const imacg4: Machine = {
   svg: "",
 };
 
-const AQUARIUM_BODY: ShapeRect = { x: 0, y: 0, w: 800, h: 568, r: 10 };
-const AQUARIUM_GLASS: ShapeRect = { x: 48, y: 68, w: 704, h: 440, r: 0 };
+const AQUARIUM_BODY: ShapeRect = { x: 0, y: 0, w: 800, h: 592, r: 10 };
+// Keep the glass below the native drag strip at the minimum window size.
+const AQUARIUM_GLASS: ShapeRect = { x: 48, y: 92, w: 704, h: 440, r: 0 };
 
 // Share the opening with layout and the native mask so the live water
 // stays inside the glass. Only the frame is opaque; glare overlays it.
@@ -384,18 +385,20 @@ const aquarium: Machine = {
   <g mask="url(#aquarium-frame)">
     <rect x="0" y="0" width="${AQUARIUM_BODY.w}" height="${AQUARIUM_BODY.h}"
           rx="${AQUARIUM_BODY.r}" fill="url(#aquarium-trim)"/>
-    <rect x="16" y="62" width="32" height="452" fill="url(#aquarium-edge)"/>
-    <rect x="752" y="62" width="32" height="452" fill="url(#aquarium-edge)"/>
-    <path d="M 48 68 H 752 V 508 H 48 Z" fill="none" stroke="#0e2528" stroke-width="8"/>
-    <rect x="10" y="10" width="780" height="42" rx="5" fill="url(#aquarium-trim)"/>
-    <path d="M 20 12 H 780 M 12 54 H 788" fill="none" stroke="#83918e" stroke-opacity="0.45" stroke-width="2"/>
-    <path d="M 12 60 H 788 M 12 516 H 788" fill="none" stroke="#070e11" stroke-width="6"/>
-    <rect x="10" y="522" width="780" height="36" rx="5" fill="url(#aquarium-trim)"/>
-    <path d="M 18 524 H 782" fill="none" stroke="#83918e" stroke-opacity="0.4" stroke-width="2"/>
+    <rect x="16" y="86" width="32" height="452" fill="url(#aquarium-edge)"/>
+    <rect x="752" y="86" width="32" height="452" fill="url(#aquarium-edge)"/>
+    <rect x="${AQUARIUM_GLASS.x}" y="${AQUARIUM_GLASS.y}"
+          width="${AQUARIUM_GLASS.w}" height="${AQUARIUM_GLASS.h}"
+          fill="none" stroke="#0e2528" stroke-width="8"/>
+    <rect x="10" y="10" width="780" height="66" rx="5" fill="url(#aquarium-trim)"/>
+    <path d="M 20 12 H 780 M 12 78 H 788" fill="none" stroke="#83918e" stroke-opacity="0.45" stroke-width="2"/>
+    <path d="M 12 84 H 788 M 12 540 H 788" fill="none" stroke="#070e11" stroke-width="6"/>
+    <rect x="10" y="546" width="780" height="36" rx="5" fill="url(#aquarium-trim)"/>
+    <path d="M 18 548 H 782" fill="none" stroke="#83918e" stroke-opacity="0.4" stroke-width="2"/>
   </g>
   <g fill="#fff" fill-opacity="0.08">
-    <path d="M 52 72 H 116 L 52 192 Z"/>
-    <path d="M 748 504 H 708 L 748 420 Z"/>
+    <path d="M 52 96 H 116 L 52 216 Z"/>
+    <path d="M 748 528 H 708 L 748 444 Z"/>
   </g>`,
 };
 
