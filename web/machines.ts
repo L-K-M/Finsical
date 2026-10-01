@@ -1,9 +1,7 @@
-// Machine "cases" drawn around the tank. Each entry is a rendered
-// image with a cut-out screen, layered over the aquarium so the art's
-// baked-in reflections stay on top of the water. The window mask
-// follows the image's own alpha — silhouette AND any genuine holes
-// (handle recesses, air gaps) — except the screen aperture, which the
-// native shell fills back in so the tank can show through the glass.
+// Cases drawn around the tank, with glass reflections above the water.
+// Rendered computers use image alpha as the native window mask, except
+// the screen aperture, which the shell fills back in for the tank.
+// The vector aquarium uses its shape geometry instead.
 //
 // viewBox units are the cropped image's pixels. `hole` is the glass
 // aperture: where the black screen backplate sits and which part of
@@ -33,6 +31,7 @@ export interface Machine {
   vbW: number; vbH: number;
   sx: number; sy: number;   // screen rect origin in viewBox units
   sw: number; sh: number;   // screen rect size — a 1.6 aspect
+  rasterFit?: "snap" | "fill"; // screens snap pixels; physical glass fills
   shape: ShapeRect[];       // window silhouette — for image machines
                             // it's only a fallback: the image's own
                             // alpha becomes the window mask
@@ -77,12 +76,12 @@ export function rasterInGlass(m: Machine): RasterBox {
  * reads as the glass's inner bezel. Sub-1x can't be pixel-crisp
  * anyway, so it fills.
  *
- * A machine with no case (Bare) has no bezel to take that margin: it
- * would be see-through, with the window's edges and drag strip out in
- * it, away from the water. It fills at every size instead, trading
- * uniform pixels for water edge to edge. */
+ * Physical aquariums fill their glass instead of adding monitor
+ * margins. Bare also fills: it has no bezel to hide those margins or
+ * anchor the window's edges. Both trade uniform pixels for water edge
+ * to edge. */
 export function rasterZoom(m: Machine, k: number, dpr: number): number {
-  if (!m.image && !m.svg) return k;
+  if (m.rasterFit === "fill" || (!m.image && !m.svg)) return k;
   const dev = Math.floor(k * dpr);
   return k >= 1 && dev >= 1 ? dev / dpr : k;
 }
@@ -350,6 +349,59 @@ const imacg4: Machine = {
   svg: "",
 };
 
+const AQUARIUM_BODY: ShapeRect = { x: 0, y: 0, w: 800, h: 592, r: 10 };
+// Keep the glass below the native drag strip at the minimum window size.
+const AQUARIUM_GLASS: ShapeRect = { x: 48, y: 92, w: 704, h: 440, r: 0 };
+
+// Share the opening with layout and the native mask so the live water
+// stays inside the glass. Only the frame is opaque; glare overlays it.
+const aquarium: Machine = {
+  id: "aquarium", name: "Glass aquarium",
+  blurb: "A glass fish tank with a black hood and base.",
+  vbW: AQUARIUM_BODY.w, vbH: AQUARIUM_BODY.h,
+  sx: AQUARIUM_GLASS.x, sy: AQUARIUM_GLASS.y,
+  sw: AQUARIUM_GLASS.w, sh: AQUARIUM_GLASS.h,
+  rasterFit: "fill",
+  shape: [AQUARIUM_BODY], hole: AQUARIUM_GLASS,
+  svg: `<defs>
+    <linearGradient id="aquarium-trim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#51585c"/>
+      <stop offset="0.22" stop-color="#282e32"/>
+      <stop offset="1" stop-color="#11171a"/>
+    </linearGradient>
+    <linearGradient id="aquarium-edge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#263e40"/>
+      <stop offset="0.4" stop-color="#99b9b3"/>
+      <stop offset="0.6" stop-color="#476967"/>
+      <stop offset="1" stop-color="#203e40"/>
+    </linearGradient>
+    <mask id="aquarium-frame" maskUnits="userSpaceOnUse"
+          x="0" y="0" width="${AQUARIUM_BODY.w}" height="${AQUARIUM_BODY.h}">
+      <rect x="0" y="0" width="${AQUARIUM_BODY.w}" height="${AQUARIUM_BODY.h}" fill="#fff"/>
+      <rect x="${AQUARIUM_GLASS.x}" y="${AQUARIUM_GLASS.y}"
+            width="${AQUARIUM_GLASS.w}" height="${AQUARIUM_GLASS.h}" fill="#000"/>
+    </mask>
+  </defs>
+  <g mask="url(#aquarium-frame)">
+    <rect x="0" y="0" width="${AQUARIUM_BODY.w}" height="${AQUARIUM_BODY.h}"
+          rx="${AQUARIUM_BODY.r}" fill="url(#aquarium-trim)"/>
+    <rect x="16" y="86" width="32" height="452" fill="url(#aquarium-edge)"/>
+    <rect x="752" y="86" width="32" height="452" fill="url(#aquarium-edge)"/>
+    <rect x="${AQUARIUM_GLASS.x}" y="${AQUARIUM_GLASS.y}"
+          width="${AQUARIUM_GLASS.w}" height="${AQUARIUM_GLASS.h}"
+          fill="none" stroke="#0e2528" stroke-width="8"/>
+    <rect x="10" y="10" width="780" height="66" rx="5" fill="url(#aquarium-trim)"/>
+    <path d="M 20 12 H 780 M 12 78 H 788" fill="none" stroke="#83918e" stroke-opacity="0.45" stroke-width="2"/>
+    <path d="M 12 84 H 788 M 12 540 H 788" fill="none" stroke="#070e11" stroke-width="6"/>
+    <rect x="10" y="546" width="780" height="36" rx="5" fill="url(#aquarium-trim)"/>
+    <path d="M 18 548 H 782" fill="none" stroke="#83918e" stroke-opacity="0.4" stroke-width="2"/>
+  </g>
+  <g fill="#fff" fill-opacity="0.08">
+    <path d="M 52 96 H 116 L 52 216 Z"/>
+    <path d="M 748 528 H 708 L 748 444 Z"/>
+  </g>`,
+};
+
 const bare: Machine = {
   id: "bare", name: "Bare tank",
   blurb: "No case — just the water, edge to edge.",
@@ -361,7 +413,7 @@ const bare: Machine = {
 export const MACHINES: readonly Machine[] =
   [plus, performa, performa2, performa5200, performa5200Black, tam,
    bondi, bondi2, strawberry, strawberry2, flowerPower, flowerPower2,
-   powerbookG3, ibook, imacg4, bare];
+   powerbookG3, ibook, imacg4, aquarium, bare];
 export const DEFAULT_MACHINE = "plus";
 /** Where the tank page persists its case choice. Shared because
  * Preferences seeds its list from it before the first state push. */
