@@ -31,6 +31,7 @@ export interface Machine {
   vbW: number; vbH: number;
   sx: number; sy: number;   // screen rect origin in viewBox units
   sw: number; sh: number;   // screen rect size — a 1.6 aspect
+  rasterFit?: "snap" | "fill"; // screens snap pixels; physical glass fills
   shape: ShapeRect[];       // window silhouette — for image machines
                             // it's only a fallback: the image's own
                             // alpha becomes the window mask
@@ -75,12 +76,12 @@ export function rasterInGlass(m: Machine): RasterBox {
  * reads as the glass's inner bezel. Sub-1x can't be pixel-crisp
  * anyway, so it fills.
  *
- * A machine with no case (Bare) has no bezel to take that margin: it
- * would be see-through, with the window's edges and drag strip out in
- * it, away from the water. It fills at every size instead, trading
- * uniform pixels for water edge to edge. */
+ * Physical aquariums fill their glass instead of adding monitor
+ * margins. Bare also fills: it has no bezel to hide those margins or
+ * anchor the window's edges. Both trade uniform pixels for water edge
+ * to edge. */
 export function rasterZoom(m: Machine, k: number, dpr: number): number {
-  if (!m.image && !m.svg) return k;
+  if (m.rasterFit === "fill" || (!m.image && !m.svg)) return k;
   const dev = Math.floor(k * dpr);
   return k >= 1 && dev >= 1 ? dev / dpr : k;
 }
@@ -359,6 +360,7 @@ const aquarium: Machine = {
   vbW: AQUARIUM_BODY.w, vbH: AQUARIUM_BODY.h,
   sx: AQUARIUM_GLASS.x, sy: AQUARIUM_GLASS.y,
   sw: AQUARIUM_GLASS.w, sh: AQUARIUM_GLASS.h,
+  rasterFit: "fill",
   shape: [AQUARIUM_BODY], hole: AQUARIUM_GLASS,
   svg: `<defs>
     <linearGradient id="aquarium-trim" x1="0" y1="0" x2="0" y2="1">

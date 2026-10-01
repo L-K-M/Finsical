@@ -285,4 +285,11 @@ describe("rasterZoom", () => {
     expect(rasterZoom(bare, 1.25, 2)).toBe(1.25);
     expect(rasterZoom(bare, 1.9, 1.5)).toBe(1.9);
   });
+
+  it("fills the glass aquarium without a monitor's letterbox margins", () => {
+    const aquarium = machineById("aquarium")!;
+    expect(rasterZoom(aquarium, 2.18, 1)).toBe(2.18);
+    expect(rasterZoom(aquarium, 1.25, 2)).toBe(1.25);
+    expect(rasterZoom(aquarium, 1.9, 1.5)).toBe(1.9);
+  });
 });
