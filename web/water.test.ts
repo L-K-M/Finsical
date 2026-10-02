@@ -333,7 +333,9 @@ describe("torch", () => {
 describe("surfaceAlpha", () => {
   it("shows no glint when the waves are off (null center)", () => {
     // With the effect off the line is the original's flat one: no
-    // frozen bright segment from the glint's t=0 position.
+    // frozen bright segment from the glint's t=0 position. 160 is the
+    // midline and 205 is where that frozen glint sat (gx(0) ≈ 0.64·W),
+    // so pinning both proves the artifact is gone.
     expect(surfaceAlpha(205, null, 1, false)).toBeCloseTo(0.55, 10);
     expect(surfaceAlpha(0, null, 1, false)).toBeCloseTo(0.55, 10);
     expect(surfaceAlpha(160, null, 1, true)).toBeCloseTo(0.6, 10);
@@ -342,6 +344,9 @@ describe("surfaceAlpha", () => {
   it("brightens a travelling band when a center is given", () => {
     expect(surfaceAlpha(205, 205, 1, false)).toBeGreaterThan(0.55);
     expect(surfaceAlpha(0, 205, 1, false)).toBeCloseTo(0.55, 10);
+    // The old formula's d<9 outer ring never beat the daylight base,
+    // so the skirt past the 6-px core is plain base line.
+    expect(surfaceAlpha(211, 205, 1, false)).toBeCloseTo(0.55, 10);
     // Night dims both the base and the glint.
     expect(surfaceAlpha(205, 205, 0, false)).toBeCloseTo(0.35, 10);
   });
