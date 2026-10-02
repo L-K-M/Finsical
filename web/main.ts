@@ -1,9 +1,9 @@
-import { BOTTOM_PAD, DAY_TICKS, FOOD_ENTRY_Y, Sim,
-         SURFACE, WAKE_LIGHT } from "../core/sim.js";
+import { BOTTOM_PAD, DAY_TICKS, FOOD_ENTRY_Y, MAX_UNEATEN,
+         Sim, SURFACE, WAKE_LIGHT } from "../core/sim.js";
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
-import { FISH_CAP, FOOD_CAP, HUNGER_SEEK, TANK_SIZE }
+import { FISH_CAP, HUNGER_SEEK, TANK_SIZE }
   from "../core/tuning.js";
 import { planFrame } from "../core/loop.js";
 import { Aquarium } from "../core/aquarium/aquarium.js";
@@ -2499,7 +2499,12 @@ function feedFish(): void {
   const x = 30 + Math.random() * (TANK.width - 60);
   const hungry = sim.fish.filter(
     (f) => f.state !== "dead" && f.hunger > HUNGER_SEEK).length;
-  const room = FOOD_CAP - sim.food.filter((p) => !p.eaten).length;
+  // The sim owns the uneaten-pellet ceiling (dropFood refuses past
+  // MAX_UNEATEN), so the pinch is sized against it: a command that
+  // can't land a pellet is refused up front instead of playing the
+  // pour and dropping nothing.
+  const room = MAX_UNEATEN -
+    sim.food.filter((p) => !p.eaten).length;
   // The cap refuses a pellet with a bare blip where it would have
   // landed — whether it's refused now or at drop time.
   const blip = (bx: number): void => {
@@ -2509,6 +2514,7 @@ function feedFish(): void {
   if (room <= 0) {
     // The tank's already full of uneaten food — no pellets, no shake.
     blip(x);
+    noteFoodRefused();
     return;
   }
   for (const p of feedPinch(Math.random, Math.min(hungry, room))) {
@@ -2516,7 +2522,7 @@ function feedFish(): void {
       if (paused) return; // paused since the pinch was scattered
       // Re-check at drop time: a second click fills the tank while a
       // first pinch is still falling.
-      if (sim.food.filter((q) => !q.eaten).length >= FOOD_CAP) {
+      if (sim.food.filter((q) => !q.eaten).length >= MAX_UNEATEN) {
         blip(x + p.dx);
         return;
       }
