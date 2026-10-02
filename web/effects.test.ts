@@ -17,6 +17,12 @@ describe("sanitizeEffects", () => {
     expect(c.sunlight).toBe(true); // untouched key = default
   });
 
+  it("has the cat on by default, like every other extra", () => {
+    expect(EFFECTS_DEFAULTS.cat).toBe(true);
+    expect(sanitizeEffects({ cat: false }).cat).toBe(false);
+    expect(sanitizeEffects({ cat: "no" }).cat).toBe(true);
+  });
+
   it("rejects non-booleans instead of truthiness", () => {
     const c = sanitizeEffects({ torch: 0, snail: "off", sway: 1 });
     expect(c.torch).toBe(EFFECTS_DEFAULTS.torch);

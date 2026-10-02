@@ -989,9 +989,10 @@ const FX_SPECS: { key: keyof EffectsConfig; label: string;
     blurb: "Hovering over a dark tank lights a warm circle around " +
       "the pointer, like a torch held to the glass." },
   { key: "snail", label: "Snail visits",
-    blurb: "Every so often a snail creeps in and crosses the gravel. " +
-      "The cat stays either way — that visitor was the original's " +
-      "own." },
+    blurb: "Every so often a snail creeps in and crosses the gravel." },
+  { key: "cat", label: "Cat visits",
+    blurb: "Now and then a cat reaches down over the rim and bats at " +
+      "the glass, and the fish scatter. Off keeps the cat away." },
 ];
 const fxBoxes = new Map<keyof EffectsConfig, HTMLInputElement>();
 

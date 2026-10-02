@@ -2286,6 +2286,13 @@ function applyEffects(raw: unknown): void {
     // once.
     snailNextAt = snailRevisitAt(sim.tickCount);
   }
+  if (!effects.cat) {
+    // A paw already reaching down leaves at once; the same re-armed
+    // wait as the snail's.
+    pawVisit = null;
+    pawSwatted.clear();
+    pawNextAt = pawRevisitAt(sim.tickCount);
+  }
   requestPaint(); // the change shows at once, even while paused
   try { localStorage.setItem(EFFECTS_KEY, JSON.stringify(effects)); }
   catch { /* storage unavailable */ }
@@ -3724,19 +3731,24 @@ function drawNight(now: Date): void {
 }
 
 // ---- the cat ------------------------------------------------------------
-// AquaZone's signature visitor: a paw drops from the top edge every few
-// minutes, bats at the glass a couple of times, and leaves. Tick-driven,
-// so it pauses with the sim and never fires while the tank is hidden.
+// A Finsical extra (Effects > Cat visits): a paw drops from the top edge
+// every few minutes, bats at the glass a couple of times, and leaves.
+// Tick-driven, so it pauses with the sim and never fires while the tank
+// is hidden.
 let pawVisit: PawVisit | null = null;
 /** tickCount of the next allowed visit; -1 until first scheduled. */
 let pawNextAt = -1;
 const pawSwatted = new Set<number>();
+/** tickCount of the cat's next visit after one ends or its Effects box
+ * clears — one expression so the two arms can't drift. */
+const pawRevisitAt = (from: number): number =>
+  from + PAW_GAP + Math.floor(Math.random() * PAW_GAP_RANGE);
 
 function pawTick(): void {
   const t = sim.tickCount;
   if (pawNextAt < 0)
     pawNextAt = t + PAW_FIRST + Math.floor(Math.random() * PAW_FIRST_RANGE);
-  if (!pawVisit && t >= pawNextAt) {
+  if (!pawVisit && effects.cat && t >= pawNextAt) {
     pawVisit = { t0: t, x: pawSpawnX(Math.random),
                  swats: 2 + (Math.random() < 0.4 ? 1 : 0) };
   }
@@ -3744,7 +3756,7 @@ function pawTick(): void {
   if (!pawPose(pawVisit, t)) {
     pawVisit = null;
     pawSwatted.clear();
-    pawNextAt = t + PAW_GAP + Math.floor(Math.random() * PAW_GAP_RANGE);
+    pawNextAt = pawRevisitAt(t);
     return;
   }
   const sw = pawSwatAt(pawVisit, t);

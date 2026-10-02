@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The cat that now and then bats at the glass from above is one of
+  Finsical's own extras, not the original's, so it joins the others
+  in Preferences > Effects as Cat visits. It stays on unless you
+  clear the box.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's
