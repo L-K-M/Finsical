@@ -53,6 +53,21 @@ describe("standalone web build", () => {
     }
   });
 
+  it("ships the favicon in every native package's web payload", () => {
+    // The packagers hand-maintain their file lists next to the build
+    // script's copy list; icon.svg went missing from all three when the
+    // favicon landed, so every Linux and macOS page asked for a file
+    // their web root did not have. Read the lists, not the file names.
+    for (const file of ["linux/build-deb.sh", "linux/build-tarball.sh"]) {
+      const src = readFileSync(join(root, file), "utf8");
+      const list = /readonly WEB_FILES=\(([\s\S]*?)\)/.exec(src)?.[1];
+      expect(list, `${file} WEB_FILES`).toBeTruthy();
+      expect(list, file).toContain("icon.svg");
+    }
+    const makefile = readFileSync(join(root, "macos/Makefile"), "utf8");
+    expect(makefile).toContain("../web/icon.svg");
+  });
+
   it("keeps the MACE LGPL notice in every bundle that ships the decoder", () => {
     // The /*! legal comment in core/data/mace.ts is the shipped LGPL
     // notice; esbuild drops /* comments, so one character or a
