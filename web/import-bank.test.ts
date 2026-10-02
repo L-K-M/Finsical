@@ -95,6 +95,7 @@ describe("a download that fails in transit", () => {
       // Told apart by message, like the other download failures.
       expect(transientFailure((e as Error).message)).toBe(true);
       expect(installProblem(e)).toBe("Check the connection and try again.");
+      expect(loadProblem(e)).toBe("Check the connection and try again.");
     });
 
   it("offers Try Again when the request itself is dropped", async () => {
@@ -112,5 +113,33 @@ describe("a download that fails in transit", () => {
     const e = await importAddon(url).catch((x: unknown) => x);
     expect(transientFailure(e)).toBe(true);
     expect(loadProblem(e)).toBe("The download took too long — try again.");
+  });
+
+  it("calls a body that stalls mid-way too slow, not cut off", async () => {
+    vi.useFakeTimers();
+    try {
+      // One chunk, then silence until the stall clock aborts the request,
+      // which errors the body the way a browser's fetch does.
+      vi.stubGlobal("fetch", async (_u: string, init?: RequestInit) =>
+        new Response(new ReadableStream({
+          start(c) {
+            c.enqueue(new Uint8Array([1, 2]));
+            init?.signal?.addEventListener("abort", () =>
+              c.error(init.signal!.reason));
+          },
+        })));
+      const pending = importAddon(url).catch((x: unknown) => x);
+      await vi.advanceTimersByTimeAsync(31_000);
+      const e = await pending;
+      expect(transientFailure(e)).toBe(true);
+      expect(loadProblem(e)).toBe("The download took too long — try again.");
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("explains a cut-off as one even when the URL says abort", async () => {
+    vi.stubGlobal("fetch", async () => cut("network error"));
+    const e = await importAddon(`${ITEM}/aborted.REZ`)
+      .catch((x: unknown) => x);
+    expect(loadProblem(e)).toBe("Check the connection and try again.");
   });
 });

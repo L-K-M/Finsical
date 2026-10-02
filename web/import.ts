@@ -225,7 +225,7 @@ const CONNECTION_LOST = "connection lost";
  * offer Try Again for. A stall's abort keeps its own error, which
  * loadProblem reads as too slow rather than cut off. */
 function inTransit(url: string, e: unknown): unknown {
-  if (e instanceof DOMException && e.name === "AbortError") return e;
+  if (e instanceof Error && e.name === "AbortError") return e;
   return new Error(`${url}: ${CONNECTION_LOST}`, { cause: e });
 }
 /** fetch + consume the body under a stall budget — any phase that
@@ -973,6 +973,10 @@ export function loadProblem(e: unknown): string {
     return "archive.org sent an empty file. Try again later.";
   if (msg.endsWith(": entry missing"))
     return "The download is missing the add-on's file.";
+  // Before the abort test: the URL in a cut-off's message may itself
+  // contain "abort".
+  if (msg.endsWith(`: ${CONNECTION_LOST}`))
+    return "Check the connection and try again.";
   if (/abort/i.test(msg))
     return "The download took too long — try again.";
   return "Check the connection and try again.";
