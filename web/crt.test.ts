@@ -3,6 +3,7 @@ import {
   CRT_DEFAULTS, CRT_MASKS, CRT_PRESETS, DEGAUSS_MS, PICTURE_KEYS,
   PRESET_KEPT_TUBE_KEYS, crtClientToTank, crtRasterRect,
   crtRasterToScreen, crtRowColumns, crtScreenToRaster, crtTankToClient,
+  warmupBusy,
   degaussAmp, presetTube, sanitizeCrtConfig,
 } from "./crt.js";
 import type { CrtConfig, CrtGeometry } from "./crt.js";
@@ -381,5 +382,24 @@ describe("crtClientToTank", () => {
       expect(p!.x).toBeCloseTo(200, 6);
       expect(p!.y).toBeCloseTo(40, 6);
     }
+  });
+});
+
+describe("warmupBusy", () => {
+  it("owes a frame until a fresh enable has been drawn settled", () => {
+    // A paused tank stops drawing when animating flips false; a fresh
+    // enable must keep it drawing until render() has drawn full power,
+    // or the last warm-up frame (power < 1) freezes on screen.
+    expect(warmupBusy(true, false, false, Infinity)).toBe(true);
+    expect(warmupBusy(true, true, false, Infinity)).toBe(false);
+  });
+
+  it("keeps a collapse and a degauss animating", () => {
+    // The collapse outlives `enabled` in the caller's flow: while it is
+    // enabled and offT0 is finite, frames must keep coming.
+    expect(warmupBusy(true, true, true, Infinity)).toBe(true);
+    expect(warmupBusy(false, false, true, Infinity)).toBe(false);
+    expect(warmupBusy(true, true, false, DEGAUSS_MS - 1)).toBe(true);
+    expect(warmupBusy(true, true, false, DEGAUSS_MS)).toBe(false);
   });
 });

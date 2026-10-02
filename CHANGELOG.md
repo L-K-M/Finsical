@@ -109,6 +109,10 @@
   than striped and a lone bright pixel glows as a dot. In a small
   window the lines fade to their average brightness instead of
   beating into moire patterns.
+- Switching the CRT effect on over a paused tank settles the picture
+  at full power. The warm-up could stop one frame short, leaving the
+  still picture slightly over-bright and over-zoomed until anything
+  moved.
 - The CRT's bloom and glass halation are now smooth glows. Small
   bright shapes such as bubbles used to cast sharp copies of
   themselves a few pixels to each side.
