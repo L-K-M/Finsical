@@ -639,6 +639,105 @@ describe("TankAudio.setHidden", () => {
   });
 });
 
+// A muted or volume-0 tank suspends its device: nothing to hear, so
+// no stream to keep running. The suspend waits out the level glide
+// (60 ms); the tests sit it out in real time.
+describe("TankAudio silent sleep", () => {
+  const sleepBeat = (): Promise<void> =>
+    new Promise((r) => setTimeout(r, 100));
+
+  it("suspends on mute after the glide, and wakes on unmute", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.open();
+    expect(ac.loops()).toBe(1);
+    const suspends = vi.spyOn(ac, "suspend");
+    audio.setMuted(true);
+    await flush();
+    expect(suspends).not.toHaveBeenCalled(); // fade still playing out
+    await sleepBeat();
+    expect(suspends).toHaveBeenCalledTimes(1);
+    await flush();
+    expect(ac.state).toBe("suspended");
+
+    audio.setMuted(false);
+    await flush();
+    expect(ac.state).toBe("running");
+    expect(ac.loops()).toBe(1); // the paused loop continues
+  });
+
+  it("drops event sounds and unlocks instead of resuming", async () => {
+    const { audio, ac } = await tank({ side: 1, center: 2, drop: 3 });
+    audio.setMuted(true);
+    await sleepBeat();
+    await flush();
+    const resumes = vi.spyOn(ac, "resume");
+    audio.tap(5, 5, 100, 100);
+    audio.feed();
+    audio.unlock();
+    await sleepBeat();
+    expect(resumes).not.toHaveBeenCalled();
+    expect(ac.state).toBe("suspended");
+    expect(ac.sources).toHaveLength(0); // nothing was even scheduled
+  });
+
+  it("a quick unmute before the beat keeps the device awake", async () => {
+    const { audio, ac } = await tank({ bubble: 1 });
+    const suspends = vi.spyOn(ac, "suspend");
+    audio.setMuted(true);
+    await flush();
+    audio.setMuted(false);
+    await sleepBeat();
+    expect(suspends).not.toHaveBeenCalled();
+    expect(ac.state).toBe("running");
+  });
+
+  it("sleeps on volume 0 like on mute", async () => {
+    const { audio, ac } = await tank({ bubble: 1 });
+    audio.setVolume(0);
+    await sleepBeat();
+    await flush();
+    expect(ac.state).toBe("suspended");
+    audio.setVolume(0.5);
+    await flush();
+    expect(ac.state).toBe("running");
+  });
+
+  it("creates the context suspended when muted at launch", async () => {
+    const audio = new TankAudio();
+    audio.setMuted(true);
+    await audio.addWavs([{ name: LOOP, wav: wav(30) }]);
+    await flush();
+    expect(FakeContext.last!.state).toBe("suspended");
+    audio.setMuted(false);
+    await flush();
+    expect(FakeContext.last!.state).toBe("running");
+  });
+
+  it("stays asleep when unmuted while hidden", async () => {
+    const { audio, ac } = await tank({ bubble: 1 });
+    audio.setHidden(true);
+    await flush();
+    audio.setMuted(true);
+    audio.setMuted(false);
+    await sleepBeat();
+    expect(ac.state).toBe("suspended");
+    audio.setHidden(false);
+    await flush();
+    expect(ac.state).toBe("running");
+  });
+
+  it("plays no opening on the first unmute of a muted launch", async () => {
+    const { audio, ac } = await tank({ aqua: 5 });
+    audio.setMuted(true);
+    audio.open();
+    audio.setMuted(false);
+    await flush();
+    audio.unlock(); // the first gesture, long after launch
+    await flush();
+    expect(ac.sources.filter((s) => s.starts > 0)).toHaveLength(0);
+  });
+});
+
 // The original game's event sounds, by the names its 'snd ' resources
 // carry (core/data/sndbank.ts). Durations tell the buffers apart.
 describe("TankAudio event sounds", () => {
