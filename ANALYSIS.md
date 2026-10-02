@@ -66,6 +66,19 @@ one entry per idea, and each merge is recorded in that entry's
   review gaps, not clean rounds, and no review round has completed.
   Sixteenth-pass notes cite `06f7935`; the tree moved ~70 commits
   during the pass, so verify against `origin/main` before re-scoping.
+- Eighteenth pass (2026-10-02, `origin/main` `d5e5410`): a focused
+  review of the 175 commits since the thirteenth pass — the Linux
+  GTK4/Wayland/X11 shell, the Android WebView shell, the layered
+  machine art and Glass-aquarium case, the CRT phosphor/geometry
+  work, the Effects pane, fish names and the boot parade — plus a
+  full read of `core/sim.ts` and `web/main.ts`, headless-Chrome
+  screenshots of every page (evaluated by a vision model), and three
+  parallel agent reviews (Devin SWE-2 Max correctness, GLM-5.3
+  performance, space-bunny UI; the last stalled in its tooling and
+  produced no report). Six PRs (#345, #347, #350, #351, #353, #354)
+  are open for the maintainer, each reviewed by GLM 5.3 to a clean
+  round. Eighteenth-pass notes cite that revision; verify against
+  `origin/main` before re-scoping.
 
 ## Baselines
 
@@ -161,6 +174,14 @@ one entry per idea, and each merge is recorded in that entry's
   re-filed; the list is preserved at the end of the sixteenth-pass
   Completed section below. Swift behavior code-verified only, as
   before.
+- Eighteenth pass (focused review at `d5e5410`, 2026-10-02): `npm ci`
+  (0 advisories), typecheck clean, vitest **63 files / 892 tests**
+  green (899 at the pass's last push), Python **94** tests green.
+  Runtime checks in headless Chrome 153 at 1024x768 and 700x560 (dpr
+  2) against a dist build, screenshots evaluated by a vision model,
+  and the alert beep verified by counting oscillators through a
+  patched AudioContext. The Linux and Android shells, AppKit, Retina
+  GPU and VoiceOver remain unverified (see T-37).
 
 ## ID scheme and map
 
@@ -177,7 +198,8 @@ ninth-pass match took the next free number (B-52+, P-19+, V-19+,
 U-25+, F-31+, D-22+, T-30+); later passes continue each prefix
 (eleventh: B-56+, P-24, V-26+; twelfth: B-62+, P-25+, U-30+;
 thirteenth: P-27, V-28, D-32 to D-34; fourteenth: B-65+, P-28+, V-29+,
-U-32+, A-08+, F-34+, D-35+, T-34+). Items
+U-32+, A-08+, F-34+, D-35+, T-34+; eighteenth: P-30+, V-39, U-41,
+F-43, D-47+, T-37). Items
 with a "remainder" in their title keep their ID and list only what
 is still open.
 
@@ -3291,6 +3313,68 @@ remainder (`FISH_CAP` and `MAX_UNEATEN` are both on main, and the
 fourteenth-pass audit measured a capped 24-fish tick at ~5 µs — the
 entry closed as satisfied).
 
+### Completed (eighteenth pass, PRs open for review)
+
+All six reviewed by GLM 5.3; none merged at fold time. If one is
+ closed unmerged, restore its entry from this list or the PR
+description.
+
+- **PR #345** `fix/save-fish-entry` — `tankSnapshot` never persisted
+  `Fish.entry` (the unmerged sibling that introduced the mechanism
+  serialized it; the port in PR #299 dropped the line), so every
+  relaunch re-derived multi-pack add-on bindings with
+  `legacyEntries`' round-robin guess — after any roster change a
+  released fish's sibling could draw its art while keeping its name.
+  Bred fry inherited `pack` but not `entry`. The save (and `.fins`
+  exports) now carry `entry`; a fry inherits it; regression tests in
+  `core/sim.test.ts` (observed failing before) and a source guard in
+  `web/tanksave.test.ts`.
+- **PR #347** `fix/feed-cap-ceilings` — `FOOD_CAP` (12) vs
+  `MAX_UNEATEN` (6): Tank ▸ Feed Fish played the pour and dropped
+  nothing between 7 and 11 uneaten pellets, and PR #209's drop-time
+  `blip` re-check was unreachable. The dead `FOOD_CAP` is removed; the
+  pinch, its drop-time check and the refusal hint share the sim's
+  ceiling; `web/feedcap.test.ts` guards it.
+- **PR #350** `feat/alert-beep` — implements F-36's caution-alert half
+  with a fallback: pipopa faded before its truncated tail when a sound
+  set carries it, else a synthesized classic-Mac square-wave beep
+  (223 Hz, ~0.13 s) through the master gain; the alert's user gesture
+  creates and wakes the audio device in a tank that owns none (the
+  pop()/bubble synth paths stay silent there by design). `setAlertSound`
+  hook in `alert.ts`, fired once per alert. README Sounds row added.
+- **PR #351** `fix/alert-in-screen` — a standard 340 px alert overhung
+  the machine case's screen in the browser (17 px each side at
+  1024x768, the first-run welcome). `alertOriginIn` + `setAlertBounds`;
+  the tank page wires `#screen`'s live rect (falling back to the
+  viewport on an empty rect); client windows unchanged.
+- **PR #353** `perf/nametag-rect` — N-P2 below, fixed: Fish Names'
+  per-frame `pictureEl().getBoundingClientRect()` forced a layout per
+  frame and allocated per fish; now the cached rect helpers, a reused
+  slot array, and one affine per frame with the tube off.
+  `web/nametagframe.test.ts` guards the shape.
+- **PR #354** `perf/boot-icon-cache` — N-P1 below, fixed: each parade
+  art renders once into a cached canvas (snailSprite pattern) and a
+  frame blits one drawImage per icon instead of ~1k fillRects.
+  Verified visually through the built module.
+
+Minor notes carried from the pass (real but micro; nothing lost):
+
+- A sick fish re-fires its "sick" chirp once per relaunch (`sickSeen`
+  is a session WeakSet, `web/main.ts` collectEvents path).
+- `saved.waterQuality` is written by every save and never read back
+  (recomputed by each `advanceLife`).
+- The deferred `play()` retry drops `fx` (pan/rate) when it re-plays
+  after a resume (`web/audio.ts`).
+- Stats' graph pane is blank white while disconnected with no in-pane
+  waiting copy (the tab strip says it; U-12's umbrella).
+- The Add-ons window's preview column can stop above the bottom row
+  and the Show pop-up/filter field heights differ (seen at 700x560;
+  unverified at the 621x441 design size).
+- Overview's header divider lines stop at the header row and the sort
+  arrow sits at the far right of the 63% Name column (osmium-ui list;
+  unverified as a defect).
+- The menu-bar glyph in the Apple slot is hard to read at 1x (taste).
+
 ## Performance and smoothness (open)
 
 Done this pass and removed from this list: P-03, P-13, and P-10's
@@ -3944,6 +4028,79 @@ the frame after a 400 ms install stall runs at most 3 ticks.
   shortens it), F-10 (fast-forward multiplies ticks per frame).
 - Fourteenth pass: PERF-04.
 
+### P-30 Per-tick allocation litter in the tick path
+
+Size S · Severity nit · Value 2/5 · Risk 1/5 (eighteenth pass)
+
+**Problem.** Steady-state ticks allocate ~120 tiny arrays/objects a
+second on the tank page: `sim.food.slice()` every tick, `noticePoint`
+returning fresh `{x, y}` twice per tick, and `collectEvents`'
+`events.splice(0)` allocating an empty array per frame when nothing
+happened. Far below jank, but against the P-16/P-19 hygiene bar.
+
+**Evidence.** `web/main.ts:3752-3755` (`tickSim`), `:406`
+(`collectEvents`); `web/curiosity.ts` (`noticePoint`).
+
+**Change.** Snapshot `sim.food` only when it is non-empty; give
+`noticePoint` an optional out-parameter (or a module-level point) the
+tick path fills; early-return `collectEvents` when
+`sim.aquarium.events.length === 0` before splicing.
+
+**Acceptance.** A vitest fake-tick loop (existing patterns in
+`tanksurfaces.test.ts` neighbors) or a heap-sampling note; at minimum
+`collectEvents`' empty path is covered by a unit test once it is
+extracted pure enough to test.
+
+**Merged and related.**
+
+- Related: P-16, P-19 (the bar this misses), P-24.
+
+### P-31 Overview rebuilds its structure key per state push
+
+Size S · Severity nit · Value 2/5 · Risk 1/5 (eighteenth pass)
+
+**Problem.** Every state push (~0.5-4/s, more during CRT slider drags
+through P-06's coalesced echoes) runs `JSON.stringify(next.map(…)
+.sort())` plus a second `sortItems` pass — an O(items) map+sort+
+stringify to decide whether the list changed.
+
+**Evidence.** `web/overview.ts:334,343-344`.
+
+**Change.** Build the composite change key (item key + name per row)
+during the existing `sortItems` pass and compare strings; skip the
+second sort by sorting the key list once.
+
+**Acceptance.** `overviewmodel.test.ts` covers sorting as before; a
+unit test that two identical pushes compute equal keys and different
+ones differ.
+
+**Merged and related.**
+
+- Related: P-25 (the same shape), P-18, P-06.
+
+### P-32 `menuOpen()` runs a DOM query per frame while the hover tip is visible
+
+Size S · Severity nit · Value 2/5 · Risk 1/5 (eighteenth pass)
+
+**Problem.** `anyOverlayOpen()` → `menuOpen()` walks
+`document.querySelector(".osm-menu")` on every rendered frame while
+the fish tip shows and on every `pointermove` (~30-120 queries/s).
+
+**Evidence.** `web/menubar.ts:132-134`; reached from `web/main.ts`
+via `tipForPoint` in the frame loop and `onTankMove`.
+
+**Change.** The menu bar (which owns mount/teardown) sets a module or
+body-class flag on open/close; `menuOpen()` reads it. Alternatively
+cache the boolean and invalidate on `pointerdown`/`keydown`.
+
+**Acceptance.** `menubar.test.ts` gains a toggle test; a comment pins
+the invalidation points (menus can only open from input).
+
+**Merged and related.**
+
+- Related: U-14 (browser menu bar), the tank tip's per-frame refresh
+  (P-24 remainder notes the Date/label side).
+
 ## Visual and layout (open)
 
 Done this pass and removed from this list: V-01 (PR #87/#125), V-02,
@@ -4452,6 +4609,31 @@ hint still fits in the box at the native 565x520 window size and at
 - Sixteenth pass: V-3 of `tmp.md`, where it was deferred rather than
   dropped; filed so the deferral does not lose it.
 - Related: U-27 (Preferences fixed layout and clipping).
+
+### V-39 The Preferences machine list draws a sliver scrollbar when nothing scrolls
+
+Size S · Severity low · Value 2/5 · Risk 2/5 (eighteenth pass)
+
+**Problem.** With all 17 machines visible the Osmium list still shows
+a ~4 px thumb and a stray dot under the up arrow. Classic Mac OS 8
+hid the scrollbar (or showed a full-height thumb) when the content
+fit.
+
+**Evidence.** Screenshot `prefs.png` (1024x768 viewport, dpr 2,
+2026-10-02 pass); the list is built by `mountList` (osmium-ui) as
+used in `web/prefs.ts`'s machine pane.
+
+**Change.** Verify the thumb math in osmium-ui's list when
+`content ≤ viewport`; the app-side fallback is to hide the bar (or
+pass a no-scrollbar option) when the items fit. Consider upstreaming
+the fix to osmium-ui.
+
+**Acceptance.** A screenshot at the native 565x518 prefs size shows
+no thumb sliver or stray dot with all 17 rows visible.
+
+**Merged and related.**
+
+- Related: U-27 (small-window Preferences layout).
 
 ## UX and convenience (open)
 
@@ -5195,6 +5377,28 @@ documented here per AGENTS.md.)
   rows that look unchanged after a Delete), U-28 (visible failure
   states).
 
+### U-41 "Empty Tank…" uses red text — a Platinum-era button never did
+
+Size S · Severity nit · Value 2/5 · Risk 1/5 (eighteenth pass)
+
+**Problem.** `#oempty { color: #a00 }`. Mac OS 8 push buttons were
+always black on platinum; red destructive text is a modern
+convention. The two-click "Really empty?" arm already communicates
+danger, and the armed state already bolds.
+
+**Evidence.** `web/app.css:401-402`; `web/overview.ts:242-251`.
+
+**Change.** Black text; keep the bold armed state (and its timeout).
+Taste, but this project's bar is period fidelity.
+
+**Acceptance.** Screenshot of Overview with the button idle and armed;
+no `#a00` remains in `app.css`.
+
+**Merged and related.**
+
+- Related: U-04 (no confirm/undo for removals — the arm pattern is
+  the mitigation).
+
 ## Aesthetics and Mac OS 8 fidelity (open)
 
 Done this pass and removed from this list: A-01.
@@ -5252,6 +5456,8 @@ Size M · Severity idea · Value 3/5 · Risk 2/5
 - B-76 (fourteenth pass, MACOS-03): About Finsical opens behind the floating tank.
 
 Fourteenth-pass audit (62b8572): the basic About items landed: a browser About window (`web/menubar.ts:158-195`) and the native standard About panel with credits (`macos/Finsical.swift:619-634`, menu item at `:820-822`), so the Problem's "the app has no About item at all" is stale. Still open: the Mac OS 8 About This Computer window itself (per-fish bars, pack sizes and the perf readout) and the version in the browser About. The Change stands for that window; open it through `showClient` like the other client windows, which also avoids B-76.
+
+Eighteenth-pass twist worth folding in: report the chosen machine's own specs in the About This Computer layout — "Macintosh Plus — 1 MB RAM, System 7.1", "20th Anniversary Mac — 32 MB" — with the tank's stats as the running-apps list ("Finsical Tank — 4 fish, 120 kB"). One window, two period gags; machine data would live beside the case art in `web/machines.ts`.
 
 ### A-05 (remainder) Balloon Help for the tank, fish, case and client windows
 
@@ -6024,6 +6230,7 @@ Size S · Severity idea · Value 2/5 · Risk 2/5 (fourteenth pass)
 
 - Fourteenth pass: AUDIO-09.
 - F-38 (FIDELITY-16, DELIGHT-06) plans the same timer sounds; build the two as one change. Decide there which sound marks the timer's own switch at the set hour (FIDELITY-16 plays the lamp's Switch click, DELIGHT-06 plays TimerOnOff, this entry leaves it optional) and whether pipopa is the caution-alert beep (here) or a confirmation chime (DELIGHT-06).
+- Eighteenth pass: the caution-alert half landed in open PR #350 — `alertBeep()` plays pipopa with the truncated-tail fade this entry specifies, and falls back to a synthesized classic-Mac beep when no sound set carries it. The timer sounds and F-38's recovery sound remain open.
 - B-68 (fourteenth pass, PR #241) reworks the welcome flow and its retry alert; re-check the `web/welcome.ts` call site after it lands.
 - Related: F-05 (the Sounds list), F-35, F-31.
 
@@ -6138,6 +6345,36 @@ Size M · Severity idea · Value 3/5 · Risk 2/5 (fourteenth pass)
   still accessory, and `Name1.bmp` to `Name10.bmp` an animated one, the
   original's 10 cells. It reuses the same `local:` BMP path.
 - Related: A-02 (the Mac 8-bit system palette; share `web/depth.ts`).
+
+### F-43 Link the fan archive's add-on library (aquazone.me, the Catpaws Mac collection)
+
+Size S (link) / M (listing) · Severity idea · Value 3/5 · Risk 2/5
+(eighteenth pass)
+
+**Problem.** aquazone.me — the fan site that preserved the game and
+its community's files — hosts a Mac-era add-on library ("Most files
+from Catpaws from back in the day"), Japanese series ISOs (Green,
+Nightmare, Arowana, Discus, Pure Goldfish…) and tools that the
+archive.org items Finsical lists do not duplicate. F-21/F-23 track
+archive.org listings only; the fan archive that kept the game alive
+is invisible in the app.
+
+**Evidence.** https://aquazone.me/ (Files section), fetched in the
+eighteenth pass; `web/import.ts` COLLECTIONS.
+
+**Change.** Minimal: a Help-menu item "More add-ons at aquazone.me…"
+next to the archive.org donate link (plus a README credit). Full:
+scrape the file listing into a Collection section — needs the site's
+consent or a stable mirror, and the Mac files are .sit/.hqx our
+pipeline may not unwrap (check before promising).
+
+**Acceptance.** Link: the menu opens the site in a new tab. Listing:
+`import-listing.test.ts` fixtures for the scraped shape.
+
+**Merged and related.**
+
+- Related: F-21 (Missing addons 7z), F-23 (JPN egg packs), T-36
+  (record fidelity references).
 
 ## Delight and quirky ideas (open)
 
@@ -6854,6 +7091,114 @@ Fifteenth pass: the paw drops and bats the glass every
 few minutes (PR #204); the peeking face, tracking eyes and
 bolt-on-click remain.
 
+### D-47 A floppy-insert ritual when packs install on a cased machine
+
+Size M · Severity idea · Value 3/5 · Risk 2/5 (eighteenth pass)
+
+**Problem.** Installing a pack on a machine whose art has a floppy
+slot (Plus, Performa 450) just splashes. The 90s way you actually
+added fish was a disk: a short "snick" sound (synthesized — the
+original has no insert sound) and a tiny disk icon sliding into the
+slot before the splash ties D-04's clickable hardware to real
+feedback.
+
+**Evidence.** The Plus/Performa art (`web/machines.ts`) has a visible
+slot; installs land in `handleSheets`/`spawnFish` (`web/main.ts`).
+
+**Change.** Slot anchor data per machine (or measure from the art
+once); on install over a cased machine, animate a 16x16 pixel disk
+into the slot over ~300 ms with the synthesized click; skip on Bare
+and the aquarium.
+
+**Acceptance.** A Playwright screenshot mid-ride shows the disk at
+the slot; the splash timing shifts by the ride's length.
+
+**Merged and related.**
+
+- Related: D-04 (clickable case hardware), the boot parade (same
+  "the machine does the work" spirit).
+
+### D-48 A pixel heart over coupling parents (breeding's in-tank cue)
+
+Size S once F-17 carries parent ids · Severity idea · Value 3/5 ·
+Risk 1/5 (eighteenth pass)
+
+**Problem.** F-17's births arrive as events with dialogs/notice text;
+nothing happens in the water at the moment. A tiny slice ships
+ delight early: when `maybeBirth` rolls, flash a small pixel heart
+above the parents for a few seconds — the original's event dialogs
+did the storytelling; this is the in-tank version.
+
+**Evidence.** `core/sim.ts` `maybeBirth` (knows the parents),
+`SimEvent` (`fish` only today).
+
+**Change.** Extend the birth `SimEvent` with the parents' ids; the
+renderer draws a 7x6 pixel heart above each parent for ~2 s (sim
+clock, paused with the tank), `web/fx.ts` ripple-adjacent.
+
+**Acceptance.** `sim.test.ts`: the birth event carries both parents.
+A screenshot shows the heart above each parent on a seeded birth.
+
+**Merged and related.**
+
+- Slice of F-17; do it with or just before F-17's phase 1.
+
+### D-49 Drag a siphon hose to vacuum the gravel
+
+Size M · Severity idea · Value 3/5 · Risk 2/5 (eighteenth pass)
+
+**Problem.** The original's water change was a dialog; Finsical's is
+a button. A slice that reads better as a toy: a Tank ▸ "Clean the
+Gravel" mode (or a modifier-drag) turns the pointer into a siphon
+hose; dragging over settled pellets slurps them (bubbles + the drain
+sound), which is exactly what `changeWater`'s siphon already does
+numerically.
+
+**Evidence.** `core/sim.ts` `changeWater` (siphons settled pellets);
+`sim.food[i].settled` marks the targets; `web/audio.ts`
+`letoutwater`.
+
+**Change.** A mode flag on the tank page; on drag, remove settled
+pellets within a radius of the pointer (rate-limited), spawn bubbles,
+play the drain loop while moving; Esc or click exits.
+
+**Acceptance.** `sim.test.ts` for a `siphon(x, y, r)` removal method;
+Playwright: dragging over two settled pellets removes both and plays
+nothing when idle.
+
+**Merged and related.**
+
+- Related: F-14 (water changes/filter), U-01 (overfeeding's visible
+  consequence — the cleanup tool).
+
+### D-50 Idle "attract mode" for the browser tank
+
+Size M · Severity idea · Value 3/5 · Risk 3/5 (eighteenth pass)
+
+**Problem.** A browser tank left in a background window just keeps
+swimming. After ~5 min with no pointer, no sound and no input, drift
+into a store-demo Mac: dim the light a notch, ease the CRT size pots
+through a slow breath (they already animate), fade a tiny "Finsical"
+watermark in and out. Any input restores everything instantly.
+
+**Evidence.** `web/main.ts` curiosity/idle plumbing (`curiosity.ts`
+tracks pointer age); CRT pots animate via `crt.animating`.
+
+**Change.** An idle timer (pointer/keyboard/visibility reset); a
+cosmetic-only state layered like the night torch (no sim changes);
+strict input restore (pointermove, keydown, visibilitychange).
+Check D-28's presentation modes first — no overlap: those are
+explicit modes, this is idle behavior.
+
+**Acceptance.** A faked-idle Playwright run shows the dimmed state
+within the window; a pointermove restores the exact prior light and
+pot values.
+
+**Merged and related.**
+
+- Related: D-28 (presentation modes), D-06 (Energy Saver sleep — the
+  native-app sibling of this idea).
+
 ## Security and robustness (open)
 
 All inputs below are fixed archive.org items or files the user drops,
@@ -7548,6 +7893,40 @@ Size S · Severity low · Value 3/5 · Risk 1/5 (fourteenth pass)
 
 - Related: T-11 (the section can live in `docs/ARCHITECTURE.md`), F-09, F-10, F-14, F-26 (settled from these sources this pass).
 - Fourteenth pass: FIDELITY-14.
+
+### T-37 Sweep the Linux and Android shells (no ANALYSIS coverage yet)
+
+Size L · Severity idea · Value 4/5 · Risk 0/5 (eighteenth pass)
+
+**Problem.** 175 commits landed between the thirteenth pass and
+`d5e5410`, including ~3,600 lines of GTK4/WebKitGTK shell
+(`linux/finsical_shell/`, with good unit tests in
+`linux/tests/test_logic.py`) and ~2,300 lines of Android WebView shell
+(`android/`). No ANALYSIS entry covers them; behavior review is thin:
+window-manager interop (snap-to-aspect vs KWin/GNOME/Mutter resize
+fights — `tank.py`'s snap logic), DBus menu correctness, X11
+move-before-map, the restart limiter, AssetServer path handling,
+WebView version gating, panel-layer sizing vs `CLIENT_SIZES` drift,
+Flatpak locale fallback.
+
+**Evidence.** `linux/finsical_shell/{shell,tank,logic,clients,dbusmenu,wayland,x11,web}.py`;
+`android/app/src/main/java/dev/finsical/app/*.java`; this pass only
+spot-checked AssetServer and MainActivity's WebView settings (clean:
+file/content access off, 405/404 semantics, no-store).
+
+**Change.** A dedicated review pass over both shells with the same
+rigor as the macOS shell got (ninth pass MACOS-*), driving the Linux
+shell under Xvfb/Wayland if possible and the Android one via
+`scripts/android-smoke.sh`.
+
+**Acceptance.** A pass entry with findings filed under the usual
+prefixes; at minimum the five interop areas above each get an
+explicit "checked, fine" or an entry.
+
+**Merged and related.**
+
+- Related: T-35 (native smoke tests), the CI jobs that already build
+  deb/flatpak/APK.
 
 ## Declined, refuted and corrected (do not re-raise without new evidence)
 
