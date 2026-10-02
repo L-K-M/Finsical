@@ -896,14 +896,18 @@ describe("TankAudio bubbles, as the original plays them", () => {
     expect(ac.oscs).toHaveLength(0);
   });
 
-  it("makes no bloop with bubbles off, while hidden, or without a " +
-     "device", async () => {
+  it("makes no bloop with bubbles off, while hidden or suspended, " +
+     "or without a device", async () => {
     const { audio, ac } = await tank({ [LOOP]: 30 });
     audio.setOptions({ bubbles: false });
     audio.bubble();
     audio.setOptions({ bubbles: true });
     audio.setHidden(true);
     audio.bubble();
+    audio.setHidden(false);
+    ac.state = "suspended"; // gated, waiting on a gesture
+    audio.bubble();
+    ac.state = "running";
     expect(ac.oscs).toHaveLength(0);
     new TankAudio().bubble(); // no context yet — never creates one
     expect(FakeContext.last).toBe(ac);

@@ -654,8 +654,9 @@ export class TankAudio {
     const osc = ac.createOscillator();
     osc.type = "sine";
     osc.frequency.setValueAtTime(f0, t);
-    // The rising chirp of a real bubble clearing the surface.
-    osc.frequency.exponentialRampToValueAtTime(f0 * 1.5, t + 0.04);
+    // The rising chirp of a real bubble clearing the surface: keep
+    // climbing across the whole pulse rather than flattening early.
+    osc.frequency.exponentialRampToValueAtTime(f0 * 1.5, t + BLOOP_S);
     const g = ac.createGain();
     // Exponential ramps can't start from 0: from a whisper to the peak
     // in 4 ms, then away, so it never clicks on or off.

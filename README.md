@@ -339,8 +339,8 @@ AquaZone did:
 | The lamp goes on or off | The light switch |
 
 The game has no sound for a single rising bubble, so **Bubble sounds**
-plays a soft synthesized bloop for one now and then; a short sound you
-add with "bubble" in its name plays instead.
+plays a soft synthesized bloop now and then; a short sound you add
+with "bubble" in its name plays instead.
 The rest of the set, for breeding, sickness, medicine, the filter,
 timers and the game's dialogs, has no matching feature in Finsical
 yet.
