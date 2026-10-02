@@ -3,7 +3,7 @@ import { BOTTOM_PAD, DAY_TICKS, FOOD_ENTRY_Y, Sim,
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
-import { FISH_CAP, FOOD_CAP, HUNGER_SEEK, TANK_SIZE }
+import { FISH_CAP, HUNGER_SEEK, TANK_SIZE }
   from "../core/tuning.js";
 import { planFrame } from "../core/loop.js";
 import { Aquarium } from "../core/aquarium/aquarium.js";
@@ -70,7 +70,7 @@ import { crtClientToTank, crtTankToClient, initCrt, sanitizeCrtConfig }
   from "./crt.js";
 import { bubbleOffset, bubblePops, drawAir, drawBubblePop,
          drawBubbles, drawFood, drawLight, drawMurk, drawRefraction,
-         drawSurface, drawTorch, feedPinch, keepTorch, sunFactor,
+         drawSurface, drawTorch, feedPinch, feedRoom, keepTorch, sunFactor,
          tapBubble, torchShows } from "./water.js";
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
   from "./surface.js";
@@ -1019,8 +1019,8 @@ function noteFoodRefused(): void {
   if (now - foodRefusedAt < 60_000) return;
   foodRefusedAt = now;
   showAlert({ icon: "note",
-              text: "The tank is full of food the fish haven't eaten. " +
-                    "More would only foul the water.",
+              text: "The fish still have uneaten food. Let them finish " +
+                    "before feeding again.",
               buttons: [{ title: "OK", default: true, cancel: true }] });
 }
 
@@ -2499,7 +2499,7 @@ function feedFish(): void {
   const x = 30 + Math.random() * (TANK.width - 60);
   const hungry = sim.fish.filter(
     (f) => f.state !== "dead" && f.hunger > HUNGER_SEEK).length;
-  const room = FOOD_CAP - sim.food.filter((p) => !p.eaten).length;
+  const room = feedRoom(sim.food.filter((p) => !p.eaten).length);
   // The cap refuses a pellet with a bare blip where it would have
   // landed — whether it's refused now or at drop time.
   const blip = (bx: number): void => {
@@ -2509,6 +2509,7 @@ function feedFish(): void {
   if (room <= 0) {
     // The tank's already full of uneaten food — no pellets, no shake.
     blip(x);
+    noteFoodRefused();
     return;
   }
   for (const p of feedPinch(Math.random, Math.min(hungry, room))) {
@@ -2516,8 +2517,9 @@ function feedFish(): void {
       if (paused) return; // paused since the pinch was scattered
       // Re-check at drop time: a second click fills the tank while a
       // first pinch is still falling.
-      if (sim.food.filter((q) => !q.eaten).length >= FOOD_CAP) {
+      if (feedRoom(sim.food.filter((q) => !q.eaten).length) <= 0) {
         blip(x + p.dx);
+        noteFoodRefused();
         return;
       }
       const pellet = sim.dropFood(x + p.dx);

@@ -171,14 +171,10 @@ const CORPSE_FLOAT_MAX = 0x7fff;
 /** Sick fish keep to the bottom fifth of their range. */
 const SICK_DEPTH = 0.8;
 /** Uneaten pellets the tank holds before dropFood refuses: past it a
- * feed only adds waste. Even at the cap, six rotting pellets drain
- * quality ~7x faster than the filter recovers it, so sustained
- * overfeeding still fouls the tank without a water change. */
+ * feed only adds waste. Sustained cap-bound overfeeding does cloud the
+ * water, but over days, not minutes — the organics model, not a direct
+ * quality drain, is what fouls it. */
 export const MAX_UNEATEN = 6;
-/** Quality drained per tick per rotting pellet (~0.14 over a full rot). */
-const WASTE_PER_TICK = 1 / 10000;
-/** Filtration: recovers a fouled tank over ~7 min of clean water. */
-const FILTER_PER_TICK = 1 / 12000;
 /** Below this water quality fish start gasping: wander targets pull
  * toward the surface, all the way to just under it at quality 0. */
 const GASP_QUALITY = 0.45;

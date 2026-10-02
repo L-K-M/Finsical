@@ -8,7 +8,7 @@
  * draw calls allocate nothing beyond a few path points.
  */
 import { DEMO_NIGHT_LIGHT } from "../core/light.js";
-import { BOTTOM_PAD, BUBBLE_RISE, FOOD_ROT_TICKS, SURFACE }
+import { BOTTOM_PAD, BUBBLE_RISE, FOOD_ROT_TICKS, MAX_UNEATEN, SURFACE }
   from "../core/sim.js";
 import { SURFACE_MAX } from "./surface.js";
 import type { Bubble, Food } from "../core/sim.js";
@@ -178,6 +178,14 @@ export function drawBubbles(ctx: CanvasRenderingContext2D,
 }
 
 // ---- food ------------------------------------------------------------------
+
+/** Uneaten-pellet headroom for a feed. `Sim.dropFood` refuses at
+ * MAX_UNEATEN, so the page's pinch must count down to the same ceiling;
+ * it used to count to FOOD_CAP (12), whose extra headroom scheduled
+ * pellets the sim could only refuse. */
+export function feedRoom(uneaten: number): number {
+  return Math.max(0, MAX_UNEATEN - Math.max(0, Math.floor(uneaten)));
+}
 
 /** Most pellets one feed drops. */
 export const PINCH_MAX = 5;

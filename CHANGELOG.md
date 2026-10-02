@@ -63,6 +63,11 @@
 - The alert that says the tank is full of uneaten food is now a hint
   you turn on with Tank > Turn Hints On. It no longer interrupts
   feeding by default; a refused feed is silent unless hints are on.
+- Feeding at the tank's food cap is consistent now: Tank > Feed Fish
+  blips the surface and stops, instead of playing the feeding sound
+  over pellets that never appear. With hints on, the tank says the
+  fish still have uneaten food rather than claiming more would foul
+  the water, which a few pellets cannot do.
 - Alerts no longer show the browser's rounded focus ring around their
   frame.
 - The Mac app opens its tank when you run it from where you unzipped
