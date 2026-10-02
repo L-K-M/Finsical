@@ -890,7 +890,6 @@ export function crtRowColumns(rasterW: number,
   return Math.min(max, Math.max(tankW, Math.round(w)));
 }
 
-/** The degauss wobble's total length — after this degaussAmp() is 0. */
 /** Whether the tube's own clock owes it one more frame. A fresh enable
  * must be drawn at least once at full power before the frame loop may
  * idle again: a time-only gate could stop on the last warm-up frame
@@ -906,6 +905,7 @@ export function warmupBusy(enabled: boolean, settled: boolean,
   return degaussAgeMs < DEGAUSS_MS;
 }
 
+/** The degauss wobble's total length — after this degaussAmp() is 0. */
 export const DEGAUSS_MS = 900;
 /** Power-off collapse: raster to a hot line to black. */
 export const POWEROFF_MS = 280;
@@ -1240,7 +1240,13 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
         // Full power drawn: the frame loop may idle again (a paused
         // tank would otherwise stop one frame short of settled).
         if (power >= 1) settled = true;
-      } else settled = true; // reduced motion: one full-power frame
+      } else {
+        // Reduced motion: one full-power frame. power is still set
+        // because reduced motion can flip on mid-warm-up, leaving the
+        // ramp's last value in place.
+        power = 1;
+        settled = true;
+      }
       const rect = crtRasterRect(
         out.width, out.height, src.width, src.height, rasterBox);
       const cols = crtRowColumns(rect[2], cfg, src.width, colsMax);
