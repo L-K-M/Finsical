@@ -1038,6 +1038,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         window.contentAspectRatio = NSSize(width: 320, height: 200)
         window.contentView = webView
         window.delegate = self
+        // Termination outlives the close now: applicationShouldTerminate
+        // still needs the webview alive long enough to run the page's
+        // last save.
+        window.isReleasedWhenClosed = false
         window.initialFirstResponder = webView // bare keys (F/C) hit the page
         // No traffic lights on the tank — the buttons are pointless for a
         // floating window, and everything lives in the menu. The behaviors
@@ -1074,6 +1078,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 smokeExit(["smoke": "timed out"], 3)
             }
         }
+    }
+
+    /// Cmd-Q or a window close used to tear the webview's content
+    /// process down mid-flight — and WKWebView teardown never fires
+    /// pagehide or visibilitychange, so everything since the tank's
+    /// last interval save was lost. Buy the page a beat: run its save
+    /// by hand, then allow the quit; a wedged page gets at most a
+    /// grace period rather than holding the quit hostage.
+    func applicationShouldTerminate(_ app: NSApplication)
+        -> NSApplication.TerminateReply {
+        // No webview yet (quit before the tank loaded) — nothing to
+        // save, so don't make the quit wait on a timer.
+        guard let webView else { return .terminateNow }
+        guard !quitStarted else { return .terminateLater }
+        quitStarted = true
+        webView.evaluateJavaScript("window.finsical?.save?.()") {
+            [weak self] _, _ in self?.replyToQuit()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            [weak self] in self?.replyToQuit()
+        }
+        return .terminateLater
+    }
+
+    private var quitStarted = false
+    private var quitReplied = false
+    /// reply(toApplicationShouldTerminate:) may only be sent once —
+    /// the JS completion and the grace timer race, so first wins.
+    private func replyToQuit() {
+        guard !quitReplied else { return }
+        quitReplied = true
+        NSApp.reply(toApplicationShouldTerminate: true)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
