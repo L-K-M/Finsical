@@ -926,9 +926,8 @@ captioned({ label: "Mute", input: muteBox,
           document.getElementById("pfmute")!);
 captioned({ label: "Bubble sounds", input: bubblesBox,
             blurb: "A soft bloop now and then as a bubble rises, and " +
-              "a plip when you pop one. The bloop needs a sound you " +
-              "add with \"bubble\" in its name; one with \"pop\" " +
-              "replaces the plip." },
+              "a plip when you pop one. Sounds you add with \"bubble\" " +
+              "or \"pop\" in their names replace the built-in ones." },
           document.getElementById("pfbubbles")!);
 captioned({ label: "Water ambience", input: ambientBox,
             blurb: "The filter's steady bubbling, looped under " +

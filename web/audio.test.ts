@@ -859,6 +859,56 @@ describe("TankAudio bubbles, as the original plays them", () => {
     expect(played(ac)).toEqual([[2, false]]);
   });
 
+  it("bloops a synthesized chirp when no bubble sound exists",
+     async () => {
+    const { audio, ac, master } = await tank({ [LOOP]: 30 });
+    audio.bubble();
+    expect(ac.sources).toHaveLength(0); // the loop is never a bubble
+    expect(ac.oscs).toHaveLength(1);
+    const o = ac.oscs[0]!;
+    expect(o.starts).toBe(1);
+    expect(o.stops[0]).toBeLessThan(ac.currentTime + 0.11);
+    // The chirp rises through its fifth (500-1300 Hz → ×1.5).
+    const [from, to] = o.frequency.points;
+    expect(from![0]).toBeGreaterThanOrEqual(500);
+    expect(from![0]).toBeLessThanOrEqual(1300);
+    expect(to![0]).toBe(from![0] * 1.5);
+    // Its gain starts and ends near silence so it never clicks.
+    const g = (o.out[0] as FakeGain).gain.points;
+    expect(g[0]![0]).toBeLessThan(0.001);
+    expect(g.at(-1)![0]).toBeLessThan(0.001);
+    expect(sinkOf(o)).toBe(master);
+  });
+
+  it("pans the bloop to the bubble that rose", async () => {
+    const { audio, ac, master } = await tank({ [LOOP]: 30 });
+    audio.bubble(0.6);
+    const panner = ac.oscs[0]!.out[0] as FakePanner;
+    expect(panner).toBeInstanceOf(FakePanner);
+    expect(panner.pan.value).toBe(0.6);
+    expect(panner.out[0]!.out[0]).toBe(master);
+  });
+
+  it("prefers the user's own bubble sound over the bloop", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30, "bubble pop": 2 });
+    audio.bubble();
+    expect(played(ac)).toEqual([[2, false]]);
+    expect(ac.oscs).toHaveLength(0);
+  });
+
+  it("makes no bloop with bubbles off, while hidden, or without a " +
+     "device", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.setOptions({ bubbles: false });
+    audio.bubble();
+    audio.setOptions({ bubbles: true });
+    audio.setHidden(true);
+    audio.bubble();
+    expect(ac.oscs).toHaveLength(0);
+    new TankAudio().bubble(); // no context yet — never creates one
+    expect(FakeContext.last).toBe(ac);
+  });
+
   it("plays the opening sound once as the tank opens", async () => {
     const { audio, ac } = await tank({ [LOOP]: 30, aqua: 5 });
     audio.open();
