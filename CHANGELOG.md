@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- On Linux, quitting waits until the tank has saved. It could quit
+  before the save ran and lose up to a minute of the tank's life, the
+  fish's positions and hunger included.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's

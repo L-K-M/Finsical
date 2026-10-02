@@ -176,10 +176,11 @@ class FinsicalApp(Gtk.Application):
         self._observer.started(self)
 
     def quit_gracefully(self) -> None:
-        """Hide every window, which makes the tank page save (its hidden
-        visibilitychange handler), wait for one script round trip so
-        the save has run, then quit. Never hangs: after
-        QUIT_TIMEOUT_MS it quits anyway."""
+        """Hide every window, have the tank page save, wait until it has,
+        then quit. Hiding alone isn't enough: the page's hidden
+        visibilitychange save is a queued task, which a bare script's
+        reply can beat, so the quit calls the page's own save and waits
+        on that. Never hangs: after QUIT_TIMEOUT_MS it quits anyway."""
         if self._quitting:
             return
         self._quitting = True
@@ -212,7 +213,13 @@ class FinsicalApp(Gtk.Application):
         if self.tank is None:
             finish(False)
             return
-        self.tank.page.evaluate("0", lambda _v, _e: finish(False))
+        def saved(_value: Any, error: Optional[GLib.Error]) -> None:
+            if error is not None:
+                log.warning("the tank could not save before quitting: %s",
+                            error.message)
+            finish(False)
+
+        self.tank.page.evaluate(logic.tank_call_script("save"), saved)
 
     def show_client(self, name: str) -> None:
         if self.clients is not None:

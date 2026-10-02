@@ -2711,6 +2711,11 @@ const finsicalBridge = {
   // Returns the new flag, so the native menu retitles at once.
   togglePause: () => setPaused(!paused),
   toggleNames: () => setNames(!namesOn),
+  // Save now. The Linux shell's quit waits on this call: a hidden
+  // window's visibilitychange save is a queued task, so the reply to a
+  // bare script could arrive before it ran and the app tear the page
+  // down unsaved.
+  save: () => { saveTank(); },
 };
 type FinsicalBridge = typeof finsicalBridge;
 declare global {
