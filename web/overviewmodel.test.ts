@@ -27,6 +27,7 @@ describe("isCurrentTankAction", () => {
     expect(isCurrentTankAction(true, "first", "first")).toBe(false);
     // Covers both an armed Empty Tank control and an open Rename alert.
     expect(isCurrentTankAction(false, "first", "second")).toBe(false);
+    expect(isCurrentTankAction(false, undefined, undefined)).toBe(false);
   });
 });
 

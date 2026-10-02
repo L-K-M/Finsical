@@ -245,7 +245,7 @@ pushButton(renameBtn, renameSelected);
 // the next state push re-tags the rows "Showing"/"In tank".
 pushButton(useBtn, () => {
   const it = items[list.selected];
-  if (it?.use) postTankMutation(it.use, tankBoot);
+  if (!tankGone && it?.use) postTankMutation(it.use, tankBoot);
 });
 // The danger action: every fish and add-on leaves the tank. Kept
 // stateless — the next state push just lists an empty tank. Confirm

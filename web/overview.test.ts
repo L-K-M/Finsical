@@ -45,7 +45,9 @@ describe("Overview mutation tokens", () => {
     expect(src).toMatch(
       /postTankMutation\(\{ op: "renameFish", id: f\.id, name: a\.value \},\s*renameBoot\);/,
     );
-    expect(src).toMatch(/postTankMutation\(it\.use, tankBoot\);/);
+    expect(src).toMatch(
+      /if \(!tankGone && it\?\.use\) postTankMutation\(it\.use, tankBoot\);/,
+    );
     expect(src).toMatch(
       /postTankMutation\(\{ op: "emptyTank" \}, armedBoot\);/,
     );

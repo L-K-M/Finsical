@@ -32,7 +32,8 @@ export interface TankState extends BusMsg {
 export function isCurrentTankAction(tankGone: boolean,
                                     actionBoot: string | undefined,
                                     tankBoot: string | undefined): boolean {
-  return !tankGone && actionBoot === tankBoot;
+  return !tankGone && typeof actionBoot === "string" &&
+    actionBoot === tankBoot;
 }
 
 /** One line of the list: a fish, or an add-on with no fish of its own
