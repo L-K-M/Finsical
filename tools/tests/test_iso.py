@@ -96,9 +96,11 @@ class TestIsoGuards(unittest.TestCase):
     def test_rejects_a_record_name_with_path_separators(self):
         path = self.write(build_iso())
         with Iso(path) as iso:
-            for name in (b"../EVIL;1", b"a/b;1", b".", b".."):
-                with self.assertRaises(IsoError):
-                    iso._dir_record(_dir_record(18, 4, name), 0)
+            for name in (b"../EVIL;1", b"a/b;1", b".", b"..",
+                         b"evil\x00.txt;1"):
+                with self.subTest(name=name):
+                    with self.assertRaises(IsoError):
+                        iso._dir_record(_dir_record(18, 4, name), 0)
 
 
 if __name__ == "__main__":
