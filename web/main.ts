@@ -2428,17 +2428,40 @@ function layoutMachine(): void {
   }
 }
 
+// A machine switch used to swap the shell markup and layout in one
+// task: the new case's PNGs hadn't decoded yet, so the tank floated
+// caseless for a frame or two. Preload the art off-DOM and commit the
+// swap only once every layer has its pixels — a second switch
+// supersedes a pending one.
+let machineSwap = 0;
+
 function applyMachine(m: Machine): void {
   // A new case is a new tube: ring the degauss coil like a monitor
   // waking up. The init call passes the stored machine (same id), so
   // this only fires on an actual swap.
   if (m.id !== machine.id && crtOn) degaussTube();
   machine = m;
-  shellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
-  shellEl.innerHTML = shellMarkup(m);
-  rearShellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
-  rearShellEl.innerHTML = backgroundMarkup(m);
-  layoutMachine();
+  const token = ++machineSwap;
+  // Images only: a vector shell (none currently) has nothing to decode,
+  // so its commit lands a microtask later rather than never.
+  const wait = [m.image, m.rearImage]
+    .filter((u): u is string => !!u)
+    .map((u) => new Promise<void>((ok) => {
+      const img = new Image();
+      img.onload = () => ok();
+      // A broken asset still commits — better a missing shell than a
+      // machine the picker can never switch to.
+      img.onerror = () => ok();
+      img.src = u;
+    }));
+  void Promise.all(wait).then(() => {
+    if (token !== machineSwap) return; // a newer switch superseded this
+    shellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
+    shellEl.innerHTML = shellMarkup(m);
+    rearShellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
+    rearShellEl.innerHTML = backgroundMarkup(m);
+    layoutMachine();
+  });
   try { localStorage.setItem(MACHINE_KEY, m.id); }
   catch { /* storage unavailable */ }
 }
