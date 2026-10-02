@@ -54,6 +54,15 @@ describe("alertOriginIn", () => {
     expect(alertOriginIn({ left: 352, top: 148, width: 300, height: 200 },
                          340, 100).left).toBe(352);
   });
+
+  it("floors a fractional box origin, keeping the text on whole pixels",
+     () => {
+    const p = alertOriginIn(
+      { left: 352.5, top: 148.25, width: 320, height: 200 }, 304, 100);
+    expect(Number.isInteger(p.left)).toBe(true);
+    expect(Number.isInteger(p.top)).toBe(true);
+    expect(p.left).toBe(360);
+  });
 });
 
 describe("focusStep", () => {

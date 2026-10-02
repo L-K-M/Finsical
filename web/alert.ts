@@ -83,12 +83,14 @@ export function alertOrigin(vw: number, vh: number, w: number,
 
 /** The same Dialog Manager position inside an arbitrary box: centered
  * across, a third of the leftover height above, never nearer than
- * EDGE to the box's top, and never left of it. */
+ * EDGE to the box's top, never left of it, and on whole pixels (a
+ * fractional box origin is floored) so the bitmap text stays crisp. */
 export function alertOriginIn(b: AlertBox, w: number, h: number):
     { left: number; top: number } {
   return {
-    left: b.left + Math.max(0, Math.floor((b.width - w) / 2)),
-    top: b.top + Math.max(EDGE, Math.floor((b.height - h) / 3)),
+    left: Math.floor(b.left) + Math.max(0, Math.floor((b.width - w) / 2)),
+    top: Math.floor(b.top) +
+      Math.max(EDGE, Math.floor((b.height - h) / 3)),
   };
 }
 
