@@ -102,6 +102,22 @@ one entry per idea, and each merge is recorded in that entry's
   T-41+; D-26, T-19 and T-20 are implemented and annotated in place.
   The pass section is at the end of this document; its `tmp.md` was
   discarded after folding.
+- Twenty-second pass (2026-10-02, `origin/main` `1064b5b`, folded on
+  `ab39e38`): a review with a working headless browser, plus four
+  read-only helper reviews (native shells, import and persistence,
+  Mac OS 8 visual fidelity, original-AquaZone research). Sixteen PRs
+  (#382 to #385 and #387 to #398) are open for the maintainer, none
+  merged; their items are in "Completed (twenty-second pass, PRs open
+  for review)" and the review rounds in "Review-response log
+  (twenty-second pass)". Unlike the eighteenth and twenty-first
+  passes, the open findings were folded into the category sections,
+  not a pass appendix; the provisional `tmp.md` IDs (N-01 to N-68)
+  map to document IDs in "ID scheme and map". Notes cite `1064b5b`;
+  `ab39e38` moved only `web/main.ts` lines after 3364 and
+  `web/water.ts`, and references checked during the fold use the
+  `ab39e38` numbers. Severity and size in its entries come from the
+  review; Value and Risk come from it only for N-01 to N-08 (and
+  N-43's value), and are fold estimates elsewhere.
 
 ## Baselines
 
@@ -243,6 +259,39 @@ one entry per idea, and each merge is recorded in that entry's
   osmium-ui 0.3.1, and one tooling entry about the backlog rotting
   (**T-40**). New IDs start at B-77 and T-40. All three PRs were cut
   from `origin/main` independently and no other agent's PR was read.
+- Twenty-second pass (review at `1064b5b`, 2026-10-02, v0.8.0): `npm
+  ci` clean, `npm run typecheck` clean, vitest **63 files / 892 tests**
+  green, `npm run build` clean. **A browser was available:** headless
+  Chromium 141 (Playwright, SwiftShader WebGL) drove a `dist/` build
+  served on localhost at 1024x768 and 900x700, DPR 1 and 2, and every
+  visual claim rests on a screenshot or a measured rect unless it says
+  otherwise; the Platinum helper also measured the client pages at the
+  shells' fixed window sizes (DPR 2), with `getBoundingClientRect` in
+  the `dist` build. Screenshots (named in the entries, such as
+  `c-heavy-names`) lived in the review scratchpad and are not in the
+  repo. **No archive.org in the
+  browser:** the container's Chromium does not trust archive.org's
+  certificate chain (curl and openssl do), and the pass did not weaken
+  TLS to get round it. Runtime checks used the four stand-in fish plus
+  **24 synthetic fish packs** built offline with the same encoder as
+  `core/data/fsh.test.ts` (8 pose groups x 4 frames, 18x34 cells) and
+  dropped on the tank through a synthetic `DataTransfer`; anything that
+  needs real AquaZone art, sounds or the add-on listings is code-level
+  only. Perf numbers come from CDP `Performance.getMetrics`
+  (TaskDuration, ScriptDuration) over 6-10 s windows; rAF cadence in
+  this headless, software-GL container is not representative and is
+  not quoted. Measured: a 24-fish tank costs about 6% of a core on the
+  main thread (script 3.5%) with the CRT off, 8% with name tags on,
+  and 2.3% paused (the rAF loop still runs `syncLight`,
+  `syncFeedHover`, `runLife` and `showNotices` at the display rate);
+  nothing stutters on the main thread, so P-02, P-09 and P-29 remain
+  the smoothness work and no new perf entry came from the
+  measurements. Helper reviews (Claude sub-agents, read-only): native
+  shells (code-level; GTK, WebKitGTK and Android not run), import and
+  persistence, Mac OS 8 visual fidelity with the same Playwright
+  harness, and original-AquaZone research from the web; every kept
+  helper finding was re-read against the code. The native macOS app
+  was not run.
 
 ## ID scheme and map
 
@@ -260,7 +309,12 @@ U-25+, F-31+, D-22+, T-30+); later passes continue each prefix
 (eleventh: B-56+, P-24, V-26+; twelfth: B-62+, P-25+, U-30+;
 thirteenth: P-27, V-28, D-32 to D-34; fourteenth: B-65+, P-28+, V-29+,
 U-32+, A-08+, F-34+, D-35+, T-34+; eighteenth: P-30+, V-39, U-41,
-F-43, D-47+, T-37; twenty-first: B-78+, V-40+, F-44, T-41+). Items
+F-43, D-47+, T-37; twenty-first: B-78+, V-40+, F-44, T-41+;
+twenty-second: B-88+, P-33+, V-45+, U-43+, A-14+, F-45+, D-51+,
+T-44+). The eighteenth-pass appendix's audio-unlock indicator (PR
+#360) had reused U-41, which the UX section already gives to the
+"Empty Tank…" red text; the twenty-second-pass fold renumbered the
+audio hint **U-42**. Items
 with a "remainder" in their title keep their ID and list only what
 is still open.
 
@@ -422,6 +476,38 @@ finding:
   is covered; `main.ts` remains uncovered), T-2 T-13 (already filed,
   nothing added), T-3 A-07's note (`web/osmium.css` is a build
   artifact).
+
+Twenty-second-pass review IDs (`tmp.md`, folded in at `ab39e38`) and
+where they went; a PR number marks the review PR that implements the
+finding (all open). There was no N-29.
+
+- Bugs and reliability: N-01 U-42 PR #382, N-02 U-43, N-03 V-45 PR
+  #388, N-07 B-88 PR #384, N-08 D-46 (the paw's switch) PR #383, N-09
+  B-89 PR #387, N-10 P-33 PR #393, N-11 B-90 PR #392, N-12 B-91 PR
+  #396, N-13 B-92, N-14 B-93, N-15 B-94 PR #397, N-16 P-34; updates
+  folded into U-28, B-34, S-07, B-72 and B-18, S-04.
+- Native shells: N-17 B-95 PR #395, N-18 B-96, N-19 B-97, N-30 B-98,
+  N-31 B-28, N-32 B-99, N-33 B-100, N-34 P-14, N-35 U-44, N-36 B-101,
+  N-37 T-44, N-38 V-47, N-39 B-85 (remainder), N-40 T-24, N-41 T-37,
+  N-42 T-45.
+- Visual: N-04 V-46 PR #385, N-05 U-10.
+- Mac OS 8 fidelity: N-06 A-04.
+- AquaZone fidelity: N-43 F-45, N-44 F-46, N-45 F-47, N-46 F-48, N-47
+  F-49, N-48 F-50, N-49 F-51, N-50 F-52; updates folded into F-07 and
+  F-37; corrections applied to F-14, F-19, F-28, F-30 and D-21.
+- Platinum fidelity and layout: N-51 V-30 (regression) PR #389, N-52
+  V-48 PR #389, N-53 V-49 PR #390 (its string-scan test moved to
+  V-18), N-54 A-14 PR #388, N-55 A-15 PR #394, N-56 U-45, N-57 U-10,
+  N-58 A-16 PR #390, N-59 V-50 PR #389, N-60 A-17 PR #390, N-61 U-46
+  PR #394, N-62 V-51 PR #390, N-63 A-18 PR #394 (About's footer left
+  as A-18's remainder), N-64 A-19 PR #394, N-65 A-20, N-66 A-21, N-67
+  A-22, N-68 A-23; updates folded into F-10 and F-30.
+- Delight: N-20 D-51, N-21 D-52, N-22 D-53, N-23 D-54, N-24 D-55 PR
+  #398, N-25 D-56 PR #391, N-26 D-57, N-27 D-58, N-28 D-59.
+- Review follow-ups: the list-size thumbnail cache and the unretried
+  PNG write P-35; the fake IndexedDB's `lose()` T-17; the refused
+  drop's console line U-10; the sneeze extras D-55; the possible quit
+  overlap with another agent's PR B-41 and B-95.
 
 ## Completed work
 
@@ -1464,6 +1550,9 @@ fourteenth-pass review-response log.
   Picture and Monitor panes fit above the caption again (group gaps
   30 to 18 px and 24 to 16 px) and the Machine list shows whole case
   names ("Performa 450", with an ellipsis for any future overflow).
+  (Twenty-second pass: V-30 came back on main, since the gap
+  reduction was dropped when #318 enlarged the window and #318's
+  Vertical skew row used the height; fixed again in PR #389, open.)
 - **PR #226** (`claude/fast-decode`, P-02's first slice; PERF-01):
   `decodePixels` keeps the column and row as counters instead of a
   per-pixel closure, skips runs of colour 0 (the output starts
@@ -1613,14 +1702,19 @@ subset of #255.
   when `DecompressionStream` is absent — restores macOS 12/Safari <16.4
   support; fflate lazy-loads so modern browsers never fetch it; usize
   capped by the declared bound (B-29, tmp.md R-1).
-- **PR #204** (`feat/cat-paw`): the AquaZone signature visitor — a paw
+- **PR #204** (`feat/cat-paw`): a cat visitor (billed here and in the
+  code as "the AquaZone signature visitor", a claim the twenty-second
+  pass corrected: no AquaZone source mentions a cat, so it is one of
+  Finsical's own extras; see D-46) — a paw
   drops from the rim every few minutes, bats the glass, startles fish;
   tick-driven so it pauses with the sim (tmp.md §7 cat, D-46 partial).
 - **PR #205** (`perf/pack-caches`): bounded pack caches and cut
   per-frame/state-push overhead (P-01, P-06 partial).
 - **PR #206** (`feat/lifecycle`): fish get sick, die, and are born —
   corpses excluded from the saved roster, births splash in and persist
-  (F-12 partial, tmp.md §7 lifecycle-lite).
+  (F-12 partial, tmp.md §7 lifecycle-lite). (Twenty-second pass: that
+  exclusion made every quit remove the bodies; B-88, PR #384 open,
+  saves them.)
 - **PR #207** (`fix/crt-shader`): continuous `uPhase` time and highp
   precision — kills the 100 s wrap jump and the mediump hash collapse
   (V-14).
@@ -1646,6 +1740,8 @@ subset of #255.
   collapse (D-06 partial).
 - **PR #228** (`feat/auto-feeder`): Tank-menu timed feeder running on
   tank time, capped by in-water pellet count (F-07 partial, tmp.md §7).
+  (Twenty-second pass: "tank time" here means sim ticks while the
+  window is open, not the aquarium's speed-scaled minutes; see F-07.)
 - **PR #230** (`perf/save-cadence`): the 10 s interval now only pushes
   state; disk writes ride mutation paths plus a monotonic-clock
   60 s drift flush (P-21, tmp.md R-7).
@@ -1718,7 +1814,10 @@ B-68 (PR #241), B-69 (PR #223), B-75 (PR #229). Fifteenth pass
 (merged to main): B-29 (PR #202), B-48 (PR #236), P-01 (PRs #196,
 #205), P-05 (PR #240), P-07 (PR #200), P-21 (PR #230), V-03
 (PR #237), V-14 (PR #207), D-02 (PR #243), D-05 (PR #253), D-32
-(PR #254), D-33 (PR #251).
+(PR #254), D-33 (PR #251). Twenty-second pass: B-88 to B-91, B-94 and
+B-95 are implemented by open PRs (#384, #387, #392, #396, #397,
+#395), so never listed here; the new open bug entries (B-85's
+remainder, B-92, B-93, B-96 to B-101) follow B-73.
 
 ### B-06 (remainder) The release binary is arm64-only although Info.plist promises macOS 12 (which runs on Intel)
 
@@ -2162,6 +2261,20 @@ reading, not re-run. Change step 5 and the `thumb2:` acceptance come
 from this item; pair it with the rest of this remainder rather than
 shipping it alone.
 
+Twenty-second-pass update (import helper review, re-read by hand;
+shared with B-72): sounds decoded while their add-on is removed or
+cancelled stay in the bank and the `snds` store with no owner.
+`handleSounds` (`web/main.ts:1535-1547`) awaits `audio.addWavs` and
+then calls `sndsMerge`, a restore does not await it, and
+`removeAddon`'s `sndsRemove` (`web/main.ts:1950`) can run first, so a
+removal or an Empty Tank that lands mid-decode leaves the records
+behind. Change: pass the install epoch and the add-on URL into
+`handleSounds`, and drop the records (from the bank and the store) if
+the add-on is no longer listed when the decode finishes. Acceptance
+(derived): a test that removes the add-on between `addWavs` and
+`sndsMerge` ends with neither the bank nor the store holding its
+records. Code-level only.
+
 ### B-19 (remainder) Imported music takes over tank sound effects through substring name matching
 
 Size S · Severity medium · Value 3/5 · Risk 2/5
@@ -2350,6 +2463,12 @@ Re-verified open at 62b8572 (fourteenth-pass audit): there is still no
 `windowWillUseStandardFrame`, and Window > Zoom is `performZoom`
 (`macos/Finsical.swift:911`).
 
+Twenty-second pass: still open on `ab39e38` (no
+`windowWillUseStandardFrame`; the image mask still uses
+`contentsGravity = .resize`, `macos/Finsical.swift:467`). The Linux
+shell has the same mismatch for a maximized or tiled tank, filed as
+**B-97**.
+
 ### B-28 A second WebContent crash within 30 s leaves an invisible, empty always-on-top window
 
 Size S · Severity low · Value 2/5 · Risk 1/5
@@ -2390,6 +2509,24 @@ acceptance therefore probably passes today, and severity drops from
 medium to low (value 3/5 to 2/5). Source only; not run on a Mac.
 
 Thirteenth-pass update: PR #234 (open): per-webview crash throttling, 0.5 s delayed reload, three retries per minute per view.
+
+Twenty-second-pass update (N-31, native helper review, code-level;
+also covers Linux): the throttled reload is on main now.
+`webViewWebContentProcessDidTerminate` (`macos/Finsical.swift:950-966`)
+keeps per-view crash times, allows 3 in 60 s (`crashRetryLimit`,
+`crashRetryWindow`, `:940-942`) and calls `webView?.reload()` after
+0.5 s. Two gaps remain. (1) `reload()` does nothing before the first
+commit: WebKit ignores it with an empty back-forward list, so a crash
+during the first load is never retried (Linux already falls back to
+`load_uri`, `linux/finsical_shell/web.py:158-165`). (2) Past the cap
+both shells only log, leaving a transparent, always-on-top,
+click-eating window. Change: on macOS, `load(URLRequest)` when
+`backForwardList.currentItem == nil`, else `reload()`; past the cap,
+on both shells, show "The aquarium stopped unexpectedly." with Reload
+and Quit (the alert this entry's Change already asks for). The
+visible/hidden handling in the Change above is still not on main.
+Acceptance stands; add: kill the tank's process before its first
+commit and it loads. Not run on a Mac or under GTK.
 
 ### B-30 Browsing add-ons evicts installed add-ons from the offline cache
 
@@ -2451,7 +2588,7 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 - Fourteenth pass: SIM-07 (fish never pause: add rest moves where a
   calm fish hangs in the water for a few seconds) is filed as D-35.
 
-### B-34 Two tank tabs both execute every command and overwrite one save
+### B-34 (remainder) Two tank tabs both execute every command and overwrite one save (core fixed on main; a view-only tab still stores drops and shows the welcome)
 
 Size S · Severity low · Value 2/5 · Risk 2/5
 
@@ -2490,6 +2627,22 @@ reply and each request one install ack; the passive tab shows the
 alert; "Use This Tab" moves the lock and the other tab goes passive.
 
 Thirteenth-pass update: PR #233 (open): a localStorage lease elects one owner; losers go read-only with an alert and bfcache restores re-claim.
+
+Twenty-second-pass update (import helper review, re-read by hand): the
+lease is on main (`web/tankclaim.ts`; `tankOwner = claim.owned`,
+`web/main.ts:444`), and the view-only tab no longer saves
+(`web/main.ts:490`) or answers the bus (`:1802`). What still leaks:
+a view-only second tab still stores dropped packs and sounds (the
+drop handler, `web/main.ts:3015-3030`, has no `tankOwner` check
+before `packPut`/`sndsMerge`), and it shows its own welcome
+(`showWelcome`, `web/main.ts:2929`); pressing Stock the Tank there
+stocks a tank that never saves and records the answer "stocked", so
+the owner is never offered it (`launchOffer`, `web/main.ts:2858`, is
+not owner-gated). Change: gate drops, in-page installs, the welcome
+and the starter-sound backfill on `tankOwner`.
+Acceptance (derived): with two tabs, the view-only tab's drop writes
+nothing to IndexedDB, it shows no welcome, and the owner still gets
+the offer. Code-level only.
 
 ### B-35 With the CRT effect on, clicks do not land where the curved, overscanned picture shows
 
@@ -2722,6 +2875,17 @@ webview allows); an unreachable webview still replies rather than
 hanging quit. `isReleasedWhenClosed` per this change. Not run on a
 Mac — code-verified only.
 
+Twenty-second pass: the title's "10 seconds" is stale. Since PR #230
+the page's periodic save is a 60 s drift flush (`web/main.ts:585-587`),
+so an unsaved quit can lose up to a minute. `window.finsical` on main
+still has no `save` (PR #357 and PR #395 each add one). The Linux
+counterpart, a quit that never waits for the save, is **B-95** (PR
+#395, open). Possible overlap: another agent's open PR titled "Save
+the tank before the native shell lets a quit land" (#357) may cover
+the same race as #395 on Linux, or only this macOS one; this pass did
+not read it, so the maintainer should compare the two before merging
+both.
+
 ### B-42 (remainder) Slow-starting archive.org downloads share the 30 s stall budget; no separate first-byte allowance
 
 Size S · Severity low · Value 3/5 · Risk 2/5
@@ -2888,7 +3052,7 @@ recurses (`web/main.ts:1677-1692`) and every non-pack file up to 32 MB
 goes through fileSoundRecords (`web/main.ts:1756-1768`). The double
 read from the merged note is fixed: heads are now sliced once.
 
-### B-49 Case swaps resize from the pinned top edge and can push the window off screen
+### B-49 (remainder) Case swaps resize from the pinned top edge and can push the window off screen (clamped on main; Reduce Motion and shrink-to-fit remain)
 
 Size S · Severity low · Value 2/5 · Risk 1/5
 
@@ -2910,7 +3074,17 @@ and no Reduce Motion check (`macos/Finsical.swift:272-280`).
 
 Thirteenth-pass update: PR #234 (open): resized frames clamp into the visible screen.
 
-### B-50 Saved window frames are restored when they overlap any screen by a single point
+Twenty-second pass (checked on `ab39e38`): the off-screen half is
+fixed on main. Both `applyMachine` resizes go through
+`clampToVisible` (`macos/Finsical.swift:306-316`, used at `:344` and
+`:356`), which keeps the whole window inside the screen's visible
+frame. Still open: the swap always animates (`animate: true`, `:358`)
+with no Reduce Motion check, and a frame taller than the visible
+area is pinned to its bottom rather than shrunk to a smaller integer
+scale. Linux's Larger and frame restore have the same missing fit to
+the work area, filed as **B-100**.
+
+### B-50 (remainder) Saved window frames are restored when they overlap any screen by a single point (the tank is fixed on main; client windows remain)
 
 Size S · Severity low · Value 2/5 · Risk 1/5
 
@@ -2960,6 +3134,16 @@ FinsicalFrame.FinsicalTank '{{100, <mainScreenMaxY - 4>}, {310,
 a tank parked half off the left edge still comes back exactly there.
 
 Thirteenth-pass update: PR #234 (open): restore requires a minimum visible area, else centers.
+
+Twenty-second pass (checked on `ab39e38`): the tank half is fixed on
+main. `restoreTankFrame` (`macos/Finsical.swift:258-272`) applies the
+saved tank frame only when some screen's visible frame overlaps it by
+at least 64x44 pt, else centres. Still open: client windows. A fresh
+one is placed beside the tank (`besideTank`, `:236-256`), but a saved
+frame still comes back through `OsmiumFrameStore.restore`, which
+accepts any intersection. The Linux shell's client windows have the
+same one-pixel acceptance, filed as **B-96** (the same 44x10 rule on
+the 22 px title strip).
 
 ### B-52 Loose-mode add-on listings don't dedupe colliding basenames
 
@@ -3174,6 +3358,16 @@ and no connection alert appears.
   is shared). B-68 (fourteenth pass, PR #241) reworks the same
   welcome flow's saved state; rebase on it.
 - Fourteenth pass: IMPORT-05.
+- Twenty-second pass: the sound bank's records can outlive an Empty
+  Tank that lands mid-decode (`handleSounds` races `removeAddon`'s
+  `sndsRemove`); the fix (pass the epoch and URL into `handleSounds`)
+  is recorded under B-18. B-89 (PR #387, open) changes the same
+  `stock()` loop: a starter item missing because its listing failed
+  now leaves the answer at "retry"; rebase on it. Verified still open
+  on `ab39e38`: there is no `InstallCancelled`, and the cancellation is
+  a plain `Error("cancelled — the tank was emptied mid-install")`
+  (`web/main.ts:2081`, `:2112`); the `runStarter` this Change asks to
+  extract already exists (`web/starter.ts:93`, PR #288).
 
 ### B-73 Import Add-ons previews ignore the Sound pane's volume and mute
 
@@ -3215,6 +3409,242 @@ reads 0; unmuting from Preferences while the preview plays raises it.
   now has this ID.
 - U-35 (fourteenth pass, AUDIO-05: the volume taper).
 - Fourteenth pass: AUDIO-04.
+
+### B-85 (remainder) Android config changes that still recreate the Activity
+
+Size S · Severity low · Value 2/5 · Risk 1/5 (twenty-second pass, N-39)
+
+**Problem.** PR #372 (open, B-85 in the twenty-first pass) adds
+`fontScale` to the tank Activity's `configChanges`, so a system
+font-size change no longer recreates it. Other system changes still
+do, reloading the tank and dropping whatever the last save missed:
+`locale|layoutDirection` (a language change), `fontWeightAdjustment`
+(API 31's Bold text), `colorMode` and `touchscreen`.
+
+**Evidence.** `android/app/src/main/AndroidManifest.xml:23` (on
+`ab39e38`: `orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density`).
+Code-level; Android not run.
+
+**Change.** Add `locale|layoutDirection|fontWeightAdjustment|colorMode|touchscreen`
+next to PR #372's `fontScale`. As for `fontScale`, every WebView comes
+from the single `newWebView` factory, so check that none of them reads
+these values at creation only.
+
+**Acceptance.** (derived) A manifest test (or the existing packaging
+test) asserts the full list; on a device, switching the system
+language or Bold text keeps the tank's fish where they were.
+
+**Merged and related.**
+
+- B-85 (twenty-first pass, PR #372, open).
+
+### B-92 Dropping a second pack with the same file name shows the old art, then replaces the first fish after relaunch
+
+Size S · Severity low-medium · Value 3/5 · Risk 2/5 (twenty-second pass, N-13)
+
+**Problem.** Drops key their stored bytes by `local:${name}`. A second
+drop of a different pack with the same file name overwrites the bytes,
+and `handleSheets` reuses the first drop's slot (`sheetByEntry`), so
+pack B's fish spawns with pack A's art now, and after a relaunch A's
+fish turns into B (with B's care).
+
+**Evidence.** `web/main.ts:3163-3167` (the `local:` identity; the
+comment says same-named drops reuse the record and overwrite the
+bytes), `web/main.ts:1311` and `:1349` (`sheetByEntry`). Import
+helper review, re-read by hand; not reproduced in the browser.
+
+**Change.** A pure `dropIdentity(name, bytesHash, records)` in
+`web/drop.ts` that mints `local:${name} (2)` (and so on) when the
+bytes differ (SHA-256 through `crypto.subtle`); identical bytes keep
+today's reuse.
+
+**Acceptance.** (derived) Vitest for `dropIdentity`: same name and
+same hash returns the existing key; same name and a different hash
+returns `local:<name> (2)`, then `(3)`. A drop test: two different
+packs named `x.fsh` keep two records and two looks across a relaunch.
+
+**Merged and related.**
+
+- Related: B-13 (drop handling), B-14 (sheet binding), B-93.
+
+### B-93 Stored bytes of dropped packs that no save references are never reclaimed
+
+Size S · Severity low · Value 2/5 · Risk 2/5 (twenty-second pass, N-14)
+
+**Problem.** `local:` packs are exempt from `trimPacks`; only
+`removeAddon` deletes one. Drops made in a view-only (spectator) tab
+and `.fins` imports, which replace the tank without deleting the old
+tank's `local:` packs, leave bytes that nothing references and that
+the user can neither see nor remove.
+
+**Evidence.** `web/store.ts:181` (`if (isLocalPack(url)) return;` in
+the trim), `web/main.ts` `removeAddon` (the only `packDelete` of a
+`local:` key). Import helper review, re-read by hand.
+
+**Change.** After the launch restore, in the owner tab only, delete
+`local:` packs referenced by neither `installedAddons` nor
+`finsical:tank.bak`: a small `packKeys(prefix)` in store.ts and a pure
+`orphanLocals(keys, saved, bak)`.
+
+**Acceptance.** (derived) Vitest for `orphanLocals` (kept when either
+save references it, returned otherwise); a fake-IndexedDB test that a
+`.fins` import followed by a relaunch leaves only the referenced
+`local:` keys.
+
+**Merged and related.**
+
+- Related: B-30 (cache budget and pinning), B-34 (the view-only tab
+  should not store drops at all), B-92.
+
+### B-96 Linux: a client window can reopen fully off screen
+
+Size S · Severity medium-low · Value 2/5 · Risk 1/5 (twenty-second pass, N-18)
+
+**Problem.** Reopening a client window moves it to its saved x/y with
+no monitor check, and the first open accepts any 1 px overlap, while
+the tank uses the stricter `grabbable_on_any`. Unplug the monitor a
+window was closed on and it reopens where no screen is; its drawn
+title bar is its only handle.
+
+**Evidence.** `linux/finsical_shell/clients.py:124-133` (reopen),
+`:188-209` (`_place`; the check at `:203-209`),
+`linux/finsical_shell/logic.py:270` (`intersects_any`) against `:282`
+(`grabbable_on_any`). Native helper review, code-level; GTK not run.
+
+**Change.** One pure helper in `logic.py` requiring the 22 px title
+strip to overlap a work area by at least 44x10, else place the window
+`beside_tank`; use it on first open and on reopen.
+
+**Acceptance.** (derived) `linux/tests/test_logic.py`: a frame whose
+title strip overlaps only 1 px is rejected, one overlapping 44x10 is
+kept, and a rejected frame falls back to the beside-the-tank spot.
+
+**Merged and related.**
+
+- Linux counterpart of B-50.
+
+### B-97 Linux: a maximized or tiled tank gets a stretched input silhouette while the page letterboxes the case
+
+Size S · Severity medium-low · Value 2/5 · Risk 2/5 (twenty-second pass, N-19)
+
+**Problem.** `_Silhouette.region` stretches the mask to w x h, on the
+claim that the page stretches too, but `#shell` is
+`preserveAspectRatio="xMidYMid meet"` and `layoutMachine` letterboxes;
+`_snap_to_aspect` skips MAXIMIZED, TILED and FULLSCREEN. The result is
+invisible always-on-top bands that eat clicks (black under X11
+without a compositor).
+
+**Evidence.** `linux/finsical_shell/tank.py:58-85` (`region`),
+`web/index.html` (`#shell` `preserveAspectRatio="xMidYMid meet"`),
+`web/main.ts` `layoutMachine`. Native helper review, code-level.
+
+**Change.** A uniform `min()` scale plus offsets, through a pure
+`letterboxed_shape_rects(shape, vb, w, h)` in `logic.py`.
+
+**Acceptance.** (derived) `test_logic.py`: for a 2:1 window over a
+4:3 viewBox the rects are centred with equal side margins and keep
+the viewBox aspect; at the exact aspect they equal today's rects.
+
+**Merged and related.**
+
+- Linux counterpart of B-27.
+
+### B-98 Android: renderer loss restarts in the background, counts system kills as crashes, and its error screens never retry
+
+Size S · Severity low-medium · Value 2/5 · Risk 2/5 (twenty-second pass, N-30)
+
+**Problem.** `onRenderProcessGone` restarts for `didCrash()` true and
+false alike; every loss counts toward `RENDERER_RESTARTS` (3 per 60 s)
+and `recreate()` runs even while the Activity is stopped. Past the
+cap, and on "WebView unavailable" (during a WebView update), a static
+TextView stays until the app is swiped away (`singleTask`, no retry
+in `onStart`). The "saves the tank every 10 s" comment is stale (60 s).
+
+**Evidence.** `android/app/src/main/java/dev/finsical/app/MainActivity.java:855-863`
+(`onRenderProcessGone`), `:714` (the stale comment). Native helper
+review, code-level; Android not run.
+
+**Change.** Count only `didCrash()` toward the cap; when stopped,
+defer `recreate()` to `onStart`; retry the problem screens in
+`onStart`. Fix the comment.
+
+**Acceptance.** (derived) A unit test of the restart limiter: system
+kills don't count, three crashes in 60 s do; manual: a renderer kill
+while backgrounded recreates on return, and a WebView update screen
+recovers on the next `onStart`.
+
+**Merged and related.**
+
+- Related: B-28 (the desktop shells' crash recovery), T-37.
+
+### B-99 Take a Picture failures are silent on Linux and macOS, and Linux can't save to non-local locations
+
+Size S · Severity low · Value 2/5 · Risk 1/5 (twenty-second pass, N-32)
+
+**Problem.** On Linux the save needs `file.get_path()`, so GVFS
+locations without FUSE fail, and write errors are only logged; macOS
+only logs too. Android toasts.
+
+**Evidence.** `linux/finsical_shell/shell.py:587-594`,
+`macos/Finsical.swift:685-692`. Native helper review, code-level.
+
+**Change.** Linux: `Gio.File.replace_contents_bytes_async` (works on
+any GIO location) plus a `Gtk.AlertDialog` on failure; macOS: an
+NSAlert on failure.
+
+**Acceptance.** (derived) Manual: saving to a read-only folder shows
+an alert on both shells; on Linux, saving to an `sftp://` location
+mounted without FUSE succeeds.
+
+**Merged and related.**
+
+- Related: B-60 (Take a Picture, seventeenth pass, PR #270), D-09.
+
+### B-100 Linux: Larger and frame restore never fit the tank to the work area
+
+Size S · Severity low · Value 2/5 · Risk 1/5 (twenty-second pass, N-33)
+
+**Problem.** `step_size` keeps the top-left and only sets the size;
+`_restore_frame` restores a saved size larger than the monitor;
+`clamp_to_visible` moves but never shrinks. A tank at (1500,700),
+400x300, on a 1920x1050 work area ends at x 2000 after one Larger.
+
+**Evidence.** `linux/finsical_shell/tank.py:283-297` (`step_size`),
+`:332` (`_restore_frame`), `linux/finsical_shell/logic.py:293`
+(`clamp_to_visible`). Native helper review, code-level.
+
+**Change.** A pure `stepped_tank_frame(frame, step, aspect, min,
+area)` in `logic.py` that keeps the aspect, shrinks to the area and
+then clamps inside it; use it for Larger, Smaller and the restore.
+
+**Acceptance.** (derived) `test_logic.py`: the (1500,700) 400x300 case
+stays inside 1920x1050 with the case aspect; a saved frame larger than
+the area comes back shrunk to fit.
+
+**Merged and related.**
+
+- Linux counterpart of B-49.
+
+### B-101 Linux: fixed-size client windows can be resized or maximized
+
+Size S · Severity low · Value 1/5 · Risk 1/5 (twenty-second pass, N-36)
+
+**Problem.** `ClientWindowState.hints()` computes max = min, but
+`_apply_hints` applies only the minimum.
+
+**Evidence.** `linux/finsical_shell/logic.py:532-539` (`hints`),
+`linux/finsical_shell/clients.py:217-225` (`_apply_hints`). Native
+helper review, code-level.
+
+**Change.** On X11 set PMaxSize = PMinSize except while the window is
+folded; on Wayland try `set_resizable(False)`.
+
+**Acceptance.** (derived) Manual under X11: a client window offers no
+resize edge or maximize; folding still works.
+
+**Merged and related.**
+
+- Related: T-37.
 
 ### Completed (sixteenth pass, PRs open for review, CI green, reviewer blocked)
 
@@ -3639,12 +4069,361 @@ sanitize/apply chain, `web/nametags.ts` (one layout per frame),
 token-bound blob reads), `feedFish`/`feederDrop` (per-pellet delay,
 drop-time cap re-check), and `planFrame`'s carry/NaN guards.
 
+### Completed (twenty-second pass, PRs open for review)
+
+Sixteen PRs, each cut from `origin/main` at `1064b5b` and reviewed by
+GLM 5.3 under AGENTS.md's stopping rules; none merged at fold time.
+All sixteen finished: eight on a first round with no applicable
+feedback, eight at steady state. Rounds and triage are in "Review-response
+log (twenty-second pass)". If a PR is closed unmerged, restore its
+entries from this list or the PR description; items a PR covers only
+in part keep an open entry in their category.
+
+- **U-42 (fix) / PR #382** `claude/sound-hint-fix` (N-01):
+  "Click for sound" (U-42, the eighteenth pass's audio-unlock
+  indicator, on main since `9cc72e6`) was wrong in most of the cases
+  it showed. Measured in Chromium: (1) shown when nothing can unlock:
+  `syncAudioHint()` (`web/main.ts:251`) reads the private
+  `TankAudio.ctx` through `(audio as any).ctx` and shows the hint
+  while it is null, but `TankAudio` creates its context lazily
+  (`context()`, `web/audio.ts:265`), only when a pack with sounds
+  loads, so a tank with no sound bank (every "Not Now" tank, a tank
+  of dropped `.fsh` files) showed it forever, in the native apps too,
+  where audio needs no gesture (macOS gates only video; Linux uses
+  `AutoplayPolicy.ALLOW`, `linux/finsical_shell/web.py:109`; Android
+  `setMediaPlaybackRequiresUserGesture(false)`, `MainActivity.java:234`);
+  on a fresh profile with stand-ins only it was up after 3 s and after
+  any number of clicks on the case. (2) It had `pointer-events: none`,
+  so a click on it landed on the page's window-drag pointerdown
+  (`web/main.ts:2458`), which never calls `audio.unlock()`; only a
+  click in the tank (which also feeds or taps), a key or a menu
+  command unlocked (a click at the case, (300,600), left it shown).
+  (3) `body.zen` (`web/app.css:428`) hid the menu bar, tip, trigger
+  and tags but not `#audio-hint` (or `#dropmsg`). (4) Not period: a
+  translucent black, rounded, white-bordered pill in the window's
+  bottom-right corner (`web/app.css:52-60`), usually outside the case
+  silhouette in the native window. (5) The `as any` reach into a
+  private field. The PR gives `TankAudio` a public `blocked` (sounds
+  loaded, page visible and audible, device still suspended), makes
+  the hint a Platinum push button, **Turn On Sound**, shown only while
+  blocked and never in Zen or during the boot parade, unlocks audio on
+  any press on the page, and re-checks every frame so the button
+  leaves as soon as sound starts, even on a paused tank; tests in
+  `web/audio.test.ts`. Where it differs from the review's Change (a
+  Geneva 9 bevel chip with a speaker glyph just under the tank's
+  glass, one capture listener): the button keeps the page's
+  bottom-right corner (12 px inset) and has no glyph, and `#dropmsg`
+  in Zen is left to U-10. Review acceptance, for a later Playwright
+  suite: with no sound bank the hint never shows; with the autoplay
+  policy forcing a gesture and a bank present it shows, a click on the
+  case hides it and the context is `running`; `z` hides it. Severity
+  medium · Size S · Value 4/5 · Risk 1/5. Review: R1 0 valid, CI
+  green, finished.
+- **D-46 (part) / PR #383** `claude/cat-paw-effect` (N-08): the cat
+  paw (PR #204) is not from AquaZone and could not be switched off.
+  `web/catpaw.ts:2` ("AquaZone's cat — the original's best-remembered
+  gag"), `web/main.ts:3727` ("AquaZone's signature visitor") and the
+  Effects pane's snail blurb (`web/prefs.ts:993`, "that visitor was the
+  original's own") credited the original with a cat; the Deluxe II
+  User's Guide (every menu, tool, event and FAQ), the 1993 box back,
+  the Macworld 1995 and ATPM 1998 reviews and Japanese sources never
+  mention one. It was the only extra the Effects pane could not turn
+  off, and it startles the fish every few minutes. The PR adds
+  **Effects > Cat visits** (on by default; clearing it withdraws a paw
+  already reaching down and re-arms the wait, as the snail's box does)
+  and corrects the comments and the blurb; the PR #204 line under the
+  fifteenth pass is corrected too. Severity low (fidelity,
+  provenance) · Size S · Value 3/5 · Risk 1/5. Review: R1 0 valid, CI
+  green, finished. D-46's Neko peek stays open as a separate idea.
+- **B-88 / PR #384** `claude/keep-bodies` (N-07): bodies vanished on
+  relaunch although they should stay until removed. `tankSnapshot`
+  (`web/main.ts:461`) saved `sim.fish.filter((f) => f.state !==
+  "dead")` (PR #206's "corpses excluded from the saved roster"), so
+  every quit removed the bodies and the ammonia they release
+  (`Aquarium.breathe`, `core/aquarium/aquarium.ts:247`), although
+  ORIGINAL-SIM says a body "sinks and stays until removed, decaying
+  into ammonia", the README says "remove it from Tank Overview before
+  it fouls the water", and the original's guide says bodies decompose
+  until removed. The restore path (`sanitizeSavedFish`, `life.dead`
+  to a corpse "sink") existed but never ran. The PR saves bodies with
+  the roster and restores them already dead (`state: "dead"`), since
+  otherwise the first `syncLife` re-announces the death (sound and
+  save) on every launch; tests in `core/sim.test.ts` pin that a
+  restored body raises no death event, settles on the gravel and keeps
+  adding ammonia. Seeded-save Playwright check: on main the body is
+  gone after one relaunch; with the fix it survives two. Severity
+  medium (fidelity, water model) · Size S · Value 4/5 · Risk 2/5.
+  Review: R1 0 actionable (four declined), CI green, finished.
+- **V-46 / PR #385** `claude/nametag-declutter` (N-04): name tags
+  piled on top of each other in a busy tank. With 24 fish and Fish
+  Names on, tags near the surface and around a feeding crowd
+  overlapped so badly that names could not be read (screenshot
+  `c-heavy-names`: five tags stacked in the top-left corner); even the
+  four stand-ins overlapped two tags in a quarter of the frames.
+  `tagPlacement` (`web/nametags.ts:26`) placed each tag alone, and new
+  fish enter at the surface and hungry fish beg there, so the worst
+  pile-up came exactly when names matter (a new arrival). The PR adds
+  a pure layout pass after placement: each tag tries its usual side,
+  then the other side of its fish, and hides if neither is free; tags
+  already showing keep priority (longest shown first) and keep their
+  side while it stays free; a move needs 6 px of clear room, and a
+  tag that had to hide stays hidden for 1.5 s (`TAG_HOLD_MS`), so tags
+  between wandering fish don't blink. The holds are pure helpers
+  (`pruneHolds`, `armHolds`) with tests, including a fixed-point test
+  (fed its own output, the layout doesn't change). Measured on a
+  24-fish tank: no overlapping tags in any frame, about 20 of 24 tags
+  readable at once, a shown tag stays put for 4.8 s at the median. The
+  review's plan (priority: Get Info fish, newest, then id; above,
+  below, then a nudge of up to one tag height; hysteresis) landed as
+  this seniority rule. Review acceptance: vitest for the pure pass (no
+  two kept boxes intersect, a side sticks unless blocked,
+  deterministic) and Playwright with the synthetic packs (no
+  overlapping `.nametag` rects; recorded under T-06). Severity low ·
+  Size S · Value 4/5 · Risk 2/5.
+  Review: two rounds, steady state, CI green.
+- **B-89 / PR #387** `claude/starter-listing-retry` (N-09): a partial
+  listing failure quietly shrank the starter set and recorded
+  "stocked" for good. `listAddons` turns a failed collection into `[]`
+  (`web/import.ts:734-747`), `resolveStarter` drops missing items
+  silently (`web/starter.ts:36-44`), and `stock()` records "stocked"
+  when `failed` is empty (`web/welcome.ts:166`). The starter plant
+  (Amazon_L) and backdrop (Back03) live only in the JPN collections,
+  which share one listing page (`listPage`'s `pageCache`,
+  `web/import.ts:298-345`), so one 5xx or stall on that page installed
+  5 of 7 items, reported success and never offered the rest again
+  (verified with a vitest stubbing a 503 for the JPN page). The PR
+  reports each failed collection through an `onFailed` callback
+  (instead of the review's `{items, failed}` return); a starter item
+  counts as unreached only when a collection of its own section
+  failed (sharing one matching rule with `resolveStarter`), stocking
+  installs the rest, names what it couldn't reach and offers Try
+  Again, and the answer stays "retry" so a later launch offers the
+  rest. With every listing answering, a missing item is still skipped
+  for good. Review acceptance: the 503 test ends with
+  `finsical:welcomed` = "retry", and a second run with the page
+  healthy installs only Amazon_L and Back03. Severity medium · Size S.
+  Review: two rounds, steady state, CI green.
+- **V-45 and A-14 / PR #388** `claude/info-card-lines` (N-03, N-54):
+  the Get Info card. V-45: `layoutInfo` wrote `Health  ${h}%  Hunger
+  ${n}%` into one line of the 118 px card (`.finfo`,
+  `web/app.css:150`), and in Geneva 9 it broke after "Hunger", leaving
+  "50%" alone on the next line (screenshot `i-card-moving`); health and
+  hunger now get a line each (the review's alternative,
+  `white-space: nowrap` and a wider card, was not needed), and a body
+  shows only its cause of death (severity nit). A-14: the card looked like a System 7 windoid
+  (pale 2 px stripes, `web/app.css:157`, instead of Osmium's 1 px
+  white over 1 px #777; a white body; a translucent shadow), showed
+  `cursor: pointer` on the close box and `cursor: text` on the title,
+  selected its text in browser blue, and sat on fractional pixels. It
+  now uses Platinum's face, outline and solid 1 px shadow, Osmium's
+  pinstripes parted around the title, a bevelled close box that
+  flattens when pressed, the arrow cursor, no selection, aliased
+  strikes and whole-pixel placement; the rename field keeps a text
+  field's I-beam and selection. Size S · Value 2/5 · Risk 1/5. Review:
+  two rounds (a third, started after steady state, ignored per
+  CLAUDE.md), steady state, CI green.
+- **V-30 (regression), V-48 and V-50 / PR #389**
+  `claude/prefs-layout-fixes` (N-51, N-52, N-59): three Preferences
+  slips, measured at the shells' 565x518 window. V-30 was back: the
+  Picture pane's Color group spanned y 378-453 while the footer
+  separator sits at 449-451, so its bottom bevel landed on it as a
+  triple line and the caption started 4 px below; PR #225 dropped its
+  gap reduction when #318 enlarged the window, and #318's Vertical
+  skew row used the extra height. `#pfpicture .pfgroup + .pfgroup` goes
+  from 30 px to 24 px like the Monitor pane (`web/app.css:254-256`),
+  ending the group at 441 (severity medium). V-48: Lighting's hour
+  pop-ups (`.pfhour { width: 76px }`, `web/app.css:297`) left 44 px for
+  text while `hourLabel` gives "8:00 AM" (46 px), "10:00 PM" and
+  "12:00 AM" (53 px) in Charcoal 12 (`core/light.ts:161-173`), so they
+  showed "8:00 …" with AM/PM cut (the menu showed them); Mac OS 8
+  sizes a pop-up to its widest item, so `web/prefs.ts` now measures
+  the `HOURS` labels (`web/prefs.ts:743`) in the pop-ups' own font
+  once the strikes load and sets that as a min-width, and a 24-hour
+  locale's shorter "22:00" keeps the CSS width (the review's fallback,
+  `width: 88px`, would still fit the 443 px pane) (severity medium;
+  related: B-02 in the independent appendix, AM/PM, and U-37). V-50:
+  the Lighting pane had no 12 px top margin beside the Sound, Effects
+  and Picture rules (`web/app.css:255`, `:278`, `:286`), so its group
+  started at y 34 while every other pane's starts at 46 (nit). Not
+  added: the review's Playwright check that every pane's last
+  `.pfgroup` ends at least 6 px above `#pffoot .osm-separator` at
+  565x518 (recorded under T-06). Review: R1 0 valid (a "Major"
+  font-timing claim refuted), CI green, finished.
+- **V-49, A-16, A-17 and V-51 / PR #390** `claude/stats-polish` (N-53,
+  N-58, N-60, N-62): four Tank Stats details. V-49: U+2212 "−" on
+  the steppers (`web/stats.html:37`, `:51`) and U+00D7 in "2× faster"
+  (`web/stats.ts:210`) are not in Osmium's Charcoal 12, so the minus
+  was a thin anti-aliased system line beside a bold Charcoal "+"; Mac
+  Roman had neither, so they are "-" and "2x faster" now (severity
+  low). A crawl of every page, menu, pop-up and window found no other
+  glyph gaps besides ⌘ (U-14) and the middle dot (V-18); the review's
+  vitest that scans literal UI strings against the three Osmium
+  strikes is not in the PR and is recorded under V-18. A-16:
+  "Heater:" and "Filter:" were `.osm-label` (bold Geneva 10,
+  `web/stats.html:35`, `:43`) while "Change:", "Medicine:" and "Time:"
+  are `.osm-popup-title` (Charcoal 12); they match now (low). A-17:
+  Copy Summary set `textContent` (`web/stats.ts:364`, `:369`), so
+  "Copied!" sat left at Osmium's fitted padding, and `let copyTimer`
+  was declared inside the handler (`:362`), so `clearTimeout` never
+  cleared an earlier click's timer and a second click 1 s after the
+  first reverted 0.7 s later, against the code's own comment; the
+  timer is window-wide now and the outcome goes to a status line
+  beside the button, which keeps its title as Mac OS 8 buttons do
+  (the review's other option was Osmium's `setButtonTitle`) (nit). V-51: with no fish the Water quality bar spanned x 119-244
+  and Avg. hunger 119-296, because `meter()` omits the sparkline when
+  there is no data (`web/stats.ts:65-67`) and the flex bar grew (52 px
+  longer), drawing an empty track beside "—"; the 46 px spark column
+  is now always reserved and a meter with no reading draws no bar
+  (nit). Review: R1 0 valid, CI green, finished.
+- **D-56 / PR #391** `claude/lcd-thermometer` (N-25): an LCD
+  stick-on thermometer. Water temperature drives most of the fish's
+  care, but the tank showed it nowhere. The idea asked for a 6x40 px
+  strip in the tank's front corner with green, tan and blue LCD cells
+  and an Effects toggle; the PR draws an 11x55 px strip at the right
+  of the glass, just under the waterline and clear of the feeding
+  strip, printing 18 to 34 °C in 2° steps: the cell at the water's
+  temperature lights green, the one above tan while the water is a
+  little colder, the one below blue while a little warmer, each cell
+  owning a 2° band so exactly one is green. It is drawn on the glass
+  (murk can't cloud it) but under the night veil; pointing at it
+  gives the reading, plus the heater's setting while the water is
+  still getting there, and a non-finite reading draws the strip unlit
+  with an "unknown" tip. On by default, **Preferences > Effects**
+  switch. New `web/thermometer.ts` with tests; README updated. Review:
+  two rounds, steady state, CI green.
+- **B-90 / PR #392** `claude/idb-reconnect` (N-11): `store.ts` kept
+  using a closed IndexedDB connection for the rest of the session.
+  `dbPromise` (`web/store.ts:19-46`) was cached forever with no
+  `onclose` or `onversionchange`, so after the browser dropped the
+  connection (site data cleared, WebKit's storage process lost) every
+  `transaction()` threw InvalidStateError until reload: every
+  `packGet` missed and re-downloaded, drops said "storage is full",
+  `sndsMerge` rejected silently, `local:` restores failed as "stored
+  pack missing", and an old open page would block a future `DB_VER`
+  bump. The PR forgets the connection on close, steps aside on
+  versionchange, routes every call through one `transact()` helper
+  that reopens once on InvalidStateError, clears the cache after a
+  failed open (round 1's valid finding: a failed reopen memoized
+  `null` for the session), and cancels each handled open-error event
+  so a retried permanent failure doesn't spam the console. New
+  `web/store.idb.test.ts` (fake IndexedDB: announced close, silent
+  close, versionchange; red on the old code). Review acceptance: after
+  a lost connection `packGet` returns the stored bytes and `open` ran
+  twice. Severity medium-low · Size S. Follow-up: the fake's `lose()` (T-17). Review: three rounds,
+  steady state, CI green.
+- **P-33 / PR #393** `claude/import-thumb-memory` (N-10): the Import
+  panel kept full-size preview canvases for every browsed add-on and
+  re-stored a thumbnail on every selection. `thumbs`
+  (`web/import.ts:995`) was set from `h.preview(...)` (`:1316`,
+  `:1583`, `:1646`), which is `imageCanvas(largest image)` at full size
+  (`web/render.ts:170`), and nothing deleted from it: a 640x480
+  background is about 1.2 MB of backing store, so scrolling the 82 JPN
+  backgrounds pinned about 100 MB for the window's life (the app hides
+  the Import window rather than unloading it). `paintThumb` rescaled
+  from the full canvas on every `applyFilter` (each Filter keystroke),
+  and each `showDetail` re-encoded a PNG, `packPut` it and ran
+  `trimPacks` even when the thumb was already stored (`storeThumb`,
+  `:1500-1515`). The PR keeps only the 38x28 mini in `thumbs` (a
+  `keepThumb` helper for the detail view, lazy rows and installs) and
+  writes the PNG once per add-on per session; a thumb loaded from the
+  cache counts as stored; the stored PNG and the detail preview are
+  unchanged. Review acceptance: `thumbs` holds nothing larger than
+  38x28, and two `showDetail`s of one URL make one `packPut` for its
+  `thumb2:` key. Severity medium (memory) · Size S. Follow-ups: P-35.
+  Review: R1 (a "Major" refuted, rest declined), finished.
+- **A-15, U-46, A-18 and A-19 / PR #394** `claude/platinum-dialogs`
+  (N-55, N-61, N-63, N-64): dialogs lined up the Mac OS 8 way,
+  measured at DPR 2. A-15: a normal button beside a default button
+  sat 3-4 px high (About's `.dbfoot`, `web/app.css:134`, had no
+  `align-items`; in the Import footer `.idonate` had a 9 px margin
+  against `.iadd`'s 10 px, `:508-509`, and the credit line sat 2.5 px
+  high), while the alerts already centred (`.alertbuttons {
+  align-items: center }`, `:574`); Mac OS 8 aligns neighbours with the
+  inner button and draws the default ring outside it, so `.dbfoot`
+  centres, `.idonate` gets `margin-top: 13px` and `.icredit` 17 px
+  (low). U-46: "Empty Tank…" stayed enabled in an empty tank and did
+  nothing (`if (!tankItems()) { disarmEmpty(); return; }`,
+  `web/overview.ts:248`), while the Finder dims Empty Trash… when the
+  Trash is empty; `emptyBtn.disabled = !tankItems() || tankGone` in
+  `render()` (nit; related U-41, its red text). A-18: the Shortcuts
+  window's OK was left-aligned (`.dbkeys .osm-button { margin-top:
+  14px }`, `web/app.css:141`); it is `display: block; margin: 14px 0 0
+  auto` now, at the bottom right where Mac OS 8 puts it (nit; About's
+  centred footer is A-18's open remainder). A-19: `.ifilter:focus` and
+  `.alertfield:focus` drew a 1 px white and 1 px black double ring
+  (`web/app.css:463`, `:568`) that read as a second default-button
+  ring in the Rename alert; Mac OS 8.0 drew none and 8.5 a 2 px accent
+  ring, which Osmium imitates (`outline: 2px solid #6666cc`,
+  `osmium.css:812-816`), so the fields use that, and the forced-colors
+  override asks for Highlight (nit). Review: two rounds, steady state,
+  CI green.
+- **B-95 / PR #395** `claude/linux-quit-save` (N-17): Linux: quit
+  could lose up to 60 s of state because it never waited for the
+  save. `quit_gracefully` (`linux/finsical_shell/shell.py:178-215`)
+  hid the windows, evaluated `"0"` and quit on the reply, assuming the
+  page's `visibilitychange`/`pagehide` save had run; visibility changes
+  are queued tasks (WebKitGTK sends the hidden state after its own
+  zero-delay timer), so the reply proved nothing, and the interval save
+  runs only every 60 s. The smoke test's QUIT step only checked that
+  the evaluate returned. The PR adds `save()` to the page's
+  `window.finsical` bridge and to `logic.TANK_FUNCTIONS`, and the quit
+  evaluates it and waits on its reply (instead of the review's ~250 ms
+  wait inside `QUIT_TIMEOUT_MS`), logging a failure and still
+  quitting. The bridge test already checks that every
+  `TANK_FUNCTIONS` entry exists on the page; the review's smoke-test
+  assertion that `savedAt` advanced is not in the PR (recorded under
+  T-37). Severity medium · Size S. Linux counterpart of B-41; see the
+  B-41 note on another agent's PR #357. Review: R1 0 valid (two claims
+  refuted), CI green, finished.
+- **B-91 / PR #396** `claude/download-error` (N-12): mid-download
+  connection drops were classed as permanent, so Try Again was
+  disabled. `transientFailure` (`web/import.ts:966-970`) matches only
+  `/abort|failed to fetch|networkerror|load failed|timeout/i`, while
+  Chromium's body-stream error is `TypeError: network error`,
+  Firefox's "Error in body stream" and WebKit's "The network
+  connection was lost."; the user saw "Couldn't load it. network
+  error" beside a disabled Try Again. The review proposed a `class
+  DownloadError` thrown by `fetchTimed`; the PR instead ends every
+  request or body-read failure in transit with ": connection lost",
+  like the existing ": 503" and ": empty" suffixes, so the panel
+  classes it as retriable and explains it as a connection problem; a
+  stall's abort keeps its "too slow" text, `AbortError` is matched by
+  name on any Error, and `loadProblem` checks ": connection lost"
+  before its abort test (a URL containing "abort" was misread as a
+  stall). Tests in `web/import-bank.test.ts`, including a mid-body
+  stall. Severity low-medium · Size S. Related: B-42. Review: R1
+  minor-only (applied), R2 pending at fold.
+- **B-94 / PR #397** `claude/decor-cap-refusal` (N-15): Add Again at
+  the 16-copy decor cap said "Added to the tank" and added nothing.
+  `handleImages` (`web/main.ts:1504-1511`) got `room` 0 from
+  `decorCopyRoom` yet still played `sceneryIn()`, and both install
+  paths reported success (`web/import.ts:1368`, remote ack `:1662`).
+  A pure `decorRefusal(decors, src)` now answers before either install
+  path or a drop touches the tank: "This plant is already in the tank
+  16 times.", no sound, nothing fetched or recorded. Severity low ·
+  Size S. Related: B-21. Review: R1 one minor declined, CI green,
+  finished.
+- **D-55 / PR #398** `claude/sneezing-fish` (N-24): sneezing sick
+  fish. A sick fish showed its sickness only by keeping low and
+  looking pale (55% alpha); now, about once every 20 s, it puffs a
+  small bubble from its mouth and jolts back about 3 px over four
+  ticks (one `spawnBubble` and a short nudge). The roll happens only
+  for sick fish, so seeded runs of a healthy tank draw the same
+  numbers as before; the jolt state is a few ticks long and not
+  saved, and a fish that dies mid-jolt stops sneezing. Tests in
+  `core/sim.test.ts`. No sound and no Effects toggle, by choice (a
+  life-model cue, and the Effects pane already gains rows in #383 and
+  #391); optional follow-ups: a tiny "achoo" from the bank if one
+  fits, and an Effects row if a purist asks. Review: R1 minor-only
+  (one claim refuted, one fix applied), R2 pending at fold.
+
 ## Performance and smoothness (open)
 
 Done this pass and removed from this list: P-03, P-13, and P-10's
 buffer cap (PR #88). Nineteenth pass: P-25 verified fixed on main
 (`serveThumbs` builds the `fishThumbKey` → fish map once per push)
-and removed.
+and removed. Twenty-second pass: P-33 is implemented by PR #393 (open), so it
+is never listed here.
 
 ### P-02 fshToSheets decodes every sheet in a pack on the main thread; the tank uses one
 
@@ -3901,6 +4680,20 @@ Size S · Severity low · Value 2/5 · Risk 1/5
 **Change.** `private var maskCache: [String: CGImage] = [:]`; `machineMaskImage = maskCache[id] ?? loadMaskImage(...)` and store it. In prefs.ts, update the preview immediately on keyboard selection changes but debounce the bus post by 150 ms.
 
 **Acceptance.** Verify with CFAbsoluteTimeGetCurrent logging (second visit ~0 ms) and Instruments while holding down.
+
+Twenty-second-pass update (N-34, native helper review): the Linux
+shell has the same cost, measured. Every case switch blocks the GTK
+UI thread 45-140 ms: `load_mask` (`linux/finsical_shell/tank.py:88-147`,
+a GdkPixbuf decode plus a CPython `fill_interior`) runs in the bus
+handler with no cache, measured at 23-47 ms of decode plus 16-90 ms
+of fill on the real case PNGs, and holding an arrow key in the
+Machine list repeats the stall. Change for Linux: a 3-4 entry LRU of
+`_Silhouette` by machine id (`tank.py:259` builds it), or ship
+pre-filled A8 masks so no fill runs at all (which would serve the
+macOS shell too). Acceptance addition: a second switch to a cached
+case takes under 5 ms in the bus handler (log timing). macOS still
+has no `maskCache` on `ab39e38` (`loadMaskImage`,
+`macos/Finsical.swift:369`).
 
 ### P-15 Closed client windows keep their WKWebViews and WebContent processes for the session
 
@@ -4360,12 +5153,69 @@ the invalidation points (menus can only open from input).
 - Related: U-14 (browser menu bar), the tank tip's per-frame refresh
   (P-24 remainder notes the Date/label side).
 
+### P-34 Saved care data is never pruned, and a launch restore saves the whole tank once per add-on
+
+Size S · Severity low · Value 2/5 · Risk 1/5 (twenty-second pass, N-16)
+
+**Problem.** `careByPack` is never deleted from and rides in every
+save and `.fins` export, about 870 bytes per pack ever installed.
+Separately, `recordAddon(..., "refresh")` always returns true, so the
+launch restore does N full synchronous `localStorage` saves, one per
+add-on.
+
+**Evidence.** `web/main.ts:269` (`careByPack`), `:1330` (set),
+`:474` (`care: Object.fromEntries(careByPack)` in `tankSnapshot`),
+`web/import.ts:587-607` (`recordAddon`). Import helper review, re-read
+by hand.
+
+**Change.** Drop `care[url]` once no add-on and no living fish's
+`pack` uses it; make `recordAddon` report whether it changed anything,
+and save once after the restore chain.
+
+**Acceptance.** (derived) Removing an add-on whose fish are all gone
+drops its care entry from the next save; a relaunch of a tank with N
+add-ons writes `finsical:tank` once (count `setItem` calls).
+
+**Merged and related.**
+
+- Related: F-44 (per-species care keys would change the map's shape),
+  P-21 (save cadence).
+
+### P-35 The add-on thumbnail cache stores 256 px previews that are only ever read as 38x28 minis
+
+Size S · Severity low · Value 2/5 · Risk 1/5 (twenty-second pass, review follow-up on PR #393)
+
+**Problem.** `storeThumb` persists previews capped at 256 px, but the
+only reader, the cache-load path, immediately reduces them to the
+38x28 mini. The `thumb2:` entries share the 150 MB pack LRU with
+installed add-ons (B-30). Also, after PR #393, `thumbStored` marks a
+URL before `storeThumb` resolves, so a quota failure skips the PNG
+for the rest of the session; the next launch re-renders and stores
+it (declined on #393 as a best-effort cache, kept here as a known
+limit).
+
+**Evidence.** `web/import.ts:1500-1515` (`storeThumb`), about `:1543`
+(the cache-load reader), `web/import.ts:1174` and `:1536` (the only
+`thumbs` readers, both `paintThumb`). Raised by GLM on PR #393 and out
+of that PR's scope.
+
+**Change.** Persist `miniThumb(pv)` (or a 2x version for HiDPI)
+instead of the 256 px preview; bump the key prefix so old entries
+age out. That cuts the `thumb2:` store by roughly 99%.
+
+**Acceptance.** (derived) A stored `thumb2:` PNG decodes to at most
+76x56; the Import list's thumbnails look unchanged at DPR 1 and 2.
+
+**Merged and related.**
+
+- P-33 (PR #393, open): the in-memory half. B-30: the shared budget.
+
 ## Visual and layout (open)
 
 Done this pass and removed from this list: V-01 (PR #87/#125), V-02,
 V-11, V-12, V-17's viewport meta (PR #90/#93; favicon is V-19) and
 V-10's fish part (ninth pass); V-19 — client-page metadata in PR
-#179, favicon in PR #197 (twelfth pass); V-08 (fourteenth pass: verified fixed on main by PR #174; the optional GL row-bleed probe from its acceptance is not in `crt.test.ts`). Fourteenth-pass IDs implemented by this pass's PRs, so never listed here: V-30 (PR #225), V-31 (PR #225; its remainder is listed below). Nineteenth pass, verified fixed on main and removed: V-32 (`.alertwin:focus` and `.alertfield:focus` now strip/outline-replace the UA ring), V-33 (`web/crt.ts` averages the scanline over the pixel footprint — "the gaps cannot beat against the scanlines"), V-35 (keystone normalizes `depth` so the looming edge keeps its neutral place; `web/crt.ts:353-354`).
+#179, favicon in PR #197 (twelfth pass); V-08 (fourteenth pass: verified fixed on main by PR #174; the optional GL row-bleed probe from its acceptance is not in `crt.test.ts`). Fourteenth-pass IDs implemented by this pass's PRs, so never listed here: V-30 (PR #225), V-31 (PR #225; its remainder is listed below). Nineteenth pass, verified fixed on main and removed: V-32 (`.alertwin:focus` and `.alertfield:focus` now strip/outline-replace the UA ring), V-33 (`web/crt.ts` averages the scanline over the pixel footprint — "the gaps cannot beat against the scanlines"), V-35 (keystone normalizes `depth` so the looming edge keeps its neutral place; `web/crt.ts:353-354`). Twenty-second pass: V-45, V-46 and V-48 to V-51 are implemented by PRs #385, #388, #389 and #390 (open), so never listed here; V-30 regressed on main and is fixed again in PR #389.
 
 ### V-04 Gravel strips are squeezed with nearest-neighbor, floor height is accidental, and the sim floor ignores it
 
@@ -4541,6 +5391,18 @@ Size S · Severity nit · Value 1/5 · Risk 1/5
 **Acceptance.** (derived) A screenshot of the detail line shows no anti-aliased fallback glyph.
 
 Re-verified open at 62b8572 (fourteenth-pass audit): the line is now `web/import.ts:988`.
+
+Twenty-second pass (N-53): a crawl of every page, menu, pop-up and
+window in Chromium found only three other glyph gaps: ⌘ (U-14), and
+U+2212 and U+00D7 in Tank Stats (V-49, fixed in PR #390, open). The
+review's guard belongs here, since it would also have caught this
+entry: a vitest that scans the literal UI strings (`web/*.ts` and
+`web/*.html` text) against the three Osmium strikes (Charcoal 12,
+Geneva 9, Geneva 10) and fails with the `U+XXXX` code point of any
+missing glyph, with an allow-list for ⌘ until U-14's upstream fix.
+PR #390 did not add it. Acceptance addition: the test fails on today's
+middle dot in the add-on detail line and passes after this entry's
+change.
 
 ### V-20 Scene-life leftovers: sway for single-frame decor, fish shadows
 
@@ -4848,12 +5710,31 @@ no thumb sliver or stray dot with all 17 rows visible.
 
 - Related: U-27 (small-window Preferences layout).
 
+### V-47 Android: white flash before the tank's first paint
+
+Size S · Severity nit · Value 1/5 · Risk 1/5 (twenty-second pass, N-38)
+
+**Problem.** The tank's WebView shows a white frame before its first
+paint, because only panel WebViews get a background.
+
+**Evidence.** `android/app/src/main/java/dev/finsical/app/MainActivity.java:244-248`
+(`if (role == Role.PANEL) view.setBackgroundColor(Color.TRANSPARENT);`,
+nothing for the tank). Native helper review, code-level; Android not
+run.
+
+**Change.** Set `Color.BLACK` for `Role.TANK`.
+
+**Acceptance.** (derived) A cold start on a device shows black, not
+white, before the case appears.
+
 ## UX and convenience (open)
 
 Done this pass and removed from this list: U-05, U-16, U-17, U-19,
 U-02 points 1-3 and 5, and U-20's accessible tank name (PR #90).
 Fourteenth-pass IDs implemented by this pass's PRs, so never listed
-here: U-32 (PR #220).
+here: U-32 (PR #220). Twenty-second pass: U-46 is implemented by PR
+#394 (open) and the audio hint's fix (U-42) by PR #382 (open), so
+neither is listed here.
 
 ### U-01 (remainder) A few extra food clicks foul the whole tank within a minute, with no warning
 
@@ -5086,6 +5967,40 @@ Fifteenth pass: a Mac-style border-invert drop cue now
 shows on the glass while files hover (PR #244); a result message
 on the tank itself is still absent.
 
+Twenty-second-pass update (N-05, N-57, measured in Chromium): the
+fifteenth-pass note is stale. Since PR #279 (seventeenth pass) drop
+results do reach the glass: `dropSay` (`web/main.ts:2997-3008`)
+writes `#dropmsg` for 4 s. What is left is the look and the error
+path. (1) The cue (`web/app.css:30-41`) is a navy wash
+(`rgba(0,0,80,.28)`) with a dashed frame and "Drop to add", although
+its comment says "classic-Mac border-invert"; Mac OS 8's Drag Manager
+highlight is a 2 px frame inside the receiver. (2) `#dropmsg`
+(`web/app.css:42-51`) is a translucent navy pill: 4 px radius,
+`rgba(0,0,80,.78)`, white text; Mac OS 8 had no toast, and the
+nearest period look is a Platinum help tag or a small modeless status
+window. (3) Errors vanish after 4 s: dropping a `.txt` gave an
+85-character, 3-line error, partly over the bezel, gone before it
+could be read, while a file the app can't open got a caution alert
+with OK in Mac OS 8. (4) `#dropmsg` stays up in Zen mode (`body.zen`,
+`web/app.css:428`; PR #382 hides only the audio hint there). (5)
+Console only: after a fish-cap refusal (pre-existing) or the decor-cap
+refusal (B-94, PR #397), `imported` stays 0, so the drop handler's
+last line logs "drop: no manifest.json, pack file, or 'snd ' found"
+(`web/main.ts:3227`) although the drop was handled; count refusals as
+handled (trivial). Change: a 2 px solid frame inside `#screen` with no
+wash or label; failures through `showAlert` (a caution alert with
+OK); successes in a square `#ddd` Platinum chip (Geneva 9, 1 px black
+frame, square corners), the same chip style the audio hint's button
+now uses so the tank's transient messages share one look; hide
+`#dropmsg` in Zen; skip the console line when a refusal was reported.
+Acceptance addition (Playwright, synthetic `DataTransfer`): dragging
+over the tank shows a 2 px frame and no text; a `.txt` drop opens
+`[role=alertdialog]` that stays until OK; a good drop shows the chip;
+with `z` no chip shows; a refused drop logs no "no manifest.json"
+line. Severity low · Size S (Value 2/5, Risk 1/5 for the restyle).
+PR #397's review asked to name the file in deduped refusal notes;
+declined there as U-10's per-file feedback scope.
+
 ### U-12 (remainder) Client windows never say when the tank is not connected
 
 Size S · Severity low · Value 2/5 · Risk 1/5
@@ -5201,6 +6116,14 @@ The first PR described above (move Tank Overview and Tank Stats into
 the browser Tank menu, move Preferences… to the Finsical menu, fix the
 Lamp caption, add the three pointer gestures to Shortcuts) needs none
 of that and can be cut today.
+
+Twenty-second pass: two related ideas were filed separately. F-47
+proposes the original AquaZone menu layout (File, Edit, Reference,
+Attend, Options) as an optional reshuffle and should come after this
+entry's `menumodel` refactor; A-21 proposes Mac OS 8's Application
+menu at the right of the browser bar. The ⌘ glyph is still the only
+missing Charcoal glyph this entry depends on (crawl in V-18's note).
+Linux's menus have their own gaps (U-44).
 
 ### U-15 Control-click on the tank shows WebKit's generic menu (with Reload) instead of a Mac OS 8 contextual menu
 
@@ -5469,6 +6392,21 @@ example offline reload, quota stub, failed collection).
 
 Fourteenth-pass audit (62b8572): local detail errors go through `loadProblem` (`web/import.ts:1071`), a listing failure offers Try Again (`web/import.ts:1366-1368`), and failed restores retry at 15 s and 60 s, then once per 'online' event (`web/main.ts:741-775`; B-46 is mostly fixed, and its status wording stays here). Still open: U-09, U-10, U-12 and U-24, and the restore, drop, quota and azpack failures are console-only.
 
+Twenty-second-pass update (import helper review, re-read by hand): a
+partial catalogue is silent. Per-collection listing failures are
+swallowed (`listAddons`, `web/import.ts:734-747`), `loadListing`
+(`web/import.ts:1723`) runs once per page life (`let loaded`,
+`:1790`, checked in `open()` at `:1798`), and Try Again appears only when *everything* failed (`:1740`,
+`throw new Error("empty listing")`). So if the JPN page fails
+once, Plants, Backgrounds and Tanks (and the JPN fish and gravel) are
+missing from Show: with no message until the app restarts. Change:
+show "Some sections couldn't be loaded." with Try Again for the failed
+collections, and re-run the listing for them on the next `open()`.
+B-89 (PR #387, open) adds the `onFailed` callback this needs.
+Acceptance (derived): with the JPN page stubbed to fail once, the
+panel names the gap and Try Again (or reopening the window) lists the
+JPN sections.
+
 ### U-29 CRT presets: a lower all-day baseline
 
 Size S · Severity idea · Value 2/5 · Risk 1/5 (from passes 7-8)
@@ -5638,6 +6576,9 @@ convention. The two-click "Really empty?" arm already communicates
 danger, and the armed state already bolds.
 
 **Evidence.** `web/app.css:401-402`; `web/overview.ts:242-251`.
+(Twenty-second pass: the rule is at `web/app.css:410-411` on
+`ab39e38`, `#oempty { margin-right: auto; color: #a00; }`; still
+open.)
 
 **Change.** Black text; keep the bold armed state (and its timeout).
 Taste, but this project's bar is period fidelity.
@@ -5649,10 +6590,98 @@ no `#a00` remains in `app.css`.
 
 - Related: U-04 (no confirm/undo for removals — the arm pattern is
   the mitigation).
+- The eighteenth-pass appendix gave the audio-unlock indicator this
+  ID too; that entry is now U-42 (see the ID map).
+- U-46 (twenty-second pass, PR #394, open): the same button now dims
+  in an empty tank, as the Finder dims Empty Trash….
+
+### U-43 The welcome offer keeps saying "four stand-in fish" after fish arrive
+
+Size S · Severity low · Value 2/5 · Risk 1/5 (twenty-second pass, N-02; verified in Chromium)
+
+**Problem.** `showWelcome` and `pristine` are decided at launch, and
+drops still land behind the alert's scrim because the window-level
+drop handler ignores it. After dropping 20 fish packs onto a first-run
+tank the alert still reads "Your tank has four stand-in fish. Finsical
+can stock it…".
+
+**Evidence.** `web/welcome.ts` (`showWelcome`; the text at `:23`),
+`web/main.ts:407` (`pristine`), `web/main.ts:2858` (`launchOffer`) and
+`:2929` (`showWelcome`), the window `drop` listener at
+`web/main.ts:3009`.
+
+**Change.** Either refuse drops while a modal alert is up (a short
+`dropSay`), or re-word or dismiss the offer once a real fish or
+add-on has arrived (`placeholderIds` empty).
+
+**Acceptance.** (derived) Playwright on a fresh profile: with the
+welcome up, a synthetic drop of a fish pack either is refused with a
+message or closes the offer; the alert never says "four stand-in
+fish" with other fish in the tank.
+
+**Merged and related.**
+
+- Related: U-02 (first-run guidance), B-34 (a view-only tab shows its
+  own welcome), A-20 (the same alert's "Aquazone" spelling).
+
+### U-44 Linux menus: no Fish Names or Minimize, and the Wayland-disabled toggles show checked
+
+Size S · Severity low · Value 2/5 · Risk 1/5 (twenty-second pass, N-35)
+
+**Problem.** macOS has Tank > Fish Names and Window > Minimize; Linux's
+menus have neither, although `toggleNames` is in the bridge, and an
+undecorated tank can only be minimized by a window-manager key. On
+Wayland, Float Above and All Desktops are greyed out but still
+checked.
+
+**Evidence.** `macos/Finsical.swift:721-733`, `:1193-1195`;
+`linux/finsical_shell/logic.py:878-888` (`TANK_FUNCTIONS`),
+`:1152-1181` (`APP_MENU`), `:1198-1223` (`MENU_BAR`);
+`linux/finsical_shell/shell.py:484-491` (the Wayland toggles). Native
+helper review, code-level; GTK not run.
+
+**Change.** Add Tank > Fish Names (checkmarked, calling `toggleNames`)
+and Window > Minimize; show a disabled toggle unchecked.
+
+**Acceptance.** (derived) `test_logic.py`: the menu model holds both
+items and the bridge parity test covers `toggleNames`; on Wayland the
+two disabled toggles render unchecked.
+
+**Merged and related.**
+
+- Related: U-14 (menu parity in the browser), T-37.
+
+### U-45 Rename accepts 48 characters and keeps 24, silently
+
+Size S · Severity low · Value 2/5 · Risk 1/5 (twenty-second pass, N-56)
+
+**Problem.** `NAME_MAX` is 24, but both rename fields allow
+`maxLength: NAME_MAX * 2`. "Bubbles the Magnificent Goldfish of the
+Deep" was stored as "Bubbles the Magnificent" with no feedback. The
+Finder stops taking characters at the limit and beeps.
+
+**Evidence.** `web/fishname.ts:9` (`NAME_MAX = 24`),
+`web/overview.ts:216` and `web/main.ts:880` (`maxLength: NAME_MAX *
+2`). Measured in Chromium (Platinum helper).
+
+**Change.** Refuse input in `beforeinput` once
+`Array.from(value).length` reaches `NAME_MAX` (code points, so emoji
+and Japanese count as one), and play the alert beep (`alertBeep`
+from PR #350, open; not on `ab39e38`).
+
+**Acceptance.** (derived) Typing a 30-character name into either field
+stops at 24 code points and beeps once per refused key; pasting a long
+name keeps the first 24.
+
+**Merged and related.**
+
+- Related: F-02 (individual names).
 
 ## Aesthetics and Mac OS 8 fidelity (open)
 
-Done this pass and removed from this list: A-01.
+Done this pass and removed from this list: A-01. Twenty-second
+pass: A-14 to A-17 and A-19 are implemented by PRs #388, #390 and
+#394 (open), so never listed here; A-18 keeps a remainder below.
 
 ### A-02 Colors: Black & White to Millions, like Monitors & Sound (1-bit Mac Plus, LCD look for the G4)
 
@@ -5709,6 +6738,20 @@ Size M · Severity idea · Value 3/5 · Risk 2/5
 Fourteenth-pass audit (62b8572): the basic About items landed: a browser About window (`web/menubar.ts:158-195`) and the native standard About panel with credits (`macos/Finsical.swift:619-634`, menu item at `:820-822`), so the Problem's "the app has no About item at all" is stale. Still open: the Mac OS 8 About This Computer window itself (per-fish bars, pack sizes and the perf readout) and the version in the browser About. The Change stands for that window; open it through `showClient` like the other client windows, which also avoids B-76.
 
 Eighteenth-pass twist worth folding in: report the chosen machine's own specs in the About This Computer layout — "Macintosh Plus — 1 MB RAM, System 7.1", "20th Anniversary Mac — 32 MB" — with the tank's stats as the running-apps list ("Finsical Tank — 4 fish, 120 kB"). One window, two period gags; machine data would live beside the case art in `web/machines.ts`.
+
+Twenty-second-pass update (N-06; Size S · Severity nit · Value 2/5 ·
+Risk 1/5, a quick slice that can land before the window): the browser
+About still says "A little aquarium for modern Macs, in the spirit of
+the 90s…" (`aboutContent()`, `web/menubar.ts:223`, the blurb at
+`:237`) and still shows no version. That About is what Linux and
+Android users of the web build see too, and each native shell has its
+own About panel. Change: reword the blurb to "A little aquarium in
+the spirit of…", and add "Version 0.8.0" under the title, injected
+from `package.json` at build time (`scripts/check-version.mjs` already
+keeps the versions in step). Acceptance (derived): the About window
+shows the `package.json` version and no "modern Macs"; a build test
+pins the injected version to `package.json`. The same window's
+"Aquazone (9003inc)" spelling is A-20.
 
 ### A-05 (remainder) Balloon Help for the tank, fish, case and client windows
 
@@ -5840,6 +6883,118 @@ Size S · Severity idea · Value 2/5 · Risk 1/5 (fourteenth pass)
 
 - Related: V-26 (moving the Get Info card out of `#screen` changes where the zoom must end).
 - Fourteenth pass: DELIGHT-13.
+
+### A-18 (remainder) About centres its buttons; Mac OS 8 puts the default button at the bottom right
+
+Size S · Severity nit · Value 1/5 · Risk 1/5 (twenty-second pass, N-63)
+
+**Problem.** PR #394 (open) moves the Shortcuts window's OK to the
+bottom right. The review also asked to right-align About's footer,
+which still centres Donate… and OK (`.dbfoot { justify-content:
+center }`).
+
+**Evidence.** `web/app.css:134` (`.dbfoot`; PR #394 adds
+`align-items: center` but keeps `justify-content: center`).
+
+**Change.** `justify-content: flex-end` for `.dbfoot`, keeping PR #394's
+`align-items: center` and the 12 px gap.
+
+**Acceptance.** (derived) In the About window OK's right edge sits at
+the window's right padding and Donate… stays to its left, both
+centred on the inner button.
+
+**Merged and related.**
+
+- A-15 and A-18 (PR #394, open).
+
+### A-20 "Aquazone (9003inc)" in some copy, "AquaZone by 9003 Inc." in the rest
+
+Size S · Severity nit · Value 1/5 · Risk 1/5 (twenty-second pass, N-65)
+
+**Problem.** Visible copy spells the original two ways. About, Help >
+"Aquazone, the original…" and the welcome say "Aquazone"; the drop
+error, the page meta and the native About say "AquaZone".
+
+**Evidence.** `web/menubar.ts:238` ("classic Aquazone (9003inc)"),
+`:403` ("Aquazone, the original…"), `web/welcome.ts:23`; against
+`web/main.ts:3224` (the drop error), the page meta, and
+`macos/Finsical.swift:774` ("Inspired by AquaZone by 9003 Inc.").
+
+**Change.** Use "AquaZone" and "9003 Inc." in visible copy (code
+comments can stay).
+
+**Acceptance.** (derived) A grep for `Aquazone` in user-visible
+strings under `web/` finds nothing.
+
+### A-21 An Application menu at the right of the browser menu bar
+
+Size S · Severity idea · Value 2/5 · Risk 1/5 (twenty-second pass, N-66; value and risk estimated at the fold)
+
+**Problem.** Mac OS 8 put the front application's icon at the right
+of the menu bar, beside the clock; its menu held "Hide Finsical",
+"Show All" and the running applications with the front one checked.
+Nothing is there in the browser bar today.
+
+**Evidence.** `web/menubar.ts` (the browser menus and clock).
+
+**Change.** An Application menu with Finsical's icon at the far right:
+"Hide Finsical" enters Zen mode, "Show All" leaves it, and a list with
+"Finsical" checked.
+
+**Acceptance.** (derived) Choosing Hide Finsical sets `body.zen` and
+Show All clears it.
+
+**Merged and related.**
+
+- Related: U-14 (browser menu bar), D-18 (a menu-bar fish).
+
+### A-22 Little Arrows for the Heater and water-temperature steppers
+
+Size S · Severity idea · Value 2/5 · Risk 2/5 (twenty-second pass, N-67; value and risk estimated at the fold)
+
+**Problem.** Tank Stats steps the heater and the water-change
+temperature with two push buttons each. Mac OS 8 used the Little
+Arrows control for this (the Date & Time and Memory control panels).
+
+**Evidence.** `web/stats.html:35-55` (`#sheatdn`/`#sheatup`,
+`#stempdn`/`#stempup`).
+
+**Change.** A Little Arrows control (up and down arrows in one
+bevelled box) for both values; it also removes the stepper glyph
+question V-49 answered. Needs a sprite in osmium-ui (upstream).
+
+**Acceptance.** (derived) Each control raises and lowers its value by
+one step per click and repeats while held.
+
+**Merged and related.**
+
+- Related: F-52 (the original's 0.1 °C heater step), V-49.
+
+### A-23 Double-click a title bar to collapse the window (WindowShade)
+
+Size S · Severity idea · Value 2/5 · Risk 1/5 (twenty-second pass, N-68; value and risk estimated at the fold)
+
+**Problem.** Mac OS 8 collapsed a window to its title bar on a
+double-click (WindowShade). The client windows and the in-page
+windows have title bars but ignore double-clicks.
+
+**Evidence.** `node_modules/osmium-ui/src/window.ts` and `host.ts`
+have no title-bar dblclick handling; the host already exposes
+`shaded` and `setShaded(on)` (`host.ts:57-63`, checked in an installed
+`node_modules`).
+
+**Change.** Wire a title-bar dblclick to `setShaded(!shaded)`
+(upstream in osmium-ui, or app-side for the in-page windows first).
+
+**Acceptance.** (derived) Double-clicking a client window's title bar
+collapses it to the bar, and again restores it.
+
+**Merged and related.**
+
+- The passes 1-8 decline of "Windowshade double-click collapse"
+  concerned the chromeless native tank, which has no title bar to
+  shade; it does not cover these titled windows. D-52 is the tank's
+  own version.
 
 ## Features: AquaZone fidelity (open)
 
@@ -5998,6 +7153,24 @@ Fifteenth pass: a Tank-menu timed feeder drops on a
 tank-time interval with a pellet pile-up cap (PR #228); spoonful
 counts, the supply limit and the FRMFOODTIMER window remain.
 
+Twenty-second-pass update (new evidence, research helper plus code):
+the auto-feeder runs on open-tank ticks, not tank time.
+`sim.tickCount % AUTOFEED_TICKS` (`web/main.ts:2302` declares 45
+minutes of ticks, the check is at `:3810` on `ab39e38`; the comment at
+`:2296-2298` says "tank uptime") feeds every 45 minutes the window is
+open, ignoring Aquarium Speed (the life clock now on main, see F-10)
+and the time the app is closed. The original's feeder had "Add food
+in" and "Interval", accounted for the speed, could not run at speed 0,
+and kept "feeding" nothing once the bottle was empty (@2325564,
+@2844852, @2555603). Change addition: step `nextFeedAt` and `interval`
+in tank minutes inside `advanceLife` (`sim.advanceLife`, driven from
+`web/main.ts:431`), defaulting to about 12 tank hours; read the Mac
+CODE feeder routine before deciding how catch-up meals apply (the
+closed-app catch-up replays in six-hour chunks). Acceptance addition
+(derived): at speed 10 the feeder fires ten times as often in wall
+time, at speed 0 or while paused it never fires, and a 12-hour gap
+replayed at launch applies the meals the routine says it should.
+
 ### F-09 Time passes while the app is closed (closed-form catch-up on launch)
 
 Size M · Severity idea · Value 2/5 · Risk 3/5
@@ -6040,6 +7213,31 @@ Fourteenth-pass update (FIDELITY-01): Aquarium Speed was a life clock. AquaZone'
 Fourteenth-pass update (SIM-04): in light-timer mode hunger still runs on the 13-minute demo day. With the timer a day is 24 real hours, yet at 30 tps fish seek food after 8 min, Stats says "Fish are hungry" after about 11 min, and fish beg under the surface after 15 min, so an owner who keeps a timer tank open and feeds once in the morning sees begging fish and a feeding hint for almost the whole lit day (13 h 45 min of a 14 h day). Evidence: `core/sim.ts:103-105` (HUNGER_PER_TICK and its comment), `:187` and `:684-686` (BEG_HUNGER 0.75 pins the band under the surface), `core/tuning.ts:6` (HUNGER_SEEK 0.4), `web/statsmodel.ts:47-50` and `:119-123` (the hint at an average of 0.55, 'starving' at 0.85), `core/light.ts:99-105` (timer light follows the wall clock), `web/main.ts:2149` (30 tps). Arithmetic verified: 0.4 x 36000 = 14400 ticks = 8 min; 0.55 gives 11 min; 0.75 gives 15 min. Correction to the review: tying appetite to a real 24-hour day is harmful today (see the Change), so the pace is this entry's setting rather than hardwired to the timer. Size S, Severity low, Value 2/5, Risk 3/5.
 
 Fourteenth-pass update (VISUAL-09): the PAUSED label is `10px monospace` drawn into the 320x200 canvas: whatever monospace the system has (Menlo, DejaVu), anti-aliased, then scaled up into fat grey blocks, with no backing plate, so it gets lost over bright plants, where this entry asked for a small placard in a Mac font. Evidence: `web/main.ts:2062-2072` (fill `rgba(4,8,24,0.35)`, `ctx.font = "10px monospace"`, `fillText("PAUSED", ...)`); screenshot `scratchpad/visual/z16.png` (reviewed in verification). The reviewer measured 2 grey levels for "Paused" in 12px "Osmium Charcoal" or 10px "Osmium Geneva" on a canvas, against 92 for 10px monospace. `installOsmium` is exported from osmium-ui and runs on the tank page only when the menu bar (browser) or an Osmium control mounts, so in the native shell the fonts are not guaranteed to be registered. Change: call `void installOsmium().then(requestPaint).catch(() => {})` once at startup; in `render()`'s paused block keep the dim and draw a System 7/8 style notice: `ctx.font = '12px "Osmium Charcoal"'`, measure the text, fill a white rect `w + 12` by 18 at integer coordinates (centred, or in a corner as planned here), stroke 1 px #000 at +0.5, add a 1 px #000 shadow on the right and bottom, and draw "Paused" in #000 at an integer baseline with `textAlign = "left"` so glyphs stay on the pixel grid. Acceptance is in the Acceptance above. Size S, Severity low, Value 2/5, Risk 1/5; it can land on its own before the life pace.
+
+Twenty-second pass (checked on `ab39e38`): the life-pace core of this
+entry is on main. `core/aquarium/aquarium.ts` runs the original's
+Aquarium Speed (`speed` simulated seconds per real second, 0 to
+`MAX_SPEED` 100, `setSpeed` at `:408`; the engine "knows nothing
+about sprites or the swim simulation", so swimming stays on ticks),
+and Tank Stats > Keeping has a **Time:**
+pop-up with 1, 2, 5, 10, 30, 60 and 100 times (`web/stats.ts:193-213`,
+posting `simSpeed`, applied at `web/main.ts:2669`). Treat the
+`LifePace` plan above as superseded by that model; what remains here
+is (a) a Hold (speed 0) choice, which the engine accepts but the
+pop-up does not offer, and (b) VISUAL-09's PAUSED label, still
+`ctx.font = "10px monospace"` (`web/main.ts:3653-3655`). F-09's
+closed-app catch-up also looks landed (`savedAt` and `lifeClock`,
+`web/main.ts:279-281`; six-hour `CATCH_UP_CHUNK`,
+`core/aquarium/aquarium.ts:64-65`); re-verify F-09 before picking it
+up. VISUAL-09 update (Platinum helper, measured in Chromium): the
+boot screen's "Welcome to Finsical" box has the same fallback, `ctx.font
+= "10px Charcoal, Chicago, monospace"` (`web/boot.ts:275`), which
+renders in a system font with 151 grey levels (against 2 for `12px
+"Osmium Charcoal"`) at a fractional width (114.39 px) that blurs the
+box edge. Share the fix: `installOsmium()` at startup, `12px "Osmium
+Charcoal"`, integer coordinates. Acceptance addition: the boot box's
+text pixels hold only the box's two colours, and its width is an
+integer.
 
 ### F-11 (remainder) Fish grow from fry to adult using both sprite sets every pack already ships
 
@@ -6101,7 +7299,7 @@ Size M · Severity idea · Value 4/5 · Risk 2/5
 
 Re-verified open at 62b8572 (fourteenth-pass audit): there is no `SimEvent`, events list or log page. Correction: the event sounds the Change wants to play now exist; the bank's ids carry their Mac names (`core/data/sndbank.ts:30-55`), so events can play the bank's Event* sounds (for example EventBirth, EventTiyu) by exact name.
 
-### F-14 (remainder) Water changes, a filter that gets dirty, and Clean Filter
+### F-14 (remainder) Water changes, a filter that gets dirty, and Clean Filter (dirt and Clean Filter shipped; the Water Settings dialog remains)
 
 Size M · Severity idea · Value 3/5 · Risk 2/5
 
@@ -6120,6 +7318,20 @@ Size M · Severity idea · Value 3/5 · Risk 2/5
 Fourteenth-pass audit (62b8572): water changes landed (PR #114, merged via #162): `Sim.changeWater` (`core/sim.ts:309-317`) with a Tank menu item, a Stats button and the ChangeWater sound. Still open: filtration is constant (`core/sim.ts:411-412`), so there is no filter dirt, no Clean Filter and no Change Water dialog (amount, temperature, conditioner).
 
 Fourteenth-pass update (FIDELITY-02): the original cleaned the filter 5% at a time and called 30-50% dirty ideal. AquaZone's Attend > Filter dialog (`frmFilterSetup` with `ccFilterDirtiness` in `AQUAZONE.exe`; STR# 20004 'Cleaning the filter.', parsed) showed how dirty the filter was and had one 'Clean by 5%' button. The guide stresses that a spotless filter is not ideal: bacteria in the dirty cotton do the biological filtering, 'never clean the filter completely', and 'AQUAZONE experts recommend keeping the filter between 30% and 50% dirty' (@2351038, @2351674, @2849444). Finsical has no filter state (`core/sim.ts:117` constant `FILTER_PER_TICK`, `:410-412`), the bank's WashFilter sound (id 8074, `core/data/sndbank.ts:37`) is unused (FOLLOW-UPS 'Sound'), and `web/stats.ts:166-169` is the precedent for a Stats care button. The Change and Acceptance above now follow this item, including its corrections for the relaxation-toy constraints. Size M, Severity low, Value 3/5, Risk 2/5.
+
+Twenty-second-pass correction: the Problem above is stale. Filter dirt
+and Clean Filter shipped (CHANGELOG, `docs/ORIGINAL-SIM.md`):
+`Aquarium.cleanFilter()` (`core/aquarium/aquarium.ts:398`), a "Filter
+dirt" meter and a **Clean Filter** button in Tank Stats
+(`web/stats.ts:170-171`, `:233`), and water changes take an amount and
+a temperature (`changeWater(fraction, temp)`,
+`core/aquarium/aquarium.ts:372`; the Change: and at pop-up and
+steppers in `web/stats.html`). What remains is the original's Water
+Settings (Change Water) dialog itself: the bar charts (see the F-30
+correction for their colours) and the bucket; check whether a
+conditioner is still missing (tap water carries chlorine,
+`core/aquarium/aquarium.ts:370-382`, and the Medicine pop-up may
+already offer one).
 
 ### F-15 Water temperature, pH and hardness with a heater, driven by each species' FsTI tolerances
 
@@ -6200,6 +7412,14 @@ Size M · Severity idea · Value 2/5 · Risk 2/5
 **Acceptance.** Tests: emitter bubble count after N ticks with a seed; screenshot check.
 
 Re-verified open at 62b8572 (fourteenth-pass audit): there is no equipment layer and nothing reads BAPC. Correction to the Evidence: the ambient bubbles now rise only from the gravel (`core/sim.ts:413-418`), not from the fish.
+
+Twenty-second-pass correction: the original did have a visible
+bubbler. The guide calls it an "air pump" (@2063138, @2303754);
+`docs/ORIGINAL-SIM.md`'s "there is no air pump" (its Filter aeration
+row, `:63`) is about the simulation only (aeration comes from the
+filter's power), not about what the tank showed. So the bubble plume
+this entry draws is the original's air pump, and its Preferences label
+can say so.
 
 ### F-20 Per-fish courage: brave fish turn to watch you when you tap the glass
 
@@ -6327,6 +7547,16 @@ Fifteenth pass: Zen Mode hides all chrome in-page
 (PR #217); the desktop widget, ghost, full-screen and screensaver
 modes remain.
 
+Twenty-second-pass correction (research helper): this is a modern
+idea, not a fidelity gap. The original had no screensaver ("AQUAZONE
+does not have screen saver functionality", FAQ @2557631), and no
+source shows its fish on the desktop, so the Problem's "screensaver
+editions existed" does not hold for the original
+(macworld.com/article/177208, for example, is a different product:
+Allume's 2005 *Aquazone Seven Seas* screensaver). Its
+Full Screen, Menu Bar and Tool Bar toggles were real (Options menu,
+@2683592). The same holds for D-21.
+
 ### F-29 Let Brightness, Contrast and the colour trims work without the CRT effect
 
 Size S · Severity idea · Value 2/5 · Risk 2/5
@@ -6358,6 +7588,18 @@ Size M · Severity idea · Value 2/5 · Risk 2/5
 - Overlaps open PR #140 (44x14 1-bit sparklines beside each Stats meter from the window's own history). The persisted tank-side history remains. Related: B-55.
 
 Fourteenth-pass audit (62b8572): PR #140 landed (merged via #162): 44x14 1-bit sparklines beside the Stats meters (`web/statsmodel.ts:155-185`). Still open: the history is still page-local (`web/stats.ts:84-99`), so it restarts whenever Stats reopens; there is no persisted tank-side ring (`hist`) and no larger graph.
+
+Twenty-second pass. Correction (research helper): the original's
+"water quality graphs" were the Change Water dialog's bar charts
+(current water purple, new water pink, the result green, per the
+guide), not time series, so this entry's history graph is a modern
+addition rather than a fidelity gap (F-14 owns the dialog). Stopgap
+(Platinum helper, measured in Chromium): each sparkline opens as an
+empty framed box with a 2 px stub at its right edge; until two
+samples exist, draw a dotted line at the current value. Acceptance
+addition (derived): a freshly opened Stats window shows a dotted line,
+not a stub, in every sparkline box. V-51 (PR #390, open) now reserves
+the 46 px spark column even with no data.
 
 ### F-31 (remainder) Light dimmer
 
@@ -6501,6 +7743,16 @@ Size S · Severity nit · Value 2/5 · Risk 1/5 (fourteenth pass; estimated for 
 
 - Fourteenth pass: FIDELITY-03, with DELIGHT-03 merged (the rest is in PR #212, open).
 - Related: F-02 (names), B-35 (CRT alignment), D-16 (DELIGHT-03 notes that D-16 proposed the bare N key for Stickies; D-16 should take another key now that Fish Names uses N).
+- Twenty-second pass (verified on `ab39e38`): the remainder is still
+  open; `syncNameTags()` (`web/main.ts:2334-2346`) still filters out
+  only `infoCard?.fish` and no label says "(asleep)". The tag pile-up
+  in a busy tank is V-46 (PR #385, open), which runs a declutter pass
+  after placement. Fidelity note (research helper): the original's
+  Names "pause everything on your screen so that you can read them"
+  (@2852534-@2866744), while Finsical's tags deliberately follow the
+  swimming fish. Record the difference; an optional "Freeze while
+  names show" setting (Pause while the tags are on) would match the
+  original.
 
 ### F-38 The light timer flips the lamp silently, and the game's timer and recovery sounds go unused
 
@@ -6627,12 +7879,225 @@ pipeline may not unwrap (check before promising).
 - Related: F-21 (Missing addons 7z), F-23 (JPN egg packs), T-36
   (record fidelity references).
 
+F-45 to F-52 come from the twenty-second pass's research helper (the
+Deluxe II User's Guide, cited as `@offset` like the entries above,
+plus the box, reviews and fan sources listed under T-36); every code
+claim was re-read by hand. Most rows of that comparison map to
+existing entries (F-02, F-04, F-06, F-07, F-10, F-11, F-13 to F-19,
+F-26, F-28, F-32, U-03, U-15, U-21, U-39, B-23, D-03).
+
+### F-45 Light timer as a cycle on tank time
+
+Size M · Severity idea · Value 3/5 · Risk 2/5 (twenty-second pass, N-43; risk estimated at the fold)
+
+**Problem.** The original's light timer is "hours of a cycle that
+doesn't have to be a 24-hour cycle" (@2091442, @2850266), and speed 0
+turns it off (the STR# cited in F-10), so it runs on tank time.
+Finsical's timer follows the wall clock, and the default is a
+13-minute demo day (a deliberate choice).
+
+**Evidence.** `core/light.ts` (`LightMode`, `lightAt`), `syncLight`
+in `web/main.ts`, `sim.aquarium.minutes` (the life clock, F-10's
+twenty-second-pass note).
+
+**Change.** Add `LightMode "cycle"` to `core/light.ts` with
+`lightHours` and `darkHours` (1-23 each), anchored in tank minutes;
+`syncLight` passes `sim.aquarium.minutes`. The Lighting pane gets two
+hour pop-ups and Stats a "next switch" line.
+
+**Acceptance.** 8 h on and 4 h off switches at tank minutes 480 and
+720 and repeats; at speed 10 it runs ten times faster in wall time;
+Pause holds it.
+
+**Merged and related.**
+
+- Related: F-10 (Aquarium Speed), F-38 (timer sounds), F-31 (one
+  Lighting model), F-39 (a sun mode), V-48 (the hour pop-ups' width).
+
+### F-46 Fighting and territorial fish
+
+Size L · Severity idea · Value 3/5 · Risk 3/5 (twenty-second pass, N-44; value and risk estimated at the fold)
+
+**Problem.** ATPM's review says the fish "school, are born, fight and
+die", and the guide ties Courage to territorial tankmates (@2799106).
+`docs/ORIGINAL-SIM.md` lists fighting as not reimplemented.
+
+**Evidence.** `docs/ORIGINAL-SIM.md` (not-reimplemented list);
+`core/sim.ts` (no aggression state).
+
+**Change.** A spike first: find the aggression rule in the Mac 1.7.9
+MacsBug names and FsTI, and record it in ORIGINAL-SIM with its
+source. Then add a chase-and-nip state scaled by courage. Peaceful
+stock species must never fight.
+
+**Acceptance.** (derived) The ORIGINAL-SIM rule cites its source;
+seeded sim tests: a territorial pair chases within N ticks, a
+peaceful species never enters the state, and nothing changes for
+tanks without territorial species.
+
+**Merged and related.**
+
+- Related: F-20 (per-fish courage), F-33 (per-species parameters),
+  F-01 (reading FsTI).
+
+### F-47 The original menu layout (File, Edit, Reference, Attend, Options), as an option
+
+Size M · Severity idea · Value 2/5 · Risk 2/5 (twenty-second pass, N-45; value and risk estimated at the fold)
+
+**Problem.** Finsical has Finsical, Tank, Window and Help menus. The
+original had File (New/Open Aquarium, Add Fish and other Items,
+Remove Fish or Eggs), Edit (Aquarium Layout, Aquarium Information),
+Reference (Fish, Plants, Accessories, Water, Diseases), Attend (Food,
+Medication, Change Water, Heater, Filter, Light) and Options
+(Fullscreen, Menu Bar, Names, Sound, Tool Bar) (@2683592).
+
+**Evidence.** `web/menubar.ts` (browser menus), `macos/Finsical.swift`
+and `linux/finsical_shell/logic.py` (`APP_MENU`, `MENU_BAR`), README.
+
+**Change.** An optional reshuffle of the browser bar, the native menus
+and the README: Attend (Feed, Auto-Feeder…, Medication…, Change
+Water…, Heater…, Filter…, Light…), each opening Tank Stats on the
+matching tab or control; Reference (Fish…, Water…, Diseases…);
+Options (Full Screen, Menu Bar, Names, Sound, Tool Bar). A product
+call; it overlaps U-14's menu-model refactor, which should land
+first.
+
+**Acceptance.** (derived) With the option on, each Attend item opens
+Tank Stats with the matching control focused; the menu model test
+(U-14) covers both layouts.
+
+**Merged and related.**
+
+- U-14 (menu model), U-39 (Tool Bar), F-48 (Reference).
+
+### F-48 A Fishkeeping Library in the Help menu
+
+Size M · Severity idea · Value 3/5 · Risk 1/5 (twenty-second pass, N-46; value and risk estimated at the fold)
+
+**Problem.** The original shipped the AZ Library, 11 illustrated books
+(Aquarist's Dictionary, Breeding, Setup/Layout/Maintenance, Fish
+Feeding, Disease and Medication, an A-Z Tropical Guide; @1967556,
+ATPM), and Info books on each medicine. Finsical has no reference
+text beyond the README.
+
+**Evidence.** `web/menubar.ts` (`showDocWindow`, the Help menu),
+`curesFor` (`web/statsmodel.ts:116`), the Keeping rows in
+`web/stats.html`.
+
+**Change.** Help > Fishkeeping Library… in the `showDocWindow`
+pattern, with articles Finsical writes itself (never the guide's
+text): filter, water changes, chlorine, feeding, diseases generated
+from `curesFor`, breeding, and a glossary; a "?" beside each Keeping
+row in Tank Stats opens its article.
+
+**Acceptance.** Every Keeping control opens its article; the disease
+article lists exactly the sim's cures.
+
+**Merged and related.**
+
+- Related: F-32 (specimen library), F-40 (Finsical Guide), F-47 (a
+  Reference menu).
+
+### F-49 AquaZone's own buttons, as an option
+
+Size M · Severity idea · Value 2/5 · Risk 2/5 (twenty-second pass, N-47; value and risk estimated at the fold)
+
+**Problem.** The original's dialogs used a roundish "OK plant" and a
+short broad "Cancel plant", and actions were icons: a food container,
+a medicine bottle, a bucket, an Info book, a Memo pencil, a trash can
+(@2007415, @2020345). Finsical uses Platinum push buttons throughout.
+
+**Evidence.** `web/alert.ts` (alert buttons), `web/stats.html`
+(Keeping buttons).
+
+**Change.** An opt-in "AquaZone buttons" look: plant-shaped OK and
+Cancel in alerts, a bucket on Change Water, a bottle on Add, a shaker
+on Feed, all original pixel art (not the game's). Platinum stays
+pixel-identical when the option is off.
+
+**Acceptance.** (derived) A screenshot diff of the alerts and Tank
+Stats with the option off matches today's; with it on, each button
+keeps its label as `aria-label`.
+
+**Merged and related.**
+
+- Related: U-39 (Tool Bar icons), U-03 (the shaker cursor).
+
+### F-50 Holding Tank and Graveyard
+
+Size M · Severity idea · Value 3/5 · Risk 2/5 (twenty-second pass, N-48; value and risk estimated at the fold)
+
+**Problem.** Removing a fish in the original put it in a fish file, a
+"deep-freeze" where it stops ageing (@2765728); the guide jokes about
+a "graveyard file", and Mac 1.0 "exported [dead fish] to the Toilet"
+(Macworld 1995). In Finsical Remove is final.
+
+**Evidence.** Tank Overview's Remove (`web/overview.ts`),
+`sim.removeFish` (`core/sim.ts`), `SavedTank` (`web/main.ts`).
+
+**Change.** Overview's Remove offers "Put in Holding Tank" (life
+frozen, not counted against the cap, with Return) or "Release";
+removed bodies go to a Graveyard list with an optional Flush. Data:
+`SavedTank.held`.
+
+**Acceptance.** A round trip restores the life fields exactly, and
+holding time doesn't age the fish.
+
+**Merged and related.**
+
+- Related: U-04 (no undo for Remove), B-88 (bodies now persist, PR
+  #384, open).
+
+### F-51 Tank size and volume at New Tank
+
+Size M · Severity idea · Value 2/5 · Risk 3/5 (twenty-second pass, N-49; value and risk estimated at the fold)
+
+**Problem.** The original's New Aquarium took a pixel size (presets or
+W x H, minimum 250x250, @2685734; "choose a tank based on screen size,
+not gallons", Macworld). Finsical has one volume.
+
+**Evidence.** `TANK_LITRES = 100` (`core/aquarium/aquarium.ts:51`).
+
+**Change.** A size choice at New Tank (40, 100 or 200 L) setting the
+litres, dose sizing and the fish cap; first check the AQUA record for
+how the original derived volume.
+
+**Acceptance.** (derived) A 40 L tank fouls and doses at 2.5 times the
+100 L rate per fish and pellet; the choice persists in the save.
+
+**Merged and related.**
+
+- Related: F-26 (New Tank, Save Tank As…), B-23 (the AQUA record in
+  .azn presets).
+
+### F-52 Heater step is 0.5 °C; the original's is 0.1 °C, typed or scrolled
+
+Size S · Severity nit · Value 1/5 · Risk 1/5 (twenty-second pass, N-50; value and risk estimated at the fold)
+
+**Problem.** The original's heater moved in 0.1 °C steps, typed or
+scrolled (@2067546, @2848992); Tank Stats steps it by 0.5 °C.
+
+**Evidence.** `HEAT_STEP = 0.5` (`web/stats.ts:191`).
+
+**Change.** 0.1 °C with press-and-hold repeat, or a typed field.
+
+**Acceptance.** (derived) One click moves the target by 0.1 °C;
+holding repeats; the value shows one decimal.
+
+**Merged and related.**
+
+- Related: A-22 (Little Arrows for the same steppers), F-15.
+
 ## Delight and quirky ideas (open)
 
 Done this pass and removed from this list: D-07 (ninth pass); D-08
 (PR #192, twelfth pass). Fourteenth-pass IDs implemented by this
 pass's PRs: D-40 (PR #242) and D-41 (PR #211); only their optional
-remainders are listed below.
+remainders are listed below. Twenty-second pass: D-55 (PR #398) and
+D-56 (PR #391) are implemented (open PRs), so never listed here; the
+new ideas D-51 to D-54 and D-57 to D-59 were checked against the D-,
+A- and F- entries and the declined list (D-52 re-raises a declined
+idea; see its note).
 
 ### D-01 (remainder) Fish rest at night: slower, lower, tails barely moving, woken by a tap
 
@@ -6937,6 +8402,10 @@ Size L · Severity idea · Value 3/5 · Risk 4/5
 **Change.** A spike first. Tank > 'Let the Fish Out' (off by default) creates a borderless NSWindow over `NSScreen.main.visibleFrame` (isOpaque false, clear background, `ignoresMouseEvents = true`, level `CGWindowLevelForKey(.desktopIconWindow) + 1`, `[.canJoinAllSpaces, .stationary]`). A second WKWebView loads a new desktop.html running its own Sim sized to screen/3, reading installed packs from the shared IndexedDB cache, drawing only fish and bubbles on a transparent canvas upscaled 3x nearest-neighbour, capped at 20 fps with a setTimeout loop. Feeding happens from the menu (clicks pass through). Measure Energy Impact in Activity Monitor before building UI.
 
 **Acceptance.** (derived) The spike reports Energy Impact before and after in Activity Monitor; clicks pass through to the desktop; the tank window's sim is unaffected.
+
+Twenty-second-pass correction (research helper): a modern idea, not a
+fidelity gap. No source shows the original's fish on the desktop, and
+the original had no screensaver (FAQ @2557631); see F-28's note.
 
 ### D-22 Fish Diary, tank-age milestones and anniversaries
 
@@ -7361,6 +8830,17 @@ Fifteenth pass: the paw drops and bats the glass every
 few minutes (PR #204); the peeking face, tracking eyes and
 bolt-on-click remain.
 
+Twenty-second pass (N-08): PR #383 (open) gives the paw its switch,
+**Effects > Cat visits**, and removes the claim (in `web/catpaw.ts`,
+`web/main.ts` and the Effects pane's snail blurb) that the cat was
+AquaZone's: no AquaZone source mentions one (details in the
+twenty-second-pass Completed list). The PR keeps the paw on by
+default, preserving today's behavior, where this entry's Change
+suggested off as the safe start for a new visitor; decide the
+default when the Neko peek lands. The peeking face, tracking eyes and
+bolt-on-click still remain, as a Finsical idea rather than a
+fidelity item.
+
 ### D-47 A floppy-insert ritual when packs install on a cased machine
 
 Size M · Severity idea · Value 3/5 · Risk 2/5 (eighteenth pass)
@@ -7469,6 +8949,170 @@ pot values.
 - Related: D-28 (presentation modes), D-06 (Energy Saver sleep — the
   native-app sibling of this idea).
 
+### D-51 Finder Labels for fish
+
+Size S · Severity idea · Value 3/5 · Risk 1/5 (twenty-second pass, N-20; size, value and risk estimated at the fold)
+
+**Problem.** Look-alike fish are hard to tell apart in Tank Overview
+and in the tank. Mac OS 8's Label menu (Essential, Hot, In Progress,
+Cool, Personal, Project 1, Project 2, each with its colour) is the
+most Finder thing a fish list could do.
+
+**Evidence.** `web/overview.ts` (rows and sort), `web/nametags.ts`
+(tags), the saved fish fields (`name` is saved per fish).
+
+**Change.** Pick a label in Get Info or Tank Overview; the name tag
+and the Overview row take the label colour, and Overview can sort by
+Label. Saved per fish like `name`.
+
+**Acceptance.** (derived) A labelled fish keeps its label across a
+relaunch; its Overview row and name tag show the colour; sorting by
+Label groups the fish in the Finder's label order.
+
+### D-52 WindowShade the tank
+
+Size M · Severity idea · Value 2/5 · Risk 3/5 (twenty-second pass, N-21; size, value and risk estimated at the fold)
+
+**Problem.** Mac OS 8's collapse box, or a double-click on the title
+bar, rolled a window up. The original AquaZone Desktop was about a
+tank that stays out of your way.
+
+**Evidence.** The native tank windows (`macos/Finsical.swift`,
+`linux/finsical_shell/tank.py`) and the mask/silhouette code.
+
+**Change.** In the native shells a double-click on the case (or a
+Window > Collapse item) rolls the window up to a thin strip of water
+along the case's top edge, where the fish keep swimming in a 320x24
+letterbox; a second double-click rolls it down.
+
+**Acceptance.** (derived) Collapse and expand round-trip the frame
+exactly; the collapsed strip keeps the simulation running and its
+input silhouette matches the strip.
+
+**Merged and related.**
+
+- This re-raises the passes 1-8 decline "Windowshade double-click
+  collapse: the native window is chromeless, so there is nothing to
+  shade" (under "Declined, refuted and corrected"). The new angle is
+  that the case itself is shaded into a strip of water, so there is
+  something to shade; treat it as a product call that needs the
+  maintainer's yes before any PR.
+- A-23 (the titled client windows, which the decline never covered).
+
+### D-53 Desktop patterns behind the case in the browser
+
+Size S · Severity idea · Value 2/5 · Risk 1/5 (twenty-second pass, N-22; size, value and risk estimated at the fold)
+
+**Problem.** The browser page is flat black around the case.
+
+**Evidence.** `web/app.css` (`body` background on the tank page),
+Preferences > Machine (`web/prefs.ts`).
+
+**Change.** Offer the Mac OS 8 Desktop Patterns control panel's look
+(a few 8x8 1-bit and colour patterns, plus "Mac OS Default" grey) as
+the page background, picked in Preferences > Machine. The native
+windows keep the real desktop.
+
+**Acceptance.** (derived) Picking a pattern repaints the page behind
+the case at integer pixel scale and persists; the native shells
+ignore the setting.
+
+**Merged and related.**
+
+- Related: F-42 (your own picture as the tank's backdrop; a different
+  surface).
+
+### D-54 Sad Mac fishbowl when the tank can't start
+
+Size S · Severity idea · Value 2/5 · Risk 1/5 (twenty-second pass, N-23; size, value and risk estimated at the fold)
+
+**Problem.** When the tank can't start (a missing bundle, WebGL lost
+for good, a corrupt save kept aside), the error has no period face.
+
+**Evidence.** `web/boot.ts` (the boot parade's fishbowl icon), the
+tank's error paths in `web/main.ts`.
+
+**Change.** Show the boot parade's fishbowl icon with X eyes and a hex
+"error code" under it on a black screen, then the explanatory alert.
+It turns an error into a period joke without hiding the explanation.
+
+**Acceptance.** (derived) Forcing each failure shows the Sad Mac bowl
+for about a second and then the alert with the real reason.
+
+**Merged and related.**
+
+- Related: B-28 (the native crash alert), D-05 (the boot parade).
+
+### D-57 Fish learn to trust your hand
+
+Size M · Severity idea · Value 3/5 · Risk 2/5 (twenty-second pass, N-26; size, value and risk estimated at the fold)
+
+**Problem.** Feeding and tapping have no lasting effect on a fish's
+behavior toward you.
+
+**Evidence.** `web/curiosity.ts` (fish come to the pointer), the tap
+path in `core/sim.ts`.
+
+**Change.** Each fish keeps a small trust value: feeding while the
+fish is near raises it, a tap near it lowers it. Trusting fish come
+to the pointer sooner and from further away (curiosity); shy ones
+keep their distance for a while after being knocked. Saved with the
+fish.
+
+**Acceptance.** (derived) Seeded sim tests: a fish fed nearby ten
+times approaches from further away than a new fish; a tapped fish
+keeps a larger distance for a while; trust round-trips the save.
+
+**Merged and related.**
+
+- Related: F-20 (per-fish courage), D-15 (fish learn your feeding
+  time), D-02 (the pointer crowd).
+
+### D-58 Print a Tank Census on an ImageWriter
+
+Size S · Severity idea · Value 2/5 · Risk 1/5 (twenty-second pass, N-27; size, value and risk estimated at the fold)
+
+**Problem.** There is no way to keep a record of the tank on paper.
+
+**Evidence.** The Tank menus (`web/menubar.ts`, the native menus),
+Tank Overview's data model (`web/overviewmodel.ts`).
+
+**Change.** Tank > Print Census… opens a printable page styled as
+tractor-feed paper (perforated margins, a 1-bit dithered picture of
+the tank, a table of fish, ages and health in a 9-pin font) and calls
+`window.print()`.
+
+**Acceptance.** (derived) The print preview shows one fish row per
+fish and the dithered picture; the page carries no app chrome.
+
+**Merged and related.**
+
+- Related: D-09 (pictures), D-22 (Fish Diary), F-42 (the Mac
+  palette and dither).
+
+### D-59 Mac-lore names for fry
+
+Size S · Severity idea · Value 2/5 · Risk 1/5 (twenty-second pass, N-28; size, value and risk estimated at the fold)
+
+**Problem.** A fry is born unnamed.
+
+**Evidence.** The birth path (`core/sim.ts` `maybeBirth`),
+`web/fishname.ts`.
+
+**Change.** Offer a default name drawn from 90s Mac lore and words
+(Moof, Sosumi, Gershwin, Copland, Cyberdog; skip Clarus, which is
+trademark-adjacent), so a breeding tank fills with characters.
+Settable off.
+
+**Acceptance.** (derived) A seeded birth gets a name from the list,
+never repeating while unused names remain; with the setting off,
+fry stay unnamed.
+
+**Merged and related.**
+
+- F-17 (breeding) plans a naming dialog at hatch with defaults filled
+  in; these names can be its defaults.
+
 ## Security and robustness (open)
 
 All inputs below are fixed archive.org items or files the user drops,
@@ -7534,6 +9178,21 @@ Size S · Severity low · Value 2/5 · Risk 2/5
 
 Re-verified open at 62b8572 (fourteenth-pass audit): the inflate limit is still `maxBytes` (`core/data/zip.ts:109-111`), the declared `usize` is compared with the output only after the full inflate (`:118-119`), and no CRC is stored or checked anywhere.
 
+Twenty-second pass (checked on `ab39e38`): the bomb half is fixed on
+main. `zipRead` rejects an entry whose declared size exceeds
+`maxBytes` and inflates with the cap at the declared size ("Cap at the
+declared size, not maxBytes", `core/data/zip.ts:98-111`), so a 1 KB
+claim stops after 1 KB of output. Still open: no CRC-32 is stored or
+checked (grep finds none). New, from the import helper review (re-read
+by hand): `fetchZip` persists any non-empty 200 body before
+validation (`web/import.ts:271-275`), and a later decode failure is
+classed permanent, so a bad cached copy is a dead end until the LRU
+evicts it. Change addition: check cheaply before `packPut` (the EOCD
+record for zips, magic bytes for loose files), and on a decode failure
+of a cached copy `packDelete` it and refetch once. Acceptance
+addition (derived): a cached zip with a broken EOCD is refetched once
+and installs; a fresh download with a broken EOCD is never stored.
+
 ### S-05 snd.ts: crafted resource maps explode, BinHex uses number[] buffers with uncapped RLE, and a 0 Hz rate is accepted
 
 Size S · Severity low · Value 2/5 · Risk 1/5
@@ -7584,6 +9243,30 @@ verification procedure rather than a red→green test. The rest of this
 entry — unvalidated `addons` entries, `inner`, bus payloads, ids, and
 the motion-field/last-good-save decision — is untouched and still
 open.
+
+Twenty-second pass (checked on `ab39e38`): two items are done on
+main. Saved add-on records are validated: `isSavedAddon`
+(`web/import.ts:638-648`; object, non-empty `url` string, string
+`inner`, known section, string `sounds`) filters them at load
+(`web/main.ts:161`), so a `null` entry no longer breaks the restore;
+and `remoteInstall` rejects a missing or blank `inner`
+(`web/main.ts:2008`). Still open: `bus.ts` forwards any payload
+(`openBus`, `web/bus.ts:33-45`), and ids are only checked for
+finiteness (`core/sim.ts:549-551`), so duplicate or 1e300 ids pass.
+New (import helper review, re-read by hand): `.fins` is the
+documented way to share a tank, and `isSavedAddon` accepts any URL,
+so a file from someone else makes the tank fetch an arbitrary host at
+every launch and retry, and feeds its bytes to the decoders; exported
+`local:` records fail forever on another machine. Change addition:
+require `isArchiveUrl(url) || isLocalPack(url)` in `isSavedAddon`
+(`isLocalPack` is in `web/store.ts:126`; `isArchiveUrl` arrives with
+B-82's PR #368, open, and until then `remoteInstall`'s
+`https://archive.org/` prefix test is the rule), and on import drop
+`local:` records whose bytes are absent, saying so
+in the import alert. Acceptance addition: `isSavedAddon` rejects an
+`https://example.com/x.zip` record; importing a `.fins` with a
+`local:` record whose bytes are missing reports it and saves without
+it.
 
 ### S-08 The Swift bus relay can crash on NaN or Date values and accepts posts from any frame
 
@@ -7712,6 +9395,21 @@ Size M · Severity low · Value 4/5 · Risk 1/5
 Fourteenth-pass update (TOOLING-03): a verified offline recipe, which refines the Change above. Three practical blockers the Change misses: the first-run welcome alert makes `alertOpen()` true, which suppresses every bare key (`web/main.ts:1549-1552`); `backfillStarterSounds` contacts archive.org on a welcomed tank with no sounds (`web/main.ts:1652`; keys `finsical:welcomed` and `finsical:starterSounds`, `web/welcome.ts:12-15`); and the page has no state hook. The README documents bare keys, Ctrl/Cmd-I, Esc, the feed crosshair, the hover balloon and the Option-click Get Info card (`README.md:79-121`), all in `web/main.ts` and `web/menubar.ts` with no coverage. Verified with a standalone Playwright script on the frozen 62b8572 build: routing `archive.org` to 404 and an init script setting both keys to "1" gave no alert and 0 archive.org requests; reading state through a second `BroadcastChannel('finsical')` (post `{op:'hello'}`, read the `state` reply) showed 4 stand-in fish and `crt.available: true`; pressing L then F turned `lighting.lamp` from true to false and `food` from 0 to 3; total 2.6 s. The only console error was the `pack/manifest.json` 404 (T-15). The reviewer's wider run on a stocked tank (M, P, C, S opening the stats tab, the Ctrl-I overlay and Esc, the crosshair at 2% height, the `#fishtip` balloon while paused, the Alt-click `.finfo` card, the menu bar titles) was not re-run. Correction: the food count after F depends on how many fish are hungry (`feedPinch`), so assert an increase, not an exact number. Recipe: devDependency `@playwright/test`; `playwright.config.ts` whose webServer runs `npm run build` and a small node static server on 127.0.0.1 serving `dist/`; Chromium only at first, launched with `--use-gl=swiftshader --enable-unsafe-swiftshader` (add WebKit afterwards, as planned above). `e2e/readme.spec.ts`: `context.route(/archive\.org/)` fulfils 404 (`listAddons` never rejects, per FOLLOW-UPS); `addInitScript` sets both localStorage keys; a `state()` helper uses the BroadcastChannel hello. Cover each README key and pointer row against the stand-in fish (pause before scanning for `#fishtip`), TOOLING-02's CRT availability check and no `pageerror`; allow only the known `pack/manifest.json` 404 until T-15 removes the fetch. Open prefs, overview, stats and addons in the same context and assert each receives a state push without a `pageerror`. CI: a core-linux step `npx playwright install --with-deps chromium && npx playwright test`, uploading traces on failure. Acceptance: `npx playwright test` passes on main in under 60 s of test time on ubuntu-24.04; commenting out the `k === "l"` branch in main.ts's keydown handler fails the lamp test; removing `canvas.style.cursor = on ? "crosshair" : ""` fails the crosshair test. Size M, Severity low, Value 4/5, Risk 1/5.
 
 Fourteenth-pass update (TOOLING-02): nothing checks the CRT shader source, and a pure unit test can land before the Playwright suite. `initCrt` is uncovered and no test reads the GLSL, though #171, #174 and #178 all edited the fragment shader. Two failure modes: (1) a compile error makes `initCrt` return null after one `console.warn` (`web/crt.ts:420-426`), so the CRT reports unavailable and its menu item and Preferences switch dim for every user; (2) a mismatch between `TRAIT_UNIFORMS` and the `uniform float` declarations, or a declared uniform the body never reads (the GLSL compiler drops it), makes `getUniformLocation` return null, and `gl.uniform1f(null, v)` silently does nothing, so one front-panel pot is dead. Evidence: `web/crt.ts:25-51` (uniform declarations in `FRAG`), `web/crt.ts:474-485` (`TRAIT_UNIFORMS` is a local, typed only as `string` values); `grep` finds no test mentioning `FRAG`, `uniform` or `initCrt`. Verified at runtime with the reviewer's `crtsmoke.mjs`: the frozen main build reports `crt {available: true}`; the build with `uniform float uPersp;` renamed to `uPerp` reports `{available: false}` and logs `crt shader: ERROR: 0:88: 'uPersp' : undeclared identifier`, so headless Chromium with swiftshader compiles the real shader. The claim that the mutation passes all 471 tests and `tsc` follows from the absence of any shader test (code-verified; suite not re-run). Severity low, not medium: main has no defect; this is a missing guard. Change: (a) pure vitest, no GL: hoist `TRAIT_UNIFORMS` to module scope as `export const CRT_UNIFORMS: Readonly<Record<keyof CrtConfig, string>>` and export `FRAG` as `CRT_FRAG` (test-only consumers; say so in the doc comment); in `web/crt.test.ts`, parse `/uniform\s+\w+\s+(\w+);/g` from `CRT_FRAG` and assert that every key of `CRT_DEFAULTS` maps to a declared `float` uniform that appears at least once more in the body, that every declared uniform is in `CRT_UNIFORMS` or the fixed set {uTex, uTank, uRect, uTime, uPower}, and that the fixed names match the literal `getUniformLocation` calls. (b) The browser half is check (3) above, with TOOLING-03's recipe: `state.crt.available === true` and no console line matching `/crt (shader|link)/`. Acceptance: (a) fails for the `uPerp` declaration rename and for a `TRAIT_UNIFORMS` value typo such as `"uSkw"`, and passes on main; (b) fails on the `uPerp` build and passes on main. Size S, Severity low, Value 4/5, Risk 1/5.
+
+Twenty-second-pass update: a working offline harness, used for that
+pass's measurements. Headless Chromium (Playwright, SwiftShader WebGL)
+against a `dist/` build on localhost; 24 synthetic fish packs encoded
+offline like `core/data/fsh.test.ts` (8 pose groups x 4 frames, 18x34
+cells) and dropped on the tank through a synthetic `DataTransfer`;
+CDP `Performance.getMetrics` (TaskDuration, ScriptDuration) for cost.
+archive.org was unreachable from that Chromium (certificate chain not
+trusted), so route archive.org to fixtures rather than weakening TLS.
+Layout checks worth adding when the suite lands, from that pass: at
+565x518 every Preferences pane's last `.pfgroup` ends at least 6 px
+above `#pffoot .osm-separator` (V-30 regressed once already; PR #389
+fixed it without a test); no two `.nametag` rects intersect with 24
+fish and names on (V-46); the audio hint never shows without a sound
+bank (U-42).
 
 ### T-07 Duplicated Python and TS decoders have no shared parity corpus and already disagree
 
@@ -7902,6 +9600,16 @@ Size M · Severity low · Value 2/5 · Risk 2/5
 
 Fourteenth-pass audit (62b8572): the ambient half is mostly done. `web/audio.test.ts` has a fake AudioContext and covers loop stacking, a locked context and hide/resume (`web/audio.test.ts:192`, `:248-320`). Still open: tests for `store.ts` `trimPacks`/`packPut`/`packDelete` with fake-indexeddb (`store.test.ts` covers only `capSnds`), the `pickSound`/`tapZone` extraction, and tests for load() during a pending resume and for a new loop buffer restarting once.
 
+Twenty-second pass: `web/store.idb.test.ts` (PR #392, open, B-90)
+adds a fake IndexedDB that covers an announced close, a silent close
+and versionchange. Gap left by its review: the fake's `lose()` closes
+the connection but never fires `onabort` on transactions created
+before the loss, so "a write cut off by the loss resolves as failure"
+is untested (production already treats `onabort` as failure; declined
+on #392 as test-only). Change addition: make `lose()` abort in-flight
+transactions, and add that test. If the `fake-indexeddb`
+devDependency this entry proposes lands, the hand-rolled fake can go.
+
 ### T-18 The page-to-page bus protocol is untyped and has a dead message
 
 Size M · Severity low · Value 2/5 · Risk 2/5
@@ -7999,6 +9707,12 @@ Size S · Severity low · Value 3/5 · Risk 1/5
 **Acceptance.** (derived) With the default set, Safari's Develop menu lists the tank and client pages; a missing bundled file answers 404.
 
 Fourteenth-pass audit (62b8572): the 404 half landed (333845d): a missing bundled file answers HTTP 404 with Content-Length 0 and no-store (`macos/Finsical.swift:50-62`). Still open: `isInspectable` behind the `FinsicalWebInspector` default (nothing in `macos/` or osmium-ui's Swift sets it), and optionally a 403 for path traversal, which still fails with a URLError (`macos/Finsical.swift:23-26`). This pass's B-75 (PR #229) replaces the containment check so a translocated app keeps serving files and answering 404.
+
+Twenty-second pass (N-40, native helper review): Linux has no opt-in
+inspector either. `linux/finsical_shell/web.py:113` hard-codes
+`settings.set_enable_developer_extras(False)`; honour
+`FINSICAL_INSPECTOR=1` there (and document it beside the macOS
+default). macOS still sets no `isInspectable` on `ab39e38` (grep).
 
 ### T-25 Info.plist is missing standard keys
 
@@ -8177,6 +9891,17 @@ Size S · Severity low · Value 3/5 · Risk 1/5 (fourteenth pass)
 - Related: T-11 (the section can live in `docs/ARCHITECTURE.md`), F-09, F-10, F-14, F-26 (settled from these sources this pass).
 - Fourteenth pass: FIDELITY-14.
 
+Twenty-second pass: that pass's research helper cited the guide the
+same way (the Deluxe II with Guppies User's Guide, Windows, 1999:
+`aquazonewithguppiesandaddons/AQUAZONE.iso`, `Win/GUIDE/AZGuide.exe`,
+`@offset`) and added these sources for the
+section: the 1993 box back and the Mac 1.5 screenshots on Macintosh
+Garden, the ATPM 4.03 (1998) and Macworld (1995) reviews, aquazone.me
+and ja.wikipedia. Note for the list: macworld.com/article/177208 is a
+different product (Allume's 2005 *Aquazone Seven Seas* screensaver),
+not the original. The original's menus (@2683592) are recorded in
+F-47.
+
 ### T-40 Open backlog entries carry no "verified against" stamp, so they rot
 
 Size S · Severity low · Value 3/5 · Risk 0/5 (sixteenth pass)
@@ -8224,7 +9949,7 @@ it was checked at.
 - Sixteenth pass. T-11 and T-12 (PLAN.md staleness, AGENTS.md quick
   reference) are the same species of rot and the same fix.
 
-### T-37 Sweep the Linux and Android shells (no ANALYSIS coverage yet)
+### T-37 (remainder) Sweep the Linux and Android shells (code-level sweep done in the twenty-second pass; runtime runs and the drift guard remain)
 
 Size L · Severity idea · Value 4/5 · Risk 0/5 (eighteenth pass)
 
@@ -8258,6 +9983,74 @@ explicit "checked, fine" or an entry.
 - Related: T-35 (native smoke tests), the CI jobs that already build
   deb/flatpak/APK.
 
+Twenty-second pass: a code-level sweep of both shells (a read-only
+helper, every finding re-read by hand; GTK, WebKitGTK and Android
+were not run). Checked and fine: the DBus menu, the Wayland appmenu
+ctypes tables, `WebRoot`/`AssetPaths` path handling, version gating,
+the Flatpak locale fallback, the restart and crash limiters, AppArmor
+detection, the bus relay (U+2028 escaped), Android's navigation
+policy and its token-bound blob bridge. Filed: B-95 (quit, PR #395),
+B-96 (off-screen client windows), B-97 (tiled-tank silhouette),
+B-98 (Android renderer loss), B-28's note (crash recovery), B-99
+(Take a Picture failures), B-100 (Larger and restore), P-14's note
+(mask cost), U-44 (Linux menus), B-101 (fixed-size clients), T-44
+(packaging), V-47 (Android white flash), B-85 (remainder) (Android
+config changes), T-24's note (Linux inspector), T-45 (WebView floor
+comment). The panel-sizing drift item above is still open: Linux has
+`test_specs_match_the_macos_shell`, so extend it to parse
+`PanelSizes.java`'s `sizes.put(...)` calls (N-41, nit, S). Also open:
+B-95's review asked for the Linux smoke test's QUIT step to assert
+that `savedAt` advanced, which PR #395 did not add. Still not done:
+driving the Linux shell under Xvfb or Wayland and the Android one on
+a device, so the window-manager interop areas above are code-level
+only.
+
+### T-44 Packaging: the tarball litters the install prefix, and About names a .deb-only path
+
+Size S · Severity low · Value 2/5 · Risk 1/5 (twenty-second pass, N-37; severity low/nit in the source)
+
+**Problem.** The tarball puts LICENSE, THIRD_PARTY_NOTICES.md,
+LICENSES/ and README.txt at the tree's top, so the documented
+`--strip-components=1 -C ~/.local` install drops them straight into
+`~/.local/`. The Linux About says "See
+/usr/share/doc/finsical/copyright", a path only the .deb has.
+
+**Evidence.** `linux/build-tarball.sh:107-110`,
+`linux/finsical_shell/shell.py:36-42` (the About text; the path at
+`:41`), the Flatpak manifest's `install -D` paths. Native helper
+review, code-level.
+
+**Change.** Move them to `share/doc/finsical/` and
+`share/licenses/finsical/` in the tarball (and the Flatpak manifest's
+`install -D` paths to match); pick the About path per layout (deb,
+tarball, Flatpak).
+
+**Acceptance.** (derived) Unpacking the tarball as documented puts no
+file directly in `~/.local/`; each layout's About names a path that
+exists in it.
+
+**Merged and related.**
+
+- Related: T-03 (notices), T-41 (the favicon in the deb and tarball,
+  PR #372).
+
+### T-45 The Android WebView 103 floor's stated reason is stale
+
+Size S · Severity nit · Value 1/5 · Risk 1/5 (twenty-second pass, N-42)
+
+**Problem.** `WebViewVersion.java` justifies the WebView 103 minimum
+with `DecompressionStream`, which the web code no longer needs (it
+falls back to fflate).
+
+**Evidence.** `android/app/src/main/java/dev/finsical/app/WebViewVersion.java:157-162`,
+`core/data/inflate.ts:24-29` (the fflate fallback, PR #202).
+
+**Change.** Fix the comment; or, before lowering the floor, audit the
+bundle for newer APIs (`.at()` needs 92, for example).
+
+**Acceptance.** (derived) The comment names the real constraint; if
+the floor moves, the audit's list is in the commit.
+
 ## Declined, refuted and corrected (do not re-raise without new evidence)
 
 ### Declined product ideas (passes 1-8)
@@ -8265,7 +10058,10 @@ explicit "checked, fine" or an entry.
 - Starvation notifications: this is a relaxation toy, not a
   Tamagotchi. Reminders, if any, are fish behavior (D-15).
 - Windowshade double-click collapse: the native window is chromeless,
-  so there is nothing to shade.
+  so there is nothing to shade. (Twenty-second pass: D-52 re-raises it
+  with a new angle, shading the case into a strip of water, and waits
+  on a product call; A-23 covers the titled client and in-page
+  windows, which this decline never covered.)
 - Seasonal or holiday gravel: scope creep (D-11's date-triggered
   sprites are a different, optional idea).
 
@@ -8569,6 +10365,129 @@ Checked against `origin/main` `d5e5410` with vitest and direct reads.
   (`web/crt.ts:353-354`).
 - "P-25 serveThumbs is still O(keys x fish)": verified fixed — the
   key-to-fish map is built once per push (`web/main.ts:1747`).
+
+### Refuted or dropped in the twenty-second-pass review (tmp.md)
+
+Checked against `origin/main` `1064b5b` (line numbers re-checked on
+`ab39e38` where given) with vitest, headless Chromium and direct
+reads. Most items are GLM 5.3 review claims on this pass's PRs; the
+PR threads hold the full replies. Do not re-raise these without new
+evidence.
+
+Refuted:
+
+- "Keydown doesn't unlock audio" (PR #382): it does; the window
+  keydown handler calls `audio.unlock()` first
+  (`web/main.ts:2744-2747`).
+- "Font timing: the hour pop-up width is measured before the strikes
+  load" (PR #389, labelled Major; refuted in the PR thread):
+  `installOsmium` awaits `FontFace.load`, and the width is measured
+  after it resolves.
+- "The Effects validator drops the new thermometer switch" (PR #391,
+  labelled Major): `sanitizeEffects` is generic over
+  `EFFECTS_DEFAULTS`' keys; a round-trip test now pins it. "A
+  non-finite heater target reaches the strip" (PR #391, round 2):
+  `setHeaterTarget` only assigns finite, clamped values
+  (`core/aquarium/aquarium.ts:403-406`).
+- "Writing the thumbnail once per URL can leave a stale one" (PR
+  #393, labelled Major; refuted in the PR thread): `storeThumb`
+  caches only `immutableHost` archive.org URLs, whose bytes never
+  change.
+- A claim about `tankItems()`'s type in the new `emptyBtn.disabled`
+  line (PR #394, labelled Major; refuted in the PR thread): it
+  returns a number, so `!tankItems()` is right. The outside-diff "guard the action" minor: the handler
+  already returns on `!tankItems()` (`web/overview.ts:248`).
+- "`saveTank` must be synchronous for the quit to wait on it" (PR
+  #395, labelled Major; refuted in the PR thread): it is, a
+  `localStorage.setItem` (`web/main.ts:488-492`). "The bridge
+  whitelist can drift" (PR #395): `TestTankBridge` checks every
+  `TANK_FUNCTIONS` entry against the page (`linux/tests/test_logic.py:1094`).
+- "Dead fish can sneeze" (PR #398): corpses take `tickCorpse` before
+  the sneeze roll (`core/sim.ts:728` on `ab39e38`). The real neighbour,
+  a fish that died mid-jolt keeping `sneezing()` true, was fixed in
+  `ee85a55`.
+- "`preventDefault` on the open error stops it reaching
+  `window.onerror`" (PR #392, round 2): wrong, the open request has
+  no parent to bubble to; the change was applied anyway, for the
+  console noise the retry multiplies.
+
+Declined with reasons (minor or info findings):
+
+- PR #382: move focus to the body when the hint hides; an
+  `aria-live` region; an iOS `touchend` unlock (no regression from
+  today).
+- PR #383: hoist the cat's bindings out of the TDZ (the other three
+  bindings are still TDZ, the same pattern as the snail's).
+- PR #384: restore a body at rest instead of sinking (the corpse
+  phase is not saved and reaches rest at once); extract
+  `sanitizeSavedFish` (T-08's scope); a downgrade replay (rollback
+  only); bodies counting toward the fish cap (pre-existing; the
+  refusal points to Overview).
+- PR #385: a tag reappearing for a single frame; the O(n²) pass (24
+  fish at most).
+- PR #387: a different message for a total failure (the existing one
+  already explains); a non-null assert in a test helper (the test
+  still fails without the fix).
+- PR #388: a cursor affordance on the card, a 0.5 px clamp, a
+  font-smoothing note.
+- PR #389: `box-sizing` (it is already border-box); the second
+  group's rhythm (the pane has one group); a font-fallback probe.
+- PR #390: a footer reflow (the footer is left-aligned and the button
+  does not move); one-way visibility (the elements are rebuilt each
+  render).
+- PR #391: an Infinity test beside the NaN one.
+- PR #392: making the fake's `lose()` abort in-flight transactions
+  (test-only; production treats `onabort` as failure; kept as a T-17
+  follow-up); "verify no call sites bypass `transact()`" (grep: only
+  `transact()` calls `.transaction`). The synchronous-throw catch stays
+  memoized because a SecurityError is permanent.
+- PR #393: retry a failed PNG write in the same session (a best-effort
+  cache; the next session rewrites it; noted in P-35); store the mini
+  PNG (pre-existing storage design; filed as P-35); the `thumbs`
+  readers (only `paintThumb`, `web/import.ts:1174` and `:1536`).
+- PR #394: a CSS variable for `#6666cc` (Osmium itself hardcodes it
+  four times).
+- PR #395: the other shells' quit paths (out of scope: the macOS and
+  Android quit paths are separate items; macOS is B-41).
+- PR #396: R1's three minors were applied; R2's one nit (also assert
+  `transientFailure` in the abort-URL test) was declined, since the
+  three engine-wording tests already pin it.
+- PR #397: name the file in deduped refusal notes (multi-file drops of
+  at-cap plants are rare, the note states the cause, and per-file drop
+  feedback is U-10's scope).
+- PR #398: the sneeze threshold `> 3` is generous (a seeded run; the
+  test pins the behavior, not the rate). R2's two test-only minors
+  (a loop guard in the corpse test; matching new bubbles by identity
+  rather than by index) were declined for the same reason: the run is
+  seeded, so the test cannot flake.
+
+Dropped or checked fine in the pass itself:
+
+- Performance: the CDP measurements (6% of a core at 24 fish, 8%
+  with names, 2.3% paused) found nothing that stutters on the main
+  thread, so no new P- entry; headless rAF cadence is not
+  representative and is not a finding.
+- Native shells, checked and fine: see T-37's twenty-second-pass note.
+
+#### Corrected in the twenty-second-pass fold
+
+- U-41 was used twice (the eighteenth-pass appendix's audio hint and
+  the UX section's red Empty Tank text); the audio hint is now U-42.
+- The fifteenth-pass PR #204 line called the cat "the AquaZone
+  signature visitor"; no AquaZone source mentions a cat (D-46).
+- F-14's Problem said filter dirt and Clean Filter were missing; they
+  shipped, and only the Water Settings dialog remains.
+- F-19: the guide calls the bubbler an "air pump"; ORIGINAL-SIM's "no
+  air pump" is about the simulation only.
+- F-30: the original's "water quality graphs" were Change Water's bar
+  charts, so a history graph is a modern addition.
+- F-28 and D-21: the original had no screensaver and no fish on the
+  desktop; both are modern ideas.
+- F-10's life pace, S-04's inflate bomb, two of S-07's items, B-34's
+  two-tab core and B-28's throttled reload were found on main and
+  marked in place; B-41's "10 seconds" is 60 s since PR #230; U-10's
+  "no result message on the tank" was stale since PR #279; PR #228's
+  "tank time" means open-window ticks (F-07).
 
 ## Design notes (preserved)
 
@@ -9247,7 +11166,121 @@ latest push):
 - Review gaps: none unresolved at fold; #352, #355 and #358's
   post-push rounds were still in flight.
 
+### Review-response log (twenty-second pass)
+
+Sixteen PRs, all cut from `1064b5b`; automated GLM 5.3 reviews
+triaged per AGENTS.md (apply, decline with reasons, or refute with
+evidence; a PR comment only where a wrong claim could mislead a merge
+decision). Scorecard at fold time (rounds = completed reviews; the
+SHA is the reviewed head):
+
+| PR | Branch | Items | Rounds | State |
+| --- | --- | --- | --- | --- |
+| #382 | `claude/sound-hint-fix` | U-42 (N-01) | 1 (`9857b64`) | finished: 0 valid |
+| #383 | `claude/cat-paw-effect` | D-46 part (N-08) | 1 (`71cc022`) | finished: 0 valid |
+| #384 | `claude/keep-bodies` | B-88 (N-07) | 1 (`14db5f8`) | finished: 0 actionable |
+| #385 | `claude/nametag-declutter` | V-46 (N-04) | 2 (`1d8f9fb`, `e50967f`) | steady state |
+| #387 | `claude/starter-listing-retry` | B-89 (N-09) | 2 (`f49e3f3`, `8048a28`) | steady state |
+| #388 | `claude/info-card-lines` | V-45, A-14 (N-03, N-54) | 2 (`aad8816`, `993f3d5`) | steady state (R3 on `4147aff` ignored) |
+| #389 | `claude/prefs-layout-fixes` | V-30, V-48, V-50 | 1 (`35865d3`) | finished: 0 valid |
+| #390 | `claude/stats-polish` | V-49, A-16, A-17, V-51 | 1 (`fb62d6e`) | finished: 0 valid |
+| #391 | `claude/lcd-thermometer` | D-56 (N-25) | 2 (`103d79e`, `15c8dd6`) | steady state |
+| #392 | `claude/idb-reconnect` | B-90 (N-11) | 3 (`da449d2`, `ccdecd9`, `0f9541d`) | steady state |
+| #393 | `claude/import-thumb-memory` | P-33 (N-10) | 1 (`cd84c16`) | finished: Major refuted, rest declined |
+| #394 | `claude/platinum-dialogs` | A-15, U-46, A-18, A-19 | 2 (`59c1d60`, `4e78c48`) | steady state |
+| #395 | `claude/linux-quit-save` | B-95 (N-17) | 1 (`422ee4f`) | finished: 0 valid |
+| #396 | `claude/download-error` | B-91 (N-12) | 2 (`6ead467`, `c7d32c0`) | steady state |
+| #397 | `claude/decor-cap-refusal` | B-94 (N-15) | 1 (`aaf6e34`) | finished: one minor declined |
+| #398 | `claude/sneezing-fish` | D-55 (N-24) | 2 (`00481e7`, `ee85a55`) | steady state |
+
+CI was green on the latest head of every PR when it was
+unsubscribed.
+
+- Applied: #385 R1 minors at `e50967f` (the hold steps as pure
+  `pruneHolds`/`armHolds` with tests, a fixed-point test, the
+  `tagPlacement` doc); #387 R1 at `8048a28` (an item counts as
+  unreached only when its own section's collection failed; one shared
+  `isItem` rule); #388 R1 at `993f3d5` (a pressed close box drops its
+  bevel; the rename field keeps its I-beam and selection) and R2 at
+  `4147aff` (the CHANGELOG line scoped to the chrome); #391 R1 at
+  `15c8dd6` (the tip says "unknown" for a NaN reading, plus a
+  round-trip test of the Effects sanitizer); #392 R1 at `ccdecd9`
+  (**the one important finding of the pass**: a failed open memoized
+  `null` for the session, which also defeated the PR's own reopen;
+  fixed with a regression test seen red first) and R2 at `0f9541d`
+  (cancel the handled open-error event, with a test); #394 R1 info at
+  `4e78c48` (a stale forced-colors comment and dead `box-shadow`
+  resets the PR's own diff had caused); #396 R1 at `c7d32c0` (`AbortError`
+  matched by name, `loadProblem` pinned for cut-offs, a mid-body stall
+  test, and ": connection lost" checked before the abort test after a
+  URL containing "abort" was misread as a stall, red-checked); #398 R1
+  at `ee85a55` (a fish dying mid-jolt kept `sneezing()` true, fixed;
+  the test scans every fresh bubble; a bound on the wait loop).
+- Refuted (evidence in "Refuted or dropped in the twenty-second-pass
+  review"; PR comments posted on #389, #393, #394 and #395 because each
+  was labelled Major, and a thread reply on #391): #382 keydown unlock; #389 font timing; #391 the
+  Effects validator and the heater's non-finite target; #392 the
+  `window.onerror` claim (the fix was applied for another reason);
+  #393 stale thumbnails; #394 `tankItems()`'s type; #395 a synchronous
+  `saveTank` and bridge drift; #398 dead fish sneezing. On #391 the
+  first reply cited a wrong SHA; it was corrected in the thread.
+- Declined: listed per PR in the same block; the review follow-ups
+  worth keeping became P-35 (thumbnail size, unretried PNG write),
+  T-17's note (the fake's `lose()`), U-10's note (the refusal's
+  console line, per-file drop feedback) and D-55's optional extras.
+- Steady state reached on #385, #387, #388, #391, #392, #394, #396
+  and #398 (two
+  consecutive rounds without important findings; #392's R1 finding
+  was important and was fixed first). #382, #383, #384, #389, #390,
+  #393, #395 and #397 finished after one round with no applicable
+  feedback (AGENTS.md: finish immediately). All sixteen were
+  unsubscribed and their self check-ins deleted.
+- Not verified at fold: the branches' local test runs were not
+  re-run here (CI is the record); GTK, WebKitGTK, Android and the
+  native macOS app were not run, so #395's shell change and every
+  native claim are code-level only.
+- Review gaps: none unresolved at fold besides the two pending
+  rounds.
+- Possible overlap for the maintainer: another agent's open PR titled
+  "Save the tank before the native shell lets a quit land" (#357) may
+  cover the same race as #395 on Linux, or the macOS one (B-41). It
+  was not read; compare before merging both.
+
 ## Implementation Order (suggested)
+
+Twenty-second-pass additions:
+
+- **Phase 0:** sixteen open PRs (#382 to #385, #387 to #398), all at
+  steady state or finished.
+  They are independent apart from CHANGELOG.md; compare #395 with
+  another agent's PR #357 (title only: "Save the tank before the
+  native shell lets a quit land") before merging both. #384 changes
+  the saved roster (bodies persist), so merge it before any save-format
+  work.
+- **Phase 1 (small fixes):** B-34's view-only leaks, S-07's `.fins`
+  URL rule and S-04's validate-before-store (all S, from the import
+  review), U-43, U-45, A-18's remainder, A-20; then the Linux and
+  Android batch, best as one or two PRs per shell: B-96, B-97, B-100,
+  B-101, U-44, T-44 (Linux), B-98, V-47, B-85's remainder, T-45
+  (Android), with B-28's first-commit reload and B-99 on both
+  desktop shells.
+- **Phase 2 (identity and persistence):** B-92 and B-93 (dropped-pack
+  identity and reclaim), B-18's owner check for decoded sounds, P-34
+  (care pruning, one save per restore).
+- **Phase 3 (performance):** P-35 (list-size thumbnails), P-14's Linux
+  mask cache.
+- **Phase 4 (tests):** V-18's glyph scan, T-06's layout checks, T-17's
+  `lose()` abort, T-37's panel-size drift guard, T-24's Linux
+  inspector.
+- **Phase 5 (UX and visuals):** U-10's drop feedback restyle and alert
+  path, U-28's partial-catalogue message.
+- **Phase 6 (fidelity):** F-07's feeder on tank minutes and F-45's
+  light cycle (both on the life clock now on main), F-52, F-10's PAUSED
+  and boot labels; product calls first for F-46, F-47, F-48, F-49,
+  F-50 and F-51; A-04's version slice.
+- **Phase 7 (delight):** D-51, D-53, D-54, D-57, D-58, D-59, A-21,
+  A-22, A-23; D-52 only after a product yes (it re-raises a declined
+  idea).
 
 Sixteenth-pass additions, all at the front of their phase:
 
@@ -9473,18 +11506,23 @@ failed on this host (missing `glib-2.0`, `gstreamer-1.0`, `gtk-4` etc.)
 passes (`a-fresh-*`, `b-standin`, `c-stocked`, `d-menu-*`, `e-feed`,
 `f-key-crt`, `g-prefs-*`) confirm rendering is intact.
 
-New entry implemented: **U-41** (audio unlock indicator) — PR #360
+New entry implemented: **U-42** (audio unlock indicator; filed here
+as U-41, which the UX section already used, and renumbered in the
+twenty-second-pass fold): PR #360
 (`feat/audio-unlock-indicator`). Adds a subtle `#audio-hint` overlay
 that appears when `AudioContext.state !== "running"` and hides once
 it resumes. Keeps retro aesthetic; uses `aria-live="polite"` for
 accessibility. Size S, severity low, value 4, risk 1. Merged to PR
-#360, left open for maintainer review.
+#360, left open for maintainer review. (Twenty-second pass: this
+branch reached main through `9cc72e6`; its hint showed in most cases
+where nothing could unlock, and PR #382, open, reworks it; see U-42
+in the twenty-second-pass Completed list.)
 
 No new bugs found beyond the 359 open PR backlog. The previous
 agent's `tmp.md` review results (`/tmp/finsical-reviews/`) were mostly
 empty or contained environment errors; this pass relies on direct
 code inspection. The codebase is solid; the gap is mainly user-facing
-polish around web-audio limitations (addressed by U-41) and browser
+polish around web-audio limitations (addressed by U-42) and browser
 harness dependency setup (not a code issue).
 
 ---
@@ -9545,7 +11583,7 @@ These remain high-quality, unimplemented ideas from the independent review. Each
 
 ---
 
-*No information from either independent `tmp.md` was lost in this merge. Completed PR entries include their PR numbers. Open ideas from both reviews (U-41 audio unlock indicator / PR #360; B-01 through T-01 from the independent appendix) are preserved with file:line citations and can be picked up by any future LLM agent without reading these review conversations. The `tmp.md` file has been discarded (`rm tmp.md`).*
+*No information from either independent `tmp.md` was lost in this merge. Completed PR entries include their PR numbers. Open ideas from both reviews (U-42 audio unlock indicator / PR #360, renumbered from U-41; B-01 through T-01 from the independent appendix) are preserved with file:line citations and can be picked up by any future LLM agent without reading these review conversations. The `tmp.md` file has been discarded (`rm tmp.md`).*
 
 ---
 
