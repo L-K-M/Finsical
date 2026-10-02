@@ -373,7 +373,8 @@ const imacg4: Machine = {
 };
 
 const AQUARIUM_BODY: ShapeRect = { x: 0, y: 0, w: 1151, h: 903, r: 0 };
-const AQUARIUM_GLASS: ShapeRect = { x: 68, y: 217, w: 1016, h: 635, r: 0 };
+// Fill the front face, including the rear panels projected inside it.
+const AQUARIUM_GLASS: ShapeRect = { x: 8, y: 189, w: 1136, h: 710, r: 0 };
 
 // Registered layers share their opening with the tank and native mask.
 // Thin glass needs no black pad outside the viewing rectangle.

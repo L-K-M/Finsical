@@ -172,4 +172,25 @@ describe("machine art", () => {
     }
     expect(alphaError).toBeLessThanOrEqual(1);
   });
+
+  it("paints the full front pane beyond the rear corners and floor", () => {
+    const m = MACHINES.find((m) => m.id === "aquarium");
+    // Measured points just inside the supplied render's front perimeter.
+    const frontCorners = [[10, 192], [1141, 192], [10, 896], [1141, 896]];
+    for (const [x, y] of frontCorners) {
+      expect(m.sx, `front pixel ${x},${y}: left`).toBeLessThanOrEqual(x);
+      expect(m.sy, `front pixel ${x},${y}: top`).toBeLessThanOrEqual(y);
+      expect(m.sx + m.sw, `front pixel ${x},${y}: right`).toBeGreaterThan(x);
+      expect(m.sy + m.sh, `front pixel ${x},${y}: bottom`).toBeGreaterThan(y);
+    }
+  });
+
+  it("keeps rear corner seams out of the foreground glass", () => {
+    const m = MACHINES.find((m) => m.id === "aquarium");
+    const front = decodeRgbaPng(readFileSync(new URL(`../web/${m.image}`, import.meta.url)));
+    const rearSeams = [[64, 500], [1087, 500], [500, 214]];
+    for (const [x, y] of rearSeams)
+      expect(front.px[(y * front.width + x) * 4 + 3], `rear seam ${x},${y}`)
+        .toBe(0);
+  });
 });
