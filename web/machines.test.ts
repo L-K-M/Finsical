@@ -10,10 +10,12 @@ import {
 // Resolve the package's entry through module resolution (any install
 // layout that can resolve "osmium-ui" works — a hardcoded
 // ../node_modules path survives only npm's) and step across to the
-// font file next to it.
+// font file next to it, keeping the entry's own extension so a
+// compiled dist/ layout resolves too.
+const osmiumEntry = import.meta.resolve("osmium-ui");
 const { CHARCOAL_12 } = await import(
-  new URL("fonts/charcoal12.ts", import.meta.resolve("osmium-ui"))
-    .href) as
+  new URL(`fonts/charcoal12.${
+    osmiumEntry.endsWith(".ts") ? "ts" : "js"}`, osmiumEntry).href) as
   { CHARCOAL_12: { glyphs: readonly [number, number, ...unknown[]][] } };
 
 // Each machine's `shape` is hand-synced to the outer <rect> geometry
@@ -363,7 +365,9 @@ describe("machine names", () => {
       // zero-width would pass a name that actually renders garbled.
       if (px === undefined)
         throw new Error(
-          `no Charcoal 12 glyph for ${JSON.stringify(c)} in "${name}"`);
+          `no Charcoal 12 glyph for U+${
+            c.codePointAt(0)!.toString(16).padStart(4, "0")
+          } (${JSON.stringify(c)}) in "${name}"`);
       return w + px;
     }, 0);
 
