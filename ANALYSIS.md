@@ -8637,3 +8637,63 @@ seventeenth-pass Completed section in the same way. No open idea
 was removed: duplicates were consolidated into one entry each (see the
 ID map and each entry's "Merged and related" notes), and unsupported
 claims are kept under "Declined, refuted and corrected".*
+
+---
+
+# Independent Review Appendix (2026-10-02) — `review-finsical-3`
+
+A focused, independent review of `main` (`b1c37a4`, post-fifteenth-pass consolidation PRs #253–#259). Not a duplicate of the 15 consolidated passes; it verifies gaps not covered by #87–#259 and introduces genuinely new findings. All claims are code-verified against the live repository; no claims from earlier passes are re-stated without new evidence.
+
+## Completed (implemented as open PRs, left for maintainer review)
+
+These were chosen for being high-value, low-risk, independently branchable, and verified against `origin/main`.
+
+| ID | Title | PR | Size | Status | Notes |
+|---|---|---|---|---|---|
+| D-01 | Tank Diary milestone journal | #341 | M | Open (GLM reviewed, fixed) | Records birth/death/golden events; displays latest in Stats; bounded at 50 entries; local-time stamps; saved with tank. |
+| D-02 | Golden pellet victory chime | #338 | S | Open (GLM reviewed, fixed) | Plays `EventCouple`/`EventTiyu` fanfare; per-tick audio dedup (`goldenHeard`); event emitted in sim lifecycle; not persisted separately. |
+| U-01 | Gentle scold banner | #340 | S | Open | Replaces disruptive modal with bottom banner (`banner-fade` animation); keeps 30 min cooldown and 6-tap/8 s spree logic intact. |
+| D-04 | Mood badges in fish hover tip | #339 | S | Open (GLM reviewed, fixed) | Emoji badges (`💀 🤒 🍽️ 😨 ↻ 😴`) based on unified `dead`/`sick` state; avoids duplicate/contradictory labels; compact tooltip format. |
+| F-01 | Medicine mechanism for sick fish | #344 | M | Open (GLM reviewed, fixed) | `medicine` add-on section; ⌥-click cures sick fish (`EventTiyu` sound); lazy gate (only when altKey held); miss falls through to nothing; paused-cure behavior documented with TODO; economy balance flagged as design decision. |
+
+All five PRs respond to GLM 5.3 automated review feedback; fixes were pushed before steady-state reporting. PR #338 and #339 received two rounds (initial + fix); PR #341 received one major-blocker round (fixed); PR #344 received one minor review round (fixed). The user explicitly instructed ignoring other agents' PRs; these branches were cut independently from `main` and never read other agents' work.
+
+## Still open (shovel-ready for future LLM work)
+
+These remain high-quality, unimplemented ideas from the independent review. Each can be picked up cold from the descriptions below; file:line references point to `main` at `b1c37a4` / `d5e5410` and should be verified against current `origin/main` before editing.
+
+### Bugs / Reliability
+- **B-01 — CRT shader renders unconditionally** (`main.ts:line 2960` / `crt.ts`). Gate `crt.render()` behind `frameDirty || crtBusy || bootT0 !== null`. Severity: medium (performance).
+- **B-02 — `hourLabel` lacks AM/PM indicator** (`core/light.ts:line 144`). Append `(AM)`/`(PM)` or use 12-hour format in Preferences lighting pane. Severity: low.
+- **B-03 — Welcome/import overlap** (`main.ts:line 689`). Add `welcomePending` guard to `openImport()`. Severity: low.
+
+### Performance
+- **P-01 — Skip CRT render on static frames** (`main.ts:line 2960`). Only call shader when content changed. Severity: low.
+- **P-02 — Bound swim-canvas cache per sheet** (`main.ts:line 2435` / `render.ts`). Add explicit LRU cap per `SpriteSheet`. Severity: low.
+
+### Visual / Layout
+- **V-01 — CRT interaction clarity** (`app.css:line 70` / `main.ts:line 2960`). Document design choice; no behavior change needed. Severity: nit.
+- **V-02 — Per-machine screenback padding** (`main.ts:line 1787` / `app.css:line 28`). Make `SCREENBACK_HOLE_PAD` a per-machine property (`machine.holePad`). Severity: low.
+
+### User Experience / Convenience
+- **U-02 — Discover Get Info (`⌥-click`)** (`main.ts:line 542`). Add `⌥-click for info` hint to `fishTip` when `anyOverlayOpen()` is false. Severity: low.
+- **U-03 — Empty Tank keyboard shortcut** (`main.ts:line 1465`). Add `Cmd-Shift-E` with confirmation guard, or document clearly. Severity: low.
+
+### Mac OS 8 Fidelity
+- **A-01 — Native menu sync** (`FOLLOW-UPS.md:line 78` / `macos/Finsical.swift`). Return new state synchronously from `toggleMute`, `toggleLights`, `toggleCrt`; sync native menu immediately. Severity: low.
+- **A-02 — Browser Apple menu** (`web/menubar.ts`). Add Apple menu with `About`, divider, and Preferences shortcut using Osmium button style. Severity: low / idea.
+
+### Missing Features (AquaZone Fidelity)
+- **F-02 — Map unmapped event sounds** (`audio.ts` / `core/data/sndbank.ts`). `EventCouple` (mating), `EventPreg`, `EventEgg` (already partly mapped to `birth`), `TimerOnOff`/`TimerSet`, `WashFilter`. Severity: medium.
+- **F-03 — Native `Take Picture`** (`macos/Finsical.swift`). Call `evaluateJavaScript` to invoke `window.finsical.takePicture`. Severity: low.
+
+### Delight / Quirky
+- **D-03 — Seasonal backdrop rotation** (`main.ts:line 2565`). Seasonal overlay layer blended by date; no sim effect. Severity: idea.
+- **D-05 — Interactive snail race** (`main.ts:line 2719` / `snail.ts`). Click near snail accelerates; reaching right edge triggers confetti. Severity: idea / medium.
+
+### Tooling / Docs
+- **T-01 — `npm ci` prerequisite** (`README.md`). Document build/test prerequisites for new contributors. Severity: low.
+
+---
+
+*No information from the independent `tmp.md` was lost in this merge. Completed PR entries (D-01, D-02, D-04, U-01, F-01) include their PR numbers and link back to this appendix. Open ideas (B-01 through T-01) are preserved with file:line citations to `main` / `core` and can be picked up by any future LLM agent without reading this review conversation. The `tmp.md` file can now be discarded (`rm tmp.md`).*
