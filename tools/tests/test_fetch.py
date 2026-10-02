@@ -266,7 +266,16 @@ class TestHarvest(unittest.TestCase):
         tools.fetch._EMITTED.clear()
         again = _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out)
         self.assertEqual(again, base)
-        # The wider sweep must not touch the live bundle it just wrote.
+        self.assertFalse(os.path.exists(gap))
+        # Emit once more without clearing _EMITTED: this run lands on
+        # fish-2.azpack, so the sweep must spare the numbered bundle it
+        # just wrote (finish() registers before sweeping) while still
+        # cleaning the orphan behind it.
+        os.makedirs(gap)
+        numbered = _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out)
+        self.assertEqual(numbered,
+                         os.path.join(self.out, "fish-2.azpack"))
+        self.assertTrue(os.path.isdir(numbered))
         self.assertTrue(os.path.isdir(base))
         self.assertFalse(os.path.exists(gap))
 
