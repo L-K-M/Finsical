@@ -93,6 +93,51 @@ describe("equipment", () => {
   });
 });
 
+describe("plants", () => {
+  it("photosynthesise by day: oxygen up, CO2 and nitrate down", () => {
+    const bare = new Aquarium(makeRng(1));
+    const planted = new Aquarium(makeRng(1));
+    for (const a of [bare, planted]) {
+      a.water.nitrate = 10;
+      a.water.co2 = 20;
+    }
+    // Σ w×h÷1000 = 40 reads as a well-planted 100-litre tank.
+    planted.plantSize = 40;
+    planted.lightOn = true;
+    live(bare, DAY, []);
+    live(planted, DAY, []);
+    // A day: 40 × 0.025 = 1 mg of nitrate, 40 × 0.01 = 0.4 mg of CO2.
+    expect(planted.water.nitrate).toBeCloseTo(bare.water.nitrate - 1, 6);
+    expect(planted.water.co2).toBeCloseTo(bare.water.co2 - 0.4, 6);
+    expect(planted.water.o2).toBeGreaterThanOrEqual(bare.water.o2);
+  });
+
+  it("breathe in the dark: oxygen down, CO2 up, nitrate untouched", () => {
+    const bare = new Aquarium(makeRng(1));
+    const planted = new Aquarium(makeRng(1));
+    for (const a of [bare, planted]) {
+      a.water.nitrate = 10;
+      a.water.co2 = 20;
+    }
+    planted.plantSize = 40;
+    planted.lightOn = false;
+    live(bare, DAY, []);
+    live(planted, DAY, []);
+    expect(planted.water.co2).toBeCloseTo(bare.water.co2 + 0.4, 6);
+    expect(planted.water.nitrate).toBeCloseTo(bare.water.nitrate, 6);
+  });
+
+  it("do nothing at plantSize 0, whatever the light", () => {
+    const bare = new Aquarium(makeRng(1));
+    const idle = new Aquarium(makeRng(1));
+    for (const a of [bare, idle]) { a.water.co2 = 20; a.water.nitrate = 10; }
+    live(bare, DAY, []);
+    live(idle, DAY, []);
+    expect(idle.water.co2).toBeCloseTo(bare.water.co2, 6);
+    expect(idle.water.nitrate).toBeCloseTo(bare.water.nitrate, 6);
+  });
+});
+
 describe("fish", () => {
   it("empties its stomach in 18 hours, then slowly starves", () => {
     const a = new Aquarium(makeRng(2));
