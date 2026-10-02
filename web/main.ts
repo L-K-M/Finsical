@@ -758,7 +758,10 @@ function waterTopAt(x: number): number {
 function setLaser(on: boolean): void {
   laserOn = on;
   document.body.classList.toggle("laser", on);
-  const p = mouseClient && tankPoint(mouseClient.x, mouseClient.y);
+  // lastClient, not mouseClient: a touch pointer updates it before the
+  // hover-only branch returns, so a keyboard toggle after a finger drag
+  // strikes the dot where the finger just was.
+  const p = lastClient && tankPoint(lastClient.x, lastClient.y);
   laser = on && p ? laserAim(p, waterTopAt(p.x)) : null;
   seePointer(p);
   requestPaint();
@@ -856,8 +859,10 @@ function onTankLeave(e: PointerEvent): void {
     lastClient = mouseClient;
     const mp = mouseClient && tankPoint(mouseClient.x, mouseClient.y);
     seePointer(mp);
-    if (laserOn)
+    if (laserOn) {
       laser = mp ? laserAim(mp, waterTopAt(mp.x)) : null;
+      requestPaint(); // the dot moved or went out — even while paused
+    }
     return;
   }
   mouseClient = null;
