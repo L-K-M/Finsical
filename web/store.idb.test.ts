@@ -9,6 +9,7 @@ function fakeIdb() {
     [["packs", new Map()], ["meta", new Map()]]);
   let opens = 0;
   let failOpens = 0;
+  let prevented = 0;
   let current: FakeDb | null = null;
   class FakeDb {
     closed = false;
@@ -53,12 +54,14 @@ function fakeIdb() {
       opens++;
       const r = { result: null as FakeDb | null,
                   onsuccess: null as (() => void) | null,
-                  onerror: null as (() => void) | null,
+                  onerror: null as ((e: Event) => void) | null,
                   onupgradeneeded: null, onblocked: null };
       queueMicrotask(() => {
         if (failOpens > 0) {
           failOpens--;
-          r.onerror?.();
+          const e = new Event("error", { cancelable: true });
+          r.onerror?.(e);
+          prevented += e.defaultPrevented ? 1 : 0;
           return;
         }
         current = new FakeDb();
@@ -79,6 +82,8 @@ function fakeIdb() {
     upgradeElsewhere(): void { current!.onversionchange?.(); },
     /** The next `n` opens fail, as while a storage process restarts. */
     failNextOpens(n: number): void { failOpens = n; },
+    /** Failed opens whose error the store handled (preventDefault). */
+    prevented: () => prevented,
     isClosed: () => current!.closed,
   };
 }
@@ -123,6 +128,7 @@ describe("store.ts after the browser closes its connection", () => {
     expect(await store.packGet("local:a.fsh")).toBeNull();
     expect(await store.packGet("local:a.fsh")).toEqual(new Uint8Array([1]));
     expect(idb.opens()).toBe(3);
+    expect(idb.prevented()).toBe(1);
   });
 
   it("closes for a newer version opening elsewhere, then reopens", async () => {
