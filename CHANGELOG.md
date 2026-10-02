@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Tank Stats tidies up: Copy Summary keeps its title and says
+  "Summary copied." beside it, a second click no longer cuts that
+  message short, the Heater and water steppers' minus signs and the
+  Time pop-up's "2x faster" are drawn in the window's own font, the
+  Keeping labels share one font, and with no fish the hunger row
+  shows just a dash, lined up with the water quality reading.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's

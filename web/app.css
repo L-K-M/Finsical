@@ -324,6 +324,8 @@ body.crt canvas#tank { opacity: 0; }
 /* No CSS size — the canvas renders at its intrinsic 44x14 backing
    store, so a border-box reset can't squeeze the 1-bit columns. */
 .sspark { flex: none; margin-top: 1px; border: 1px solid #000; image-rendering: pixelated; }
+/* A history with nothing in it yet keeps the sparkline's column. */
+.sspark-none { box-sizing: content-box; width: 44px; height: 14px; visibility: hidden; }
 .sval { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #srows { margin-bottom: 6px; }
 #scare { margin-top: 3px; }
@@ -331,6 +333,9 @@ body.crt canvas#tank { opacity: 0; }
 .skrow > .osm-label, .skrow > .osm-popup-title {
   flex: none; width: 66px; text-align: right;
 }
+/* One font down the column: Heater: and Filter: as the pop-ups'
+   titles below them are, not bold Geneva. */
+.skrow > .osm-label { font: var(--osm-font-system); }
 .skright { justify-content: flex-end; }
 .skval { min-width: 48px; text-align: center; }
 .skat { margin: 0 2px; }
