@@ -1,11 +1,20 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
-import { CHARCOAL_12 }
-  from "../node_modules/osmium-ui/src/fonts/charcoal12.js";
 import {
   MACHINES, SCREENBACK_HOLE_PAD, backgroundMarkup, machineById, previewMarkup, rasterInGlass,
   rasterZoom, shellMarkup,
 } from "./machines.js";
+
+// osmium-ui's exports map opens only its index, so the Charcoal 12
+// strike the list rows render in can't be reached by subpath import.
+// Resolve the package's entry through module resolution (any install
+// layout that can resolve "osmium-ui" works — a hardcoded
+// ../node_modules path survives only npm's) and step across to the
+// font file next to it.
+const { CHARCOAL_12 } = await import(
+  new URL("fonts/charcoal12.ts", import.meta.resolve("osmium-ui"))
+    .href) as
+  { CHARCOAL_12: { glyphs: readonly [number, number, ...unknown[]][] } };
 
 // Each machine's `shape` is hand-synced to the outer <rect> geometry
 // of its svg — the native shell unions it into the window's layer
@@ -340,20 +349,25 @@ describe("rasterZoom", () => {
 });
 
 describe("machine names", () => {
-  // The Preferences machine list (#pfmachines) is 190 px wide; its rows
-  // measure about 173 px after the 4 px padding and the scrollbar. A
-  // name past the row truncates, and the dropped suffix can be the only
-  // thing telling two variants apart ("(II)", "(Black)") — this guard
-  // keeps every name whole. Advances come from the same Charcoal 12
-  // strike the rows render in.
-  const ROW_TEXT_PX = 168;
-  const advance = new Map(
-    CHARCOAL_12.glyphs.map((g) => [g[0], g[1]]));
+  // The Preferences machine list (#pfmachines) is a 190 px column of
+  // Charcoal 12 rows; a name past the row truncates, and the dropped
+  // suffix can be the only thing telling two variants apart ("(II)",
+  // "(Black)") — this guard keeps every name whole.
+  // 190 px list − 17 px scrollbar − 4 px padding − 1 px safety margin.
+  const ROW_TEXT_PX = 190 - 17 - 4 - 1;
+  const advance = new Map(CHARCOAL_12.glyphs.map((g) => [g[0], g[1]]));
   const nameWidth = (name: string): number =>
-    [...name].reduce((w, c) => w + (advance.get(c.codePointAt(0)!) ?? 0), 0);
+    [...name].reduce((w, c) => {
+      const px = advance.get(c.codePointAt(0)!);
+      // A glyph missing from the strike doesn't draw; counting it as
+      // zero-width would pass a name that actually renders garbled.
+      if (px === undefined)
+        throw new Error(
+          `no Charcoal 12 glyph for ${JSON.stringify(c)} in "${name}"`);
+      return w + px;
+    }, 0);
 
-  it("every name fits the Preferences machine list", () => {
-    for (const m of MACHINES)
-      expect(nameWidth(m.name), m.name).toBeLessThanOrEqual(ROW_TEXT_PX);
+  it.each(MACHINES)("$name fits the Preferences machine list", (m) => {
+    expect(nameWidth(m.name)).toBeLessThanOrEqual(ROW_TEXT_PX);
   });
 });
