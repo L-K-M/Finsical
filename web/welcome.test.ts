@@ -11,6 +11,8 @@ describe("listNames", () => {
       expect(listNames(["fish", "sounds"])).toBe("fish and sounds");
       expect(listNames(["fish", "plants", "sounds"]))
         .toBe("fish, plants and sounds");
+      expect(listNames(["solo"])).toBe("solo");
+      expect(listNames([])).toBe("");
     } finally {
       Object.defineProperty(Array.prototype, "at", descriptor);
     }
