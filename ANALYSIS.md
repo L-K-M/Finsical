@@ -79,6 +79,18 @@ one entry per idea, and each merge is recorded in that entry's
   are open for the maintainer, each reviewed by GLM 5.3 to a clean
   round. Eighteenth-pass notes cite that revision; verify against
   `origin/main` before re-scoping.
+- Nineteenth pass (2026-10-02, `origin/main` `d5e5410`, same tree as
+  the eighteenth): an independent second-session review of the same
+  revision — full reads of `core/loop.ts`, `web/audio.ts`,
+  `web/machines.ts`, `web/main.ts`, `web/prefs.ts`, `web/addons.ts`,
+  the aquarium subsystem and `macos/Finsical.swift`, plus reverified
+  stale entries. Eight PRs (#342, #346, #348, #349, #352, #355, #357,
+  #358) are open for the maintainer; all passed CI and GLM 5.3 review
+  rounds (findings applied through round 3 on several). Entries a PR
+  fully implements carry a nineteenth-pass note; if one is closed
+  unmerged, restore the entry from the PR description. Nineteenth-pass
+  notes cite `d5e5410`; verify against `origin/main` before
+  re-scoping.
 
 ## Baselines
 
@@ -182,6 +194,16 @@ one entry per idea, and each merge is recorded in that entry's
   and the alert beep verified by counting oscillators through a
   patched AudioContext. The Linux and Android shells, AppKit, Retina
   GPU and VoiceOver remain unverified (see T-37).
+- Nineteenth pass (second-session review at `d5e5410`, 2026-10-02):
+  `npm ci`, typecheck clean, vitest **63 files / 892 tests** green,
+  `npm run build` ok. Playwright screenshots drove a local dev-server
+  build. Helper reviews (GLM-5.3 via opencode) were queued but
+  starved ~40 minutes by plan contention and produced no report; the
+  pass's findings are all from direct review. Verified already-fixed
+  and removed: V-32, V-33, V-35, P-25. Eight PRs opened (#342, #346,
+  #348, #349, #352, #355, #357, #358), each CI-green and reviewed by
+  GLM 5.3 (findings applied through round 3 on #342/#346/#349/#355).
+  Swift behavior (PR #357) is code-verified only; no macOS run.
 
 - Sixteenth pass (focused re-review at `d5e5410`, 2026-10-02, v0.8.0):
   `npm ci` from the current lockfile, typecheck clean, vitest **63
@@ -2163,6 +2185,12 @@ split remains: records still have no music kind.
 
 Thirteenth-pass update: PR #188 (open): find() iterates needles outermost, so caller-specified priority wins over insertion order.
 
+Nineteenth pass (d5e5410): re-confirmed open — records still carry
+no kind field, so a dropped music file whose name matches an event
+needle (e.g. 'bubble') can still answer the new synthesized-fallback
+paths in `bubble()`/`pop()` before those fall back to synthesis.
+The `kind: 'effect' | 'music'` split below is unchanged.
+
 ### B-20 (remainder) Installed scenery still offers 'Add Again' instead of 'Show in Tank'
 
 Size S · Severity medium · Value 4/5 · Risk 2/5
@@ -2631,6 +2659,13 @@ addWavs restarts on a new buffer object (`web/audio.ts:133-143`).
 
 Thirteenth-pass update: PR #221 (open): manifests merge and the ambient restarts only when the winning pick's content probe changes.
 
+Nineteenth pass (d5e5410): the ambient-restart half is fixed on main
+(`startAmbient` re-checks the winning buffer's content key). The
+decode half is implemented in open **PR #355** — the panel posts the
+dropped names and the tank decodes only those records (legacy
+senders without `names` still get the full decode). The store read
+itself stays whole: `sndsGet` cannot filter by name.
+
 ### B-41 (remainder) Quitting the Mac app can lose the last 10 seconds of tank state
 
 Size S · Severity low · Value 2/5 · Risk 2/5
@@ -2658,6 +2693,14 @@ pagehide, plus the 10 s interval. Still open: the Swift half.
 Fifteenth pass: the tank now saves on `pagehide` and
 `visibilitychange`, and an import reload suppresses stale saves
 (PR #256); the native Cmd-Q teardown path is still unverified.
+
+Nineteenth pass (d5e5410): the Swift half is implemented in open
+**PR #357** — the page answers `window.finsical.save()` and
+`applicationShouldTerminate` replies `.terminateLater`, calling
+`replyToQuit` after the JS completes or a 1.5 s grace (whichever the
+webview allows); an unreachable webview still replies rather than
+hanging quit. `isReleasedWhenClosed` per this change. Not run on a
+Mac — code-verified only.
 
 ### B-42 (remainder) Slow-starting archive.org downloads share the 30 s stall budget; no separate first-byte allowance
 
@@ -3498,11 +3541,90 @@ guess (handing `angel.fsh` to the survivor that should keep
 - Sixteenth pass (this pass).
 - Distinct from B-14, which is about the window *while* packs restore
   on launch. This is about what the save itself carries.
+### Completed (nineteenth pass, PRs open for review)
+
+All reviewed by GLM 5.3 (findings applied through round 3 on
+#342/#346/#349/#355); none merged at fold time. If one is closed
+unmerged, restore its entry from this list or the PR description.
+
+- **PR #342** `fix/stall-jump` — P-29. `MAX_FRAME_MS` 200 → 100:
+  a post-stall frame feeds at most two ticks (deterministically —
+  `1000/30`'s double leaves the third just short, pinned by a guard
+  in `core/loop.test.ts`) instead of up to six; longer frames drop
+  the excess so sustained jank runs slightly slow rather than
+  fast-forwarding.
+- **PR #346** `feat/bubble-bloop` — U-33 and U-36. `bubble()`
+  now honors `bubblesOn`, still prefers a user sound named
+  *bubble*, and otherwise synthesizes a short rising sine bloop
+  (frequency glides across the whole pulse) with pan and rate
+  variation. Silent while hidden, suspended, muted or at zero
+  level; never creates a context. README notes it plays now and
+  then.
+- **PR #348** `fix/prefs-desc-clamp` — V-38. `.pfdesc` uses
+  `-webkit-line-clamp: 3` so the Preferences description's third
+  line truncates with an ellipsis instead of clipping mid-glyph;
+  the now-redundant `max-height` was removed.
+- **PR #349** `test/machine-name-width` — U-38's remainder.
+  `web/machines.test.ts` measures every machine name against the
+  Preferences list's Charcoal 12 text budget (`190 - 17 - 4 - 1`
+  px), resolving the font through `import.meta.resolve("osmium-ui")`
+  and importing the sibling font file with the entry's own
+  extension; a missing glyph fails loudly with a `U+XXXX` code
+  point, and `it.each` reports offenders individually.
+- **PR #352** `perf/muted-audio-sleep` — P-28. `shouldRun()` is
+  `!hidden && level() > 0`; a muted or zero-volume tank suspends
+  the AudioContext after the gain glide (`SLEEP_AFTER_MS` derives
+  from `LEVEL_GLIDE_S`), a generation counter cancels a pending
+  sleep on unmute, and a shared `wake()` re-checks live state,
+  plays a due opening sound and restarts ambient — covering
+  unmute-before-suspend and concurrent volume changes. Muted
+  launch creates the context suspended, so no opening sound plays
+  hours later.
+- **PR #355** `perf/sound-incremental` — B-40's remainder. The
+  add-ons panel posts the dropped sound names; the tank re-reads
+  the store but decodes only matching records (a sender with no
+  `names` gets the legacy full decode; an unmatched payload
+  warns). Up to 64 MB of WAV decode per drop avoided.
+- **PR #357** `fix/native-quit-save` — B-41's remainder. The
+  tank page answers the bridge's new `save` call and
+  `applicationShouldTerminate` replies `.terminateLater`,
+  re-issuing `replyToQuit` after a 1.5 s grace so a quit can't
+  lose the last 10 s of tank state; the reply fires even when the
+  webview is unreachable.
+- **PR #358** `fix/machine-swap` — V-34. `applyMachine()` preloads
+  the new case's front/rear PNGs off-DOM under a swap token and
+  commits both shell layers plus `layoutMachine()` only after they
+  decode (or fail), so switching machines no longer shows caseless
+  frames; a stale completion can't clobber a newer switch.
+
+Minor notes carried from the pass (real but micro; nothing lost):
+
+- `feedFish` anchors the cap-refused refusal shake at the pinch's
+  `x` while the blip lands at `x + p.dx` — cosmetic drift only,
+  not worth a PR alone (tmp.md N-02).
+- Name tags can't start a window drag: `.nametag` has
+  `pointer-events: none` — the suspected hole is refuted
+  (recorded under Declined/refuted; tmp.md N-01).
+- B-19 still stands: imported music can hijack event-sound names
+  until sound records carry an effect/music kind (tmp.md N-11).
+- V-36 still stands on this base; another session's PR #351
+  (`fix/alert-in-screen`) targets it — verify before re-scoping.
+
+Reviewed and clean on `d5e5410` (no entries needed): the layered
+aquarium art (front/rear/mask PNG bounds all match
+`AQUARIUM_BODY`/`AQUARIUM_GLASS` and the viewBox), `core/aquarium/*`,
+`web/tankclaim.ts` (lease races, bfcache re-claim), `web/effects.ts`
+sanitize/apply chain, `web/nametags.ts` (one layout per frame),
+`web/drop.ts`, the Android `MainActivity` (bounded renderer restart,
+token-bound blob reads), `feedFish`/`feederDrop` (per-pellet delay,
+drop-time cap re-check), and `planFrame`'s carry/NaN guards.
 
 ## Performance and smoothness (open)
 
 Done this pass and removed from this list: P-03, P-13, and P-10's
-buffer cap (PR #88).
+buffer cap (PR #88). Nineteenth pass: P-25 verified fixed on main
+(`serveThumbs` builds the `fishThumbKey` → fish map once per push)
+and removed.
 
 ### P-02 fshToSheets decodes every sheet in a pack on the main thread; the tank uses one
 
@@ -3980,20 +4102,6 @@ minute of calm tank; pointermove performs no layout reads.
   `offsetWidth`/`offsetHeight` on every move that shows a tip
   (`web/main.ts:680-684`) — cheap, but cacheable like the rect.
 
-### P-25 `serveThumbs` is O(keys × fish) per wantThumbs push
-
-Size S · Severity nit · Value 1/5 · Risk 1/5 (twelfth pass, N-5)
-
-**Problem.** Each `f:` key does `sim.fish.find(fishThumbKey(f) === k)`
-— ~700 string builds per request at 24 fish and ~30 keys. Negligible,
-but a `Map` of key→fish built once per call is the same length of
-code.
-
-**Evidence.** `web/main.ts` (`serveThumbs`/`wantThumbs`).
-
-**Change.** Build `Map(fishThumbKey(f) → f)` once per serveThumbs
-call; look up keys against it. No behavior change.
-
 ### P-26 `walkEntry` reads dropped directory trees serially
 
 Size S · Severity nit · Value 1/5 · Risk 1/5 (twelfth pass, N-11)
@@ -4109,6 +4217,10 @@ while muted.
 - Fourteenth pass: AUDIO-06, merged with PERF-03 (a duplicate from
   another reviewer; its runtime numbers, the `unlock()`/`feed()`
   acceptance and the optional follow-ups are folded in above).
+- Nineteenth pass: implemented in open **PR #352** — `shouldRun()`
+  adds `level() > 0` to the visibility gate, the context suspends
+  after the gain glide at level 0, and a shared `wake()` covers
+  unmute-before-suspend, due opening sounds and ambient restart.
 
 ### P-29 After any stall the next frame runs up to 6 ticks, so every fish jumps about 6x its normal step
 
@@ -4151,6 +4263,9 @@ the frame after a 400 ms install stall runs at most 3 ticks.
 - Related: P-02 (the install stall that precedes the jump; PR #226
   shortens it), F-10 (fast-forward multiplies ticks per frame).
 - Fourteenth pass: PERF-04.
+- Nineteenth pass: implemented in open **PR #342** — `MAX_FRAME_MS`
+  is 100; the test pins that a clamped frame deterministically runs
+  exactly 2 ticks (`1000/30`'s float layout), not 3 on paper.
 
 ### P-30 Per-tick allocation litter in the tick path
 
@@ -4230,7 +4345,7 @@ the invalidation points (menus can only open from input).
 Done this pass and removed from this list: V-01 (PR #87/#125), V-02,
 V-11, V-12, V-17's viewport meta (PR #90/#93; favicon is V-19) and
 V-10's fish part (ninth pass); V-19 — client-page metadata in PR
-#179, favicon in PR #197 (twelfth pass); V-08 (fourteenth pass: verified fixed on main by PR #174; the optional GL row-bleed probe from its acceptance is not in `crt.test.ts`). Fourteenth-pass IDs implemented by this pass's PRs, so never listed here: V-30 (PR #225), V-31 (PR #225; its remainder is listed below).
+#179, favicon in PR #197 (twelfth pass); V-08 (fourteenth pass: verified fixed on main by PR #174; the optional GL row-bleed probe from its acceptance is not in `crt.test.ts`). Fourteenth-pass IDs implemented by this pass's PRs, so never listed here: V-30 (PR #225), V-31 (PR #225; its remainder is listed below). Nineteenth pass, verified fixed on main and removed: V-32 (`.alertwin:focus` and `.alertfield:focus` now strip/outline-replace the UA ring), V-33 (`web/crt.ts` averages the scanline over the pixel footprint — "the gaps cannot beat against the scanlines"), V-35 (keystone normalizes `depth` so the looming edge keeps its neutral place; `web/crt.ts:353-354`).
 
 ### V-04 Gravel strips are squeezed with nearest-neighbor, floor height is accidental, and the sim floor ignores it
 
@@ -4576,50 +4691,6 @@ Size S · Severity low · Value 2/5 · Risk 1/5 (fourteenth pass)
 - Fourteenth pass: UI-02 (the rest is in PR #225, open).
 - Related: U-26 (case thumbnails in the same list need the same width budget).
 
-### V-32 Mac OS 8 alerts get the browser's focus ring around the whole dialog
-
-Size S · Severity low · Value 1/5 · Risk 1/5 (fourteenth pass)
-
-**Problem.** showAlert focuses the alert window itself (tabIndex -1) so Return and Escape reach it; that design is deliberate (FOLLOW-UPS, "Declined in review"). When the alert opens before any pointer input, as the welcome does at launch, `:focus-visible` matches and the UA draws its focus outline around the frame: an orange ring on mobile Chromium, and a dark `auto` ring on desktop Chromium that mostly blends into the black frame. WKWebView was not checked.
-
-**Evidence.** `web/alert.ts:98` (`win.tabIndex = -1`), `web/alert.ts:230` (`win.focus`), `web/app.css:368-381` (`.alertwin` sets no outline). Re-run at runtime (`ui-verify/focus.mjs`, fresh context, archive.org blocked): desktop `{active: true, focusVisible: true, outline: 'rgb(16, 16, 16) auto 1px'}`; mobile (isMobile, 390x700) outline `'rgb(229, 151, 0) auto 1px'`, visible in `ui-verify/alert-m.png`.
-
-**Change.** Add `.alertwin:focus { outline: none; }` to `web/app.css`. The buttons keep Osmium's keyboard ring (`.osm-kbd`), and Tab still moves into them. Check `.ov .iwin` and `.dbwin` the same way.
-
-**Acceptance.** Playwright desktop and isMobile: with the welcome alert open, `getComputedStyle(.alertwin).outlineStyle === 'none'`; a screenshot shows no ring; Tab still lands on 'Not Now' with Osmium's ring.
-
-**Merged and related.**
-
-- Bundle with another CSS fix. The review suggested UI-01 (V-30), but PR #225 (open) fixes that one without this change.
-- Fourteenth pass: UI-15.
-
-### V-33 CRT scanlines alias into moire below about 3 device px per game row
-
-Size S · Severity medium · Value 4/5 · Risk 1/5 (fourteenth pass)
-
-**Problem.** The scanline term point-samples sin^2(pi*lp.y) once per device pixel and always applies the full `uScan` depth. Below about 3 device px per game row the row frequency is near or above the pixel Nyquist limit, so a flat colour shows beat bands or, under curvature, wavy moire over the whole picture instead of even scanlines. These scales are common: a 1x display at typical browser sizes gives 1.4-1.9 px/row (the Plus at 1100x800 is 1.42), the native first launch (V-03) is 1.42 on Retina, and the native minimum window (`tankMinScale` 0.25) is 0.94 on Retina.
-
-**Evidence.** `web/crt.ts:186-188` (`float scan = sin(3.14159265 * lp.y); scan *= scan; c *= mix(1.0 - uScan, 1.0, scan);`). `pxScale` (device px per game px) is already computed at `web/crt.ts:90-91` and corrected for the keystone at :118, but the scanline term never reads it. `macos/Finsical.swift:242` (`tankMinScale` 0.25). Runtime, re-run in verification: the real FRAG via `initCrt` over a flat #808080 320x200 source at CRT defaults with flicker and grain 0, DPR 1, centre column, contrast = max-min over 3 device rows (min/median/max, 8-bit levels): 0.94 px/row 3/18/33 (visible wavy moire over the whole picture), 1.42 29/42/52 (irregular), 1.86 13/43/54 (beat bands), 3.0 38/43/47 (steady). The reviewer's in-app screenshots (Plus at 205x285, DPR 2) show the same banding.
-
-**Change.** In FRAG replace `web/crt.ts:186-188`:
-
-```glsl
-float fh = min(1.0 / pxScale.y, 1.0);            // footprint in rows
-float scan = 0.5 - 0.5 * cos(6.2831853 * lp.y) *
-             sin(3.14159265 * fh) / (3.14159265 * fh); // box-averaged sin^2
-float sdepth = uScan * smoothstep(1.5, 3.0, pxScale.y);
-c *= mix(1.0 - sdepth, 1.0, scan) * (1.0 - 0.5 * (uScan - sdepth));
-```
-
-Name it `sdepth`: `depth` is already declared at `web/crt.ts:112`. The last factor keeps the average brightness of today's full-depth dip. Update the Scanlines blurb in `web/prefs.ts:40` to say that scanlines fade out on small pictures (on a 1x display at typical window sizes they will mostly vanish; that is the honest trade-off against moire).
-
-**Acceptance.** Verified in this pass with the prototype: contrast 0/0/1 at 0.94 and 1.42 px/row, 1/3/4 at 1.86, 32/35/39 at 3.0; centre mean 106 before and after. As a check: a Playwright GL probe (as above) keeps the 3-row contrast under 8 levels at 0.94, 1.42 and 1.86 px/row and at 30 or more at 3.0, with the centre mean within 3% of main. `crt.test.ts` still passes. Visual: the Plus at 205x285 at DPR 2 with the CRT on shows no wavy bands on flat water.
-
-**Merged and related.**
-
-- Related: V-03 (the non-integer scales that land below 3 px/row), A-10 and A-11 (CRT polish that builds on `sdepth`; ship them with this or right after).
-- Fourteenth pass: VISUAL-01.
-
 ### V-34 Switching machines shows the bare tank with no case for 1-2 frames
 
 Size S · Severity medium · Value 4/5 · Risk 2/5 (fourteenth pass)
@@ -4636,23 +4707,13 @@ Size S · Severity medium · Value 4/5 · Risk 2/5 (fourteenth pass)
 
 - V-29 (TANK-08): the same gap on a slow network, plus the cold first load; its first-load hiding step belongs in this change.
 - Fourteenth pass: VISUAL-02.
-
-### V-35 At full Perspective the looming edge spills off the glass and hides about 37 tank px
-
-Size S · Severity nit · Value 2/5 · Risk 1/5 (fourteenth pass)
-
-**Problem.** The keystone divides uv by `depth = 1 - (p - 0.5) * 1.2 * (x - 0.5)`. At p = 1 the display's left edge samples raster u = 0.115, so the leftmost 11.5% of the tank (about 37 px) lands outside the glass on cases with no side margin (Performa 450: `hole.w` equals `sw`), while raster u = 1 lands at display x = 0.885, leaving a black wedge on the far side. Fish can swim out of view. A picture swung on its stand should keep its near edge at the frame and recede on the far side.
-
-**Evidence.** `web/crt.ts:111-113` (skew and keystone, #178). The edge positions above were derived from the formula in verification; screenshot `scratchpad/visual/z13.png` (Performa 450, perspective 1) shows the left content cut at the glass and the black wedge on the right.
-
-**Change.** Normalize the keystone by the looming side: `float a = (uPersp - 0.5) * 1.2; float depth = (1.0 - a * (uv.x - 0.5)) / (1.0 + 0.5 * abs(a));`, so the near edge stays at its neutral place and only the far edge shrinks; consider reducing 1.2 to about 0.8 so the far edge keeps two thirds of the height. Do it together with B-35 (VISUAL-03), whose `crtScreenToRaster` mirror must follow the same formula.
-
-**Acceptance.** `crt.test.ts` (via B-35's `crtScreenToRaster` mirror): at perspective 0 and 1, raster u = 0 and u = 1 map inside the glass, and the looming edge maps to its neutral position within 0.5%.
-
-**Merged and related.**
-
-- B-35 (VISUAL-03): shares the keystone formula through its mirror; do both together.
-- Fourteenth pass: VISUAL-13.
+- Nineteenth pass: implemented in open **PR #358** — `applyMachine`
+  preloads front/rear art off-DOM under a swap token and commits
+  both layers plus `layoutMachine()` once they decode; equivalent
+  to this change's double-buffered swap without the hidden-in-DOM
+  `<image>` step. `postState()` still fires from the bus branch, so
+  the native mask can land a frame ahead of the art — follow-up if
+  it shows on real machines.
 
 ### V-36 On the laptop cases the native silhouette mask cuts off the left fifth of the tank's alerts, caution icon included
 
@@ -4674,6 +4735,11 @@ Size S · Severity low · Value 3/5 · Risk 1/5 (fourteenth pass)
 
 - Needs a macOS check (T-32).
 - Fourteenth pass: MACOS-04.
+- Nineteenth pass: still open on `d5e5410`; another session's open
+  **PR #351** (`fix/alert-in-screen`) wires `#screen`'s live rect
+  through `setAlertBounds`/`alertOriginIn` — the
+  viewport-centred variant of this change. Verify its merge state
+  before re-scoping.
 
 ### V-37 Trackpad scrolling likely rubber-bands the tank page inside its fixed silhouette
 
@@ -4733,6 +4799,9 @@ hint still fits in the box at the native 565x520 window size and at
 - Sixteenth pass: V-3 of `tmp.md`, where it was deferred rather than
   dropped; filed so the deferral does not lose it.
 - Related: U-27 (Preferences fixed layout and clipping).
+- Nineteenth pass: implemented in open **PR #348** — the clamp is in
+  and `max-height` went with it (it duplicated the three-line cap
+  and could stale against a changed line-height).
 
 ### V-39 The Preferences machine list draws a sliver scrollbar when nothing scrolls
 
@@ -5432,6 +5501,11 @@ Size M · Severity low · Value 3/5 · Risk 2/5 (fourteenth pass)
 - U-36 (UI-16): the same symptom, with the dimming plan; choose one plan and close the other entry.
 - Related: B-19 (remainder; the substring lookup this restricts), U-03 point (3) (synthesized fallbacks for taps and feeding), D-08.
 - Fourteenth pass: AUDIO-07.
+- Nineteenth pass: implemented in open **PR #346**, on the
+  synthesis plan — `synthBubble()` is the chirp specified above
+  (its glide runs the whole pulse, per review), the draw stays at
+  25% of spawns for now, and a user 'bubble' record still wins.
+  The B-19 kind restriction remains open below.
 
 ### U-36 'Bubble sounds' is on by default but does nothing with any archive add-on
 
@@ -5450,6 +5524,9 @@ Size S · Severity low · Value 2/5 · Risk 1/5 (fourteenth pass)
 - U-33 (AUDIO-07): the same symptom, with the synthesis plan; choose one plan and close the other entry.
 - Related: U-03 point (3), D-08.
 - Fourteenth pass: UI-16.
+- Nineteenth pass: closed by open **PR #346** — the switch now does
+  something with no add-ons (the synthesized bloop), which was the
+  product call this entry preferred over dimming.
 
 ### U-38 (remainder) No test keeps the machine names inside the 190-px Preferences list
 
@@ -5468,6 +5545,11 @@ Size S · Severity low · Value 3/5 · Risk 1/5 (fourteenth pass)
 - V-31 (UI-02, PR #225 open): the same clipping; V-31's remainder renames the '(II)' variants, and any new name must pass this test.
 - Related: U-26 (case thumbnails in the same list share the width budget).
 - Fourteenth pass: VISUAL-05.
+- Nineteenth pass: implemented in open **PR #349** — the guard sums
+  Charcoal 12 advances per name against `190 - 17 - 4 - 1` px,
+  importing the font through `import.meta.resolve("osmium-ui")`
+  (the package's exports map blocks the relative-path import this
+  entry suggested); a missing glyph fails with its `U+XXXX` point.
 
 ### U-39 Tool Bar: the original's floating palette of one-click commands
 
@@ -8428,6 +8510,25 @@ carries the correction):
   maintainer's. The `claude/` PRs #208 to #242 are the fourteenth
   pass's sixteen review PRs, listed in its Completed section.
 
+### Refuted or dropped in the nineteenth-pass review (tmp.md)
+
+Checked against `origin/main` `d5e5410` with vitest and direct reads.
+
+- "Name tags can start a window drag" (N-01): refuted — `.nametag` is
+  `pointer-events: none` (`web/app.css`), so a press on a tag falls
+  through to the tank; no drag-path hole exists.
+- "V-32 alert focus ring is still open" (a stale entry): verified
+  fixed — `.alertwin:focus` and `.alertfield:focus` strip the UA
+  outline on `web/app.css:535,:559`.
+- "V-33 scanline moire is still open": verified fixed — the shader
+  averages the scanline over the pixel footprint
+  (`web/crt.ts:437-441,:465`).
+- "V-35 keystone edge spill is still open": verified fixed — `depth`
+  is normalized so the looming edge keeps its neutral place
+  (`web/crt.ts:353-354`).
+- "P-25 serveThumbs is still O(keys x fish)": verified fixed — the
+  key-to-fish map is built once per push (`web/main.ts:1747`).
+
 ## Design notes (preserved)
 
 - `core/sim.ts`: excellent isolation; pure logic, easy to test.
@@ -9063,6 +9164,48 @@ has their entries.
   the hunk from #265 rather than fighting the conflict.
 - Steady state: not reached; nothing to report as reviewed.
 
+### Review-response log (nineteenth pass)
+
+Eight PRs (#342, #346, #348, #349, #352, #355, #357, #358), all cut
+from `d5e5410`; automated GLM 5.3 reviews applied per finding.
+Scorecard at fold time (rounds = completed review comments on the
+latest push):
+
+| PR | Branch | Items | Rounds | State |
+| --- | --- | --- | --- | --- |
+| #342 | `fix/stall-jump` | P-29 | 3 | steady (R2 minor-only, applied `dd5857d`) |
+| #346 | `feat/bubble-bloop` | U-33, U-36 | 3 | steady (R2 minor-only, applied `5da8ff6`) |
+| #348 | `fix/prefs-desc-clamp` | V-38 | 2 | steady (R2: 0 actionable) |
+| #349 | `test/machine-name-width` | U-38 | 3 | steady (R2 minor-only, applied `b931214`) |
+| #352 | `perf/muted-audio-sleep` | P-28 | 1+ | R2 pending at fold (`0801c3c` pushed) |
+| #355 | `perf/sound-incremental` | B-40 decode | 1+ | R2 pending at fold (`961bc18` pushed) |
+| #357 | `fix/native-quit-save` | B-41 Swift half | 1 | clean (0 actionable) |
+| #358 | `fix/machine-swap` | V-34 | 0 | review pending at fold |
+
+- Applied (round 1): #342 wording and tick pinning; #346 full-pulse
+  glide, suspended-state coverage, README wording; #348 redundant
+  `max-height` removed; #349 exports-map-safe font import,
+  loud-glyph failure, derived row width, `it.each`; #352
+  `SLEEP_AFTER_MS` derives from `LEVEL_GLIDE_S`, unified `wake()`
+  covering unmute-before-suspend, pending opening and concurrent
+  volume changes.
+- Applied (round 2+): #342 float-guard pinned to `MAX_FRAME_MS` and
+  the comment's "three ticks" corrected to the pinned two; #346
+  exact oscillator count on gate reopen; #349 entry-extension
+  derivation and `U+XXXX` casing; #355 decode-only comment and a
+  warn on unmatched `names`.
+- Declined: #355's suggestion to type `names` on a `BusMsg` variant
+  — `BusMsg` is `Record<string, unknown>` (no union exists); the
+  runtime `Array.isArray` check is the contract. Its ask to narrow
+  the `sndsGet()` read is infeasible (the store cannot filter by
+  name; comment now says so).
+- Refuted: none this pass.
+- Verified: typecheck clean and vitest 892 green on every branch;
+  `npm run build` ok where the branch touches bundled inputs.
+  PR #357's Swift is code-verified only (no macOS runner).
+- Review gaps: none unresolved at fold; #352, #355 and #358's
+  post-push rounds were still in flight.
+
 ## Implementation Order (suggested)
 
 Sixteenth-pass additions, all at the front of their phase:
@@ -9118,21 +9261,24 @@ with #243 (the pointer watcher: one hovering watcher with a fade, or a
 crowd on rings); #229 and #234 both change `macos/Finsical.swift`.
 New and re-scoped entries fit the phases below:
 
-- Phase 1 (small fixes): V-32, V-36, U-38, P-28, P-29,
-  T-21 remainder, T-34; pick one plan for 'Bubble sounds' (U-33
-  synthesis or U-36 dimming) and close the other. (B-70 to B-74, B-76,
-  U-37, T-37 and T-38 shipped in the seventeenth pass.)
+- Phase 1 (small fixes): V-36 (open PR #351 covers it), T-21
+  remainder, T-34. Nineteenth pass took V-32 (already fixed on
+  main), U-38 (PR #349), P-28 (PR #352), P-29 (PR #342) and the
+  'Bubble sounds' pair (U-33 synthesis chosen in PR #346, which
+  closes U-36). (B-70 to B-74, B-76, U-37, T-37 and T-38 shipped in
+  the seventeenth pass.)
 - Phase 2 (identity and persistence): B-13 remainder (.rez drops), B-44
   (7z substitution), F-34 (Mule fish and letters).
-- Phase 3 (performance): P-02 remainder (SheetPick), P-11, V-29 and
-  V-34 together (the machine-switch gap), V-33 (CRT moire), A-10, A-11.
+- Phase 3 (performance): P-02 remainder (SheetPick), P-11, V-29's
+  cold-load half (the switch gap, V-34, is in open PR #358; V-33's
+  CRT moire is fixed on main), A-10, A-11.
 - Phase 4 (tests, CI, docs): T-06 with the fourteenth pass's recipe,
   T-35 remainder (release job, page errors, stateless runs, client
   pages), T-36.
 - Phase 5 (UX and visuals): U-14 remainder (menu-bar offset), U-18
-  (Bare drag strip, Cmd-drag), U-39 (Tool Bar), B-35 with
-  V-35, V-31 remainder, V-37, A-12. (U-34, U-35, A-08 and A-09
-  shipped in the seventeenth pass.)
+  (Bare drag strip, Cmd-drag), U-39 (Tool Bar), B-35 alone now
+  (its V-35 pairing is fixed on main), V-31 remainder, V-37, A-12.
+  (U-34, U-35, A-08 and A-09 shipped in the seventeenth pass.)
 - Phase 6 (fidelity): F-10 remainder (life pace), F-35, F-36 or F-38
   (one timer-sound plan), F-37 remainder, F-39, F-40, F-41, F-42.
 - Phase 7 (delight): D-35, D-36, D-37, D-38, D-39, D-40 remainder, D-41
@@ -9146,14 +9292,15 @@ New and re-scoped entries fit the phases below:
 3. D-01 remainder: sleep polish (the sleep state is on main; PR #214
    staggers bedtimes).
 4. B-19's `kind` split (word matching done in #181, length cap in
-   #185; a short song can still answer a splash) and B-40 ambient
-   restarts; B-56's spawn contract is in open PR #298 and B-57
-   through B-61 shipped in the seventeenth pass. P-24 is the same
-   size and ready next.
+   #185; a short song can still answer a splash; nineteenth pass
+   re-confirmed it open); B-40's decode half is in open PR #355 (the
+   ambient-restart half is already fixed on main). B-56's spawn
+   contract is in open PR #298 and B-57 through B-61 shipped in the
+   seventeenth pass. P-24 is the same size and ready next.
 5. U-22, U-23 wording and state nits (U-09 and U-11 shipped in the
    seventeenth pass; U-13's core landed, remainder in open #272).
-6. P-25 thumb map alone now — B-62, B-63 and B-64 were all verified
-   on main and closed in the seventeenth pass.
+6. (P-25's thumb map was verified fixed on main in the nineteenth
+   pass and removed — nothing left here.)
 7. B-25's native decidePolicyFor half (web guard done in #186),
    B-28, B-49, B-50, V-15 native safety fixes (T-32 checks); B-17's
    native `mediaTypesRequiringUserActionForPlayback` flag is already
@@ -9174,8 +9321,8 @@ New and re-scoped entries fit the phases below:
     migration ordering — the miss-vs-failure half is done in #201),
     B-18 sound store transaction and removal; B-54 scenery PNG
     contract.
-14. B-41 Swift quit save, B-53 hidden-tab policy (product decision),
-    B-55 Stats history.
+14. B-53 hidden-tab policy (product decision), B-55 Stats history
+    (B-41's Swift quit save is in open PR #357).
 
 **Phase 3: performance and robustness.**
 
