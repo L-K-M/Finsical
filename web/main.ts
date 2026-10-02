@@ -59,6 +59,7 @@ import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
   from "./catpaw.js";
 import type { PawVisit } from "./catpaw.js";
 import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
+import { spotlightAlive } from "./spotlight.js";
 import { bootPhase, drawBoot, fadeProgress, paradeIcon }
   from "./boot.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
@@ -116,9 +117,6 @@ let focusId: number | null = null;
 // would freeze the lease mid-flight.
 let focusAt = -Infinity;
 let focusOwner = "";
-/** Wall-clock ms a focus stays live without a re-assert. Sized past
- * the ~60 s clamp browsers put on hidden-tab timers. */
-const FOCUS_TTL = 180_000;
 
 // ---- persistence ---------------------------------------------------------
 // Tank state (fish, water, installed add-ons) survives restarts via
@@ -3526,19 +3524,16 @@ function render(now: Date, target: RenderTarget = "screen"): void {
   // The Overview's pick spotlights its fish with a marching-ants
   // marquee — the Finder's own selection cue. Ants march on the sim
   // clock so a paused tank doesn't freeze them mid-stroke.
+  if (focusId !== null &&
+      !spotlightAlive(focusId, focusAt, Date.now(),
+                      sim.fish.some((f) => f.id === focusId))) {
+    // The lease lapsed or the fish left the tank — lift the spotlight
+    // (and its owner, so any live Overview's next beat can reclaim it).
+    focusId = null;
+    focusOwner = "";
+  }
   if (focusId !== null) {
-    // The lease lapsed — the overview is gone and can't lift it.
-    // Clearing the owner too lets any live Overview's next beat
-    // reclaim the spotlight after the holder dies silently.
-    if (Date.now() - focusAt > FOCUS_TTL) {
-      focusId = null;
-      focusOwner = "";
-    }
-    const f = focusId === null ? null
-      : sim.fish.find((x) => x.id === focusId);
-    // The fish left the tank — lift the spotlight so a recycled id
-    // can't quietly reattach it to a new fish.
-    if (focusId !== null && !f) focusId = null;
+    const f = sim.fish.find((x) => x.id === focusId);
     if (f) {
       // halfW/halfH are the fish's unscaled sprite extents; a
       // juvenile's box shrinks with its growth scale. The fallbacks
@@ -3872,6 +3867,17 @@ function frame(now: number): void {
   // crtOn has already cleared. The boot parade also animates on its
   // own clock: it needs a draw per frame even before the first tick.
   const crtBusy = crt?.animating ?? false;
+  // The spotlight lease is wall-clock, so it must be checked on every
+  // frame, including ones the loop below skips: a paused tank would
+  // otherwise hold a dead Overview's marquee until the next paint.
+  // Lifting it asks for that paint, which erases the ants.
+  if (focusId !== null &&
+      !spotlightAlive(focusId, focusAt, Date.now(),
+                      sim.fish.some((f) => f.id === focusId))) {
+    focusId = null;
+    focusOwner = "";
+    requestPaint();
+  }
   if (ticks === 0 && !frameDirty && !crtBusy && bootT0 === null) return;
   frameDirty = false;
   render(frameDate);

@@ -20,6 +20,9 @@
   of fouled water, the night torch, and the snail's visits. Each is
   on by default; clearing them brings back the original's plainer
   rendering.
+- The Tank Overview's selection spotlight lets go when the window
+  that picked the fish is gone, even while the tank is paused. It used
+  to stay lit on a still tank until something moved.
 - On Linux, when the window manager resizes the tank (for example with
   KWin's Alt+right-drag), the tank snaps back to its computer case's
   shape once you let go, instead of leaving empty space beside it.
