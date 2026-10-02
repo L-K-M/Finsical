@@ -183,6 +183,25 @@ one entry per idea, and each merge is recorded in that entry's
   patched AudioContext. The Linux and Android shells, AppKit, Retina
   GPU and VoiceOver remain unverified (see T-37).
 
+- Sixteenth pass (focused re-review at `d5e5410`, 2026-10-02, v0.8.0):
+  `npm ci` from the current lockfile, typecheck clean, vitest **63
+  files / 892 tests** green, Python **94** tests green. Seven
+  dimension sub-agents were launched over the engine, tank page,
+  import, windows, audio, shells and original-fidelity; **four were
+  killed mid-run by something outside the session** and two
+  replacements produced nothing, so the archive.org client, the Linux
+  and Android shells and the Osmium widget layer got short-changed
+  this round (see T-37). **No browser was available** (Playwright's
+  Chromium is missing 24 shared libraries, no `sudo` available), so
+  nothing in this pass rests on a rendered frame. Outcome: one real
+  defect (**B-77**, PR #359), two queued delights implemented
+  (**D-43** PR #343, **D-45** PR #356), one measured-and-declined
+  optimisation (the per-frame depth sort, 10.34 us at 24 fish and 40
+  decor), one U-14 re-verification against the currently pinned
+  osmium-ui 0.3.1, and one tooling entry about the backlog rotting
+  (**T-40**). New IDs start at B-77 and T-40. All three PRs were cut
+  from `origin/main` independently and no other agent's PR was read.
+
 ## ID scheme and map
 
 Prefixes: **B** bugs and reliability, **P** performance, **V** visual
@@ -3375,6 +3394,111 @@ Minor notes carried from the pass (real but micro; nothing lost):
   unverified as a defect).
 - The menu-bar glyph in the Apple slot is hard to read at 1x (taste).
 
+Sixteenth pass (this pass, `origin/main` `d5e5410`, v0.8.0) — three PRs,
+all opened for review and left open for the maintainer. The codebase has
+been through fifteen passes; the honest headline is that the deep review
+found **one** real defect, and the rest of the effort went into
+measurement that says "leave this alone". Baseline at `d5e5410`:
+`npm run typecheck` clean, `npm test` 63 files / 892 tests green,
+`python3 -m unittest discover -s tools/tests` 94 tests OK.
+
+- **PR #359** `fix/save-fish-entry` — **B-77**, below: a fish lost the
+  pack entry it came from at every save. `spawnFish` set `Fish.entry`
+  (`web/main.ts:1361`) and `sanitizeSavedFish` read it back
+  (`web/main.ts:375`), but `tankSnapshot`'s inline field list never named
+  it, so `entry` died at every save and at every Export Tank. With it
+  gone, `legacyEntries` (`web/tankmodel.ts:110`) has to guess the entry
+  from the fish's id order — right for a tank nobody edited, wrong the
+  moment you remove an earlier fish from Tank Overview, at which point
+  the survivor changes species (a different sprite, and a different name
+  via `remapSheetIdx`'s `f.species = entryStem(entry)`). Fixed by moving
+  the save's field list into `savedFish(f)` in `web/tankmodel.ts`, next
+  to the rules that read it back, and having `tankSnapshot` map through
+  it. Four tests in `web/tankmodel.test.ts`, built on a real fish from
+  `Sim.addFish`; one of them fails without the fix.
+- **PR #343** `delight/fish-music` — implements **D-43**: Preferences'
+  Sound pane gains **Fish music**, off by default. A fish that turns
+  plays one plucked note from a two-octave major pentatonic, the scale
+  degree chosen by depth and the pan by x, an octave down at night, with
+  a grace note where a pellet was eaten. New pure `web/fishmusic.ts`
+  (`noteFor`, and a `NoteGate` that counts *sim ticks* so it pauses with
+  the tank); `TankAudio.note()` builds a triangle plus a quiet sine an
+  octave up — the struck-string partial — behind the same guards as
+  `pop()`. Density is the whole problem with generative audio in a
+  relaxation toy, so the gate allows one note per 350 ms and at most 3
+  in any 2 s. `panFor` is imported from `audio.ts` rather than restated,
+  so events and notes cannot drift apart.
+- **PR #356** `delight/clean-up` — implements **D-45**: **Tank > Clean
+  Up** lines the fish up in a grid for a few seconds, the Finder's own
+  joke. Three measured findings decided the shape, each recorded in the
+  code: rows follow the fish's own depth and each fish takes the place
+  nearest its x, because a greedy nearest-free-slot handout gives the
+  most isolated fish the furthest slot (measured: the fish at `x=10` was
+  handed `x=293`, 288 px away); the formation reconsiders its
+  destination every 24 ticks instead of the wander's `MOVE_TICKS` = 192,
+  without which a fish whose place lay behind it swam the wrong way for
+  the whole call; and fish push harder only while on their way, the
+  brake and arrival untouched. Worst-of-N distance at the end of the
+  call went from 148 px to 23 px at six fish, 126 px to 8 px at 24.
+  Fourteen tests in `core/sim.test.ts` plus `gridSlot` as a pure
+  function.
+
+### B-77 A fish loses the pack entry it came from at every save (PR #359, open)
+
+Size S · Severity medium · Value 4/5 · Risk 1/5 (sixteenth pass)
+
+**Problem.** An archive.org fish add-on can hold several
+sheet-bearing packs: `angels.zip` carries `angel.fsh` and
+`blackangel.fsh`, the goldfish add-on five. `Fish.entry` says *which*
+of them a fish came from, and exists so that a fish rebinds to its own
+art after a relaunch instead of collapsing onto the add-on's
+pack-level slot, which `handleSheets` leaves pointing at the last
+registered entry. `spawnFish` set it, `sanitizeSavedFish` read it back,
+and `tankSnapshot` never wrote it: the save record was an inline field
+list that simply did not mention `entry`, so the value died at every
+save and in every exported tank file.
+
+**Evidence.** `web/main.ts:450-464` (the field list: `sheetIdx`, `pack`
+and `name` are named, `entry` is not) against `web/main.ts:375`
+(`sanitizeSavedFish` reads `f.entry`) and `web/main.ts:1274`/`1386`
+(`sheetOf` and `remapSheetIdx` consume it). With `entry` absent,
+`legacyEntries` (`web/tankmodel.ts:110`) assigns entries by ascending
+id, because that is the order the build that wrote the save spawned
+one fish per entry. Reproduction:
+
+```
+install angels.zip         save (no entry)      relaunch, guess by id
+  id 3 -> angel.fsh         id 3, pack only       id 3 -> angel.fsh     right
+  id 4 -> blackangel.fsh    id 4, pack only       id 4 -> blackangel.fsh right
+
+remove fish 3 in Tank Overview, then relaunch
+  id 4 -> blackangel.fsh                            id 4 -> angel.fsh     WRONG
+```
+
+`remapSheetIdx` then rewrites `f.species = entryStem(entry)`
+(`web/main.ts:1381`), so the survivor is renamed as well as redrawn, and
+nothing on screen says why. `Export Tank` / `Import Tank` carries the
+same hole, so the wrong species follows a tank to another Mac.
+
+**Change.** Move the save's field list to `savedFish(f)` in
+`web/tankmodel.ts`, next to the rules that read it back, writing
+`entry` alongside `pack`; `tankSnapshot` maps through it. A field named
+in the save contract but not written (or written but not read) is a
+fish quietly losing part of its identity, so the list gets one home and
+one test rather than an inline literal beside the code that uses it.
+
+**Acceptance.** `web/tankmodel.test.ts`: the entry survives the round
+trip; absent optional fields are omitted rather than zeroed; after the
+round trip `legacyEntries` has nothing to guess about, and the pre-fix
+guess (handing `angel.fsh` to the survivor that should keep
+`blackangel.fsh`) is demonstrated so the test cannot pass vacuously.
+
+**Merged and related.**
+
+- Sixteenth pass (this pass).
+- Distinct from B-14, which is about the window *while* packs restore
+  on launch. This is about what the save itself carries.
+
 ## Performance and smoothness (open)
 
 Done this pass and removed from this list: P-03, P-13, and P-10's
@@ -4963,6 +5087,31 @@ grab cursor is scoped to the native shell. Still open: the
 clock-toggles-date gesture (TANK-18), the menu disagreement and
 `menumodel` refactor (UI-08), Degauss, a Machine submenu, Show
 Balloons, key equivalents and menu-bar tests.
+
+Seventeenth-pass re-verification of this entry's upstream dependency
+(against the pinned osmium-ui 0.3.1, commit `ab05834`, on
+`origin/main` `d5e5410`): the constraint still holds and is now
+**actionable**. `node_modules/osmium-ui/src/menubar.ts:20` is still
+
+```ts
+export interface MenuItem {
+  readonly title: string;
+  readonly action?: () => void;
+}
+```
+
+with no `key` and no `checked`, and `src/fonts/charcoal12.ts` still has
+no U+2318. So the right-aligned ⌘-column and the checkmarks remain an
+osmium-ui change, and they are not something this repo can fake without
+forking the widget. What has changed is that osmium-ui is now pinned by
+commit *and* carries releases (0.3.1 ships `mountTabs`), so an upstream
+issue is a real option rather than a theoretical one — and a PR that
+hand-rolls menu items here to dodge it should be refused, because it
+would fork the one piece of the interface that already looks right.
+The first PR described above (move Tank Overview and Tank Stats into
+the browser Tank menu, move Preferences… to the Finsical menu, fix the
+Lamp caption, add the three pointer gestures to Shortcuts) needs none
+of that and can be cut today.
 
 ### U-15 Control-click on the tank shows WebKit's generic menu (with Reload) instead of a Mac OS 8 contextual menu
 
@@ -7022,6 +7171,10 @@ Size S · Severity idea · Value 4/5 · Risk 1/5 (fourteenth pass)
 
 ### D-43 Fish music: each fish plays a soft pentatonic note when it turns (opt-in)
 
+Implemented in PR #343 (open, sixteenth pass): Sound pane > Fish music,
+off by default; pure `web/fishmusic.ts` (`noteFor`, `NoteGate` on sim
+ticks); `TankAudio.note()` behind the same guards as `pop()`.
+
 Size M · Severity idea · Value 3/5 · Risk 2/5 (fourteenth pass)
 
 **Problem.** The soundscape is the filter loop plus event sounds. An opt-in generative mode, in the spirit of SimTunes and Eno, where fish play gentle notes as they swim would turn the tank into a relaxing desk instrument. It can reuse sim events that already happen about once every six seconds per fish.
@@ -7055,6 +7208,13 @@ Size S · Severity idea · Value 3/5 · Risk 2/5 (fourteenth pass)
 - F-36 (AUDIO-09: the game's pipopa as the caution-alert beep; pick one alert sound), B-68 (PR #241, open, reworks the welcome alert).
 
 ### D-45 Tank > Clean Up: the fish line up in a neat grid, like the Finder's Clean Up
+
+Implemented in PR #356 (open, sixteenth pass): browser menu bar only,
+like Zen mode; `Sim.cleanUp()`, `Sim.slotFor()`, a pure `gridSlot()`,
+and the three measured fixes recorded in the code (rows by depth and
+nearest x, a 24-tick re-decide cadence during the call, a speed boost
+while on the way). The Finder's Arrange submenu (Name, Size, Kind,
+Date) is not implemented.
 
 Size S · Severity idea · Value 2/5 · Risk 1/5 (fourteenth pass)
 
@@ -7894,6 +8054,53 @@ Size S · Severity low · Value 3/5 · Risk 1/5 (fourteenth pass)
 - Related: T-11 (the section can live in `docs/ARCHITECTURE.md`), F-09, F-10, F-14, F-26 (settled from these sources this pass).
 - Fourteenth pass: FIDELITY-14.
 
+### T-40 Open backlog entries carry no "verified against" stamp, so they rot
+
+Size S · Severity low · Value 3/5 · Risk 0/5 (sixteenth pass)
+
+**Problem.** The backlog is the thing a future LLM picks work up from,
+and an entry that has already been fixed sends it to re-fix a solved
+problem — or worse, to "fix" it wrongly. Entries do get re-verified
+occasionally: the twelfth pass audited the whole backlog slice by
+slice, and the fourteenth pass audited it again. Both times the audit
+went stale within about two weeks of merges. This pass checked two open
+entries and both were already done:
+
+- **U-37** "The menu-bar clock is 12-hour while Lighting and Stats are
+  24-hour" — fixed. `clockLabel` (`core/light.ts:147`) builds one
+  `Intl.DateTimeFormat` per locale with `{hour: "numeric", minute:
+  "2-digit"}` and the comment says the menu clock and the Lighting and
+  Stats labels share the locale's convention, which is the one setting
+  Mac OS 8's Date & Time control panel owned.
+- **T-37** "Nothing checks that the LGPL notice survives in the built
+  bundles" — fixed. `scripts/web-build.test.mjs` reads the marker out of
+  `core/data/mace.ts`, asserts which bundles carry the decoder
+  (`addons.js`, `bundle.js`) so the check cannot pass vacuously, and
+  asserts each carries `SPDX-License-Identifier: LGPL-2.1-or-later` and
+  `Laszlo Torok`.
+
+**Evidence.** Read both at `d5e5410`. Neither was ever marked done,
+because nothing marks them.
+
+**Change.** Two options, both cheap. (a) Stamp each open entry with the
+`origin/main` sha it was last verified against, and treat anything
+older than a few weeks as unverified — a reviewer writes one line. (b)
+A script that greps each open entry's distinctive symbol (the function
+name or key string in its Evidence line) out of `origin/main` and
+reports the ones that no longer appear, for a human to check. (b) is
+more useful because it also finds entries whose code has merely *moved*,
+which is most of them after a refactor; pair it with (a) so a hit is a
+prompt to look, not an automatic close.
+
+**Acceptance.** The script names U-37 and T-37 as gone and does not
+name an entry whose symbol merely moved; a stamped entry shows the sha
+it was checked at.
+
+**Merged and related.**
+
+- Sixteenth pass. T-11 and T-12 (PLAN.md staleness, AGENTS.md quick
+  reference) are the same species of rot and the same fix.
+
 ### T-37 Sweep the Linux and Android shells (no ANALYSIS coverage yet)
 
 Size L · Severity idea · Value 4/5 · Risk 0/5 (eighteenth pass)
@@ -8049,6 +8256,39 @@ new evidence.
   `preventDefault` stays unconditional because WebKit navigates on
   dropped text and URLs too; `dropEffect: 'none'` is set only when
   the drag carries `Files`.
+
+### Refuted or dropped in the sixteenth pass (tmp.md)
+
+Checked against `origin/main` `d5e5410` (v0.8.0) with vitest, node
+drivers and the shipped build. No browser was available in that
+environment, so nothing here rests on a rendered frame. Do not re-raise
+these without new evidence.
+
+- **"Optimise the per-frame depth sort" — measured, and it is noise.**
+  `core/depth.ts:49` `drawOrder`, called from `web/main.ts:3509` with
+  `decors.map(d => d.depth)` and `sim.fish.map(f => f.z)`, builds an
+  array of `{l, d, rank}` wrappers, sorts it and maps it again into a
+  `Layer[]`: three arrays plus one object and one `Layer` per entity,
+  every drawn frame. Timed in node at the tank's real load (24 fish,
+  40 decor, 30k iterations): **10.34 µs per call**, which is 0.31 ms of
+  CPU per second at 30 fps and 0.62 ms/s at 60 fps — under 0.05 % of a
+  16 ms frame. The allocation rate is real (~130 objects per frame,
+  ~8 k/s) but it is nowhere near the noise floor of the rest of the
+  frame. This is already inside P-19's scope; the measurement is
+  recorded so no one spends a PR on it. A reusable-array rewrite is
+  only worth doing as a side effect of something else touching
+  `render()`.
+- **"The browser menu bar disagrees with the app's menus"** — true, and
+  already U-14's point (2) with UI-08's plan, down to the Osmium
+  constraint. Re-reporting it as a new finding would only duplicate
+  that entry; the sixteenth pass re-verified the constraint against the
+  currently pinned osmium-ui instead and added that note to U-14.
+- **"The backlog has rotted"** — partly. Two open entries checked in
+  this pass (U-37, T-37) are already fixed on `main`, but the twelfth
+  pass recorded the same audit and it has gone stale again inside two
+  weeks of merges. That is filed as **T-40** with a concrete remedy
+  rather than as a defect: the problem is that entries carry no
+  "verified against" stamp, not that somebody got two wrong.
 
 ### Refuted or dropped in the fourteenth-pass review (tmp.md)
 
@@ -8824,6 +9064,22 @@ has their entries.
 - Steady state: not reached; nothing to report as reviewed.
 
 ## Implementation Order (suggested)
+
+Sixteenth-pass additions, all at the front of their phase:
+
+- **B-77** is done (PR #359) — merge it before the restore work, since
+  a save that carries the entry makes B-14's window narrower.
+- **D-43** and **D-45** are done (PRs #343, #356) and need nothing
+  further; the Finder's Arrange orderings in D-45 are the only loose
+  end, and they are optional.
+- **T-40** belongs with T-11/T-12 in Phase 4: the backlog is the hand-
+  off, and a hand-off that quietly lies about what is left is worse
+  than a short one.
+- U-14's menu-parity first PR (move Tank Overview and Tank Stats into
+  the browser Tank menu, Preferences… to the Finsical menu, fix the
+  Lamp caption, add the pointer gestures to Shortcuts) needs no
+  osmium-ui change and can be cut today; the key-equivalent column is
+  an upstream issue, not a PR here.
 
 Highest value per risk first. Phase 0 is a merge backlog, not new
 code: about 105 review PRs are open (the thirteenth pass added 44,
