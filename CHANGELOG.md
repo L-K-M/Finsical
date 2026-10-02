@@ -6,8 +6,8 @@
   platinum face, pinstripes that part around the fish's name, and a
   solid shadow. Health and hunger each get their own line; together
   they used to wrap and leave the hunger figure alone on a line. The
-  card no longer selects its text or shows the I-beam and hand
-  pointers.
+  card's chrome no longer selects its text or shows the I-beam and
+  hand pointers; renaming a fish still gives you a normal text field.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's
