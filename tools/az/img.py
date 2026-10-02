@@ -12,6 +12,11 @@ def read_bmp(d, off=0):
     # assert would let garbage decode as a 0x0 image.
     if d[off:off + 2] != b'BM':
         raise ImgError('not a BMP')
+    # 54 bytes covers every header field unpacked below (the last read
+    # ends at off+50); without this a truncated download raises a raw
+    # struct.error instead of the named error.
+    if len(d) - off < 54:
+        raise ImgError('BMP ends before its 14-byte file and 40-byte DIB headers')
     size = struct.unpack_from('<I', d, off + 2)[0]
     px_off = struct.unpack_from('<I', d, off + 10)[0]
     hdr = struct.unpack_from('<I', d, off + 14)[0]

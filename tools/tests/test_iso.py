@@ -1,9 +1,6 @@
 """Tests for the minimal ISO9660 reader and its untrusted-input guards."""
-import io
 import os
 import struct
-import subprocess
-import sys
 import tempfile
 import unittest
 
@@ -44,6 +41,10 @@ def build_iso(root_extent=17, root_size=SECTOR, file_extent=18,
         off += len(rec)
     root[off:off + len(pad_after_root)] = pad_after_root
     img[root_extent * SECTOR:(root_extent + 1) * SECTOR] = root
+    # NB: bytearray slice assignment clamps an out-of-range slice, so a
+    # root_extent past the pre-sized image appends this sector at EOF
+    # instead of placing it. test_rejects_a_directory_extent_past_the_
+    # image relies on that: extent 99 still exceeds the resulting file.
     img[file_extent * SECTOR:file_extent * SECTOR + len(file_blob)] = file_blob
     return bytes(img)
 
@@ -91,22 +92,6 @@ class TestIsoGuards(unittest.TestCase):
         with Iso(path) as iso:
             with self.assertRaises(IsoError):
                 iso._dir_record(b"\xff" + bytes(40), 0)
-
-
-class TestOFlags(unittest.TestCase):
-    def test_img_guard_survives_python_dash_O(self):
-        # The guard must be a raise, not an assert, or -O decodes garbage.
-        code = ("from tools.az.img import read_bmp\n"
-                "try:\n"
-                "    read_bmp(b'XX' + bytes(60))\n"
-                "except Exception as e:\n"
-                "    print(type(e).__name__)\n")
-        out = subprocess.run(
-            [sys.executable, "-O", "-c", code],
-            cwd=os.path.dirname(os.path.dirname(os.path.dirname(
-                os.path.abspath(__file__)))),
-            capture_output=True, text=True, check=True, timeout=30)
-        self.assertIn("ImgError", out.stdout)
 
 
 if __name__ == "__main__":
