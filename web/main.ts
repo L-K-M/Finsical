@@ -2802,6 +2802,7 @@ mountTankMenuBar({
   togglePause: () => { setPaused(!paused); },
   toggleNames: () => { setNames(!namesOn); },
   toggleZen: () => setZen(!zen),
+  cleanUp: () => { sim.cleanUp(); requestPaint(); },
   toggleScold: () => {
     scoldOn = !scoldOn;
     // Drop the in-flight tally too, so a spree can't span the toggle:

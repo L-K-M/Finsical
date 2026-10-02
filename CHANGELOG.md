@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Tank > Clean Up** lines the fish up in a neat grid for a few
+  seconds, the way the Finder's Clean Up snapped icons into one. They
+  swim to their places, hold still, and drift off again when the roll
+  call is over; a knock on the glass or a feed brings it forward
+  early.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's

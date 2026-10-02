@@ -237,6 +237,7 @@ Menu commands in the app:
 | Fish Names (checked while on) | Tank | |
 | Mute Sound (checked while muted) | Tank | Option-Cmd-S |
 | Pause Simulation, Resume Simulation | Tank | Cmd-P |
+| Clean Up (in a browser; the fish line up in a grid for a few seconds) | Tank | |
 | Support the Internet Archive | Tank | (opens archive.org/donate in your browser) |
 | Close, Minimize | Window | Cmd-W, Cmd-M |
 | Float Above Other Windows, Show on All Desktops | Window | (on by default, remembered) |
