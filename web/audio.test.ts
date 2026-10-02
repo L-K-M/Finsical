@@ -910,7 +910,7 @@ describe("TankAudio bubbles, as the original plays them", () => {
     ac.state = "running";
     expect(ac.oscs).toHaveLength(0);
     audio.bubble(); // running again — the gate must reopen
-    expect(ac.oscs.length).toBeGreaterThan(0);
+    expect(ac.oscs).toHaveLength(1);
     new TankAudio().bubble(); // no context yet — never creates one
     expect(FakeContext.last).toBe(ac);
   });
