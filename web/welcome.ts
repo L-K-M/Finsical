@@ -7,7 +7,7 @@
 import { showAlert } from "./alert.js";
 import type { Alert, AlertButton } from "./alert.js";
 import { listAddons, loadProblem } from "./import.js";
-import type { Importable } from "./import.js";
+import type { Collection, Importable } from "./import.js";
 import { resolveStarter, runStarter, starterCollection, unreachedStarter,
          wantsStarterSounds, welcomeOffer } from "./starter.js";
 import type { WelcomeAnswer } from "./starter.js";
@@ -137,16 +137,17 @@ async function stock(alert: Alert, hooks: StarterHooks,
   alert.update({ icon: "note", buttons: [stop], progress: 0,
                  text: "Looking up the starter set on the Internet " +
                        "Archive…" });
-  // A listing that fails comes back as missing items: note it, so they
-  // count as out of reach rather than gone from the archive.
+  // A listing that fails comes back as missing items: note which, so
+  // they count as out of reach rather than gone from the archive.
   let listingProblem: unknown = null;
+  const failedCols: Collection[] = [];
   const listing = retry ? null : await listAddons(starterCollection,
-    undefined, (_col, e) => {
+    undefined, (col, e) => {
+      failedCols.push(col);
       listingProblem ??= e ?? new Error("listing failed");
     });
   const listed = retry ?? resolveStarter(listing!);
-  const unreached = listing ? unreachedStarter(listing, !!listingProblem)
-                            : [];
+  const unreached = listing ? unreachedStarter(listing, failedCols) : [];
   if (stopped) return;
   if (!listed.length) {
     offerRetry(alert, hooks, null, giveUp,

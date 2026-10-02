@@ -42,22 +42,34 @@ describe("resolveStarter", () => {
 
 describe("unreachedStarter", () => {
   const all = STARTER_SET.map((s) => item(s.section, s.inner));
+  const col = (section: PackSection): Collection =>
+    COLLECTIONS.find((c) => c.section === section)!;
 
   it("is empty when every listing answered, whatever is missing", () => {
     // An item absent from a complete listing is gone from the archive:
     // the set skips it for good.
-    expect(unreachedStarter(all.slice(1), false)).toEqual([]);
+    expect(unreachedStarter(all.slice(1), [])).toEqual([]);
   });
 
   it("names what a failed listing kept out of reach", () => {
     const got = unreachedStarter(all.filter((i) =>
-      i.section !== "plants" && i.section !== "backgrounds"), true);
+      i.section !== "plants" && i.section !== "backgrounds"),
+      [col("plants"), col("backgrounds")]);
     expect(got.map((g) => g.inner)).toEqual(["Amazon_L", "Back03"]);
+  });
+
+  it("leaves out an item whose own section listed fine", () => {
+    // banggai is missing, but only the backgrounds' listing failed: the
+    // fish collections answered, so banggai is gone, not out of reach.
+    const got = unreachedStarter(all.filter((i) =>
+      i.inner !== "banggai" && i.section !== "backgrounds"),
+      [col("backgrounds")]);
+    expect(got.map((g) => g.inner)).toEqual(["Back03"]);
   });
 
   it("is empty when the listing failed but the whole set came back",
      () => {
-    expect(unreachedStarter(all, true)).toEqual([]);
+    expect(unreachedStarter(all, [col("plants")])).toEqual([]);
   });
 });
 
@@ -94,7 +106,7 @@ describe("the starter set behind a failed listing", () => {
     expect(failed.every((c) => c.outer.includes("JPN"))).toBe(true);
     // Five of the seven list; the other two are out of reach, not gone.
     expect(resolveStarter(listing)).toHaveLength(STARTER_SET.length - 2);
-    expect(unreachedStarter(listing, failed.length > 0)
+    expect(unreachedStarter(listing, failed)
       .map((s) => s.inner)).toEqual(["Amazon_L", "Back03"]);
   });
 });

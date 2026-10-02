@@ -31,29 +31,37 @@ export function starterCollection(c: Collection): boolean {
     STARTER_SET.some((s) => s.section === c.section);
 }
 
+/** Whether listing entry `l` is starter item `s`: the one rule both
+ * resolveStarter and unreachedStarter go by. */
+const isItem = (l: Importable, s: StarterItem): boolean =>
+  l.section === s.section && l.inner === s.inner;
+
 /** STARTER_SET's add-ons as the listing has them, in STARTER_SET order;
  * items missing from the listing are left out. */
 export function resolveStarter(listing: readonly Importable[]): Importable[] {
   const out: Importable[] = [];
   for (const s of STARTER_SET) {
-    const it = listing.find((l) =>
-      l.section === s.section && l.inner === s.inner);
+    const it = listing.find((l) => isItem(l, s));
     if (it) out.push(it);
   }
   return out;
 }
 
-/** STARTER_SET's items a listing came back without, while some of its
- * collections couldn't be listed. resolveStarter skips a missing item
- * for good, which is right when the archive has dropped it; but behind
- * a listing that failed (the JPN page timing out, say) it may just be
- * out of reach this time, and the offer must come back for it. Empty
- * when every listing answered. */
+/** STARTER_SET's items a listing came back without, where a collection
+ * of the item's section couldn't be listed (`failed`). resolveStarter
+ * skips a missing item for good, which is right when the archive has
+ * dropped it; but behind a listing that failed (the JPN page timing
+ * out, say) it may just be out of reach this time, and the offer must
+ * come back for it. A section can span collections, so an item gone
+ * from one that answered still counts while another of its section
+ * failed; the next clean listing settles it. Empty when every listing
+ * answered. */
 export function unreachedStarter(listing: readonly Importable[],
-                                 listingFailed: boolean): StarterItem[] {
-  if (!listingFailed) return [];
-  return STARTER_SET.filter((s) => !listing.some((l) =>
-    l.section === s.section && l.inner === s.inner));
+                                 failed: readonly Collection[]):
+    StarterItem[] {
+  return STARTER_SET.filter((s) =>
+    failed.some((c) => c.section === s.section) &&
+    !listing.some((l) => isItem(l, s)));
 }
 
 /** Whether this launch should install the starter set's sounds on its
