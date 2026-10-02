@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A sick fish sneezes now and then: it puffs a small bubble and jerks
+  back a little, so you can spot an ailing fish without opening Tank
+  Stats.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's

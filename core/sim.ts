@@ -330,6 +330,11 @@ const SPAWN_SCALE_RANGE = 0.25;
 const GROWTH = 0.06;
 const MAX_SCALE = 1;
 const BUBBLE_CHANCE = 0.004;
+/** Per tick, the chance a sick fish sneezes: about once every 20 s at
+ * 30 ticks a second. */
+const SNEEZE_CHANCE = 1 / 600;
+/** A sneeze's backward jolt, px per tick, easing off: about 3 px. */
+const SNEEZE_JOLT = [1.2, 0.9, 0.6, 0.3] as const;
 /** Per tick, a bubble working loose from the gravel: one every ~8 s. */
 const AMBIENT_BUBBLE = 0.004;
 /** How far a bubble rises per tick. */
@@ -493,6 +498,12 @@ export class Sim {
   /** Fish whose sickness has already fired a "sick" event — the life
    * model carries the disease; the flag just debounces the hook. */
   private sickSeen = new WeakSet<Fish>();
+
+  /** Sneezing fish, by the ticks of jolt they have done. Not saved: a
+   * sneeze lasts a few ticks. */
+  private sneezes = new WeakMap<Fish, number>();
+  /** Whether `f` is jolting from a sneeze this tick. */
+  sneezing(f: Fish): boolean { return this.sneezes.has(f); }
 
   /** Copy the life model's state onto what the swim code reads. */
   private syncLife(): void {
@@ -1019,6 +1030,13 @@ export class Sim {
 
     if (f.state !== "sleep") this.stepDepth(f);
 
+    const jolt = this.sneezes.get(f);
+    if (jolt !== undefined) {
+      f.x -= f.facing * SNEEZE_JOLT[jolt]!;
+      if (jolt + 1 < SNEEZE_JOLT.length) this.sneezes.set(f, jolt + 1);
+      else this.sneezes.delete(f);
+    }
+
     const { x0, x1, y0, y1 } = this.room(f);
     let hit = false;
     // Direction back into the tank from a side wall the fish reached.
@@ -1070,6 +1088,16 @@ export class Sim {
     if (this.rand() < BUBBLE_CHANCE * (2 - this.waterQuality)) {
       this.bubbles.push({
         x: f.x + f.facing * Math.max(6, this.halfW(f) - 3), y: f.y - 3 });
+    }
+    // A sick fish sneezes now and then: a puff of a bubble and a little
+    // jolt backwards, so the sickness shows in more than its pallor.
+    // The roll comes only for a sick fish, so a healthy tank draws the
+    // same numbers as before.
+    if (f.life?.sick && !this.sneezes.has(f) &&
+        this.rand() < SNEEZE_CHANCE) {
+      this.bubbles.push({
+        x: f.x + f.facing * Math.max(6, this.halfW(f) - 1), y: f.y - 1 });
+      this.sneezes.set(f, 0);
     }
   }
 
