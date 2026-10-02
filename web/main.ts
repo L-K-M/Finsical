@@ -22,8 +22,9 @@ import { decorDepth, drawOrder } from "../core/depth.js";
 import { bodySize, pickDrawableSheet }
   from "../core/data/swimsheet.js";
 import { fishScale } from "./artscale.js";
-import { loadSoundConfig, panFor, sanitizeSoundConfig, TankAudio }
-  from "./audio.js";
+import { loadSoundConfig, panFor, sanitizeSoundConfig, TankAudio,
+         NOTE_GAIN, NOTE_GRACE_GAIN } from "./audio.js";
+import { NoteGate, noteFor } from "./fishmusic.js";
 import { drawRipples, drawSplashes, newSplash, tickRipples,
          tickSplashes } from "./fx.js";
 import type { Ripple, Splash } from "./fx.js";
@@ -86,7 +87,7 @@ import type { Machine } from "./machines.js";
 import type { Lighting } from "../core/light.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
-import type { Fish } from "../core/sim.js";
+import type { Fish, FishState } from "../core/sim.js";
 import type { SnailVisit } from "./snail.js";
 import type { AzpackManifest, IndexedImage } from "../core/data/azpack.js";
 
@@ -2221,7 +2222,8 @@ let soundCfg: SoundConfig = loadSoundConfig(
 function configureAudio(): void {
   audio.setVolume(soundCfg.volume);
   audio.setMuted(soundCfg.muted);
-  audio.setOptions({ bubbles: soundCfg.bubbles, ambient: soundCfg.ambient });
+  audio.setOptions({ bubbles: soundCfg.bubbles, ambient: soundCfg.ambient,
+                     music: soundCfg.music });
 }
 configureAudio();
 /** Merge a partial config (Sound pane, Mute Sound, the M key) onto the
@@ -2241,6 +2243,24 @@ const toggleMute = (): void => {
   audio.unlock(); // Tank > Mute Sound can be the first gesture
   applySoundConfig({ muted: !soundCfg.muted });
 };
+
+// ---- fish music -----------------------------------------------------------
+// Sound > Fish music: a fish that turns its corner plays one soft note
+// from a pentatonic scale, deeper fish lower and night an octave down
+// (web/fishmusic.ts). Off unless the user asks for it.
+const musicGate = new NoteGate();
+/** The state each fish was in last tick. A WeakMap so a fish removed
+ * from the tank takes its entry with it — no roster bookkeeping, and
+ * no id that could be reused. */
+const musicState = new WeakMap<Fish, FishState>();
+/** One fish's note, if the gate lets one through this tick. `at` is
+ * anywhere in the tank: the fish itself, or the pellet it ate. */
+function playNote(at: { x: number; y: number }, octave: number,
+                 gain: number): void {
+  if (!musicGate.try(sim.tickCount)) return;
+  const n = noteFor(at, TANK, sim.light < WAKE_LIGHT, octave);
+  audio.note(n.freq, n.pan, gain);
+}
 
 // ---- tank effects --------------------------------------------------------
 // The drawn extras the original game never had — each a checkbox on
@@ -3812,8 +3832,20 @@ function tickSim(): void {
   // A pellet eaten this tick is already spliced out of sim.food — its
   // `eaten` flag still reads on the snapshot taken above.
   for (const p of pellets)
-    if (p.eaten && !sim.food.includes(p))
+    if (p.eaten && !sim.food.includes(p)) {
       audio.eat(panFor(p.x, TANK.width));
+      // The eater gets a grace note where the pellet was: an octave
+      // up and quieter.
+      playNote(p, 1, NOTE_GRACE_GAIN);
+    }
+  // A fish entering its roll plays its note; the roll lasts several
+  // ticks, so only the transition counts.
+  for (const f of sim.fish) {
+    const was = musicState.get(f);
+    musicState.set(f, f.state);
+    if (was !== "turn" && f.state === "turn")
+      playNote(f, 0, NOTE_GAIN);
+  }
   if (effects.splashes)
     for (let i = pops.length - 1; i >= 0; i--)
       if (++pops[i]!.age > 8) pops.splice(i, 1);

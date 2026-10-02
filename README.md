@@ -344,6 +344,12 @@ The rest of the set, for breeding, sickness, medicine, the filter,
 timers and the game's dialogs, has no matching feature in Finsical
 yet.
 
+**Fish music** (Preferences, Sound) turns the tank into a small desk
+instrument: each fish plays one soft plucked note as it turns, from a
+pentatonic scale chosen by how deep it swims, panned to where it is
+across the glass, an octave down at night, with a higher grace note
+when it eats. It is off until you ask for it.
+
 ## Windows
 
 | Window | What it does |

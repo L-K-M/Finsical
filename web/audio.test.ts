@@ -930,6 +930,76 @@ describe("TankAudio stereo placement", () => {
   });
 });
 
+describe("Fish music", () => {
+  it("stays silent until the user asks for it", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.note(440);
+    expect(ac.oscs).toHaveLength(0);
+    audio.setOptions({ music: true });
+    audio.note(440);
+    expect(ac.oscs).toHaveLength(2); // the note and its partial
+  });
+
+  it("builds one plucked voice into the master gain", async () => {
+    const { audio, ac, master } = await tank({ [LOOP]: 30 });
+    audio.setOptions({ music: true });
+    audio.note(440);
+    const [body, partial] = ac.oscs;
+    expect(body!.type).toBe("triangle");
+    expect(body!.frequency.value).toBe(440);
+    // The octave partial is the struck string a kalimba carries.
+    expect(partial!.frequency.value).toBe(880);
+    // Both share one envelope, so a note cannot click on or off.
+    const env = body!.out[0] as FakeGain;
+    expect(partial!.out[0]!.out[0]).toBe(env);
+    const g = env.gain.points;
+    expect(g[0]![0]).toBeLessThan(0.001);
+    expect(g.at(-1)![0]).toBeLessThan(0.001);
+    expect(sinkOf(body!)).toBe(master);
+    expect(body!.stops[0]).toBeGreaterThan(ac.currentTime);
+  });
+
+  it("pans the note to the fish that played it", async () => {
+    const { audio, ac, master } = await tank({ [LOOP]: 30 });
+    audio.setOptions({ music: true });
+    audio.note(440, -0.5);
+    const panner = ac.oscs[0]!.out[0]!.out[0] as FakePanner;
+    expect(panner).toBeInstanceOf(FakePanner);
+    expect(panner.pan.value).toBe(-0.5);
+    expect(panner.out[0]).toBe(master);
+    // Dead centre skips the panner, as pop() does.
+    audio.note(440, 0);
+    expect(ac.oscs[2]!.out[0]).toBeInstanceOf(FakeGain);
+  });
+
+  it("stays quiet while hidden, and never on a silent context", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.setOptions({ music: true });
+    audio.setHidden(true);
+    audio.note(440);
+    audio.setHidden(false);
+    ac.state = "suspended";
+    audio.note(440);
+    expect(ac.oscs).toHaveLength(0);
+  });
+
+  it("ignores a pitch that is not a note", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.setOptions({ music: true });
+    for (const f of [0, -1, NaN, Infinity])
+      audio.note(f);
+    expect(ac.oscs).toHaveLength(0);
+  });
+
+  it("carries the flag through the config's trust boundary", () => {
+    expect(SOUND_DEFAULTS.music).toBe(false);
+    expect(sanitizeSoundConfig({ music: true }).music).toBe(true);
+    expect(sanitizeSoundConfig({ music: "yes" }).music).toBe(false);
+    // A save written before the switch existed keeps it off.
+    expect(loadSoundConfig({ volume: 0.5 }).music).toBe(false);
+  });
+});
+
 // Trust boundary for localStorage and the Preferences bus messages.
 describe("sanitizeSoundConfig", () => {
   it("returns defaults for non-objects", () => {
@@ -995,7 +1065,7 @@ describe("sanitizeSoundConfig", () => {
 
   it("round-trips a full config as a copy", () => {
     const off = { volume: 0, muted: true, bubbles: false,
-                  ambient: false, v: 2 };
+                  ambient: false, music: false, v: 2 };
     expect(sanitizeSoundConfig(off)).toEqual(off);
     const c = sanitizeSoundConfig(SOUND_DEFAULTS);
     expect(c).toEqual(SOUND_DEFAULTS);
