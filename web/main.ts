@@ -2319,21 +2319,55 @@ const nameTags = mountNameTags(document.body);
 const PLACEHOLDER_HALF_H = 6;
 /** Tags are placed in viewport pixels already, so their map is 1:1. */
 const CLIENT_MAP = { s: 1, ox: 0, oy: 0 };
+/** Tag slots reused frame to frame: syncNameTags runs every frame
+ * while Fish Names is on, so fresh objects per fish per frame churned
+ * the GC for nothing. */
+const tagSlots: { id: number; label: string; x: number;
+                  top: number; bottom: number }[] = [];
 /** Put a tag on every fish but the one whose Get Info card is open
  * (the card names it, right where its tag would go). Placed through
- * tankToClient like the card, so the tags follow the CRT's warp. */
+ * the same mapping as the card, so the tags follow the CRT's warp. */
 function syncNameTags(): void {
   if (!namesOn) return;
-  const r = pictureEl().getBoundingClientRect();
+  // The cached rect (dropped by resize, scroll and layoutMachine),
+  // not a fresh layout read: the previous frame's tag style writes
+  // already invalidated layout, so a getBoundingClientRect here would
+  // force a synchronous layout pass on every frame. Same elements as
+  // pictureEl(): the glass while the tube draws, the tank otherwise.
+  const r = crtMapsPointer() ? crtClientRect() : tankRect();
   const carded = infoCard?.fish;
   const surface = tankToClient(TANK.width / 2, SURFACE + 1, r).y;
-  nameTags.sync(sim.fish.filter((f) => f !== carded).map((f) => {
+  let n = 0;
+  // Without the tube the mapping is one affine — tankToClient's
+  // contain math, computed once here instead of twice per fish. (Keep
+  // the formula in step with tankToClient.)
+  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
+  const ox = r.left + (r.width - TANK.width * s) / 2;
+  const oy = r.top + (r.height - TANK.height * s) / 2;
+  for (const f of sim.fish) {
+    if (f === carded) continue;
     const hh = (f.halfH ?? PLACEHOLDER_HALF_H) * f.scale;
-    const top = tankToClient(f.x, f.y - hh, r);
-    const bottom = tankToClient(f.x, f.y + hh, r);
-    return { id: f.id, label: fishLabel(f), x: top.x,
-             top: top.y, bottom: bottom.y };
-  }), CLIENT_MAP, r, surface);
+    // The tag pins just above the fish's back and may ride down to
+    // its belly (nametags.ts clamps by the two y values).
+    let px: number, top: number, bottom: number;
+    if (crtMapsPointer()) {
+      const up = tankToClient(f.x, f.y - hh, r);
+      px = up.x;
+      top = up.y;
+      bottom = tankToClient(f.x, f.y + hh, r).y;
+    } else {
+      px = ox + f.x * s;
+      top = oy + (f.y - hh) * s;
+      bottom = oy + (f.y + hh) * s;
+    }
+    const t = tagSlots[n] ??
+      (tagSlots[n] = { id: 0, label: "", x: 0, top: 0, bottom: 0 });
+    t.id = f.id; t.label = fishLabel(f); t.x = px;
+    t.top = top; t.bottom = bottom;
+    n++;
+  }
+  tagSlots.length = n;
+  nameTags.sync(tagSlots, CLIENT_MAP, r, surface);
 }
 // Cosmetic layer — recreate #screenback and enforce sibling order when
 // stale markup is detected (#machine/#shell/#screen must still exist).
