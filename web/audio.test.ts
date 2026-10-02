@@ -640,8 +640,8 @@ describe("TankAudio.setHidden", () => {
 });
 
 // A muted or volume-0 tank suspends its device: nothing to hear, so
-// no stream to keep running. The suspend waits out the level glide
-// (60 ms); the tests sit it out in real time.
+// no stream to keep running. The suspend lands SLEEP_AFTER_MS (60 ms)
+// after the level hits zero; the tests sit it out in real time.
 describe("TankAudio silent sleep", () => {
   const sleepBeat = (): Promise<void> =>
     new Promise((r) => setTimeout(r, 100));
@@ -735,6 +735,45 @@ describe("TankAudio silent sleep", () => {
     audio.unlock(); // the first gesture, long after launch
     await flush();
     expect(ac.sources.filter((s) => s.starts > 0)).toHaveLength(0);
+  });
+
+  it("starts the wanted loop on unmute even before it slept", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.setMuted(true);       // sleep timer armed, device still up
+    audio.open();               // muted open latches ambientWanted only
+    audio.setMuted(false);      // unmute before the suspend landed
+    await flush();
+    expect(ac.state).toBe("running");
+    expect(ac.loops()).toBe(1); // no resume happened, wake still ran
+  });
+
+  it("plays a pending opening when the unmute wakes the device",
+     async () => {
+    const { audio, ac } = await tank({ aqua: 5, [LOOP]: 30 });
+    ac.state = "suspended"; // autoplay-gated at launch
+    audio.open();           // opening stays owed behind the lock
+    audio.setMuted(true);
+    audio.setMuted(false);  // the unmute itself is the wake
+    await flush();
+    expect(ac.state).toBe("running");
+    expect(ac.sources.filter((s) => s.starts > 0 && !s.loop))
+      .toHaveLength(1); // the opening played at unmute, not hours later
+    expect(ac.loops()).toBe(1);
+  });
+
+  it("keeps the wake's ambient restart through a volume tweak",
+     async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.setMuted(true);
+    audio.open();              // muted: wanted, no source, no retry
+    await sleepBeat();
+    await flush();
+    expect(ac.state).toBe("suspended");
+    audio.setMuted(false);     // resume in flight…
+    audio.setVolume(0.7);      // …and a slider tick lands before it ends
+    await flush();
+    expect(ac.state).toBe("running");
+    expect(ac.loops()).toBe(1);
   });
 });
 

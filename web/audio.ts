@@ -76,10 +76,10 @@ export const FEEDBACK_MAX_S = 4;
 const FEEDBACK_FADE_S = 0.6;
 /** Time constant of a master level change (about 3 tau to settle). */
 const LEVEL_GLIDE_S = 0.01;
-/** How long after silence (mute/volume 0) the device suspends: long
- * enough for the level glide's tail to die below audibility, so the
- * suspend doesn't clip it into a click. */
-const SLEEP_AFTER_MS = 60;
+/** How long after silence (mute/volume 0) the device suspends: six
+ * time constants of the level glide, by when the fade's tail is
+ * inaudible — suspending sooner could clip it into a click. */
+const SLEEP_AFTER_MS = LEVEL_GLIDE_S * 6 * 1000;
 /** Event sounds are short. A recording longer than this can only be an
  * imported song, so find() never picks it for a knock or a splash, no
  * matter what it is named. */
@@ -299,22 +299,31 @@ export class TankAudio {
   private syncSleep(): void {
     const ac = this.ctx;
     if (!ac || this.hidden) return;
-    const gen = ++this.sleepGen;
+    ++this.sleepGen;
     if (this.shouldRun()) {
+      // Already running (the sleep timer was still pending): the wake
+      // work still runs — a muted open latches ambientWanted without
+      // a loop, and this unmute is the first moment it can sound.
       if (ac.state === "suspended")
-        void ac.resume()
-          .then(() => {
-            // A mute landing during the resume leaves it asleep.
-            if (this.sleepGen === gen && this.ambientWanted)
-              this.startAmbient();
-          })
+        void ac.resume().then(() => this.wake())
           .catch(() => { /* resume blocked until a user gesture */ });
+      else this.wake();
       return;
     }
+    const gen = this.sleepGen;
     setTimeout(() => {
       if (this.sleepGen === gen)
         void ac.suspend().catch(() => { /* closed context */ });
     }, SLEEP_AFTER_MS);
+  }
+
+  /** The device is awake again: play an opening still owed and start
+   * an ambient loop that was wanted but never got a source. Re-checks
+   * live state — a mute or hide that landed since still wins. */
+  private wake(): void {
+    if (!this.shouldRun()) return;
+    this.playOpening();
+    if (this.ambientWanted) this.startAmbient();
   }
 
   private level(): number {
@@ -415,11 +424,7 @@ export class TankAudio {
       return;
     }
     void ac.resume()
-      .then(() => {
-        if (!this.shouldRun()) return;
-        this.playOpening();
-        if (this.ambientWanted) this.startAmbient();
-      })
+      .then(() => this.wake())
       .catch(() => { /* resume blocked until a user gesture */ });
   }
 
