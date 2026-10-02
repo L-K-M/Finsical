@@ -39,7 +39,7 @@ import { clampDecorCopies, decorCopyRoom, fetchAddon, installProblem,
          usablePacks,
          usableProblem, COLLECTIONS }
   from "./import.js";
-import { SWAY_BANDS, swayOffset } from "./sway.js";
+import { SWAY_AMP, SWAY_BANDS, swayOffset } from "./sway.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
          sndsMerge, sndsRemove } from "./store.js";
@@ -69,7 +69,7 @@ import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
 import { stateLabel } from "./overviewmodel.js";
 import { crtClientToTank, crtTankToClient, initCrt, sanitizeCrtConfig }
   from "./crt.js";
-import { bubbleOffset, bubblePops, drawAir, drawBubblePop,
+import { bubbleOffset, bubblePops, drawAir, drawBubblePop, drawCausticSurface,
          drawBubbles, drawFood, drawLight, drawMurk, drawRefraction,
          drawSurface, drawTorch, feedPinch, keepTorch, sunFactor,
          tapBubble, torchShows } from "./water.js";
@@ -81,7 +81,7 @@ import {
 } from "./machines.js";
 import type { CrtConfig } from "./crt.js";
 import type { EffectsConfig } from "./effects.js";
-import type { WaterMotion } from "./water.js";
+import type { SurfaceBounds, SurfacePaint, WaterMotion } from "./water.js";
 import type { SoundConfig } from "./audio.js";
 import type { Machine } from "./machines.js";
 import type { Lighting } from "../core/light.js";
@@ -3368,6 +3368,15 @@ const tankGradient = (() => {
   return g;
 })();
 
+const defaultGravel = (() => {
+  const cv = document.createElement("canvas");
+  cv.width = TANK.width; cv.height = BOTTOM_PAD;
+  const g = cv.getContext("2d")!;
+  g.fillStyle = "#8a6d3b";
+  g.fillRect(0, 0, cv.width, cv.height);
+  return cv;
+})();
+
 // Reduced motion freezes the ambient light (caustics, shafts, glint).
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 let waterMotion: WaterMotion = reducedMotion.matches ? "still" : "animated";
@@ -3444,17 +3453,21 @@ function stirSurface(): void {
  * the snail on the gravel. Tall back-row decor sits behind it and
  * catches the light; the front rows cover the food. */
 const MID_DEPTH = 0.3;
+function drawScenery(source: HTMLCanvasElement, paint: SurfacePaint,
+                     floor: number, bounds: SurfaceBounds): void {
+  if (!effects.sunlight) { paint(ctx, source); return; }
+
+  drawCausticSurface(ctx, source, paint, sim.light, sim.tickCount,
+                     waterMotion, floor, bounds);
+}
+
 /** Decor item `i`: spread evenly across the floor, bottom planted in
  * the gravel. Art keeps its authored width (no 160 px cap), so a wide
  * piece is pulled inside the glass rather than hanging past it. */
-function drawDecor(i: number): void {
-  const dn = decors.length;
-  const { frames, phase, sway: swayPh } = decors[i]!;
-  const d = frames[decorFrame(sim.tickCount, frames.length, phase)]!;
-  const x = decorX(i, dn, d.width);
-  const y = TANK.height - DECOR_FLOOR - d.height;
+function paintDecor(target: CanvasRenderingContext2D, d: HTMLCanvasElement,
+                    x: number, y: number, swayPh: number): void {
   if (waterMotion !== "animated" || !effects.sway) {
-    ctx.drawImage(d, x, y);
+    target.drawImage(d, x, y);
     return;
   }
   // Sway per horizontal band — offsets grow toward the tip, so the
@@ -3472,9 +3485,19 @@ function drawDecor(i: number): void {
     const dx = swayOffset(sim.tickCount, swayPh,
                           (y0 + y1) / 2 / d.height);
     const bx = Math.min(Math.max(x + dx, xmin), xmax);
-    ctx.drawImage(d, 0, y0, d.width, y1 - y0,
-                  bx, y + y0, d.width, y1 - y0);
+    target.drawImage(d, 0, y0, d.width, y1 - y0,
+                   bx, y + y0, d.width, y1 - y0);
   }
+}
+
+function drawDecor(i: number, floor: number): void {
+  const { frames, phase, sway: swayPh } = decors[i]!;
+  const source = frames[decorFrame(sim.tickCount, frames.length, phase)]!;
+  const x = decorX(i, decors.length, source.width);
+  const y = TANK.height - DECOR_FLOOR - source.height;
+  const margin = Math.ceil(SWAY_AMP);
+  drawScenery(source, (target, image) => paintDecor(target, image, x, y, swayPh), floor,
+    { x: x - margin, y, w: source.width + margin * 2, h: source.height });
 }
 function drawMidWater(floor: number): void {
   if (effects.sunlight)
@@ -3502,25 +3525,26 @@ function render(now: Date, target: RenderTarget = "screen"): void {
       bootFade = fadeProgress(elapsed, bootDoneAt);
     else { drawBoot(ctx, phase, paradeIcons); return; }
   }
+  const floor = nightFloor(lighting);
   if (backdropCv) {
-    ctx.drawImage(backdropCv, 0, 0);
+    drawScenery(backdropCv, (target, image) => target.drawImage(image, 0, 0), floor,
+      { x: 0, y: 0, w: TANK.width, h: TANK.height });
   } else {
     ctx.fillStyle = tankGradient;
     ctx.fillRect(0, 0, TANK.width, TANK.height);
   }
-  if (gravelCv) {
-    ctx.drawImage(gravelCv, 0, TANK.height - gravelCv.height);
-  } else if (!backdropCv) {
-    ctx.fillStyle = "#8a6d3b"; // gravel
-    ctx.fillRect(0, TANK.height - BOTTOM_PAD, TANK.width, BOTTOM_PAD);
+  const gravel = gravelCv ?? (backdropCv ? null : defaultGravel);
+  if (gravel) {
+    const y = TANK.height - gravel.height;
+    drawScenery(gravel, (target, image) => target.drawImage(image, 0, y), floor,
+      { x: 0, y, w: gravel.width, h: gravel.height });
   }
   // Decor, fish and the mid-water layer (light, food, snail) draw back
   // to front by depth, so fish pass behind and between the decor.
-  const floor = nightFloor(lighting);
   const order = drawOrder(decors.map((d) => d.depth),
                           sim.fish.map((f) => f.z), MID_DEPTH);
   for (const l of order) {
-    if (l.kind === "decor") drawDecor(l.i);
+    if (l.kind === "decor") drawDecor(l.i, floor);
     else if (l.kind === "fish") drawFish(sim.fish[l.i]!);
     else drawMidWater(floor);
   }
