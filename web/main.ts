@@ -8,7 +8,6 @@ import { FISH_CAP, FOOD_CAP, HUNGER_SEEK, TANK_SIZE }
 import { planFrame } from "../core/loop.js";
 import { Aquarium } from "../core/aquarium/aquarium.js";
 import type { SavedAquarium } from "../core/aquarium/aquarium.js";
-import { sanitizeLife } from "../core/aquarium/life.js";
 import { DEFAULT_CARE, sanitizeCare } from "../core/data/species.js";
 import type { SpeciesCare } from "../core/data/species.js";
 import { conditionLabel, eventText, noticeText } from "./lifecopy.js";
@@ -48,7 +47,7 @@ import { coverCrop, decorCanvases, imageCanvas, isBackdropImage,
          previewOf, soundIcon, swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
 import { capRefusal, entryKey, entryOfSlot, entryStem, legacyEntries,
-         partName, savedFish } from "./tankmodel.js";
+         partName, restoredFish, savedFish } from "./tankmodel.js";
 import { nextNotice, noticePoint } from "./curiosity.js";
 import type { Notice } from "./curiosity.js";
 import { containPoint, isFeedZone } from "./feedzone.js";
@@ -155,7 +154,7 @@ function parseTank(raw: unknown): SavedTank | null {
       !Array.isArray(s.fish) || !Array.isArray(s.addons))
     return null;
   // Fish entries only need to be objects: the restore path's filter +
-  // sanitizeSavedFish drop or clamp anything malformed. Add-on records
+  // restoredFish drop or clamp anything malformed. Add-on records
   // are fetched by URL, so a malformed one is dropped here; it must
   // not cost the whole tank.
   const addons = s.addons.filter(isSavedAddon);
@@ -323,62 +322,10 @@ const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
   [0, 1, 2, 3].map((i) =>
     ({ x: 40 + i * 60, y: 50 + i * 30,
        facing: (i % 2 ? -1 : 1) as 1 | -1 }));
-/** Saved fish fields are untrusted input: a corrupted hunger or
- * heading enters the sim (NaN hunger ⇒ fish can never seek food) and
- * then re-persists. Clamp each numeric field; keep x/y finite-or-drop
- * as the hard filter. */
-function sanitizeSavedFish(f: Partial<Fish> & { x: number; y: number }):
-    Partial<Fish> & { x: number; y: number } {
-  const num = (v: number | undefined, lo: number, hi: number,
-               dflt: number): number =>
-    typeof v === "number" && Number.isFinite(v)
-      ? Math.min(hi, Math.max(lo, v)) : dflt;
-  // bandY's fallback must reuse the clamped y — the raw value only
-  // passed the finite check, so a corrupt save could seed an
-  // out-of-bounds band and re-persist it.
-  const y = num(f.y, 0, TANK.height - 1, TANK.height / 2);
-  // Only the fields saveTank writes come back: anything else a save
-  // carries stays out of the sim rather than passing through unchecked.
-  const out: Partial<Fish> & { x: number; y: number } = {
-    x: num(f.x, 0, TANK.width - 1, TANK.width / 2),
-    y,
-    facing: f.facing === -1 ? -1 as const : 1 as const,
-    heading: num(f.heading, -2 * Math.PI, 2 * Math.PI, 0),
-    speed: num(f.speed, 0.1, 8, 1),
-    cruise: num(f.cruise, 0.1, 8, 1),
-    vy: num(f.vy, -8, 8, 0),
-    bandY: num(f.bandY, 0, TANK.height - 1, y),
-    hunger: num(f.hunger, 0, 1, 0.2),
-    // Pre-growth saves carry no scale: those fish are grown, not
-    // juveniles. addFish clamps the value into the sim's range.
-    scale: typeof f.scale === "number" && Number.isFinite(f.scale)
-      ? f.scale : 1,
-    species: typeof f.species === "string" ? f.species : "",
-  };
-  // Optional fields drop rather than zero out — a bogus sheetIdx or
-  // pack must read as "no binding", not bind to slot 0.
-  if (Number.isInteger(f.id) && f.id! >= 0) out.id = f.id!;
-  if (Number.isInteger(f.sheetIdx) && f.sheetIdx! >= 0)
-    out.sheetIdx = f.sheetIdx!;
-  if (typeof f.pack === "string") out.pack = f.pack;
-  const name = cleanFishName(f.name);
-  if (name) out.name = name;
-  if (typeof f.z === "number" && Number.isFinite(f.z))
-    out.z = Math.min(1, Math.max(0, f.z));
-  const life = sanitizeLife(f.life);
-  if (life) {
-    out.life = life;
-    // A body is found on the bottom, as the original reloads its
-    // dead: it settles straight there rather than floating up again.
-    if (life.dead) out.corpse = "sink";
-  }
-  if (typeof f.entry === "string") out.entry = f.entry;
-  return out;
-}
 const roster = (saved?.fish ?? [])
   .filter((f): f is Partial<Fish> & { x: number; y: number } =>
     !!f && Number.isFinite(f.x) && Number.isFinite(f.y))
-  .map(sanitizeSavedFish);
+  .map(restoredFish);
 // A saved, deliberately empty v=2 roster stays empty (Empty Tank, or
 // every fish removed); only a missing or pre-roster save gets starters.
 const keepEmpty = saved?.v === 2 && saved.fish.length === 0;

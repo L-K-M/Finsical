@@ -1,5 +1,8 @@
 import type { Fish } from "../core/sim.js";
 import type { FishLife } from "../core/aquarium/life.js";
+import { sanitizeLife } from "../core/aquarium/life.js";
+import { TANK_SIZE } from "../core/tuning.js";
+import { cleanFishName } from "./fishname.js";
 
 /**
  * Pure rules for naming and binding the fish of an add-on, kept out of
@@ -107,6 +110,67 @@ export function savedFish(f: Fish): SavedFish {
     ...(f.name ? { name: f.name } : {}),
     ...(f.life ? { life: f.life } : {}),
   };
+}
+
+/** A saved fish as it comes back out of storage, where every field is
+ * untrusted: a corrupted hunger or heading enters the sim (a NaN
+ * hunger means a fish can never seek food) and then re-persists.
+ * Clamp each numeric field. */
+export function restoredFish(f: Partial<SavedFish> & {
+  x: number; y: number;
+}): Partial<Fish> & { x: number; y: number } {
+  const num = (v: number | undefined, lo: number, hi: number,
+               dflt: number): number =>
+    typeof v === "number" && Number.isFinite(v)
+      ? Math.min(hi, Math.max(lo, v)) : dflt;
+  // bandY's fallback must reuse the clamped y — the raw value only
+  // passed the finite check, so a corrupt save could seed an
+  // out-of-bounds band and re-persist it.
+  const y = num(f.y, 0, TANK_SIZE.height - 1, TANK_SIZE.height / 2);
+  // Only the fields savedFish writes come back, each one named: a
+  // field on one side of this contract and not the other is a fish
+  // losing part of itself, and naming both sides in one module is how
+  // that gets caught. Anything else a save carries stays out of the
+  // sim rather than passing through unchecked.
+  const out: Partial<Fish> & { x: number; y: number } = {
+    x: num(f.x, 0, TANK_SIZE.width - 1, TANK_SIZE.width / 2),
+    y,
+    facing: f.facing === -1 ? -1 as const : 1 as const,
+    heading: num(f.heading, -2 * Math.PI, 2 * Math.PI, 0),
+    speed: num(f.speed, 0.1, 8, 1),
+    cruise: num(f.cruise, 0.1, 8, 1),
+    vy: num(f.vy, -8, 8, 0),
+    bandY: num(f.bandY, 0, TANK_SIZE.height - 1, y),
+    hunger: num(f.hunger, 0, 1, 0.2),
+    // Pre-growth saves carry no scale: those fish are grown, not
+    // juveniles. addFish clamps the value into the sim's range.
+    scale: typeof f.scale === "number" && Number.isFinite(f.scale)
+      ? f.scale : 1,
+    species: typeof f.species === "string" ? f.species : "",
+  };
+  // Optional fields drop rather than zero out — a bogus sheetIdx or
+  // pack must read as "no binding", not bind to slot 0.
+  if (Number.isInteger(f.id) && f.id! >= 0) out.id = f.id!;
+  if (Number.isInteger(f.sheetIdx) && f.sheetIdx! >= 0)
+    out.sheetIdx = f.sheetIdx!;
+  if (typeof f.pack === "string") out.pack = f.pack;
+  // The pack's entry inside it. Read here as well as written: a
+  // multi-pack add-on's fish that comes back without one has to be
+  // guessed at from its id, which goes wrong the moment an earlier
+  // fish is removed.
+  if (typeof f.entry === "string") out.entry = f.entry;
+  const name = cleanFishName(f.name);
+  if (name) out.name = name;
+  if (typeof f.z === "number" && Number.isFinite(f.z))
+    out.z = Math.min(1, Math.max(0, f.z));
+  const life = sanitizeLife(f.life);
+  if (life) {
+    out.life = life;
+    // A body is found on the bottom, as the original reloads its
+    // dead: it settles straight there rather than floating up again.
+    if (life.dead) out.corpse = "sink";
+  }
+  return out;
 }
 
 /**
