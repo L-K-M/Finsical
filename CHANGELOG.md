@@ -20,6 +20,8 @@
   of fouled water, the night torch, and the snail's visits. Each is
   on by default; clearing them brings back the original's plainer
   rendering.
+- The snail crawls head-first in both directions. It used to lead
+  with its shell, eyestalks trailing, whichever way it went.
 - On Linux, when the window manager resizes the tank (for example with
   KWin's Alt+right-drag), the tank snaps back to its computer case's
   shape once you let go, instead of leaving empty space beside it.
