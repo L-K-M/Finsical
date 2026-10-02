@@ -469,10 +469,9 @@ body.zen .nametag {
    ring this replaces read as a second default button. */
 .ifilter:focus { outline: 2px solid #6666cc; outline-offset: 1px; border-color: #000; }
 .ifilter:disabled { background: #ddd; }
-/* Forced-colors mode suppresses box-shadow — fall back to a real
-   outline so the focused field stays visible. */
+/* Forced-colors mode repaints the ring's colour: ask for Highlight. */
 @media (forced-colors: active) {
-  .ifilter:focus { outline: 2px solid Highlight; box-shadow: none; }
+  .ifilter:focus { outline: 2px solid Highlight; }
 }
 .icount {
   flex: 0 1 auto; min-width: 0; margin: 3px 0 0 auto;
@@ -577,7 +576,7 @@ body.zen .nametag {
 .alertfield:focus { outline: 2px solid #6666cc; outline-offset: 1px; }
 .alertfield[hidden] { display: none; }
 @media (forced-colors: active) {
-  .alertfield:focus { outline: 2px solid Highlight; box-shadow: none; }
+  .alertfield:focus { outline: 2px solid Highlight; }
 }
 .alertprogress[hidden] { display: none; }
 .alertbuttons {
