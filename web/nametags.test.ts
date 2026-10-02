@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { SURFACE } from "../core/sim.js";
 import { makeRng } from "../core/rng.js";
-import { declutterTags, TAG_CLEARANCE, tagPlacement, tagSides }
-  from "./nametags.js";
+import { armHolds, declutterTags, pruneHolds, TAG_CLEARANCE, TAG_HOLD_MS,
+         tagPlacement, tagSides } from "./nametags.js";
 import type { TagCandidate, TagChoice } from "./nametags.js";
 
 // A tank drawn at 2x, its corner 10 px into the host; tags stay
@@ -163,10 +163,43 @@ describe("declutterTags", () => {
     expect(m.get(2)?.side).toBe("above");
   });
 
+  it("is its own fixed point: fed back unchanged, nothing moves", () => {
+    const cs = [cand(1, 50, 100), cand(2, 50, 100), cand(3, 60, 110),
+                cand(4, 200, 60, false)];
+    const once = declutterTags(cs, none);
+    expect(declutterTags(cs, once)).toEqual(once);
+  });
+
   it("goes back above once its usual side is clear", () => {
     const pushed = declutterTags([cand(1, 50, 100), cand(2, 50, 100)], none);
     expect(pushed.get(2)?.side).toBe("below");
     const freed = declutterTags([cand(2, 50, 100)], pushed);
     expect(freed.get(2)?.side).toBe("above");
+  });
+});
+
+describe("tag holds", () => {
+  const shown: TagChoice = { side: "above", spot: { left: 0, top: 0 } };
+
+  it("arms a hold only when a showing tag has to hide", () => {
+    const held = new Map<number, number>();
+    armHolds(new Map([[1, shown], [2, null]]),
+             new Map([[1, null], [2, null], [3, shown]]), held, 1000);
+    // 1 went from shown to hidden; 2 was already hidden; 3 shows.
+    expect([...held]).toEqual([[1, 1000 + TAG_HOLD_MS]]);
+  });
+
+  it("doesn't re-arm a tag that stays hidden", () => {
+    const held = new Map([[1, 1000 + TAG_HOLD_MS]]);
+    armHolds(new Map([[1, null]]), new Map([[1, null]]), held, 1200);
+    expect(held.get(1)).toBe(1000 + TAG_HOLD_MS);
+  });
+
+  it("lets a hold run out, and drops the holds of fish that left", () => {
+    const held = new Map([[1, 1000 + TAG_HOLD_MS], [2, 5000]]);
+    pruneHolds(held, new Set([1, 2]), 1000 + TAG_HOLD_MS - 1);
+    expect(held.size).toBe(2); // still running
+    pruneHolds(held, new Set([1]), 1000 + TAG_HOLD_MS);
+    expect([...held.keys()]).toEqual([]); // 1 expired, 2's fish is gone
   });
 });

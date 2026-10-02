@@ -46,8 +46,9 @@ export function tagSides(fx: number, top: number, bottom: number,
   };
 }
 
-/** A tag's usual place on its own: above the fish, or under it near
- * the surface (see tagSides). */
+/** A tag's usual place when nothing else is near: above the fish, or
+ * under it near the surface (see tagSides). The tank lays tags out
+ * with declutterTags; this is the one-tag case. */
 export function tagPlacement(fx: number, top: number, bottom: number,
                              map: TankMap, w: number, h: number,
                              bounds: TagBounds,
@@ -76,6 +77,24 @@ export const TAG_CLEARANCE = 6;
  * fish that wander back and forth from blinking several times a
  * second. */
 export const TAG_HOLD_MS = 1500;
+
+/** Drop the holds that have run out, and those of fish gone from the
+ * tank. */
+export function pruneHolds(heldUntil: Map<number, number>,
+                           live: ReadonlySet<number>, now: number): void {
+  for (const [id, until] of heldUntil)
+    if (until <= now || !live.has(id)) heldUntil.delete(id);
+}
+
+/** Hold every tag that was showing in `prev` and had to hide in `next`
+ * for TAG_HOLD_MS from `now`. A tag that stays hidden isn't held again:
+ * its hold runs out once. */
+export function armHolds(prev: ReadonlyMap<number, TagChoice>,
+                         next: ReadonlyMap<number, TagChoice>,
+                         heldUntil: Map<number, number>, now: number): void {
+  for (const [id, c] of next)
+    if (!c && prev.get(id)) heldUntil.set(id, now + TAG_HOLD_MS);
+}
 
 function overlaps(a: TagSpot & { w: number; h: number },
                   b: TagSpot & { w: number; h: number },
@@ -191,8 +210,7 @@ export function mountNameTags(host: HTMLElement): NameTags {
       for (const t of tags.values())
         if (!t.w) { t.w = t.el.offsetWidth; t.h = t.el.offsetHeight; }
       const now = performance.now();
-      for (const [id, until] of heldUntil)
-        if (until <= now || !live.has(id)) heldUntil.delete(id);
+      pruneHolds(heldUntil, live, now);
       const prev = choices;
       choices = declutterTags(fish.map((f) => {
         const t = tags.get(f.id)!;
@@ -200,8 +218,7 @@ export function mountNameTags(host: HTMLElement): NameTags {
                  ...tagSides(f.x, f.top, f.bottom, map, t.w, t.h, bounds,
                              surface) };
       }), prev, new Set(heldUntil.keys()));
-      for (const [id, c] of choices)
-        if (!c && prev.get(id)) heldUntil.set(id, now + TAG_HOLD_MS);
+      armHolds(prev, choices, heldUntil, now);
       for (const f of fish) {
         const t = tags.get(f.id)!;
         const c = choices.get(f.id) ?? null;
