@@ -8,7 +8,7 @@ import { showAlert } from "./alert.js";
 import type { Alert, AlertButton } from "./alert.js";
 import { listAddons, loadProblem } from "./import.js";
 import type { Importable } from "./import.js";
-import { resolveStarter, runStarter, starterCollection,
+import { resolveStarter, runStarter, starterCollection, unreachedStarter,
          wantsStarterSounds, welcomeOffer } from "./starter.js";
 import type { WelcomeAnswer } from "./starter.js";
 
@@ -137,8 +137,16 @@ async function stock(alert: Alert, hooks: StarterHooks,
   alert.update({ icon: "note", buttons: [stop], progress: 0,
                  text: "Looking up the starter set on the Internet " +
                        "Archive…" });
-  const listed = retry ??
-    resolveStarter(await listAddons(starterCollection));
+  // A listing that fails comes back as missing items: note it, so they
+  // count as out of reach rather than gone from the archive.
+  let listingProblem: unknown = null;
+  const listing = retry ? null : await listAddons(starterCollection,
+    undefined, (_col, e) => {
+      listingProblem ??= e ?? new Error("listing failed");
+    });
+  const listed = retry ?? resolveStarter(listing!);
+  const unreached = listing ? unreachedStarter(listing, !!listingProblem)
+                            : [];
   if (stopped) return;
   if (!listed.length) {
     offerRetry(alert, hooks, null, giveUp,
@@ -163,13 +171,22 @@ async function stock(alert: Alert, hooks: StarterHooks,
     stopped: () => stopped,
   });
   if (stopped) return;
-  if (!failed.length) { recordAnswer("stocked"); alert.close(); return; }
+  if (!failed.length && !unreached.length) {
+    recordAnswer("stocked");
+    alert.close();
+    return;
+  }
 
-  const what = !retry && failed.length === listed.length
+  // What the listing couldn't reach was never tried, so Try Again
+  // looks the set up again (null) rather than retrying only `failed`;
+  // runStarter skips whatever went in. The answer stays "retry", so a
+  // later launch offers the rest too.
+  const what = !retry && !unreached.length && failed.length === listed.length
     ? "the starter set"
-    : listNames(failed.map((f) => f.inner));
-  offerRetry(alert, hooks, failed, giveUp,
-             `Finsical couldn't add ${what}. ${loadProblem(problem)}`);
+    : listNames([...failed, ...unreached].map((f) => f.inner));
+  offerRetry(alert, hooks, unreached.length ? null : failed, giveUp,
+             `Finsical couldn't add ${what}. ` +
+             loadProblem(problem ?? listingProblem));
 }
 
 function offerRetry(alert: Alert, hooks: StarterHooks,

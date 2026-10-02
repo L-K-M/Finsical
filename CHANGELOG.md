@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- If part of the Internet Archive doesn't answer while Finsical stocks
+  a new tank, it says which starter items it couldn't reach and offers
+  them again, instead of finishing without the plant and the
+  background and never offering them again.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's

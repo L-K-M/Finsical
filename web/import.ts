@@ -728,12 +728,14 @@ COLLECTIONS.forEach((c, i) => {
 
 /** Fetch the listing pages of all collections (or those `only`
  * accepts), grouped by section in COLLECTIONS order. Never rejects: a
- * failed section just comes back empty. `onItems` fires per resolved
- * collection so a caller can show rows without waiting on the slowest
- * one. */
+ * failed section just comes back empty, and `onFailed` hears which one
+ * and why, since an empty section and an unreachable one look the
+ * same in the result. `onItems` fires per resolved collection so a
+ * caller can show rows without waiting on the slowest one. */
 export async function listAddons(
     only: (c: Collection) => boolean = () => true,
     onItems?: (items: Importable[]) => void,
+    onFailed?: (col: Collection, e: unknown) => void,
 ): Promise<Importable[]> {
   const cols = COLLECTIONS.filter(only);
   const lists = await Promise.all(cols.map(async (col) => {
@@ -744,6 +746,12 @@ export async function listAddons(
     } catch (e) {
       console.warn(`archive.org listing failed for ${col.outer}:`, e);
       items = [];
+      // Guarded like onItems below: a throwing callback mustn't reject
+      // Promise.all and void every other collection's results.
+      try { onFailed?.(col, e); }
+      catch (cbErr) {
+        console.warn(`onFailed callback failed for ${col.outer}:`, cbErr);
+      }
     }
     // Outside the fetch try: a throwing UI callback must not
     // masquerade as a fetch failure or drop the collection's items.

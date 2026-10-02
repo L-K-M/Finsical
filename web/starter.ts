@@ -43,6 +43,19 @@ export function resolveStarter(listing: readonly Importable[]): Importable[] {
   return out;
 }
 
+/** STARTER_SET's items a listing came back without, while some of its
+ * collections couldn't be listed. resolveStarter skips a missing item
+ * for good, which is right when the archive has dropped it; but behind
+ * a listing that failed (the JPN page timing out, say) it may just be
+ * out of reach this time, and the offer must come back for it. Empty
+ * when every listing answered. */
+export function unreachedStarter(listing: readonly Importable[],
+                                 listingFailed: boolean): StarterItem[] {
+  if (!listingFailed) return [];
+  return STARTER_SET.filter((s) => !listing.some((l) =>
+    l.section === s.section && l.inner === s.inner));
+}
+
 /** Whether this launch should install the starter set's sounds on its
  * own. Tanks set up before the set had sounds answered the welcome
  * without them and play nothing. Only a tank that already answered the
