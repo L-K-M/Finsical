@@ -16,11 +16,11 @@ const src = import.meta.glob<string>("./main.ts", {
 describe("tank save fields", () => {
   it("tankSnapshot persists each fish's pack entry", () => {
     expect(src).toMatch(
-      /\.\.\.\(f\.entry !== undefined \? \{ entry: f\.entry \} : \{\}\),/);
+      /\.\.\.\(f\.entry\s*!==\s*undefined\s*\?\s*\{\s*entry:\s*f\.entry\s*\}\s*:\s*\{\}\),/);
   });
 
   it("sanitizeSavedFish still reads the entry back", () => {
     expect(src).toMatch(
-      /if \(typeof f\.entry === "string"\) out\.entry = f\.entry;/);
+      /if\s*\(typeof\s+f\.entry\s*===\s*"string"\)\s*out\.entry\s*=\s*f\.entry;/);
   });
 });

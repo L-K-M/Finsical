@@ -1331,8 +1331,8 @@ describe("lifecycle", () => {
     expect(baby.life!.age).toBe(0);
   });
 
-  it("a fry inherits its parent's pack entry, so it rebinds to the " +
-     "parent's own art after a relaunch", () => {
+  it("a fry inherits its parent's pack entry, which the save " +
+     "persists so a relaunch rebinds it to the parent's own art", () => {
     const sim = new Sim({ width: 320, height: 200 }, 42);
     breedingPair(sim);
     for (const f of sim.fish) f.entry = "angels/blackangel.fsh";
