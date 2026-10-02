@@ -37,7 +37,7 @@ import { clampDecorCopies, decorCopyRoom, fetchAddon, installProblem,
          mountImportPanel, orphanedSounds, recordAddon,
          qualifySoundItemName, isListed, isSavedAddon, sceneryFix,
          usablePacks,
-         usableProblem, COLLECTIONS }
+         usableProblem, COLLECTIONS, isArchiveUrl }
   from "./import.js";
 import { SWAY_BANDS, swayOffset } from "./sway.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
@@ -2002,8 +2002,7 @@ function emptyTank(): void {
 const KNOWN_SECTIONS = new Set(COLLECTIONS.map((c) => c.section));
 const installsInFlight = new Map<string, Promise<void>>();
 async function remoteInstall(it: Importable, again: boolean): Promise<void> {
-  if (!it?.url || typeof it.url !== "string" ||
-      !it.url.startsWith("https://archive.org/") ||
+  if (!isArchiveUrl(it?.url) ||
       !KNOWN_SECTIONS.has(it.section) ||
       typeof it.inner !== "string" || !it.inner.trim()) {
     bus.post({ op: "installFailed", url: it?.url ?? "",

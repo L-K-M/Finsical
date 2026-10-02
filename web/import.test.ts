@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { browserGeometry, DECOR_COPIES_MAX, decorCopyRoom, fragDecode,
-         fragEncode, importAddon, installProblem, listAddons,
+         fragEncode, importAddon, installProblem, isArchiveUrl, listAddons,
          loadProblem, transientFailure, isListed, orphanedSounds,
          qualifySoundItemName, recordAddon, isSavedAddon, usablePacks,
          usableProblem }
@@ -585,5 +585,22 @@ describe("isSavedAddon", () => {
     expect(isSavedAddon(ok)).toBe(true);
     expect(isSavedAddon({ ...ok, section: "" })).toBe(true);
     expect(isSavedAddon({ ...ok, sounds: [] })).toBe(true);
+  });
+});
+
+describe("isArchiveUrl", () => {
+  it("accepts the site and its node mirrors over https", () => {
+    expect(isArchiveUrl("https://archive.org/download/x/y.zip")).toBe(true);
+    expect(isArchiveUrl("https://ia801504.us.archive.org/download/x/y.zip"))
+      .toBe(true);
+  });
+
+  it("rejects other hosts, schemes, lookalikes and non-strings", () => {
+    for (const bad of [
+      "http://archive.org/x", "https://evilarchive.org/x",
+      "https://archive.org.evil.com/x", "https://example.com/x",
+      "https://notarchive.org/x", null, 7, "", undefined,
+    ])
+      expect(isArchiveUrl(bad)).toBe(false);
   });
 });

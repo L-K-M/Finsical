@@ -201,11 +201,29 @@ function zipWeigh(url: string, bytes: number): void {
     zipEvict(k);
   }
 }
+/** The hosts archive.org serves content from: the site and its node
+ * mirrors (iaNNNN…). Listing pages have handed out both, and the
+ * downloader follows redirects across them, so the listing parser, the
+ * install validator and the cache must agree on one definition. */
+export function isArchiveHost(hostname: string): boolean {
+  return hostname === "archive.org" || hostname.endsWith(".archive.org");
+}
+
+/** Whether `raw` is an https URL on archive.org or one of its node
+ * mirrors — the shape the add-on import pipeline accepts end to end. */
+export function isArchiveUrl(raw: unknown): boolean {
+  if (typeof raw !== "string") return false;
+  try {
+    const u = new URL(raw);
+    return u.protocol === "https:" && isArchiveHost(u.hostname);
+  } catch { return false; }
+}
+
 /** Per-URL bytes on archive.org never change — safe to persist
  * forever. Other hosts (a dev server, a mutable mirror) keep only
  * their in-session memo so stale bytes can't wedge a dev loop. */
 function immutableHost(u: string): boolean {
-  try { return /(^|\.)archive\.org$/.test(new URL(u).hostname); }
+  try { return isArchiveHost(new URL(u).hostname); }
   catch { return false; }
 }
 /** archive.org occasionally stalls mid-response. Without a timeout a
@@ -417,7 +435,7 @@ async function listCollection(col: Collection): Promise<Importable[]> {
     try { u = new URL(m[1]!, pageUrl(item, outer)); }
     catch { continue; } // malformed href — not an entry link
     // Entry links live on archive.org or its node mirrors (iaNNNN…).
-    if (u.host !== "archive.org" && !u.host.endsWith(".archive.org"))
+    if (!isArchiveHost(u.hostname))
       continue;
     let path: string;
     try { path = decodeURIComponent(u.pathname); }

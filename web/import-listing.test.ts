@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { listAddons } from "./import.js";
+import { isArchiveUrl, listAddons } from "./import.js";
 
 const PAGE = "https://archive.org/download/aquazonewithguppiesandaddons/" +
   "addon%20and%20modded%20fish.zip/";
@@ -39,5 +39,23 @@ describe("listing pages", () => {
     const listed = listAddons((c) => c.outer === "addon and modded fish.zip");
     await vi.advanceTimersByTimeAsync(120_000);
     expect((await listed).map((it) => it.inner)).toEqual(["banggai"]);
+  });
+});
+
+describe("node-mirror listing links", () => {
+  it("produce items the install validator accepts", async () => {
+    // Listing pages may switch to mirror-host hrefs; the producer must
+    // not emit a URL the tank's remote install refuses.
+    const html = '<a href="//ia801504.us.archive.org/download/' +
+      'aquazonewithguppiesandaddons/addon%20and%20modded%20fish.zip/' +
+      'banggai.zip">banggai.zip</a>';
+    vi.stubGlobal("fetch", async (u: string) =>
+      String(u) === PAGE
+        ? new Response(html, { status: 200 })
+        : new Response(null, { status: 404 }));
+    const listed = await listAddons(
+      (c) => c.outer === "addon and modded fish.zip");
+    expect(listed.map((it) => it.inner)).toEqual(["banggai"]);
+    expect(listed.every((it) => isArchiveUrl(it.url))).toBe(true);
   });
 });
