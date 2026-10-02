@@ -2334,7 +2334,10 @@ function syncNameTags(): void {
   // already invalidated layout, so a getBoundingClientRect here would
   // force a synchronous layout pass on every frame. Same elements as
   // pictureEl(): the glass while the tube draws, the tank otherwise.
-  const r = crtMapsPointer() ? crtClientRect() : tankRect();
+  // The decision is made once so the rect and the per-fish mapping
+  // cannot disagree if the tube flips mid-frame.
+  const throughCrt = crtMapsPointer();
+  const r = throughCrt ? crtClientRect() : tankRect();
   const carded = infoCard?.fish;
   const surface = tankToClient(TANK.width / 2, SURFACE + 1, r).y;
   let n = 0;
@@ -2350,7 +2353,7 @@ function syncNameTags(): void {
     // The tag pins just above the fish's back and may ride down to
     // its belly (nametags.ts clamps by the two y values).
     let px: number, top: number, bottom: number;
-    if (crtMapsPointer()) {
+    if (throughCrt) {
       const up = tankToClient(f.x, f.y - hh, r);
       px = up.x;
       top = up.y;

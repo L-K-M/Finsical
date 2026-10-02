@@ -22,7 +22,9 @@ describe("Fish Names frame-loop hygiene", () => {
   it("places tags from the cached rect, never a fresh layout read",
      () => {
     const fn = body();
-    expect(fn).toMatch(/crtMapsPointer\(\) \? crtClientRect\(\) : tankRect\(\)/);
+    // The extraction reached the function's end, not a truncation.
+    expect(fn).toContain("nameTags.sync(");
+    expect(fn).toMatch(/throughCrt \? crtClientRect\(\) : tankRect\(\)/);
     // A call, not the word: the block's comments explain why no fresh
     // layout read belongs here.
     expect(fn).not.toMatch(/\.getBoundingClientRect\(\)/);
