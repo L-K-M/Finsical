@@ -6803,7 +6803,7 @@ Size M · Severity idea · Value 3/5 · Risk 3/5
 Fifteenth pass: the snail visitor creeps the gravel
 (PR #232); algae growth and the sponge ritual remain.
 
-Twentieth-pass extension: the active gravel visitor should leave a
+Parallel-audit extension: the active gravel visitor should leave a
 short, fading grazing trail. This is distinct from the older front-glass
 clean-streak idea.
 
@@ -7101,7 +7101,7 @@ rare reward would add surprise.
 **Change.** A rare fish "photobomb" (swims to the front, large) after a
 tap, or a sparkle on perfect water quality.
 
-Twentieth-pass extension: after a full simulated day of excellent water,
+Parallel-audit extension: after a full simulated day of excellent water,
 a plant may bloom, then wilt as water quality deteriorates.
 
 **Evidence.** `core/sim.ts` `tap()`.
@@ -9591,8 +9591,8 @@ were allocated after that pass was folded.
   pinch contains one pellet. A zero-drop scheduled invocation is
   unreachable, so no defect is filed. This does not change the separate
   manual food-cap sound issue already recorded elsewhere.
-- `plantSize` remains explicitly unverified in `FOLLOW-UPS.md`; it needs
-  a focused reproduction before it becomes backlog work.
+- `plantSize` was unverified during this audit, but upstream B-78 / PR
+  #363 now implements it; it is not retained as pending work here.
 - A restored nonstandard simulation speed may leave the Stats Time popup
   stale, but it needs proof that saved or bus state can bypass speed
   sanitization before an entry is added.
@@ -9670,7 +9670,9 @@ check confirms that a dose's existing care effect is unchanged.
 
 **Placement.** A-14 and D-51 through D-55 are Phase 7 seasoning after
 the existing open reliability and fidelity work.
+
 ---
+
 ## Twenty-first pass (2026-10-02, `origin/main` `d5e5410`, folded at `9cc72e6`)
 
 A fresh full-repo review run in parallel with the eighteenth and
