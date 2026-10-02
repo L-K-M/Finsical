@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
+import { CHARCOAL_12 }
+  from "../node_modules/osmium-ui/src/fonts/charcoal12.js";
 import {
   MACHINES, SCREENBACK_HOLE_PAD, backgroundMarkup, machineById, previewMarkup, rasterInGlass,
   rasterZoom, shellMarkup,
@@ -334,5 +336,24 @@ describe("rasterZoom", () => {
     const aquarium = machineById("aquarium")!;
     expect(aquarium.sy * NATIVE_MIN_SCALE)
       .toBeGreaterThanOrEqual(NATIVE_DRAG_STRIP_HEIGHT);
+  });
+});
+
+describe("machine names", () => {
+  // The Preferences machine list (#pfmachines) is 190 px wide; its rows
+  // measure about 173 px after the 4 px padding and the scrollbar. A
+  // name past the row truncates, and the dropped suffix can be the only
+  // thing telling two variants apart ("(II)", "(Black)") — this guard
+  // keeps every name whole. Advances come from the same Charcoal 12
+  // strike the rows render in.
+  const ROW_TEXT_PX = 168;
+  const advance = new Map(
+    CHARCOAL_12.glyphs.map((g) => [g[0], g[1]]));
+  const nameWidth = (name: string): number =>
+    [...name].reduce((w, c) => w + (advance.get(c.codePointAt(0)!) ?? 0), 0);
+
+  it("every name fits the Preferences machine list", () => {
+    for (const m of MACHINES)
+      expect(nameWidth(m.name), m.name).toBeLessThanOrEqual(ROW_TEXT_PX);
   });
 });
