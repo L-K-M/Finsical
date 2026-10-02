@@ -46,6 +46,14 @@ export function fadeProgress(elapsed: number,
     (elapsed - fadeAtMs(doneElapsed)) / BOOT_FADE_MS));
 }
 
+/** Whether the parade still owns the tank canvas. `bootT0` is the
+ * page's parade clock (null once done, or when the boot is off): while
+ * it runs, live chrome — name tags, hover tips, the feed crosshair and
+ * event notices — must stay off a screen that is not the tank yet. */
+export function bootActive(bootT0: number | null): boolean {
+  return bootT0 !== null;
+}
+
 /** The slot for parade icon i: nine across along the bottom edge,
  * then stacking upward — how Mac OS marched its extensions in. */
 export function paradeSlot(i: number): { x: number; y: number } {

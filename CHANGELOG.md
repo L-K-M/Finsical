@@ -20,6 +20,11 @@
   of fouled water, the night torch, and the snail's visits. Each is
   on by default; clearing them brings back the original's plainer
   rendering.
+- The startup parade no longer has live-tank chrome floating over it:
+  with Fish Names on, name tags used to hang over the grey desktop,
+  hover balloons and the feed crosshair answered a screen that was not
+  the tank yet, and a catch-up death notice could pop over the parade.
+  They all wait for the water.
 - On Linux, when the window manager resizes the tank (for example with
   KWin's Alt+right-drag), the tank snaps back to its computer case's
   shape once you let go, instead of leaving empty space beside it.

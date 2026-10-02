@@ -59,7 +59,7 @@ import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
   from "./catpaw.js";
 import type { PawVisit } from "./catpaw.js";
 import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
-import { bootPhase, drawBoot, fadeProgress, paradeIcon }
+import { bootActive, bootPhase, drawBoot, fadeProgress, paradeIcon }
   from "./boot.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
 import { claimTank } from "./tankclaim.js";
@@ -420,7 +420,9 @@ function collectEvents(): void {
   if (ev.length) { requestPaint(); saveTank(); }
 }
 function showNotices(): void {
-  if (!pendingNotices.length || alertOpen()) return;
+  // The parade owns the canvas: a catch-up death notice waits for the
+  // water instead of popping over the desktop.
+  if (!pendingNotices.length || alertOpen() || bootActive(bootT0)) return;
   showAlert({ icon: "note", text: noticeText(pendingNotices.splice(0)),
               buttons: [{ title: "OK", default: true, cancel: true }] });
 }
@@ -666,7 +668,7 @@ function setFeedHover(on: boolean): void {
   requestPaint();
 }
 function syncFeedHover(): void {
-  if (!lastClient) { setFeedHover(false); return; }
+  if (!lastClient || bootActive(bootT0)) { setFeedHover(false); return; }
   const p = tankPoint(lastClient.x, lastClient.y);
   // Paused drops the affordance too — the click below is gated the
   // same way, so the cursor mustn't promise a feed that won't land.
@@ -748,7 +750,8 @@ document.body.appendChild(fishTip);
  * menu, the add-on window, a document window or an alert is up (the
  * tip would float over them). */
 const anyOverlayOpen = (): boolean =>
-  !!(infoCard || importPanel.isOpen || menuOpen() || docOpen() || alertOpen());
+  !!(infoCard || importPanel.isOpen || menuOpen() || docOpen() ||
+     alertOpen() || bootActive(bootT0));
 const fishToName = (p: { x: number; y: number }): Fish | null =>
   anyOverlayOpen() ? null : fishAtPoint(p);
 const fishTipLabel = (f: Fish): string =>
@@ -2332,7 +2335,7 @@ const CLIENT_MAP = { s: 1, ox: 0, oy: 0 };
  * (the card names it, right where its tag would go). Placed through
  * tankToClient like the card, so the tags follow the CRT's warp. */
 function syncNameTags(): void {
-  if (!namesOn) return;
+  if (!namesOn || bootActive(bootT0)) return;
   const r = pictureEl().getBoundingClientRect();
   const carded = infoCard?.fish;
   const surface = tankToClient(TANK.width / 2, SURFACE + 1, r).y;
