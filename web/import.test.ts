@@ -1,8 +1,10 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { browserGeometry, DECOR_COPIES_MAX, decorCopyRoom, fragDecode,
+import { browserGeometry, chooseStartSection, DECOR_COPIES_MAX,
+         decorCopyRoom, fragDecode,
          fragEncode, importAddon, installProblem, listAddons,
          loadProblem, transientFailure, isListed, orphanedSounds,
-         qualifySoundItemName, recordAddon, isSavedAddon, usablePacks,
+         qualifySoundItemName, recordAddon, rememberSection, isSavedAddon,
+         usablePacks,
          usableProblem }
   from "./import.js";
 import type { Importable, PackResult } from "./import.js";
@@ -585,5 +587,26 @@ describe("isSavedAddon", () => {
     expect(isSavedAddon(ok)).toBe(true);
     expect(isSavedAddon({ ...ok, section: "" })).toBe(true);
     expect(isSavedAddon({ ...ok, sounds: [] })).toBe(true);
+  });
+});
+
+describe("chooseStartSection", () => {
+  it("keeps the saved section once it has arrived", () => {
+    expect(chooseStartSection("sounds", ["fish", "sounds"])).toBe("sounds");
+  });
+
+  it("shows the first arrived section until the saved one does", () => {
+    expect(chooseStartSection("sounds", ["fish"])).toBe("fish");
+    expect(chooseStartSection(null, ["fish", "sounds"])).toBe("fish");
+  });
+});
+
+describe("rememberSection", () => {
+  it("writes the user's pick through the injected store", () => {
+    let wrote: string | null = null;
+    rememberSection("sounds", {
+      get: () => null, set: (s) => { wrote = s; },
+    });
+    expect(wrote).toBe("sounds");
   });
 });
