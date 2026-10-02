@@ -665,7 +665,10 @@ export class TankAudio {
     if (!this.musicOn) return;
     const ac = this.ctx;
     if (!ac || !this.master || this.hidden || ac.state !== "running" ||
-        !Number.isFinite(freq) || freq <= 0) return;
+        !Number.isFinite(freq) || freq <= 0 ||
+        // An exponential ramp throws on a zero or negative target, so
+        // the level needs the same guard as the pitch.
+        !Number.isFinite(gain) || gain <= 0) return;
     const t = ac.currentTime;
     const env = ac.createGain();
     env.gain.setValueAtTime(0.0001, t);

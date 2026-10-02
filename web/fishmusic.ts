@@ -68,8 +68,6 @@ export function noteFor(fish: Point, tank: TankSpan,
            pan: panFor(fish.x, tank.width) };
 }
 
-
-
 /** Ticks (at the sim's 30 per second) one fish must wait between
  * notes. A fish turns about once every six seconds, so this keeps a
  * lone fish audible while stopping a crowd from turning into a chord
@@ -92,6 +90,11 @@ export class NoteGate {
    * it answers true, so a rejected call doesn't push the gate out. */
   try(tick: number): boolean {
     if (!Number.isFinite(tick)) return false;
+    // A tick behind the last one means the sim's clock went backwards —
+    // a reloaded tank, or a fresh one. The old history describes a
+    // tank that is gone, and keeping it would silence the gate until
+    // the count climbed back past where it was.
+    if (tick < this.last) this.reset();
     if (tick - this.last < GATE_TICKS) return false;
     // Drop everything outside the window, then ask about this one.
     const from = tick - BURST_TICKS;
@@ -104,9 +107,8 @@ export class NoteGate {
     return true;
   }
 
-  /** Forget the history: after a long pause, or when the tank is
-   * emptied and refilled, the first fish to turn shouldn't wait out
-   * the leftovers. */
+  /** Forget the history: after a long pause, when the tank is emptied
+   * and refilled, or when the sim's clock goes backwards. */
   reset(): void {
     this.last = -Infinity;
     this.recent = [];

@@ -2257,6 +2257,10 @@ const musicState = new WeakMap<Fish, FishState>();
  * anywhere in the tank: the fish itself, or the pellet it ate. */
 function playNote(at: { x: number; y: number }, octave: number,
                  gain: number): void {
+  // Ask the switch before the gate: a note that cannot sound must not
+  // spend a slot, or turning Fish music on would open on a gate still
+  // warm with notes nobody heard.
+  if (!soundCfg.music) return;
   if (!musicGate.try(sim.tickCount)) return;
   const n = noteFor(at, TANK, sim.light < WAKE_LIGHT, octave);
   audio.note(n.freq, n.pan, gain);
@@ -3839,11 +3843,15 @@ function tickSim(): void {
       playNote(p, 1, NOTE_GRACE_GAIN);
     }
   // A fish entering its roll plays its note; the roll lasts several
-  // ticks, so only the transition counts.
+  // ticks, so only the transition counts. A fish seen for the first
+  // time — the tick it is restored on — is recorded silently: a busy
+  // tank would otherwise open with a chord of notes for fish that
+  // happened to be mid-turn, which is the one thing the gate exists
+  // to stop.
   for (const f of sim.fish) {
     const was = musicState.get(f);
     musicState.set(f, f.state);
-    if (was !== "turn" && f.state === "turn")
+    if (was !== undefined && was !== "turn" && f.state === "turn")
       playNote(f, 0, NOTE_GAIN);
   }
   if (effects.splashes)

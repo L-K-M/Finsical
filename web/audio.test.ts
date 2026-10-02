@@ -983,11 +983,15 @@ describe("Fish music", () => {
     expect(ac.oscs).toHaveLength(0);
   });
 
-  it("ignores a pitch that is not a note", async () => {
+  it("ignores a pitch or level that is not a note", async () => {
     const { audio, ac } = await tank({ [LOOP]: 30 });
     audio.setOptions({ music: true });
     for (const f of [0, -1, NaN, Infinity])
       audio.note(f);
+    // An exponential ramp throws on a zero or negative target, so a
+    // bad level has to be refused rather than crash the caller.
+    for (const g of [0, -1, NaN, Infinity])
+      audio.note(440, 0, g);
     expect(ac.oscs).toHaveLength(0);
   });
 

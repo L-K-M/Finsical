@@ -98,4 +98,24 @@ describe("NoteGate", () => {
     expect(g.try(Infinity)).toBe(false);
     expect(g.try(0)).toBe(true);
   });
+
+  it("starts over when the sim's clock goes backwards", () => {
+    // A reloaded or refilled tank restarts its tick count. Keeping
+    // the old history would silence the gate until the count climbed
+    // back past where the previous session ended.
+    const g = new NoteGate();
+    for (let t = 0; t < 5000; t += GATE_TICKS) g.try(t);
+    expect(g.try(GATE_TICKS)).toBe(true);
+    // And the fresh history is a fresh history, not the old one.
+    expect(g.try(GATE_TICKS + 1)).toBe(false);
+  });
+
+  it("does not let a backwards tick re-open a spent burst window", () => {
+    const g = new NoteGate();
+    // Three notes fill the window; going backwards must not let a
+    // fourth straight away.
+    for (let i = 0; i < BURST_MAX; i++) g.try(i * GATE_TICKS);
+    expect(g.try(1)).toBe(true);      // backwards: history dropped
+    expect(g.try(2)).toBe(false);     // and the new history counts
+  });
 });
