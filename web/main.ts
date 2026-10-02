@@ -61,7 +61,8 @@ import type { PawVisit } from "./catpaw.js";
 import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
 import { bootPhase, drawBoot, fadeProgress, paradeIcon }
   from "./boot.js";
-import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
+import { acceptsTankIntent, fishThumbKey, inNativeShell, openBus }
+  from "./bus.js";
 import { claimTank } from "./tankclaim.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
@@ -1576,11 +1577,10 @@ const importPanel = mountImportPanel({
 // browser keeps the dark backdrop.
 if (inNativeShell()) document.documentElement.classList.add("native");
 
-const bus = openBus(onBusMessage);
-
 // Random per page-load — lets clients detect a tank restart (their
 // in-flight wants died with the old page) and re-ask once.
 const boot = Math.random().toString(36).slice(2);
+const bus = openBus(onBusMessage);
 
 /** The tank's water and equipment for Tank Stats: readings per litre,
  * as the original's water window showed them. */
@@ -1800,6 +1800,8 @@ function fishOutAfter(remove: () => void): void {
 
 function onBusMessage(m: BusMsg): void {
   if (!tankOwner) return; // view-only: the owner answers everything
+  // A client can outlive this page load, so it cannot mutate its successor.
+  if (!acceptsTankIntent(m, boot)) return;
   if (m.op === "hello") postState(HELLO_MIN_MS);
   else if (m.op === "focusFish") {
     // The Overview's selection spotlights a fish — null lifts it.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { itemsOf, sortItems, summary } from "./overviewmodel.js";
+import { isCurrentTankAction, itemsOf, sortItems,
+         summary } from "./overviewmodel.js";
 import type { TankState } from "./overviewmodel.js";
 
 const STATE: TankState = {
@@ -16,6 +17,18 @@ const STATE: TankState = {
     { section: "gravel", inner: "Blue.grv", url: "u:blue" },
   ],
 };
+
+describe("isCurrentTankAction", () => {
+  it("allows actions for the connected tank that opened them", () => {
+    expect(isCurrentTankAction(false, "first", "first")).toBe(true);
+  });
+
+  it("rejects stale actions after disconnect or restart", () => {
+    expect(isCurrentTankAction(true, "first", "first")).toBe(false);
+    // Covers both an armed Empty Tank control and an open Rename alert.
+    expect(isCurrentTankAction(false, "first", "second")).toBe(false);
+  });
+});
 
 describe("itemsOf", () => {
   it("lists fish, then add-ons that have no fish of their own", () => {

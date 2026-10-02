@@ -28,6 +28,13 @@ export interface TankState extends BusMsg {
   scenery?: { backdrop?: string; gravel?: string };
 }
 
+/** An action opened before a restart must not mutate its replacement tank. */
+export function isCurrentTankAction(tankGone: boolean,
+                                    actionBoot: string | undefined,
+                                    tankBoot: string | undefined): boolean {
+  return !tankGone && actionBoot === tankBoot;
+}
+
 /** One line of the list: a fish, or an add-on with no fish of its own
  * in the tank. */
 export interface Item {
