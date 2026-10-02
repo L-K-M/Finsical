@@ -44,7 +44,14 @@ function openDb(): Promise<IDBDatabase | null> {
         };
         res(db);
       };
-      req.onerror = () => res(null);
+      // A failed open can be passing (WebKit's storage process still
+      // coming back after it was lost), so the next call tries again
+      // rather than keep the cache off for the session. Where it
+      // fails for good, each call costs one failed open request.
+      req.onerror = () => {
+        if (dbPromise === p) dbPromise = null;
+        res(null);
+      };
       // A blocking tab's older version can clear any moment — don't
       // memoize this null or the cache stays off for the session.
       req.onblocked = () => {

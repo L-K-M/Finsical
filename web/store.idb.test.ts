@@ -8,6 +8,7 @@ function fakeIdb() {
   const stores = new Map<string, Map<unknown, unknown>>(
     [["packs", new Map()], ["meta", new Map()]]);
   let opens = 0;
+  let failOpens = 0;
   let current: FakeDb | null = null;
   class FakeDb {
     closed = false;
@@ -52,8 +53,14 @@ function fakeIdb() {
       opens++;
       const r = { result: null as FakeDb | null,
                   onsuccess: null as (() => void) | null,
-                  onerror: null, onupgradeneeded: null, onblocked: null };
+                  onerror: null as (() => void) | null,
+                  onupgradeneeded: null, onblocked: null };
       queueMicrotask(() => {
+        if (failOpens > 0) {
+          failOpens--;
+          r.onerror?.();
+          return;
+        }
         current = new FakeDb();
         r.result = current;
         r.onsuccess?.();
@@ -70,6 +77,8 @@ function fakeIdb() {
       if (announce) current!.onclose?.();
     },
     upgradeElsewhere(): void { current!.onversionchange?.(); },
+    /** The next `n` opens fail, as while a storage process restarts. */
+    failNextOpens(n: number): void { failOpens = n; },
     isClosed: () => current!.closed,
   };
 }
@@ -103,6 +112,18 @@ describe("store.ts after the browser closes its connection", () => {
       expect(idb.opens()).toBe(2);
     });
   }
+
+  it("tries again after an open that failed", async () => {
+    const store = await import("./store.js");
+    await store.packPut("local:a.fsh", new Uint8Array([1]));
+    // The connection goes and the first reopen fails too: that null
+    // mustn't stick, or the cache stays off for the session.
+    idb.lose(false);
+    idb.failNextOpens(1);
+    expect(await store.packGet("local:a.fsh")).toBeNull();
+    expect(await store.packGet("local:a.fsh")).toEqual(new Uint8Array([1]));
+    expect(idb.opens()).toBe(3);
+  });
 
   it("closes for a newer version opening elsewhere, then reopens", async () => {
     const store = await import("./store.js");
