@@ -435,6 +435,10 @@ export class TankAudio {
   birth(): void {
     this.play(this.named("eventbirth"), 0.8);
   }
+  /** A golden meal — a rare victory worth a fanfare. */
+  golden(): void {
+    this.play(this.named("eventcouple") ?? this.named("pipopa"), 0.85);
+  }
 
   /** Fish are begging — the original's timer chime as a dinner bell.
    * Returns false only while audio can't sound, so the caller keeps

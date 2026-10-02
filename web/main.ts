@@ -2851,11 +2851,13 @@ function tickSim(): void {
     else if (e.type === "dead") {
       audio.dead();
       rosterChanged = true; // the roster shrank — don't resurrect it on reload
-    } else if (e.type === "birth") {
+    }     else if (e.type === "birth") {
       bindExtents(e.fish);
       splashAt(e.fish.x, e.fish.y, PUSH.newFish);
       audio.birth();
       rosterChanged = true; // the roster grew
+    } else if (e.type === "golden") {
+      audio.golden();
     }
   }
   if (rosterChanged) saveTank();
