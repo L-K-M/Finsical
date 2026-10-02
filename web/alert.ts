@@ -275,7 +275,10 @@ export function showAlert(spec: AlertSpec): Alert {
   };
 
   openCount++;
-  alertSound?.();
+  // Best-effort by contract: a throwing sound must never abort the
+  // alert it belongs to (the tank page's own hook wraps in try/catch
+  // too; this guards any other host's).
+  try { alertSound?.(); } catch { /* best-effort beep */ }
   document.body.append(scrim);
   alert.update(spec);
   if (field.hidden) win.focus({ preventScroll: true });

@@ -766,6 +766,14 @@ describe("TankAudio event sounds", () => {
     expect(ac.oscs).toHaveLength(0);
   });
 
+  it("a hidden tank stays silent even with pipopa installed", async () => {
+    const { audio, ac } = await tank({ pipopa: 1 });
+    audio.setHidden(true);
+    audio.alertBeep();
+    expect(ac.sources).toHaveLength(0); // the guard fires first
+    expect(ac.oscs).toHaveLength(0);
+  });
+
   it("stays silent on tap with only a song installed", async () => {
     const { audio, ac } = await tank({ "Centerfold": 1 });
     audio.tap(160, 100, 320, 200);
