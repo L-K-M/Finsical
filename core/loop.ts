@@ -4,7 +4,7 @@
 
 /** Longest wall-clock gap one frame may feed the sim. After a stall or
  * a hidden stretch the tank resumes instead of fast-forwarding — and
- * the resume runs at most three ticks — half the jump a 200 ms
+ * the resume runs at most two ticks — a third of the jump a 200 ms
  * budget allowed. Longer frames drop the excess, so sustained jank
  * runs the tank slightly slow instead of fast-forwarding. */
 export const MAX_FRAME_MS = 100;
