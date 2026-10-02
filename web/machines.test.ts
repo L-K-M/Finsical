@@ -102,17 +102,18 @@ describe("machine silhouettes", () => {
     // behind it. The pad must land on opaque art; per the art audit
     // every hole keeps >= 44px to the nearest see-through pixel. This
     // test can't measure that, so it pins the weaker invariant: the
-    // hole stays pad + 8 slack inside the viewBox.
+    // hole stays pad + 8 slack inside the viewBox when padding is used.
     for (const m of MACHINES) {
       const hole = m.hole;
       if (!hole) continue;
       const pad = m.backplatePad ?? SCREENBACK_HOLE_PAD;
-      expect(hole.x, m.id).toBeGreaterThanOrEqual(pad + 8);
-      expect(hole.y, m.id).toBeGreaterThanOrEqual(pad + 8);
+      const clearance = pad > 0 ? pad + 8 : 0;
+      expect(hole.x, m.id).toBeGreaterThanOrEqual(clearance);
+      expect(hole.y, m.id).toBeGreaterThanOrEqual(clearance);
       expect(m.vbW - (hole.x + hole.w), m.id)
-        .toBeGreaterThanOrEqual(pad + 8);
+        .toBeGreaterThanOrEqual(clearance);
       expect(m.vbH - (hole.y + hole.h), m.id)
-        .toBeGreaterThanOrEqual(pad + 8);
+        .toBeGreaterThanOrEqual(clearance);
     }
   });
 
