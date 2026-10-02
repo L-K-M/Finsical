@@ -1105,6 +1105,8 @@ export class Sim {
    * a while, then sinks and comes to rest on the gravel, where it stays
    * until it is taken out (Do_Dieing_Event). */
   private tickCorpse(f: Fish): void {
+    // A fish that died mid-sneeze doesn't jolt on as a corpse.
+    this.sneezes.delete(f);
     // A corpse isn't bound by the fish's living depth band: it floats
     // just under the surface and finally rests on the gravel
     // (Do_Dieing_Event), so use tank-wide bounds with a body margin.
