@@ -20,7 +20,8 @@ describe("feed ceilings", () => {
   it("the tank page gates feeds on the sim's MAX_UNEATEN, not its own cap",
      () => {
     expect(src).not.toMatch(/FOOD_CAP/);
-    expect(src).toMatch(/const room = MAX_UNEATEN -/);
+    expect(src).toMatch(
+      /const room = MAX_UNEATEN\s*-\s*sim\.food\.filter\(\(\w+\) => !\w+\.eaten\)\.length/);
     expect(src).toMatch(
       /sim\.food\.filter\(\(q\) => !q\.eaten\)\.length >= MAX_UNEATEN/);
   });
