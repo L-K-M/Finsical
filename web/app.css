@@ -292,7 +292,12 @@ body.crt canvas#tank { opacity: 0; }
 #pfdesc {
   position: absolute; left: 0; right: 0; top: 8px;
   font: var(--osm-font-small); line-height: 13px;
-  max-height: 39px; overflow: hidden;
+  /* Three lines, ending in an ellipsis like every other truncating
+   * surface — overflow:hidden alone would cut a fourth line's glyph
+   * tops mid-character. */
+  display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3; overflow: hidden;
+  max-height: 39px;
 }
 #pffoot.pfdefaults #pfdesc { right: 76px; }
 #pfdefaults { position: absolute; right: 0; bottom: 0; }
