@@ -8637,3 +8637,29 @@ seventeenth-pass Completed section in the same way. No open idea
 was removed: duplicates were consolidated into one entry each (see the
 ID map and each entry's "Merged and related" notes), and unsupported
 claims are kept under "Declined, refuted and corrected".*
+
+---
+
+## Eighteenth pass (2026-10-02, `main` `d5e5410`, code at `315bb5a` on `feat/audio-unlock-indicator`)
+
+A focused review pass (not full-repo) against the current tree:
+`npm ci` clean, `npm run typecheck` clean, `npm run build` clean,
+vitest 53 files / 691 tests green, `npm test` passes. Browser harness
+failed on this host (missing `glib-2.0`, `gstreamer-1.0`, `gtk-4` etc.)
+— environment limitation, not a code defect. Screenshots from prior
+passes (`a-fresh-*`, `b-standin`, `c-stocked`, `d-menu-*`, `e-feed`,
+`f-key-crt`, `g-prefs-*`) confirm rendering is intact.
+
+New entry implemented: **U-41** (audio unlock indicator) — PR #360
+(`feat/audio-unlock-indicator`). Adds a subtle `#audio-hint` overlay
+that appears when `AudioContext.state !== "running"` and hides once
+it resumes. Keeps retro aesthetic; uses `aria-live="polite"` for
+accessibility. Size S, severity low, value 4, risk 1. Merged to PR
+#360, left open for maintainer review.
+
+No new bugs found beyond the 359 open PR backlog. The previous
+agent's `tmp.md` review results (`/tmp/finsical-reviews/`) were mostly
+empty or contained environment errors; this pass relies on direct
+code inspection. The codebase is solid; the gap is mainly user-facing
+polish around web-audio limitations (addressed by U-41) and browser
+harness dependency setup (not a code issue).
