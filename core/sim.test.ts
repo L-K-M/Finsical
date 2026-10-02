@@ -1596,6 +1596,43 @@ describe("Clean Up", () => {
     }
   });
 
+  it("lifts a hovering fish out of its hover to line it up", () => {
+    // A fish parked on a hover re-arms the arrival branch every
+    // decision and would never reach the decide() that hands it its
+    // place, so it would hold its old spot for the whole call. An
+    // idle tank — exactly when somebody reaches for Clean Up — is
+    // mostly hovering fish. Before the fix this run ends at 104 px.
+    const sim = new Sim(TANK, 7);
+    for (let i = 0; i < 6; i++)
+      sim.addFish({ x: 10 + (i * 37) % 300, y: 40 + (i * 53) % 140 });
+    for (const f of sim.fish) {
+      f.hover = 4_000;
+      f.tx = f.x;
+      f.ty = f.y;
+      f.phase = 0;
+      f.latch = -1;
+    }
+    sim.cleanUp();
+    for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) sim.tick();
+    expect(Math.max(...gaps(sim))).toBeLessThanOrEqual(24);
+  });
+
+  it("refunds the stroke budget on arrival", () => {
+    // A fish that crossed the tank on the formation's extra speed must
+    // not arrive with its budget spent, or it holds on a lurch for the
+    // rest of the call.
+    const sim = new Sim(TANK, 7);
+    sim.addFish({ x: 20, y: 100 });
+    sim.addFish({ x: 300, y: 100 });
+    sim.cleanUp();
+    for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) sim.tick();
+    for (const f of sim.fish) {
+      const p = sim.slotFor(f)!;
+      expect(Math.abs(f.x - p.x)).toBeLessThanOrEqual(24);
+      expect(f.strokes).toBeLessThanOrEqual(1);
+    }
+  });
+
   it("keeps the fish inside the glass while they line up", () => {
     const sim = lined(24);
     for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) {
@@ -1699,8 +1736,20 @@ describe("gridSlot", () => {
     expect(gridSlot(0, 6, TANK).x).toBeLessThan(gridSlot(5, 6, TANK).x);
   });
 
-  it("survives a count that is not a number", () => {
+  it("survives a count or an index that is not a number", () => {
     expect(Number.isFinite(gridSlot(0, NaN, TANK).x)).toBe(true);
     expect(Number.isFinite(gridSlot(0, 0, TANK).x)).toBe(true);
+    // One past the roster would otherwise find an empty row and put
+    // the place at Infinity.
+    for (const i of [6, 7, 999, -1, NaN]) {
+      const p = gridSlot(i, 6, TANK);
+      expect(Number.isFinite(p.x), `x at i=${i}`).toBe(true);
+      expect(Number.isFinite(p.y), `y at i=${i}`).toBe(true);
+      expect(p.x).toBeGreaterThan(0);
+      expect(p.x).toBeLessThan(TANK.width);
+    }
+    // Clamping leaves every valid index where it was.
+    for (let i = 0; i < 6; i++)
+      expect(gridSlot(i, 6, TANK)).toEqual(gridSlot(i, 6, TANK));
   });
 });

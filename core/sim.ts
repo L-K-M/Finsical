@@ -163,11 +163,15 @@ export function gridSlot(i: number, n: number, tank: Tank): Slot {
   // this is called from cleanUp with a roster length, but a NaN must
   // not turn every fish's destination into NaN and strand the tank.
   const count = Number.isFinite(n) ? Math.max(1, Math.floor(n)) : 1;
-  const row = Math.floor(i / cols);
+  // The index is clamped for the same reason. Left alone, one past the
+  // roster gives a row with no seats in it, and x becomes Infinity.
+  const k = Math.min(Math.max(0,
+    Number.isFinite(i) ? Math.floor(i) : 0), count - 1);
+  const row = Math.floor(k / cols);
   const rows = Math.ceil(count / cols);
   // How many slots the fish's own row holds, so a short row centres.
   const inRow = Math.min(cols, count - row * cols);
-  const col = i - row * cols;
+  const col = k - row * cols;
   const x = tank.width * (col + 0.5) / inRow;
   // One row sits at the band's top, the last at its bottom, and any
   // rows between spread evenly across the band.
@@ -651,9 +655,12 @@ export class Sim {
   static readonly FORMATION_TOP = 0.18;
   static readonly FORMATION_BOTTOM = 0.82;
 
-  /** Line the tank up: every living fish takes a slot in the grid,
-   * biggest first or by name. Returns how many were placed, so the
-   * caller can say nothing when there is nobody to line up. */
+  /** Line the tank up: every living fish takes a place in the grid.
+   * Rows are filled from the top by where the fish already swim, and
+   * the seats in a row are handed out left to right, both matched on
+   * position rather than on size or name — see the body. Returns how
+   * many were placed, so the caller can say nothing when there is
+   * nobody to line up. */
   cleanUp(): number {
     const alive = this.fish.filter((f) => f.state !== "dead");
     if (!alive.length) return 0;
@@ -687,6 +694,19 @@ export class Sim {
     }
     this.formation =
       { slots, until: this.tickCount + Sim.FORMATION_TICKS };
+    // Send everyone to their place at once. A fish parked on a hover —
+    // or one whose wander target is already inside braking distance —
+    // would otherwise keep re-arming the arrival branch and never
+    // reach the decide() that hands it its slot, so it would hold its
+    // old spot for the whole roll call. An idle tank is exactly when
+    // somebody reaches for Clean Up, and an idle tank is full of
+    // hovering fish.
+    for (const f of alive) {
+      f.hover = 0;
+      f.phase = 0;
+      f.latch = -1;
+      this.decide(f);
+    }
     // The pointer watch stands down: a fish drifting over to look at
     // the cursor would pull it off its place.
     this._noticeFish = [];
@@ -1037,6 +1057,11 @@ export class Sim {
           f.tx = f.x; f.ty = f.y;
           f.phase = 0;
           f.latch = -1;
+          // The trip is done: refund the stroke budget, as the wander
+          // path's decide() does. A fish that crossed the tank to a
+          // Clean Up place would otherwise arrive with its budget
+          // spent and hold on a lurch for the rest of the call.
+          f.strokes = 0;
           dist = 0;
         } else {
           this.decide(f);
