@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FEEDBACK_MAX_S, gainForVolume, loadSoundConfig, panFor,
-         SOUND_DEFAULTS, sanitizeSoundConfig,
+         SLEEP_AFTER_MS, SOUND_DEFAULTS, sanitizeSoundConfig,
          TankAudio } from "./audio.js";
 import type { AzpackManifest } from "../core/data/azpack.js";
 
@@ -644,7 +644,7 @@ describe("TankAudio.setHidden", () => {
 // after the level hits zero; the tests sit it out in real time.
 describe("TankAudio silent sleep", () => {
   const sleepBeat = (): Promise<void> =>
-    new Promise((r) => setTimeout(r, 100));
+    new Promise((r) => setTimeout(r, SLEEP_AFTER_MS + 40));
 
   it("suspends on mute after the glide, and wakes on unmute", async () => {
     const { audio, ac } = await tank({ [LOOP]: 30 });

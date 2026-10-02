@@ -79,7 +79,7 @@ const LEVEL_GLIDE_S = 0.01;
 /** How long after silence (mute/volume 0) the device suspends: six
  * time constants of the level glide, by when the fade's tail is
  * inaudible — suspending sooner could clip it into a click. */
-const SLEEP_AFTER_MS = LEVEL_GLIDE_S * 6 * 1000;
+export const SLEEP_AFTER_MS = LEVEL_GLIDE_S * 6 * 1000;
 /** Event sounds are short. A recording longer than this can only be an
  * imported song, so find() never picks it for a knock or a splash, no
  * matter what it is named. */
@@ -304,7 +304,7 @@ export class TankAudio {
       // Already running (the sleep timer was still pending): the wake
       // work still runs — a muted open latches ambientWanted without
       // a loop, and this unmute is the first moment it can sound.
-      if (ac.state === "suspended")
+      if (ac.state !== "running")
         void ac.resume().then(() => this.wake())
           .catch(() => { /* resume blocked until a user gesture */ });
       else this.wake();
