@@ -59,6 +59,8 @@ import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
   from "./catpaw.js";
 import type { PawVisit } from "./catpaw.js";
 import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
+import { THERMO_H, THERMO_W, thermoCanvas, thermoTip }
+  from "./thermometer.js";
 import { bootPhase, drawBoot, fadeProgress, paradeIcon }
   from "./boot.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
@@ -776,6 +778,9 @@ let torchLit = false;
  * declines while Get Info, a menu or an alert is up — the hint
  * follows the same rule. */
 function tipForPoint(p: { x: number; y: number }): string | null {
+  // The thermometer is on the glass, in front of every fish.
+  if (overThermometer(p) && !anyOverlayOpen())
+    return thermoTip(sim.aquarium.water.temp, sim.aquarium.heater.target);
   // With Fish Names on every fish already wears its tag.
   const f = !namesOn && fishToName(p);
   if (f) return fishTipLabel(f);
@@ -3373,6 +3378,17 @@ const defaultGravel = (() => {
   return cv;
 })();
 
+// The thermometer strip (Effects > Thermometer strip) sticks to the
+// front glass at the right, just under the waterline: clear of the
+// feeding strip and the gravel's decor.
+const THERMO_X = TANK.width - THERMO_W - 3;
+const THERMO_Y = SURFACE + 12;
+function overThermometer(p: { x: number; y: number }): boolean {
+  return effects.thermometer &&
+    p.x >= THERMO_X && p.x < THERMO_X + THERMO_W &&
+    p.y >= THERMO_Y && p.y < THERMO_Y + THERMO_H;
+}
+
 // Reduced motion freezes the ambient light (caustics, shafts, glint).
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 let waterMotion: WaterMotion = reducedMotion.matches ? "still" : "animated";
@@ -3627,6 +3643,11 @@ function render(now: Date, target: RenderTarget = "screen"): void {
 
   // Fouled water murks the whole scene.
   if (effects.murk) drawMurk(ctx, sim.waterQuality, t);
+  // On the glass, so the murk can't cloud it; under the night veil,
+  // since a liquid crystal shows by the room's light, not its own.
+  if (effects.thermometer)
+    ctx.drawImage(thermoCanvas(sim.aquarium.water.temp), THERMO_X,
+                  THERMO_Y);
 
   // A mouse or pen hovering the dark tank lights it like a torch, in
   // the colors the scene has before the night veil goes on.

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A liquid-crystal thermometer strip on the front glass shows the
+  water's temperature at a glance: the cell at the reading lights up
+  green, its neighbours tan or blue, and pointing at it gives the
+  exact temperature and the heater's setting. Preferences > Effects >
+  Thermometer strip takes it off.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's

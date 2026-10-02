@@ -193,6 +193,11 @@ A fish nearby comes over to look at the pointer while you hover over
 the tank, unless it is hungry or startled. At night the pointer also
 works as a torch, lighting a warm circle of the dark tank.
 
+A liquid-crystal thermometer strip on the front glass shows how warm
+the water is: the cell at its temperature lights up green, and the
+one just above lights tan while the water is a little colder. Point
+at it for the reading. Preferences > Effects can take it off.
+
 ### Keeping the tank
 
 The tank lives like the original AquaZone's, in real time: a fed fish

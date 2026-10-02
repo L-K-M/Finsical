@@ -988,6 +988,10 @@ const FX_SPECS: { key: keyof EffectsConfig; label: string;
   { key: "torch", label: "Pointer torch",
     blurb: "Hovering over a dark tank lights a warm circle around " +
       "the pointer, like a torch held to the glass." },
+  { key: "thermometer", label: "Thermometer strip",
+    blurb: "A liquid-crystal thermometer stuck on the front glass: the " +
+      "cell at the water's temperature turns green. Point at it for " +
+      "the reading." },
   { key: "snail", label: "Snail visits",
     blurb: "Every so often a snail creeps in and crosses the gravel. " +
       "The cat stays either way — that visitor was the original's " +

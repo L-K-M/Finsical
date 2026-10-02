@@ -2,7 +2,8 @@
  * The tank's optional visual extras — the flourishes Finsical draws
  * that the original AquaZone did not: sunlight in the water, a moving
  * surface, tap ripples and feed splashes, swaying decor, fouled-water
- * murk, the night torch and the snail's visits. Each is a checkbox on
+ * murk, the night torch, the snail's visits and the thermometer strip.
+ * Each is a checkbox on
  * Preferences' Effects pane; every one defaults on, so a tank keeps
  * its looks until somebody asks for the original's plainer rendering.
  * The tank page owns the state, persists it, and applies posts from
@@ -31,13 +32,16 @@ export interface EffectsConfig {
   /** The snail that creeps across the gravel every so often
    * (snail.ts). */
   snail: boolean;
+  /** The liquid-crystal thermometer stuck on the front glass
+   * (thermometer.ts). */
+  thermometer: boolean;
 }
 
 /** Every extra on: the tank's long-standing look. */
 export const EFFECTS_DEFAULTS: Readonly<EffectsConfig> =
   Object.freeze<EffectsConfig>({
     sunlight: true, surface: true, splashes: true, sway: true,
-    murk: true, torch: true, snail: true,
+    murk: true, torch: true, snail: true, thermometer: true,
   });
 
 /** Validate a stored or posted effects config, field by field, onto
