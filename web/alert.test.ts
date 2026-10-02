@@ -41,7 +41,7 @@ describe("setAlertSound wiring", () => {
 
   it("fires the hook exactly where the alert opens", () => {
     expect(src).toMatch(
-      /openCount\+\+;\s*alertSound\?\.\(\);\s*document\.body\.append\(scrim\);/);
+      /openCount\+\+;\s*\/\/ Best-effort[\s\S]*?try \{ alertSound\?\.\(\); \} catch[\s\S]*?document\.body\.append\(scrim\);/);
   });
 });
 
