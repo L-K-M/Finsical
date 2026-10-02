@@ -43,6 +43,12 @@ class Iso:
         if 33 + nlen > ln:
             raise IsoError('directory record name overruns its record')
         name = buf[off + 33:off + 33 + nlen]
+        # A crafted name must not smuggle path separators or a bare dot
+        # name into walk()'s accumulated paths. The real '.'/'..' records
+        # are the single bytes \x00/\x01 normalized just below.
+        if (not name or b'/' in name or b'\\' in name
+                or name.strip(b'.') == b''):
+            raise IsoError('unsafe directory record name')
         if name == b'\x00':
             name = b'.'
         elif name == b'\x01':
