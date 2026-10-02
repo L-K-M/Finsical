@@ -129,6 +129,9 @@
 - A fish add-on that holds several fish now names each fish after its
   own pack. Adding angels.zip used to give two fish both called
   "angels"; they are now "angel" and "blackangel".
+- A fry born in a tank keeps its parents' own pack, so after a relaunch
+  it swims as its own species. It used to come back as the last fish in
+  a multi-fish add-on.
 - A pointer left resting over the tank loses the fish's interest after
   about 20 seconds, so the fish gathered to look at it swim off again
   instead of waiting there for hours. Moving the pointer brings them
