@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
 import {
-  MACHINES, SCREENBACK_HOLE_PAD, machineById, previewMarkup, rasterInGlass,
+  MACHINES, SCREENBACK_HOLE_PAD, backgroundMarkup, machineById, previewMarkup, rasterInGlass,
   rasterZoom, shellMarkup,
 } from "./machines.js";
 
@@ -47,9 +47,10 @@ describe("machine silhouettes", () => {
     // through vite — no node typings needed.
     const assets = import.meta.glob("./assets/*");
     for (const m of MACHINES) {
-      if (!m.image) continue;
-      expect(`./${m.image}` in assets, `${m.id}: ${m.image}`)
-        .toBe(true);
+      const paths = [m.image, m.rearImage, m.maskImage].filter(Boolean);
+      if (!paths.length) continue;
+      for (const p of paths)
+        expect(`./${p}` in assets, `${m.id}: ${p}`).toBe(true);
     }
   });
 
@@ -105,12 +106,13 @@ describe("machine silhouettes", () => {
     for (const m of MACHINES) {
       const hole = m.hole;
       if (!hole) continue;
-      expect(hole.x, m.id).toBeGreaterThanOrEqual(SCREENBACK_HOLE_PAD + 8);
-      expect(hole.y, m.id).toBeGreaterThanOrEqual(SCREENBACK_HOLE_PAD + 8);
+      const pad = m.backplatePad ?? SCREENBACK_HOLE_PAD;
+      expect(hole.x, m.id).toBeGreaterThanOrEqual(pad + 8);
+      expect(hole.y, m.id).toBeGreaterThanOrEqual(pad + 8);
       expect(m.vbW - (hole.x + hole.w), m.id)
-        .toBeGreaterThanOrEqual(SCREENBACK_HOLE_PAD + 8);
+        .toBeGreaterThanOrEqual(pad + 8);
       expect(m.vbH - (hole.y + hole.h), m.id)
-        .toBeGreaterThanOrEqual(SCREENBACK_HOLE_PAD + 8);
+        .toBeGreaterThanOrEqual(pad + 8);
     }
   });
 
@@ -194,7 +196,39 @@ describe("glare mask", () => {
   });
 });
 
+describe("backgroundMarkup", () => {
+  it("is empty without a rear image", () => {
+    for (const m of MACHINES) {
+      if (m.rearImage) continue;
+      expect(backgroundMarkup(m), m.id).toBe("");
+    }
+  });
+
+  it("uses the full viewBox stretch like the shell", () => {
+    for (const m of MACHINES) {
+      if (!m.rearImage) continue;
+      expect(backgroundMarkup(m), m.id).toBe(
+        `<image href="${m.rearImage}" x="0" y="0" ` +
+        `width="${m.vbW}" height="${m.vbH}" ` +
+        `preserveAspectRatio="none"/>`);
+    }
+  });
+});
+
 describe("previewMarkup", () => {
+  it("puts rear glass below the water and front glass above the fish", () => {
+    const m = machineById("aquarium")!;
+    const preview = previewMarkup(m);
+    const rear = preview.indexOf(`href="${m.rearImage}"`);
+    const water = preview.indexOf('fill="url(#pvwater-aquarium)"');
+    const fish = preview.lastIndexOf('<g transform=');
+    const front = preview.indexOf(`href="${m.image}"`);
+    expect(rear).toBeGreaterThanOrEqual(0);
+    expect(water).toBeGreaterThan(rear);
+    expect(fish).toBeGreaterThan(water);
+    expect(front).toBeGreaterThan(fish);
+  });
+
   it("fills exactly the screen rect with water, shell painted last", () => {
     for (const m of MACHINES) {
       const mk = previewMarkup(m);
@@ -207,10 +241,10 @@ describe("previewMarkup", () => {
   });
 
   it("backs the glass aperture only where a hole exists", () => {
-    const pad = SCREENBACK_HOLE_PAD;
     for (const m of MACHINES) {
       const mk = previewMarkup(m);
       if (m.hole) {
+        const pad = m.backplatePad ?? SCREENBACK_HOLE_PAD;
         // Padded past the hole like the live backplate (#screenback).
         expect(mk, m.id).toContain(
           `<rect x="${m.hole.x - pad}" y="${m.hole.y - pad}"` +

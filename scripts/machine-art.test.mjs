@@ -147,11 +147,29 @@ function fringeShare({ width, height, px }) {
 describe("machine art", () => {
   for (const m of MACHINES) {
     if (!m.image) continue;
+    // Layer cuts are internal seams; check the complete case silhouette.
+    const path = m.maskImage ?? m.image;
     it(`${m.id}: no light fringe around the silhouette`, () => {
-      const img = decodeRgbaPng(readFileSync(new URL(`../web/${m.image}`, import.meta.url)));
+      const img = decodeRgbaPng(readFileSync(new URL(`../web/${path}`, import.meta.url)));
       const share = fringeShare(img);
       expect(share, `fringe share ${(share * 100).toFixed(1)}%`)
         .toBeLessThan(MAX_FRINGE_SHARE);
     });
   }
+
+  it("aquarium layers stay registered and reconstruct the window mask", () => {
+    const m = MACHINES.find((m) => m.id === "aquarium");
+    const [front, rear, mask] = [m.image, m.rearImage, m.maskImage].map((path) =>
+      decodeRgbaPng(readFileSync(new URL(`../web/${path}`, import.meta.url))));
+    for (const img of [front, rear, mask])
+      expect([img.width, img.height]).toEqual([m.vbW, m.vbH]);
+
+    // The native shell uses this combined alpha, including the rear lamp.
+    let alphaError = 0;
+    for (let i = 3; i < mask.px.length; i += 4) {
+      const composed = front.px[i] + rear.px[i] * (1 - front.px[i] / 255);
+      alphaError = Math.max(alphaError, Math.abs(mask.px[i] - composed));
+    }
+    expect(alphaError).toBeLessThanOrEqual(1);
+  });
 });

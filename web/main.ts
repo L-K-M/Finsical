@@ -75,7 +75,7 @@ import { bubbleOffset, bubblePops, drawAir, drawBubblePop,
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
   from "./surface.js";
 import {
-  glassRect, machineById, MACHINE_KEY, rasterInGlass, rasterZoom,
+  backgroundMarkup, glassRect, machineById, MACHINE_KEY, rasterInGlass, rasterZoom,
   savedMachineId, SCREENBACK_HOLE_PAD, shellMarkup,
 } from "./machines.js";
 import type { CrtConfig } from "./crt.js";
@@ -1629,7 +1629,8 @@ function sendState(): void {
     // The native shell retunes the window's aspect to the machine's
     // viewBox outline; prefs needs just the id.
     machine: { id: machine.id, w: machine.vbW, h: machine.vbH,
-               shape: machine.shape, mask: machine.image ?? null,
+               shape: machine.shape,
+               mask: machine.maskImage ?? machine.image ?? null,
                // hole is in viewBox units like sx..sh — the mask must
                // scale it identically or backplate and mask drift.
                hole: machine.hole ?? null },
@@ -2353,6 +2354,12 @@ if (!backEl.isConnected ||
       Node.DOCUMENT_POSITION_FOLLOWING))
   machineEl.before(backEl, screenEl);
 
+// A separate SVG puts rear glass below the live tank, not just below
+// the front image inside an SVG that is already above the water.
+const rearShellEl = shellEl.cloneNode(false) as SVGSVGElement;
+rearShellEl.id = "shell-back";
+backEl.before(rearShellEl);
+
 function layoutMachine(): void {
   dropRects(); // the tank and glass may have moved with the aperture
   // The browser's menu bar is fixed over the page top — letterbox
@@ -2362,6 +2369,11 @@ function layoutMachine(): void {
   const barH = document.getElementById("menubar")?.offsetHeight ?? 0;
   const w = machineEl.clientWidth, h = machineEl.clientHeight - barH;
   if (!w || h <= 0) return;
+  // Both art layers use the same viewport as the tank's placement.
+  for (const shell of [shellEl, rearShellEl]) {
+    shell.style.top = `${barH}px`;
+    shell.style.height = `${h}px`;
+  }
   // preserveAspectRatio=meet letterboxes the shell — land the screen
   // and its backplate on the same scaled + offset rects as the art's
   // glass. Computed, not CSS-percentage'd, so browser dev (no native
@@ -2406,11 +2418,8 @@ function layoutMachine(): void {
     const hole = machine.hole;
     backEl.style.display = hole ? "block" : "none";
     if (hole) {
-      // Pad past the measured aperture: the art's translucent glass rim
-      // can run a few px outside it and would otherwise leak the
-      // desktop. The overshoot hides behind the opaque bezel — every
-      // machine keeps >= 44px of opaque art around its hole.
-      const pad = SCREENBACK_HOLE_PAD;
+      // Monitor bezels hide the pad; thin aquarium glass uses no pad.
+      const pad = machine.backplatePad ?? SCREENBACK_HOLE_PAD;
       backEl.style.left = `${ox + (hole.x - pad) * s}px`;
       backEl.style.top = `${oy + (hole.y - pad) * s}px`;
       backEl.style.width = `${(hole.w + pad * 2) * s}px`;
@@ -2427,6 +2436,8 @@ function applyMachine(m: Machine): void {
   machine = m;
   shellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
   shellEl.innerHTML = shellMarkup(m);
+  rearShellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
+  rearShellEl.innerHTML = backgroundMarkup(m);
   layoutMachine();
   try { localStorage.setItem(MACHINE_KEY, m.id); }
   catch { /* storage unavailable */ }

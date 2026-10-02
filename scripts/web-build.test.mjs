@@ -45,10 +45,12 @@ describe("standalone web build", () => {
     expect(imaged.length).toBeGreaterThan(0);
   });
   it.each(imaged)("includes the $name case image", (m) => {
-    const output = join(fixture, "dist", m.image);
-    expect(existsSync(output), m.image).toBe(true);
-    expect(readFileSync(output).equals(readFileSync(join(root, "web", m.image))))
-      .toBe(true);
+    for (const path of new Set([m.image, m.rearImage, m.maskImage].filter(Boolean))) {
+      const output = join(fixture, "dist", path);
+      expect(existsSync(output), path).toBe(true);
+      expect(readFileSync(output).equals(readFileSync(join(root, "web", path))))
+        .toBe(true);
+    }
   });
 
   it("keeps the MACE LGPL notice in every bundle that ships the decoder", () => {

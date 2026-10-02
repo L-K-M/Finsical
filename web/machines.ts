@@ -1,7 +1,8 @@
 // Cases drawn around the tank, with glass reflections above the water.
-// Rendered computers use image alpha as the native window mask, except
+// Image machines use image alpha as the native window mask, except
 // the screen aperture, which the shell fills back in for the tank.
-// The vector aquarium uses its shape geometry instead.
+// The split aquarium keeps background art behind the tank, foreground
+// art above it, and a combined mask for the native silhouette.
 //
 // viewBox units are the cropped image's pixels. `hole` is the glass
 // aperture: where the black screen backplate sits and which part of
@@ -45,7 +46,15 @@ export interface Machine {
                             // with the light (the Bondi/Strawberry
                             // iMacs). Requires `hole` and `image`.
   image?: string;           // raster shell asset under web/ — when set,
-                            // its alpha IS the silhouette
+                            // its alpha IS the silhouette, unless
+                            // maskImage overrides it; with rearImage
+                            // it is the foreground layer only
+  rearImage?: string;       // background layer behind the live tank;
+                            // mounted below #screen, never in the shell
+  maskImage?: string;       // combined art for the native silhouette;
+                            // lets front and rear both stay visible
+  backplatePad?: number;    // hole pad override for #screenback;
+                            // defaults to SCREENBACK_HOLE_PAD
   svg: string;              // inner markup for the shell <svg>
                             // (empty for image machines)
 }
@@ -124,6 +133,17 @@ export function shellMarkup(m: Machine): string {
     ` style="opacity: var(--glare, 1)"/>`;
 }
 
+/** The background layer for split art, or empty without a rear image.
+ * Uses the same full viewBox stretch as shellMarkup so rear and
+ * front stay aligned. The live page mounts it below the tank;
+ * previewMarkup paints it first. */
+export function backgroundMarkup(m: Machine): string {
+  if (!m.rearImage) return "";
+  return `<image href="${m.rearImage}" x="0" y="0" ` +
+    `width="${m.vbW}" height="${m.vbH}" ` +
+    `preserveAspectRatio="none"/>`;
+}
+
 // Preview palette mirrors the live tank in main.ts — a machine should
 // preview as a running Finsical, not an empty screen.
 const PV_WATER_TOP = "#2e7fc4", PV_WATER_BOT = "#14508c";
@@ -139,11 +159,14 @@ export function previewMarkup(m: Machine): string {
   const tx = (x: number) => m.sx + x * k;
   const ty = (y: number) => m.sy + y * k;
   const parts: string[] = [];
+  // Split art paints its background first so water and fish sit on it.
+  const rear = backgroundMarkup(m);
+  if (rear) parts.push(rear);
   // Backplate — the letterbox matte around the tank. Padded like the
   // live #screenback: the art's translucent glass rim runs a few px
   // past the measured hole and would otherwise show the page behind.
   if (m.hole) {
-    const pad = SCREENBACK_HOLE_PAD;
+    const pad = m.backplatePad ?? SCREENBACK_HOLE_PAD;
     parts.push(`<rect x="${m.hole.x - pad}" y="${m.hole.y - pad}"` +
       ` width="${m.hole.w + pad * 2}" height="${m.hole.h + pad * 2}"` +
       ` fill="${PV_BACKPLATE}"/>`);
@@ -349,57 +372,25 @@ const imacg4: Machine = {
   svg: "",
 };
 
-const AQUARIUM_BODY: ShapeRect = { x: 0, y: 0, w: 800, h: 592, r: 10 };
-// Keep the glass below the native drag strip at the minimum window size.
-const AQUARIUM_GLASS: ShapeRect = { x: 48, y: 92, w: 704, h: 440, r: 0 };
+const AQUARIUM_BODY: ShapeRect = { x: 0, y: 0, w: 1151, h: 903, r: 0 };
+const AQUARIUM_GLASS: ShapeRect = { x: 68, y: 217, w: 1016, h: 635, r: 0 };
 
-// Share the opening with layout and the native mask so the live water
-// stays inside the glass. Only the frame is opaque; glare overlays it.
+// Registered layers share their opening with the tank and native mask.
+// Thin glass needs no black pad outside the viewing rectangle.
 const aquarium: Machine = {
   id: "aquarium", name: "Glass aquarium",
-  blurb: "A glass fish tank with a black hood and base.",
+  blurb: "Rimless glass with a raised LED light.",
   vbW: AQUARIUM_BODY.w, vbH: AQUARIUM_BODY.h,
+  hole: AQUARIUM_GLASS,
   sx: AQUARIUM_GLASS.x, sy: AQUARIUM_GLASS.y,
   sw: AQUARIUM_GLASS.w, sh: AQUARIUM_GLASS.h,
   rasterFit: "fill",
-  shape: [AQUARIUM_BODY], hole: AQUARIUM_GLASS,
-  svg: `<defs>
-    <linearGradient id="aquarium-trim" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#51585c"/>
-      <stop offset="0.22" stop-color="#282e32"/>
-      <stop offset="1" stop-color="#11171a"/>
-    </linearGradient>
-    <linearGradient id="aquarium-edge" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#263e40"/>
-      <stop offset="0.4" stop-color="#99b9b3"/>
-      <stop offset="0.6" stop-color="#476967"/>
-      <stop offset="1" stop-color="#203e40"/>
-    </linearGradient>
-    <mask id="aquarium-frame" maskUnits="userSpaceOnUse"
-          x="0" y="0" width="${AQUARIUM_BODY.w}" height="${AQUARIUM_BODY.h}">
-      <rect x="0" y="0" width="${AQUARIUM_BODY.w}" height="${AQUARIUM_BODY.h}" fill="#fff"/>
-      <rect x="${AQUARIUM_GLASS.x}" y="${AQUARIUM_GLASS.y}"
-            width="${AQUARIUM_GLASS.w}" height="${AQUARIUM_GLASS.h}" fill="#000"/>
-    </mask>
-  </defs>
-  <g mask="url(#aquarium-frame)">
-    <rect x="0" y="0" width="${AQUARIUM_BODY.w}" height="${AQUARIUM_BODY.h}"
-          rx="${AQUARIUM_BODY.r}" fill="url(#aquarium-trim)"/>
-    <rect x="16" y="86" width="32" height="452" fill="url(#aquarium-edge)"/>
-    <rect x="752" y="86" width="32" height="452" fill="url(#aquarium-edge)"/>
-    <rect x="${AQUARIUM_GLASS.x}" y="${AQUARIUM_GLASS.y}"
-          width="${AQUARIUM_GLASS.w}" height="${AQUARIUM_GLASS.h}"
-          fill="none" stroke="#0e2528" stroke-width="8"/>
-    <rect x="10" y="10" width="780" height="66" rx="5" fill="url(#aquarium-trim)"/>
-    <path d="M 20 12 H 780 M 12 78 H 788" fill="none" stroke="#83918e" stroke-opacity="0.45" stroke-width="2"/>
-    <path d="M 12 84 H 788 M 12 540 H 788" fill="none" stroke="#070e11" stroke-width="6"/>
-    <rect x="10" y="546" width="780" height="36" rx="5" fill="url(#aquarium-trim)"/>
-    <path d="M 18 548 H 782" fill="none" stroke="#83918e" stroke-opacity="0.4" stroke-width="2"/>
-  </g>
-  <g fill="#fff" fill-opacity="0.08">
-    <path d="M 52 96 H 116 L 52 216 Z"/>
-    <path d="M 748 528 H 708 L 748 444 Z"/>
-  </g>`,
+  image: "assets/aquarium-front.png",
+  rearImage: "assets/aquarium-back.png",
+  maskImage: "assets/aquarium-mask.png",
+  backplatePad: 0,
+  shape: [AQUARIUM_BODY],
+  svg: "",
 };
 
 const bare: Machine = {
