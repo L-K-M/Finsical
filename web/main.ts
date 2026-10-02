@@ -246,6 +246,15 @@ const audio = new TankAudio();
 const syncAudioVisibility = (): void => audio.setHidden(document.hidden);
 document.addEventListener("visibilitychange", syncAudioVisibility);
 syncAudioVisibility();
+
+const audioHint = document.getElementById("audio-hint") as HTMLDivElement | null;
+function syncAudioHint(): void {
+  if (!audioHint) return;
+  const ctx = (audio as any).ctx as AudioContext | null | undefined;
+  if (!ctx) { audioHint.hidden = false; return; }
+  if (ctx.state === "running") { audioHint.hidden = true; return; }
+  audioHint.hidden = false;
+}
 if (saved) {
   // Storage is untrusted: a negative or fractional tick count would
   // re-persist and skew the day cycle.
@@ -3881,6 +3890,7 @@ function frame(now: number): void {
                                  clientY: lastClient.y });
     }
   }
+  syncAudioHint();
   if (crtOn || crtBusy) crt?.render();
 }
 // A resize changes the CRT buffer size, and resizing a WebGL canvas
