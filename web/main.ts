@@ -455,6 +455,7 @@ function tankSnapshot(): SavedTank {
       bandY: f.bandY, z: f.z, hunger: f.hunger, scale: f.scale,
       ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
       ...(f.pack !== undefined ? { pack: f.pack } : {}),
+      ...(f.entry !== undefined ? { entry: f.entry } : {}),
       ...(f.name ? { name: f.name } : {}),
       ...(f.life ? { life: f.life } : {}),
     })),

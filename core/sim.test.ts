@@ -1331,6 +1331,23 @@ describe("lifecycle", () => {
     expect(baby.life!.age).toBe(0);
   });
 
+  it("a fry inherits its parent's pack entry, so it rebinds to the " +
+     "parent's own art after a relaunch", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 42);
+    breedingPair(sim);
+    for (const f of sim.fish) f.entry = "angels/blackangel.fsh";
+    for (let d = 0; d < 200; d++) {
+      for (const f of sim.fish) f.life!.ate = f.life!.stomach;
+      sim.advanceLife(24 * 3600);
+      for (const f of sim.fish.slice(0, 2)) f.life!.health = 100;
+      if (sim.events.some((e) => e.type === "birth")) break;
+      sim.events.length = 0;
+    }
+    const baby = sim.fish[2]!;
+    expect(baby).toBeDefined();
+    expect(baby.entry).toBe("angels/blackangel.fsh");
+  });
+
   it("never breeds on the swim clock, however long the tank is watched",
      () => {
     const sim = new Sim({ width: 320, height: 200 }, 42);

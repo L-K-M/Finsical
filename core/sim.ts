@@ -1339,6 +1339,7 @@ export class Sim {
         z: parent.z,
         ...(parent.sheetIdx !== undefined ? { sheetIdx: parent.sheetIdx } : {}),
         ...(parent.pack !== undefined ? { pack: parent.pack } : {}),
+        ...(parent.entry !== undefined ? { entry: parent.entry } : {}),
       });
       // Born today: a fry starts its life at age 0, not as the young
       // adult a newly bought fish arrives as.
