@@ -1863,10 +1863,11 @@ function onBusMessage(m: BusMsg): void {
     if (nm && nm.id !== machine.id) { applyMachine(nm); postState(); }
   } else if (m.op === "soundsLoaded") {
     // The panel page dropped sound files into the shared IndexedDB
-    // store — re-read just the records it names (the bytes cross the
-    // shell's relay through the store) and optionally play the named
-    // record as feedback. Decoding the whole store on every drop did
-    // up to 64 MB of WAV decode the bank already had.
+    // store — re-read it and decode just the records it names
+    // (sndsGet can't filter by name; the read is still whole), then
+    // optionally play the named record as feedback. Decoding the
+    // whole store on every drop did up to 64 MB of WAV decode the
+    // bank already had.
     void sndsGet().then((recs) => {
       if (!recs?.length) return;
       const names = Array.isArray(m.names)
@@ -1876,7 +1877,10 @@ function onBusMessage(m: BusMsg): void {
       // A sender that names none predates the names field — decode
       // the store as before rather than silently skipping the drop.
       const fresh = names ? recs.filter((r) => names.has(r.name)) : recs;
-      if (!fresh.length) return;
+      if (!fresh.length) {
+        console.warn("soundsLoaded names matched no store records");
+        return;
+      }
       // Returned, so the outer catch sees addWavs rejections too.
       return audio.addWavs(fresh).then(() => {
         if (typeof m.name === "string") audio.playImported(m.name);
