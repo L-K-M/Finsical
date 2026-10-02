@@ -140,43 +140,61 @@ body.crt canvas#tank { opacity: 0; }
 }
 .dbkeys .osm-button { margin-top: 14px; }
 /* ---- fish Get-Info card (web/main.ts) ------------------------------------
-   ⌥-click a fish: a tiny Mac window pinned over it — striped title bar
-   with a close box, live hunger and mood underneath. */
+   ⌥-click a fish: a tiny Platinum windoid pinned over it — pinstriped
+   title bar with a close box, live readings underneath. */
 .finfo {
   /* fixed on body: above the machine art (2), under the overlays (10).
      layoutInfo() feeds it viewport rects, so neither body nor html may
      gain a transform/filter/perspective/contain — that would re-root
      the fixed containing block and break the math. */
   position: fixed; z-index: 5; width: 118px;
-  background: #fff; border: 1px solid #000;
-  box-shadow: 1px 1px 0 rgba(0, 0, 0, .3);
+  /* Platinum's face, outline and solid one-pixel drop shadow, as
+     Osmium draws its windows. */
+  background: #ddd; border: 1px solid #000;
+  box-shadow: 1px 1px 0 #000;
   font: var(--osm-font-small); line-height: 12px;
   /* The tank page is color-scheme: dark, whose default text is white. */
   color: #000;
+  /* A window, not a web page: the arrow, no text selection, and the
+     bitmap strikes drawn aliased like Osmium's. */
+  cursor: default; user-select: none; -webkit-user-select: none;
+  -webkit-font-smoothing: none; font-synthesis: none;
 }
 .fintitle {
   position: relative; height: 13px;
   border-bottom: 1px solid #000;
-  /* the OS 8 title-bar pinstripes */
+  background: #ddd;
+}
+/* The pinstripes: 1 px white over 1 px #777, Osmium's pair, from past
+   the close box to the right edge. The title masks them behind its
+   text, as Mac OS 8 parts the stripes around a window's name. */
+.fintitle::before {
+  content: ""; position: absolute; left: 14px; right: 3px;
+  top: 2px; height: 8px;
   background: repeating-linear-gradient(
-    to bottom, #fff 0, #fff 2px, #ddd 2px, #ddd 3px);
+    to bottom, #fff 0, #fff 1px, #777 1px, #777 2px);
 }
 .finclose {
   position: absolute; left: 3px; top: 3px; width: 7px; height: 7px;
-  padding: 0; background: #fff; border: 1px solid #000;
-  cursor: pointer;
+  padding: 0; background: #ddd; border: 1px solid #000;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #999;
+  cursor: default;
 }
 /* The 7px box is authentic but untappable — an invisible halo widens
    its hit area without changing the look. */
 .finclose::before { content: ""; position: absolute; inset: -6px; }
 .finclose:active { background: #000; }
 .finname {
-  display: block; width: 100%; height: 13px; box-sizing: border-box;
+  /* Above the stripes, as wide as its text and centred, on the
+     title bar's face so the stripes part around it. */
+  position: relative;
+  display: block; width: max-content; max-width: calc(100% - 32px);
+  height: 13px; box-sizing: border-box;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-  text-align: center; padding: 0 14px;
+  padding: 0 3px;
   /* A button (the rename) that reads as the window's title. */
-  margin: 0; border: 0; background: none; color: #000;
-  font: inherit; line-height: 12px; cursor: text;
+  margin: 0 auto; border: 0; background: #ddd; color: #000;
+  font: inherit; line-height: 12px; cursor: default;
 }
 /* The rename field sits on the title bar between the close box and the
    right edge, a plain Mac text field like .ifilter. */

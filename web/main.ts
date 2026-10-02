@@ -848,7 +848,7 @@ for (const el of tankSurfaces) {
 // or the fish leaving the tank. Clicking the name renames the fish.
 let infoCard: {
   root: HTMLElement; name: HTMLElement; kind: HTMLElement;
-  hunger: HTMLElement; mood: HTMLElement; fish: Fish;
+  health: HTMLElement; hunger: HTMLElement; mood: HTMLElement; fish: Fish;
   /** The rename field, while the name is being edited. */
   edit: HTMLInputElement | null;
 } | null = null;
@@ -941,22 +941,26 @@ function openInfo(f: Fish): void {
   body.className = "finbody";
   // The species, once a name has taken its place in the title.
   const kind = document.createElement("div");
+  // Health and hunger get a line each: together they wrapped in the
+  // narrow card and left the hunger figure on a line of its own.
+  const health = document.createElement("div");
   const hunger = document.createElement("div");
   const mood = document.createElement("div");
-  body.append(kind, hunger, mood);
+  body.append(kind, health, hunger, mood);
   root.append(title, body);
   // A press on the card is on the card — never feed or tap through it.
   root.addEventListener("pointerdown", (e) => e.stopPropagation());
   // On body, not #screen: #screen's stacking context paints under
   // #machine, so a card inside it slid under the glass reflections.
   document.body.appendChild(root);
-  infoCard = { root, name, kind, hunger, mood, fish: f, edit: null };
+  infoCard = { root, name, kind, health, hunger, mood, fish: f,
+              edit: null };
   // Position now, not next frame: unpositioned the card would paint
   // once at its in-flow default (the end of body) before landing.
   layoutInfo();
 }
 
-/** Reposition the card over its fish and refresh the two live lines.
+/** Reposition the card over its fish and refresh its live lines.
  * Runs every frame from frame() while a card is open; the fish's
  * removal closes it. */
 function layoutInfo(): void {
@@ -974,12 +978,15 @@ function layoutInfo(): void {
   // Clamp inside the picture's rect (the tank, or the glass with the
   // CRT on): the card can't slide under the case's bezel edge or off
   // the window.
+  // Whole pixels: on a fractional origin the bitmap text smears.
   card.root.style.left =
-    `${Math.max(r.left, Math.min(px, r.right - cw))}px`;
+    `${Math.round(Math.max(r.left, Math.min(px, r.right - cw)))}px`;
   card.root.style.top =
-    `${Math.max(r.top, Math.min(py, r.bottom - ch))}px`;
-  const hunger = f.life?.dead ? conditionLabel(conditionOf(f))
-    : `Health  ${f.life?.health ?? 100}%  Hunger  ${Math.round(f.hunger * 100)}%`;
+    `${Math.round(Math.max(r.top, Math.min(py, r.bottom - ch)))}px`;
+  // A body has a cause of death instead of health and hunger.
+  const health = f.life?.dead ? conditionLabel(conditionOf(f))
+    : `Health ${f.life?.health ?? 100}%`;
+  const hunger = f.life?.dead ? "" : `Hunger ${Math.round(f.hunger * 100)}%`;
   const mood = f.life?.sick && !f.life.dead
     ? conditionLabel(conditionOf(f)) : stateLabel(f.state);
   // A rename from Overview lands here too. The title waits while the
@@ -990,8 +997,11 @@ function layoutInfo(): void {
   const kind = f.name ? f.species || "Fish" : "";
   if (card.kind.textContent !== kind) card.kind.textContent = kind;
   card.kind.hidden = !kind;
+  if (card.health.textContent !== health)
+    card.health.textContent = health;
   if (card.hunger.textContent !== hunger)
     card.hunger.textContent = hunger;
+  card.hunger.hidden = !hunger;
   if (card.mood.textContent !== mood) card.mood.textContent = mood;
 }
 

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The Get Info card is drawn like a Mac OS 8 floating window: a
+  platinum face, pinstripes that part around the fish's name, and a
+  solid shadow. Health and hunger each get their own line; together
+  they used to wrap and leave the hunger figure alone on a line. The
+  card no longer selects its text or shows the I-beam and hand
+  pointers.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's
