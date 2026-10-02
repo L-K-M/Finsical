@@ -1879,7 +1879,7 @@ function onBusMessage(m: BusMsg): void {
       const fresh = names ? recs.filter((r) => names.has(r.name)) : recs;
       if (!fresh.length) {
         console.warn("soundsLoaded names matched no store records",
-          [...names]);
+          [...names ?? []]);
         return;
       }
       // Returned, so the outer catch sees addWavs rejections too.
