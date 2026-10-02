@@ -110,6 +110,7 @@ interface SavedTank {
   addons: Importable[];
   /** The chosen scenery (see sceneryChoice) — add-on urls. */
   scenery?: SceneryChoice;
+  journal?: { date: string; event: string; fishId?: number }[];
 }
 /** The structural check shared by loadTank and tank-file import:
  * unknown keys ride along — save fields this build doesn't know yet
@@ -134,6 +135,7 @@ function loadTank(): SavedTank | null {
 }
 const saved = loadTank();
 const installedAddons: Importable[] = [...(saved?.addons ?? [])];
+if (saved?.journal) journal.push(...saved.journal);
 
 // ---- startup parade (web/boot.ts) ---------------------------------------
 // A 90s-Mac boot over the first seconds: black, the smiling fishbowl
@@ -294,6 +296,7 @@ const placeholderIds = new Set<number>();
 if (roster.length || keepEmpty) for (const f of roster) sim.addFish(f);
 else for (const f of DEFAULT_FISH) placeholderIds.add(sim.addFish(f).id);
 
+const journal: { date: string; event: string; fishId?: number }[] = [];
 function tankSnapshot(): SavedTank {
   return {
     v: rosterComplete ? 2 : 1,
@@ -309,6 +312,7 @@ function tankSnapshot(): SavedTank {
     })),
     addons: installedAddons,
     scenery: sceneryChoice,
+    journal: [...journal],
   };
 }
 // Set by a tank import before it reloads: the pagehide /
@@ -1189,6 +1193,7 @@ function sendState(): void {
       cfg: crtCfg,
     },
     sound: soundCfg,
+    journal: [...journal],
   });
 }
 
@@ -2852,15 +2857,24 @@ function tickSim(): void {
     else if (e.type === "dead") {
       audio.dead();
       rosterChanged = true; // the roster shrank — don't resurrect it on reload
+      journal.push({ date: new Date().toISOString().slice(0, 19).replace("T", " "),
+                     event: `Fish ${e.fish.species || "Unknown"} died`, fishId: e.fish.id });
+      if (journal.length > 50) journal.splice(0, journal.length - 50);
     } else if (e.type === "birth") {
       bindExtents(e.fish);
       splashAt(e.fish.x, e.fish.y, PUSH.newFish);
       audio.birth();
       rosterChanged = true; // the roster grew
+      journal.push({ date: new Date().toISOString().slice(0, 19).replace("T", " "),
+                     event: `New fry: ${e.fish.species || "Unknown"}`, fishId: e.fish.id });
+      if (journal.length > 50) journal.splice(0, journal.length - 50);
     } else if (e.type === "golden") {
       if (!goldenHeard) {
         audio.golden();
         goldenHeard = true;
+        journal.push({ date: new Date().toISOString().slice(0, 19).replace("T", " "),
+                       event: "Golden meal!", fishId: e.fish.id });
+        if (journal.length > 50) journal.splice(0, journal.length - 50);
       }
     }
   }

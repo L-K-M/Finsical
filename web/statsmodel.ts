@@ -22,6 +22,7 @@ export interface StatsInput {
   light?: number;        // 0.3 night .. 1 day
   lighting?: unknown;    // core/light.ts Lighting, validated here
   tickCount?: number;    // 30 ticks per second
+  journal?: { date: string; event: string; fishId?: number }[];
 }
 
 export interface TankStats {
@@ -40,6 +41,8 @@ export interface TankStats {
   /** "Night (lights on at 08:00)" under the timer, else the phase. */
   lightLabel: string;
   uptimeMin: number;
+  /** Most recent milestone entry, or null. */
+  latestMilestone: string | null;
   /** Ordered care hints — the most urgent first, capped at two. */
   advice: string[];
 }
@@ -82,6 +85,9 @@ export function deriveStats(s: StatsInput): TankStats {
     phase,
     lightLabel: lightLabel(phase, s.lighting),
     uptimeMin: Math.floor(fin(s.tickCount, 0) / 30 / 60),
+    latestMilestone: (s.journal && s.journal.length)
+      ? `${s.journal[s.journal.length - 1]!.event}`
+      : null,
     advice: [],
   };
   stats.advice = advice(stats, water);

@@ -121,6 +121,10 @@ function render(st: TankStats): void {
     : "none"));
   field("Light", text(st.lightLabel));
   field("Tank age", text(uptime(st.uptimeMin)));
+  if (st.latestMilestone) {
+    const mil = el("span", "sval", `Milestone: ${st.latestMilestone}`);
+    rowsEl.append(el("span", "osm-label", "Recent:"), mil);
+  }
 
   careEl.textContent = "";
   careEl.appendChild(el("div", "osm-label scarehead", "Care:"));
