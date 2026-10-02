@@ -69,11 +69,15 @@ describe("node-mirror listing links", () => {
     const html = '<a href="http://archive.org/download/' +
       'aquazonewithguppiesandaddons/gravel.zip/brownsand.grv">' +
       'brownsand.grv</a>';
-    vi.stubGlobal("fetch", async (u: string) =>
+    const fetchMock = vi.fn(async (u: string) =>
       String(u) === page
         ? new Response(html, { status: 200 })
         : new Response(null, { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
     const listed = await listAddons((c) => c.outer === "gravel.zip");
+    // Without this the test passes vacuously if pageUrl ever stops
+    // matching the stub: every request 404s and `listed` is empty too.
+    expect(fetchMock.mock.calls.flat().map(String)).toContain(page);
     expect(listed).toEqual([]);
   });
 });
