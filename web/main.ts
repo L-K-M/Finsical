@@ -743,19 +743,19 @@ const anyOverlayOpen = (): boolean =>
 const fishToName = (p: { x: number; y: number }): Fish | null =>
   anyOverlayOpen() ? null : fishAtPoint(p);
 const fishTipLabel = (f: Fish): string => {
+  const dead = !!(f.dead || f.life?.dead);
+  const sick = !!(f.sick || f.life?.sick);
   const badges: string[] = [];
-  if (f.life?.dead) badges.push("💀");
-  else if (f.life?.sick) badges.push("🤒");
-  if (f.dead) badges.push("💀");
-  else if (f.sick) badges.push("🤒");
-  if (!f.dead && !f.sick && f.state === "seek") badges.push("🍽️");
-  if (!f.dead && !f.sick && f.state === "startle") badges.push("😨");
-  if (!f.dead && !f.sick && f.state === "turn") badges.push("↻");
-  if (!f.dead && !f.sick && f.state === "sleep") badges.push("😴");
+  if (dead) badges.push("💀");
+  else if (sick) badges.push("🤒");
+  else if (f.state === "seek") badges.push("🍽️");
+  else if (f.state === "startle") badges.push("😨");
+  else if (f.state === "turn") badges.push("↻");
+  else if (f.state === "sleep") badges.push("😴");
   const badgeStr = badges.length ? ` [${badges.join(" ")}]` : "";
   return fishLabel(f) +
-    (f.life?.dead || f.life?.sick ? ` — ${conditionLabel(conditionOf(f))}`
-      : f.state === "drift" ? "" : ` — ${stateLabel(f.state)}`) +
+    (dead || sick ? ` — ${conditionLabel(conditionOf(f))}`
+      : f.state === "drift" || badges.length ? "" : ` — ${stateLabel(f.state)}`) +
     badgeStr;
 };
 function conditionOf(f: Fish): { health?: number; sick?: number | null;
