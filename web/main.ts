@@ -1000,9 +1000,20 @@ function noteGlassTap(): void {
   if (!shouldScold(glassTaps, now, scoldedAt)) return;
   scoldedAt = now;
   glassTaps = [];
-  showAlert({ icon: "caution",
-              text: "Please don't tap on the glass. It frightens the fish.",
-              buttons: [{ title: "OK", default: true, cancel: true }] });
+  // Gentle banner instead of a disruptive modal alert.
+  let banner = document.getElementById("scold-banner");
+  if (banner) banner.remove();
+  banner = document.createElement("div");
+  banner.id = "scold-banner";
+  banner.textContent = "Please don't tap on the glass — it frightens the fish.";
+  banner.style.cssText =
+    "position:fixed;bottom:12px;left:50%;transform:translateX(-50%);" +
+    "z-index:15;background:#ffc;border:1px solid #000;border-radius:4px;" +
+    "padding:6px 14px;font:var(--osm-font-system);font-size:11px;" +
+    "color:#000;box-shadow:1px 1px 0 rgba(0,0,0,.2);pointer-events:none;" +
+    "animation:banner-fade 4s ease forwards;";
+  document.body.appendChild(banner);
+  setTimeout(() => banner.remove(), 4200);
 }
 
 // With hints on, a refused feed (the tank already holds MAX_UNEATEN

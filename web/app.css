@@ -431,6 +431,14 @@ body.zen .nametag {
   white-space: nowrap; opacity: 0.85;
 }
 
+/* Gentle scold banner — no disruptive modal alert. */
+@keyframes banner-fade {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  10%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+  80%  { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+}
+
 /* ---- the add-on browser (web/import.ts) ----------------------------------
    Laid out like the Chooser: Show: pop-up across the top, the section's
    add-ons in a list on the left, the chosen one's preview and details on
