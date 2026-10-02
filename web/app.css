@@ -297,7 +297,6 @@ body.crt canvas#tank { opacity: 0; }
    * tops mid-character. */
   display: -webkit-box; -webkit-box-orient: vertical;
   -webkit-line-clamp: 3; overflow: hidden;
-  max-height: 39px;
 }
 #pffoot.pfdefaults #pfdesc { right: 76px; }
 #pfdefaults { position: absolute; right: 0; bottom: 0; }
