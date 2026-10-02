@@ -758,6 +758,14 @@ describe("TankAudio event sounds", () => {
     expect(ac.oscs).toHaveLength(1);
   });
 
+  it("a hidden tank stays silent — no context, no beep", async () => {
+    const { audio, ac } = await tank({ IntoWater: 1 });
+    audio.setHidden(true);
+    audio.alertBeep();
+    expect(ac.sources).toHaveLength(0);
+    expect(ac.oscs).toHaveLength(0);
+  });
+
   it("stays silent on tap with only a song installed", async () => {
     const { audio, ac } = await tank({ "Centerfold": 1 });
     audio.tap(160, 100, 320, 200);

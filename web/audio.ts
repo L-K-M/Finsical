@@ -539,10 +539,13 @@ export class TankAudio {
     if (fx?.rate && fx.rate !== 1) src.playbackRate.value = fx.rate;
     const g = this.ctx.createGain();
     g.gain.value = gain;
-    if (fx?.fadeSec)
-      g.gain.setTargetAtTime(0,
-        this.ctx.currentTime + Math.max(0, buf.duration - fx.fadeSec - 0.02),
-        0.005);
+    if (fx?.fadeSec) {
+      // Fade before the buffer's end — in played seconds, so a
+      // non-unit rate can't push it past the last sample.
+      const end = this.ctx.currentTime +
+        Math.max(0, buf.duration / (fx.rate || 1) - fx.fadeSec - 0.02);
+      g.gain.setTargetAtTime(0, end, 0.005);
+    }
     const pan = fx?.pan ?? 0;
     // StereoPannerNode needs WebKit 14.1+, fine for macOS 12 — and a
     // pan of 0 keeps the direct path, so the node is opt-in only.
@@ -617,13 +620,15 @@ export class TankAudio {
    * its first alert. Routed through the master gain like everything
    * else, so Mute and the volume slider hold. */
   alertBeep(): void {
+    // Hidden: no context is created and no sound plays — like play(),
+    // an alert nobody can see shouldn't wake the audio device.
+    if (this.hidden) return;
     const own = this.named("pipopa");
     if (own) {
       this.play(own, 0.6, false, true, { fadeSec: 0.05 });
       return;
     }
     const ac = this.context();
-    if (this.hidden) return;
     // Created mid-gesture the context may still be settling: beep the
     // moment it runs, or drop the sound (an alert nobody can act on
     // shouldn't spend a second resume()).
