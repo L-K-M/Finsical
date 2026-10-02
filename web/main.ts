@@ -247,13 +247,28 @@ const syncAudioVisibility = (): void => audio.setHidden(document.hidden);
 document.addEventListener("visibilitychange", syncAudioVisibility);
 syncAudioVisibility();
 
-const audioHint = document.getElementById("audio-hint") as HTMLDivElement | null;
+// Any press on the page is a gesture sound may start from: the case,
+// the menu bar and the Turn On Sound button as much as the water.
+// Capture phase, so a handler that stops propagation can't swallow
+// it; pointerup as well, since a touch only counts once it lifts.
+for (const type of ["pointerdown", "pointerup"] as const)
+  window.addEventListener(type, () => { if (audio.blocked) audio.unlock(); },
+                          { capture: true, passive: true });
+// Turn On Sound: offered while the browser holds back sounds the tank
+// has loaded (TankAudio.blocked) — never for a tank with no sounds, a
+// muted one, or in the apps, which let sound start by itself. The
+// press itself unlocks through the listener above; the action covers
+// keyboard activation.
+const audioHint = document.getElementById("audio-hint") as
+  HTMLButtonElement | null;
+if (audioHint) pushButton(audioHint, () => audio.unlock());
+/** Show or hide Turn On Sound; runs every frame, painted or not, so the
+ * button leaves the moment sound starts even on a paused tank. Zen and
+ * the startup parade keep the screen to themselves. */
 function syncAudioHint(): void {
   if (!audioHint) return;
-  const ctx = (audio as any).ctx as AudioContext | null | undefined;
-  if (!ctx) { audioHint.hidden = false; return; }
-  if (ctx.state === "running") { audioHint.hidden = true; return; }
-  audioHint.hidden = false;
+  const hide = !audio.blocked || zen || bootT0 !== null;
+  if (audioHint.hidden !== hide) audioHint.hidden = hide;
 }
 if (saved) {
   // Storage is untrusted: a negative or fractional tick count would
@@ -3895,6 +3910,7 @@ function frame(now: number): void {
   // their own clock — collapse in particular must keep drawing after
   // crtOn has already cleared. The boot parade also animates on its
   // own clock: it needs a draw per frame even before the first tick.
+  syncAudioHint();
   const crtBusy = crt?.animating ?? false;
   if (ticks === 0 && !frameDirty && !crtBusy && bootT0 === null) return;
   frameDirty = false;
@@ -3914,7 +3930,6 @@ function frame(now: number): void {
                                  clientY: lastClient.y });
     }
   }
-  syncAudioHint();
   if (crtOn || crtBusy) crt?.render();
 }
 // A resize changes the CRT buffer size, and resizing a WebGL canvas

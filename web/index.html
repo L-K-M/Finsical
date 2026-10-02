@@ -29,9 +29,9 @@
     <svg id="shell" preserveAspectRatio="xMidYMid meet"
          role="presentation"></svg>
   </div>
-  <div id="audio-hint" aria-live="polite" hidden>
-    <span>Click for sound</span>
-  </div>
+  <!-- Turn On Sound: shown while the browser holds back the tank's
+       sounds until a click (web/main.ts, syncAudioHint). -->
+  <button id="audio-hint" class="osm-button" type="button" hidden>Turn On Sound</button>
   <script src="bundle.js"></script>
 </body>
 </html>
