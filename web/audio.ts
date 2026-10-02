@@ -596,7 +596,8 @@ export class TankAudio {
   }
   /** A fish has recovered — the original's EventTiyu (chiyu). */
   recovery(): void {
-    this.play(this.named("eventtiyu") ?? this.named("eventbirth"), 0.7);
+    const sfx = this.named("eventtiyu") ?? this.named("eventbirth");
+    if (sfx) this.play(sfx, 0.7); // stay silent rather than play nothing
   }
 
   /** Fish are begging — the original's timer chime as a dinner bell.

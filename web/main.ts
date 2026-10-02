@@ -686,19 +686,24 @@ function onTankDown(e: PointerEvent): void {
   // resume. ⌥-click Get Info above still works: the card reads the
   // frozen sim fine.
   if (paused) return;
-  // Medicine: if installed and a sick fish is clicked, cure it.
-  const sickFish = sim.fish.find((f) => f.life?.sick || f.sick);
-  const medicineInstalled = installedAddons.some((a) => a.section === "medicine");
-  if (medicineInstalled && e.altKey && sickFish && tankPoint(p.x, p.y)) {
-    // Cure the nearest sick fish under the pointer
+  // Medicine: if installed, alt-clicking a sick fish cures it.
+  // NOTE: medicine alt-click requires an unpaused tank (unlike ⌥-click
+  // Get Info above, which works while paused).
+  if (e.altKey && installedAddons.some((a) => a.section === "medicine")) {
     const f = fishAtPoint(p);
     if (f && (f.sick || f.life?.sick)) {
-      if (f.life && f.life.sick) f.life.sick = null;
+      if (f.life) f.life.sick = null;
       f.sick = false; f.sickTicks = 0;
+      // TODO: confirm this is the full sickness state that needs clearing
+      // (disease type, progression timers, active effects, save data).
       audio.recovery(); // the original's EventTiyu (chiyu)
+      // TODO: consider a per-cure cost or cooldown to match the
+      // original's consumable medicine, unless free cures are intended.
       requestPaint();
       return;
     }
+    // Alt means medicine intent — don't also feed on a miss.
+    return;
   }
   if (isFeedZone(p.x, p.y, waterline)) {
     const pellet = sim.dropFood(p.x);
