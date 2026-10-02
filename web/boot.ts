@@ -238,6 +238,25 @@ function blit(ctx: CanvasRenderingContext2D, art: readonly string[],
   }
 }
 
+// The parade redraws every frame, and each icon is ~35-98 painted
+// glyphs — near a thousand fillRect calls a frame once a decent
+// restore marches its add-ons in. Each art renders once into a small
+// canvas instead (the snailSprite pattern); a frame then blits one
+// drawImage per icon.
+const iconCanvases = new Map<readonly string[], HTMLCanvasElement>();
+function iconCanvas(art: readonly string[]): HTMLCanvasElement {
+  let cv = iconCanvases.get(art);
+  if (!cv) {
+    const scale = 2; // the parade's slot size
+    cv = document.createElement("canvas");
+    cv.width = art[0]!.length * scale;
+    cv.height = art.length * scale;
+    blit(cv.getContext("2d")!, art, 0, 0, scale);
+    iconCanvases.set(art, cv);
+  }
+  return cv;
+}
+
 // A 2x2 checker pattern stands in for the Mac desktop's grey weave —
 // built once, since a per-pixel fillRect loop would cost 30k calls.
 let weavePat: CanvasPattern | null = null;
@@ -269,7 +288,8 @@ export function drawBoot(ctx: CanvasRenderingContext2D, phase: BootPhase,
   }
   desktopFill(ctx);
   // The smiling bowl, centered a touch high like the Happy Mac.
-  blit(ctx, BOWL_ART, Math.round(w / 2 - 16), Math.round(h * 0.3), 2);
+  ctx.drawImage(iconCanvas(BOWL_ART), Math.round(w / 2 - 16),
+                Math.round(h * 0.3));
   // "Welcome to Finsical" in a little white box, like Welcome to
   // Macintosh. Charcoal/Chicago fall back to whatever the system has.
   ctx.font = "10px Charcoal, Chicago, monospace";
@@ -290,6 +310,6 @@ export function drawBoot(ctx: CanvasRenderingContext2D, phase: BootPhase,
     // Rows stack upward — also stop below the welcome box so a tall
     // parade can't scribble over it or clip off the top edge.
     if (s.x + 32 > w || s.y + 32 > h || s.y < by + 18) break;
-    blit(ctx, icons[i]!, s.x, s.y, 2);
+    ctx.drawImage(iconCanvas(icons[i]!), s.x, s.y);
   }
 }
