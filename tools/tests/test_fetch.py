@@ -260,11 +260,14 @@ class TestHarvest(unittest.TestCase):
         self.assertTrue(os.path.isdir(stale))
 
     def test_stale_sweep_reaches_past_a_gap(self):
-        _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out)
+        base = _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out)
         gap = os.path.join(self.out, "fish-3.azpack")
         os.makedirs(gap)  # a leftover -3 with no -2 beside it
         tools.fetch._EMITTED.clear()
-        _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out)
+        again = _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out)
+        self.assertEqual(again, base)
+        # The wider sweep must not touch the live bundle it just wrote.
+        self.assertTrue(os.path.isdir(base))
         self.assertFalse(os.path.exists(gap))
 
     def test_cached_get_reuse_and_part_cleanup(self):
