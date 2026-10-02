@@ -68,9 +68,12 @@ describe("snailArtCol", () => {
     const headCols = (dir: 1 | -1): number[] =>
       Array.from({ length: SNAIL_W }, (_, x) => x)
         .filter((x) => SNAIL_ART[0]![snailArtCol(dir, x)] === "e");
-    expect(headCols(1).length).toBeGreaterThan(0);
     expect(headCols(-1).length).toBeGreaterThan(0);
-    expect(headCols(1).every((x) => x >= SNAIL_W / 2)).toBe(true);
-    expect(headCols(-1).every((x) => x < SNAIL_W / 2)).toBe(true);
+    // Mirroring is its own inverse, so the right-crawler's head columns
+    // are exactly the left-crawler's reflected; comparing directly also
+    // stays valid when SNAIL_W is odd and an "e" lands on the center
+    // column.
+    expect(headCols(1)).toEqual(
+      headCols(-1).map((x) => SNAIL_W - 1 - x).reverse());
   });
 });
