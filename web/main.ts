@@ -1263,9 +1263,6 @@ function decorAnchor(i: number, dn: number): number {
 /** Pixels above the tank floor where decor sits — the y-axis half of
  * the shared anchor, for the same reason. */
 const DECOR_FLOOR = 6;
-const fishSlot = new WeakMap<Fish, number>();
-const MAX_FISH_SLOTS = 4096;
-let nextSlot = 0;
 /** One storage alert per drop event — a multi-file drop shouldn't
  * stack them, but a later failing drop deserves its own warning. */
 let storageWarnedAt = -1;
