@@ -47,6 +47,7 @@ import { coverCrop, decorCanvases, imageCanvas, isBackdropImage,
          isGravelImage,
          previewOf, soundIcon, swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
+import { corpseSprite } from "./corpse.js";
 import { capRefusal, entryKey, entryOfSlot, entryStem, legacyEntries,
          partName } from "./tankmodel.js";
 import { nextNotice, noticePoint } from "./curiosity.js";
@@ -3306,6 +3307,7 @@ function drawFish(f: Fish): void {
     // RangeError here would abort the rest of every frame, so fall back.
     return drawPlaceholder(f);
   }
+  const sprite = f.state === "dead" ? corpseSprite(cv) : cv;
   ctx.save();
   // finally: a throwing drawImage must not leave its transform behind
   // for everything drawn after it. Whole-pixel offsets: an odd-sized
@@ -3317,16 +3319,15 @@ function drawFish(f: Fish): void {
       if (f.life?.sick) ctx.globalAlpha = 0.55; // wan, but still swimming
       ctx.rotate(pitch(f));
     }
-    ctx.drawImage(cv, -(cv.width >> 1), -(cv.height >> 1));
+    ctx.drawImage(sprite, -(sprite.width >> 1), -(sprite.height >> 1));
   } finally {
     ctx.restore();
   }
 }
 
-/** A dead fish floats belly-up, its colour gone grey. */
+/** A dead fish floats belly-up; corpseSprite has already muted its colour. */
 function bellyUp(): void {
   ctx.scale(1, -1);
-  ctx.filter = "grayscale(0.7) brightness(0.85)";
 }
 
 // Placeholder until real Aquazone assets are imported: a pixel guppy
@@ -3336,6 +3337,7 @@ function drawPlaceholder(f: Fish): void {
   // come from it, so no caller can pass a pitch where a frame goes.
   const frames = placeholderFrames();
   const cv = frames[animFrame(f, frames.length)]!;
+  const sprite = f.state === "dead" ? corpseSprite(cv) : cv;
   const scale = Math.round(f.scale * 20) / 20; // as drawScale rounds it
   ctx.save();
   ctx.translate(Math.round(f.x), Math.round(f.y));
@@ -3344,7 +3346,7 @@ function drawPlaceholder(f: Fish): void {
   ctx.scale(-f.facing * scale, scale);
   // In the mirrored draw space the pitch angle flips sign.
   if (f.state !== "dead") ctx.rotate(-f.facing * pitch(f));
-  ctx.drawImage(cv, -(cv.width >> 1), -(cv.height >> 1));
+  ctx.drawImage(sprite, -(sprite.width >> 1), -(sprite.height >> 1));
   ctx.restore();
 }
 
