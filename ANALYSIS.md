@@ -240,7 +240,8 @@ U-25+, F-31+, D-22+, T-30+); later passes continue each prefix
 (eleventh: B-56+, P-24, V-26+; twelfth: B-62+, P-25+, U-30+;
 thirteenth: P-27, V-28, D-32 to D-34; fourteenth: B-65+, P-28+, V-29+,
 U-32+, A-08+, F-34+, D-35+, T-34+; eighteenth: P-30+, V-39, U-41,
-F-43, D-47+, T-37). Items
+F-43, D-47+, T-37; twentieth: B-78 to B-81, A-14, D-51 to D-55,
+T-41). Items
 with a "remainder" in their title keep their ID and list only what
 is still open.
 
@@ -5087,6 +5088,11 @@ Fourteenth-pass audit (62b8572): Overview shows "Waiting for the tank…" until 
 
 Thirteenth-pass update: PR #195 (open): clients keep a persistent waiting-for-tank state.
 
+Twentieth-pass correction: `tankGone` disables Overview's buttons, but
+Delete/Backspace can still call `removeSelected()` and Empty Tank can
+still arm or post. Both destructive paths need an early return while
+the tank is disconnected.
+
 ### U-13 Preferences: CRT controls stay clickable when WebGL is unavailable
 
 Size S · Severity low · Value 2/5 · Risk 1/5
@@ -6777,6 +6783,10 @@ Size M · Severity idea · Value 3/5 · Risk 3/5
 Fifteenth pass: the snail visitor creeps the gravel
 (PR #232); algae growth and the sponge ritual remain.
 
+Twentieth-pass extension: the active gravel visitor should leave a
+short, fading grazing trail. This is distinct from the older front-glass
+clean-streak idea.
+
 ### D-13 Shake the window to stir the tank like a snow globe
 
 Size M · Severity idea · Value 3/5 · Risk 3/5
@@ -7062,6 +7072,9 @@ rare reward would add surprise.
 
 **Change.** A rare fish "photobomb" (swims to the front, large) after a
 tap, or a sparkle on perfect water quality.
+
+Twentieth-pass extension: after a full simulated day of excellent water,
+a plant may bloom, then wilt as water quality deteriorates.
 
 **Evidence.** `core/sim.ts` `tap()`.
 
@@ -9505,3 +9518,111 @@ These remain high-quality, unimplemented ideas from the independent review. Each
 ---
 
 *No information from either independent `tmp.md` was lost in this merge. Completed PR entries include their PR numbers. Open ideas from both reviews (U-41 audio unlock indicator / PR #360; B-01 through T-01 from the independent appendix) are preserved with file:line citations and can be picked up by any future LLM agent without reading these review conversations. The `tmp.md` file has been discarded (`rm tmp.md`).*
+
+---
+
+## Twentieth pass (2026-10-02, audit at `a5a0be0`)
+
+A focused review rechecked the web simulation and live browser build.
+Baseline: `npm ci`, `npm run typecheck`, 892 Vitest tests, 94 Python
+tests, and `npm run build` passed. A fresh browser profile exercised the
+starter set, CRT, night lighting, feeding, taps, menus, Import Add-ons,
+Tank Stats, and Preferences without console errors. Archive.org returned
+503 for `AZ_WAVES`; its retry flow preserved successful starter items.
+
+### Completed (PRs open for review)
+
+| ID | Title | PR | Size | Notes |
+| --- | --- | --- | --- | --- |
+| B-78 | WebKit-safe dead-fish appearance | #364 | S | Cache a muted corpse sprite with supported alpha compositing instead of `CanvasRenderingContext2D.filter`. |
+| B-79 | Clean Take a Picture output | #369 | S | Exclude boot and Overview focus overlays from a saved picture while retaining them on screen. |
+| B-80 | Safari starter failure wording | #361 | S | Avoid `Array.prototype.at`, which Safari 15.0-15.3 lacks. |
+| B-81 | Copy Summary feedback reset | #362 | S | Keep one timeout per Stats window so a second copy restarts its acknowledgement. |
+| T-41 | Dead fish-slot declarations | #373 | S | Remove obsolete sprite-slot bookkeeping after the direct sheet-ownership migration. |
+
+### Refuted or deferred
+
+- **U-42 auto-feeder chime:** `feederDrop()` does chime after its loop,
+  but the only scheduled caller requires `sim.food.length < 4`, while
+  `dropFood()` refuses only at six uneaten pellets and the automated
+  pinch contains one pellet. A zero-drop scheduled invocation is
+  unreachable, so no defect is filed. This does not change the separate
+  manual food-cap sound issue already recorded elsewhere.
+- `plantSize` remains explicitly unverified in `FOLLOW-UPS.md`; it needs
+  a focused reproduction before it becomes backlog work.
+- A restored nonstandard simulation speed may leave the Stats Time popup
+  stale, but it needs proof that saved or bus state can bypass speed
+  sanitization before an entry is added.
+
+### New open ideas
+
+#### A-14 A food canister briefly tips into view during manual feeding
+
+Size S · Severity idea · Value 2/5 · Risk 1/5
+
+**Change.** A small original 16x16 pixel canister enters above the feed
+point, tips and shakes out the pinch, then leaves. It explains manual
+feeding without changing simulation state, stays clear of machine-hood
+art, and is skipped for reduced motion.
+
+**Acceptance.** A pure animation-state test covers enter, pour and exit;
+reduced motion produces no canister.
+
+#### D-51 Zen mode hides an idle cursor over the water
+
+Size S · Severity idea · Value 2/5 · Risk 1/5
+
+**Change.** After three seconds without pointer movement in Zen mode,
+hide the tank cursor. Pointer movement, blur, or leaving Zen restores
+it. Keep the idle decision pure and respect reduced motion.
+
+**Acceptance.** Test the idle boundary and every restore condition apart
+from the DOM class toggle.
+
+#### D-52 A substantial water change leaves a brief rainbow
+
+Size S · Severity idea · Value 2/5 · Risk 1/5
+
+**Change.** When a water change replaces at least half the tank, draw a
+faint rainbow arc that fades on tank time. Smaller changes do nothing,
+and the effect changes no simulation state.
+
+**Acceptance.** Test the half-change boundary and a fade that expires on
+the simulation clock.
+
+#### D-53 A quiet CRT hum is explicitly opt-in
+
+Size S · Severity idea · Value 1/5 · Risk 2/5
+
+**Change.** With CRT, sound, and a dedicated opt-in enabled, synthesize a
+very low-gain hum. Stop it on mute, CRT-off, hidden state, or suspended
+audio; do not use a prominent flyback tone.
+
+**Acceptance.** Audio-state tests prove one hum source, no playback while
+guarded, and cleanup at every stop transition. Listen to the final mix
+before shipping.
+
+#### D-54 Rare shiny fish carry a persisted glint
+
+Size M · Severity idea · Value 2/5 · Risk 2/5
+
+**Change.** Give newly arriving fish a deterministic, low-probability
+shiny flag and a small moving gold glint. Persist the flag through saved
+tanks and exports; rarity must not affect care or health.
+
+**Acceptance.** Seeded tests cover rarity assignment and save/export
+round trips; rendering remains purely cosmetic.
+
+#### D-55 Medicine visibly pours into the tank
+
+Size S · Severity idea · Value 2/5 · Risk 1/5
+
+**Change.** Adding medicine from Tank Stats posts a short-lived cosmetic
+tank event: tinted drops, a surface dimple, and a fading water tint.
+Reuse splash machinery and keep treatment rules unchanged.
+
+**Acceptance.** Test event lifetime and reduced-motion behavior; a manual
+check confirms that a dose's existing care effect is unchanged.
+
+**Placement.** A-14 and D-51 through D-55 are Phase 7 seasoning after
+the existing open reliability and fidelity work.
