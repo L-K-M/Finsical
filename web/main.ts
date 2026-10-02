@@ -686,6 +686,20 @@ function onTankDown(e: PointerEvent): void {
   // resume. ⌥-click Get Info above still works: the card reads the
   // frozen sim fine.
   if (paused) return;
+  // Medicine: if installed and a sick fish is clicked, cure it.
+  const sickFish = sim.fish.find((f) => f.life?.sick || f.sick);
+  const medicineInstalled = installedAddons.some((a) => a.section === "medicine");
+  if (medicineInstalled && e.altKey && sickFish && tankPoint(p.x, p.y)) {
+    // Cure the nearest sick fish under the pointer
+    const f = fishAtPoint(p);
+    if (f && (f.sick || f.life?.sick)) {
+      if (f.life && f.life.sick) f.life.sick = null;
+      f.sick = false; f.sickTicks = 0;
+      audio.recovery(); // the original's EventTiyu (chiyu)
+      requestPaint();
+      return;
+    }
+  }
   if (isFeedZone(p.x, p.y, waterline)) {
     const pellet = sim.dropFood(p.x);
     if (pellet) {

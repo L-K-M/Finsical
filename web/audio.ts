@@ -594,6 +594,10 @@ export class TankAudio {
   birth(): void {
     this.play(this.named("eventbirth"), 0.8);
   }
+  /** A fish has recovered — the original's EventTiyu (chiyu). */
+  recovery(): void {
+    this.play(this.named("eventtiyu") ?? this.named("eventbirth"), 0.7);
+  }
 
   /** Fish are begging — the original's timer chime as a dinner bell.
    * Returns false only while audio can't sound, so the caller keeps
