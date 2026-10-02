@@ -83,7 +83,11 @@ describe("standalone web build", () => {
       cp += lines[i] + "\n";
       if (!lines[i].endsWith("\\")) break;
     }
-    expect(cp).toContain("../web/icon.svg");
+    // Keep the Makefile's hand-maintained list in sync with WEB_FILES:
+    // every basename must appear in the staging cp (osmium.css arrives
+    // as $(OSMIUM)/osmium.css, so basename containment still holds).
+    for (const f of lists[0])
+      expect(cp, `macOS cp ships ${f}`).toContain(f);
   });
 
   it("keeps the MACE LGPL notice in every bundle that ships the decoder", () => {
