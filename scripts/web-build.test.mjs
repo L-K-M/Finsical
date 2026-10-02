@@ -58,14 +58,22 @@ describe("standalone web build", () => {
     // script's copy list; icon.svg went missing from all three when the
     // favicon landed, so every Linux and macOS page asked for a file
     // their web root did not have. Read the lists, not the file names.
-    for (const file of ["linux/build-deb.sh", "linux/build-tarball.sh"]) {
-      const src = readFileSync(join(root, file), "utf8");
-      const list = /readonly WEB_FILES=\(([\s\S]*?)\)/.exec(src)?.[1];
-      expect(list, `${file} WEB_FILES`).toBeTruthy();
-      expect(list, file).toContain("icon.svg");
-    }
+    const lists = ["linux/build-deb.sh", "linux/build-tarball.sh"]
+      .map((file) => {
+        const src = readFileSync(join(root, file), "utf8");
+        const list = /readonly WEB_FILES=\(([\s\S]*?)\)/.exec(src)?.[1];
+        expect(list, `${file} WEB_FILES`).toBeTruthy();
+        const names = list.trim().split(/\s+/);
+        expect(names, file).toContain("icon.svg");
+        return names;
+      });
+    // build-tarball.sh ships "the same web payload" as build-deb.sh;
+    // hold the two hand-maintained lists to that promise.
+    expect(lists[1], "tarball WEB_FILES").toEqual(lists[0]);
     const makefile = readFileSync(join(root, "macos/Makefile"), "utf8");
-    expect(makefile).toContain("../web/icon.svg");
+    const cp = /cp \.\.\/web\/index\.html[\s\S]*?\$\(OSMIUM\)/.exec(makefile)?.[0];
+    expect(cp, "macOS staging cp").toBeTruthy();
+    expect(cp).toContain("../web/icon.svg");
   });
 
   it("keeps the MACE LGPL notice in every bundle that ships the decoder", () => {
