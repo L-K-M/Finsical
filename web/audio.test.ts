@@ -700,6 +700,64 @@ describe("TankAudio event sounds", () => {
     expect(played(ac)).toEqual([7, 8]);
   });
 
+  it("an alert plays the game's pipopa, faded out before its cut end",
+     async () => {
+    const { audio, ac } = await tank({ pipopa: 1 });
+    audio.alertBeep();
+    expect(ac.sources).toHaveLength(1);
+    const src = ac.sources[0]!;
+    expect(src.buffer?.duration).toBe(1);
+    // The bank's caution sound ends mid-tone; the fade must land
+    // before the buffer's last samples. The envelope gain is the last
+    // one the context made for this source.
+    const fade = ac.gains.at(-1)!.gain.targets[0]!;
+    expect(fade[0]).toBe(0);
+    expect(fade[1]).toBeLessThan(11);
+    expect(ac.oscs).toHaveLength(0);
+  });
+
+  it("an alert without any sound set synthesizes the classic beep",
+     async () => {
+    const { audio, ac } = await tank({ IntoWater: 1 });
+    audio.alertBeep();
+    expect(ac.sources).toHaveLength(0); // no buffer played
+    expect(ac.oscs).toHaveLength(1);
+    const osc = ac.oscs[0]!;
+    expect(osc.type).toBe("square");
+    expect(osc.frequency.value).toBeGreaterThan(150);
+    expect(osc.frequency.value).toBeLessThan(300);
+    // Into the master chain, so Mute and the volume hold.
+    expect(osc.out[0]!.out[0]).toBe(ac.gains[0]);
+    expect(osc.stops[0]).toBeGreaterThan(10); // stops after it starts
+  });
+
+  it("a tank that owns no context yet still gets its first beep",
+     async () => {
+    // No addWavs: the audio device is created on demand by the alert
+    // itself. The fake context runs from birth, so this beeps at once.
+    const audio = new TankAudio();
+    audio.alertBeep();
+    const ac = FakeContext.last!;
+    expect(ac).toBeDefined();
+    expect(ac.oscs).toHaveLength(1);
+  });
+
+  it("a suspended context beeps once its resume settles", async () => {
+    const { audio, ac } = await tank({ IntoWater: 1 });
+    ac.state = "suspended";
+    audio.alertBeep();
+    expect(ac.oscs).toHaveLength(0); // nothing while suspended
+    await new Promise((r) => setTimeout(r, 0)); // resume settles
+    expect(ac.oscs).toHaveLength(1);
+  });
+
+  it("an exact-name match still wins for the alert beep", async () => {
+    const { audio, ac } = await tank({ "Pipopa remix": 2 });
+    audio.alertBeep();
+    expect(ac.sources).toHaveLength(0); // not a substring match
+    expect(ac.oscs).toHaveLength(1);
+  });
+
   it("stays silent on tap with only a song installed", async () => {
     const { audio, ac } = await tank({ "Centerfold": 1 });
     audio.tap(160, 100, 320, 200);
