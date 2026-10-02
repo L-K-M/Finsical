@@ -2846,18 +2846,22 @@ function tickSim(): void {
   // Lifecycle: each transition rings its original event sound. A birth
   // also binds the fry's sprite extents and splashes it in.
   let rosterChanged = false;
+  let goldenHeard = false;
   for (const e of sim.events.splice(0)) {
     if (e.type === "sick") audio.sick();
     else if (e.type === "dead") {
       audio.dead();
       rosterChanged = true; // the roster shrank — don't resurrect it on reload
-    }     else if (e.type === "birth") {
+    } else if (e.type === "birth") {
       bindExtents(e.fish);
       splashAt(e.fish.x, e.fish.y, PUSH.newFish);
       audio.birth();
       rosterChanged = true; // the roster grew
     } else if (e.type === "golden") {
-      audio.golden();
+      if (!goldenHeard) {
+        audio.golden();
+        goldenHeard = true;
+      }
     }
   }
   if (rosterChanged) saveTank();
