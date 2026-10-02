@@ -15,7 +15,7 @@ import {
 const osmiumEntry = import.meta.resolve("osmium-ui");
 const { CHARCOAL_12 } = await import(
   new URL(`fonts/charcoal12.${
-    osmiumEntry.endsWith(".ts") ? "ts" : "js"}`, osmiumEntry).href) as
+    osmiumEntry.match(/\.([^./]+)$/)?.[1] ?? "js"}`, osmiumEntry).href) as
   { CHARCOAL_12: { glyphs: readonly [number, number, ...unknown[]][] } };
 
 // Each machine's `shape` is hand-synced to the outer <rect> geometry
@@ -366,7 +366,7 @@ describe("machine names", () => {
       if (px === undefined)
         throw new Error(
           `no Charcoal 12 glyph for U+${
-            c.codePointAt(0)!.toString(16).padStart(4, "0")
+            c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")
           } (${JSON.stringify(c)}) in "${name}"`);
       return w + px;
     }, 0);
