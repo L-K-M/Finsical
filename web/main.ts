@@ -29,7 +29,7 @@ import { drawRipples, drawSplashes, newSplash, tickRipples,
 import type { Ripple, Splash } from "./fx.js";
 import { sanitizeEffects } from "./effects.js";
 import { pushButton } from "osmium-ui";
-import { alertOpen, showAlert } from "./alert.js";
+import { alertOpen, setAlertBounds, showAlert } from "./alert.js";
 import { recentTaps, shouldScold } from "./scold.js";
 import { backfillStarterSounds, launchOffer, showWelcome }
   from "./welcome.js";
@@ -97,6 +97,14 @@ const STEP_MS = 1000 / TICKS_PER_SECOND;
 const canvas = document.getElementById("tank") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 ctx.imageSmoothingEnabled = false;
+
+// Alerts sit on the machine's desktop — the screen rect inside the
+// case — the way a Mac's alerts sat on its screen, instead of
+// overhanging the monitor the tank lives in (a 340 px standard alert
+// over a 320 px Plus-case tank at browser sizes).
+const alertScreenEl = document.getElementById("screen");
+if (alertScreenEl)
+  setAlertBounds(() => alertScreenEl.getBoundingClientRect());
 
 // The loop only draws after a sim tick; requestPaint() asks for one draw
 // without a tick, for changes the sim doesn't make (feeding, taps,

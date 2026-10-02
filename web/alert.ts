@@ -60,6 +60,13 @@ const MAX_W = 340;
 /** Room kept between the alert and the page edges. */
 const EDGE = 8;
 
+/** The rectangle an alert is placed inside: the whole viewport, or —
+ * where the host provides one — the tank's "desktop", the screen rect
+ * inside the machine case. */
+export interface AlertBox {
+  left: number; top: number; width: number; height: number;
+}
+
 /** Alert width for a viewport `vw` wide: the standard width, narrowed
  * to fit small windows (the Mac Plus tank window is 330 wide). */
 export function alertWidth(vw: number): number {
@@ -71,8 +78,28 @@ export function alertWidth(vw: number): number {
  * alert position), on whole pixels so the bitmap text stays crisp. */
 export function alertOrigin(vw: number, vh: number, w: number,
                             h: number): { left: number; top: number } {
-  return { left: Math.max(0, Math.floor((vw - w) / 2)),
-           top: Math.max(EDGE, Math.floor((vh - h) / 3)) };
+  return alertOriginIn({ left: 0, top: 0, width: vw, height: vh }, w, h);
+}
+
+/** The same Dialog Manager position inside an arbitrary box: centered
+ * across, a third of the leftover height above, never nearer than
+ * EDGE to the box's top, and never left of it. */
+export function alertOriginIn(b: AlertBox, w: number, h: number):
+    { left: number; top: number } {
+  return {
+    left: b.left + Math.max(0, Math.floor((b.width - w) / 2)),
+    top: b.top + Math.max(EDGE, Math.floor((b.height - h) / 3)),
+  };
+}
+
+/** The rectangle alerts place themselves inside, wired by the host
+ * page: the tank page gives its machine case's screen, so an alert
+ * sits on the "desktop" the tank lives in instead of overhanging the
+ * monitor. Null (the default, and what the client windows use)
+ * restores the whole viewport. */
+let alertBounds: (() => AlertBox | null) | null = null;
+export function setAlertBounds(fn: (() => AlertBox | null) | null): void {
+  alertBounds = fn;
 }
 
 let registered = false;
@@ -190,9 +217,14 @@ export function showAlert(spec: AlertSpec): Alert {
     bar.setAttribute("aria-valuenow", String(Math.round((value ?? 0) * 100)));
   };
   const place = () => {
-    win.style.width = `${alertWidth(window.innerWidth)}px`;
-    const o = alertOrigin(window.innerWidth, window.innerHeight,
-                          win.offsetWidth, win.offsetHeight);
+    // Inside the host's desktop when it provides one (the machine's
+    // screen rect), else the whole viewport: the modal's scrim still
+    // covers the page either way.
+    const b = alertBounds?.() ??
+      { left: 0, top: 0, width: window.innerWidth,
+        height: window.innerHeight };
+    win.style.width = `${alertWidth(b.width)}px`;
+    const o = alertOriginIn(b, win.offsetWidth, win.offsetHeight);
     win.style.left = `${o.left}px`;
     win.style.top = `${o.top}px`;
   };
