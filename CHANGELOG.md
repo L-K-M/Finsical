@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- With Fish Names on, name tags no longer pile on top of each other
+  when fish crowd together at the surface or round the food. A tag
+  moves to the other side of its fish to make room, or steps aside
+  for a moment until there is room again.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's
