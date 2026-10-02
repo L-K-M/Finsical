@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Dialogs line up the Mac OS 8 way: a button beside the default
+  button sits level with it in About and Import Add-ons, the
+  Shortcuts window's OK sits at the bottom right, and a focused text
+  field gets Mac OS 8.5's lavender ring instead of a black double
+  ring that looked like a second default button. Tank Overview dims
+  Empty Tank… when there is nothing to empty.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's

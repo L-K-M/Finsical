@@ -172,6 +172,8 @@ function syncRemove(): void {
   useBtn.hidden = fishRow;
   renameBtn.disabled = tankGone || it?.fishId === undefined;
   useBtn.disabled = tankGone || !it?.use;
+  // Dimmed with nothing to empty, as the Finder dims Empty Trash….
+  emptyBtn.disabled = tankGone || !tankItems();
 }
 // A double-click's second press lands before the tank's state push
 // moves the selection, so without a floor one gesture could remove

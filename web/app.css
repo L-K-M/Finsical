@@ -131,14 +131,18 @@ body.crt canvas#tank { opacity: 0; }
 .dbtitle { font: var(--osm-font-system); font-weight: bold; }
 .dbblurb { margin-top: 8px; text-align: left; line-height: 15px; }
 .dbcredit { margin-top: 8px; text-align: left; color: #555; }
+/* The default button's ring is drawn outside its button, so a plain
+   button beside it lines up with the inner one: centre the row. */
 .dbfoot {
-  display: flex; justify-content: center; gap: 12px; margin-top: 12px;
+  display: flex; justify-content: center; align-items: center; gap: 12px;
+  margin-top: 12px;
 }
 .dbkeys .dbkeyrow { display: flex; margin-top: 6px; line-height: 15px; }
 .dbkeys .dbkey {
   flex: none; width: 92px; font: var(--osm-font-system); font-weight: bold;
 }
-.dbkeys .osm-button { margin-top: 14px; }
+/* OK at the bottom right, where Mac OS 8 puts it. */
+.dbkeys .osm-button { display: block; margin: 14px 0 0 auto; }
 /* ---- fish Get-Info card (web/main.ts) ------------------------------------
    ⌥-click a fish: a tiny Mac window pinned over it — striped title bar
    with a close box, live hunger and mood underneath. */
@@ -460,7 +464,10 @@ body.zen .nametag {
   font: var(--osm-font-small); appearance: none;
 }
 .ifilter::placeholder { color: #767676; }
-.ifilter:focus { outline: none; border-color: #000; box-shadow: 0 0 0 1px #fff, 0 0 0 2px #000; }
+/* Mac OS 8.5's Appearance Manager rings the focused text field in the
+   highlight colour, as Osmium rings its controls; the black double
+   ring this replaces read as a second default button. */
+.ifilter:focus { outline: 2px solid #6666cc; outline-offset: 1px; border-color: #000; }
 .ifilter:disabled { background: #ddd; }
 /* Forced-colors mode suppresses box-shadow — fall back to a real
    outline so the focused field stays visible. */
@@ -502,10 +509,12 @@ body.zen .nametag {
 /* The credit gives way first; Donate and the default button never meet
    (the default button stays clear of the grow box). */
 .icredit {
-  flex: 0 1 auto; min-width: 0; margin-top: 14px;
+  flex: 0 1 auto; min-width: 0; margin-top: 17px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.idonate { flex: none; margin: 9px 12px 0 20px; }
+/* Aligned with the default button's inner button (its ring is drawn
+   outside it), and the credit with both. */
+.idonate { flex: none; margin: 13px 12px 0 20px; }
 .iadd { flex: none; margin: 10px 16px 0 auto; }
 /* A narrow overlay (on a small tank) stacks the details under the list
    and drops the preview, the credit and the count; a sound's Play
@@ -565,7 +574,7 @@ body.zen .nametag {
   font: var(--osm-font-system); appearance: none;
   user-select: text; -webkit-user-select: text;
 }
-.alertfield:focus { outline: none; box-shadow: 0 0 0 1px #fff, 0 0 0 2px #000; }
+.alertfield:focus { outline: 2px solid #6666cc; outline-offset: 1px; }
 .alertfield[hidden] { display: none; }
 @media (forced-colors: active) {
   .alertfield:focus { outline: 2px solid Highlight; box-shadow: none; }
