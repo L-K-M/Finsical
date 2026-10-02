@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- If the browser or the system closes Finsical's local storage under
+  it (clearing site data, or WebKit's storage process restarting), the
+  tank opens it again. It used to treat every cached add-on as missing
+  and download it again, call dropped files "storage is full", and
+  stop saving sounds until you quit.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's
