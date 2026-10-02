@@ -48,7 +48,7 @@ import { coverCrop, decorCanvases, imageCanvas, isBackdropImage,
          previewOf, soundIcon, swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
 import { capRefusal, entryKey, entryOfSlot, entryStem, legacyEntries,
-         partName } from "./tankmodel.js";
+         partName, savedFish } from "./tankmodel.js";
 import { nextNotice, noticePoint } from "./curiosity.js";
 import type { Notice } from "./curiosity.js";
 import { containPoint, isFeedZone } from "./feedzone.js";
@@ -449,15 +449,7 @@ function tankSnapshot(): SavedTank {
     v: rosterComplete ? 2 : 1,
     tickCount: sim.tickCount, waterQuality: sim.waterQuality,
     // Corpses don't get saved — a dead fish stays dead.
-    fish: sim.fish.filter((f) => f.state !== "dead").map((f) => ({
-      id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
-      heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
-      bandY: f.bandY, z: f.z, hunger: f.hunger, scale: f.scale,
-      ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
-      ...(f.pack !== undefined ? { pack: f.pack } : {}),
-      ...(f.name ? { name: f.name } : {}),
-      ...(f.life ? { life: f.life } : {}),
-    })),
+    fish: sim.fish.filter((f) => f.state !== "dead").map(savedFish),
     addons: installedAddons,
     scenery: sceneryChoice,
     aquarium: sim.aquarium.toJSON(),

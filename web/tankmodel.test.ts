@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { capRefusal, entryKey, entryOfSlot, entryStem, legacyEntries,
-         partName } from "./tankmodel.js";
+         partName, savedFish } from "./tankmodel.js";
+import type { Fish } from "../core/sim.js";
+import { Sim } from "../core/sim.js";
 
 describe("entryStem", () => {
   it("drops the folder and the extension", () => {
@@ -98,5 +100,63 @@ describe("legacy entry migration", () => {
 
   it("assigns nothing for an add-on that hasn't restored", () => {
     expect(legacyEntries([{ id: 1, pack: URL }], new Map()).size).toBe(0);
+  });
+});
+
+// The save is the only thing that carries a fish's identity across a
+// restart. Every field the tank reads back on the next launch has to
+// survive the round trip, and `entry` is the one that used not to.
+describe("savedFish", () => {
+  // A real fish from the sim, so the fixture cannot drift from the
+  // interface the save actually has to cover.
+  const fish = (over: Partial<Fish> = {}): Fish => {
+    const sim = new Sim({ width: 320, height: 200 }, 1);
+    return sim.addFish({ x: 40, y: 90, facing: -1, species: "angel",
+                         cruise: 1.2, ...over });
+  };
+
+  it("carries the entry that says which pack inside the add-on", () => {
+    const rec = savedFish(fish({ pack: "u", entry: "angels/blackangel.fsh" }));
+    expect(rec.pack).toBe("u");
+    expect(rec.entry).toBe("angels/blackangel.fsh");
+  });
+
+  it("omits what the fish does not have, rather than writing a zero",
+     () => {
+    const rec = savedFish(fish());
+    for (const k of ["sheetIdx", "pack", "entry", "name", "life"] as const)
+      expect(k in rec, k).toBe(false);
+  });
+
+  it("round-trips through the legacy guess without touching it", () => {
+    // The bug this pins: with `entry` missing from the save, the fish
+    // below comes back as "some fish from that add-on" and
+    // legacyEntries guesses from its id. Remove the earlier fish and
+    // the survivor is handed the wrong entry — another species' art
+    // and name. With `entry` saved there is nothing to guess.
+    const URL = "https://archive.org/angels.zip";
+    const byEntry = new Map([[entryKey(URL, "angel.fsh"), 0],
+                             [entryKey(URL, "blackangel.fsh"), 1]]);
+    const gone = fish({ id: 7, pack: URL, entry: "angel.fsh" });
+    const kept = savedFish(fish({ id: 8, pack: URL,
+                                  entry: "angels/blackangel.fsh" }));
+    expect(kept.entry).toBe("angels/blackangel.fsh");
+    // Nothing is left for legacyEntries to be asked about.
+    expect(legacyEntries([kept, gone], byEntry).size).toBe(0);
+    // Without it the survivor takes the first entry instead of its own.
+    const { entry: _dropped, ...without } = kept;
+    expect("entry" in without).toBe(false);
+    expect(legacyEntries([without], byEntry).get(8)).toBe("angel.fsh");
+  });
+
+  it("keeps the fields the sim's own save already relied on", () => {
+    const f = fish({ name: "Robert", sheetIdx: 4, hunger: 0.8, z: 0.25 });
+    const rec = savedFish(f);
+    expect(rec).toEqual({
+      id: f.id, species: "angel", x: f.x, y: f.y, facing: f.facing,
+      heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
+      bandY: f.bandY, z: f.z, hunger: f.hunger, scale: f.scale,
+      sheetIdx: 4, name: "Robert",
+    });
   });
 });

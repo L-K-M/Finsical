@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A fish from an add-on that holds several packs now keeps its own
+  pack across a restart. The save did not record which of the add-on's
+  packs a fish came from, so on the next launch it had to guess from
+  the fish's id. The guess is right until you remove an earlier fish
+  from Tank Overview, and then the survivors change species.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's

@@ -1,3 +1,6 @@
+import type { Fish } from "../core/sim.js";
+import type { FishLife } from "../core/aquarium/life.js";
+
 /**
  * Pure rules for naming and binding the fish of an add-on, kept out of
  * the tank page so vitest can pin them.
@@ -54,6 +57,57 @@ export function entryOfSlot(byEntry: ReadonlyMap<string, number>,
 }
 
 interface LegacyFish { id: number; pack?: string; entry?: string }
+
+/** The fields of a live fish that the save carries, and nothing else.
+ *
+ * This list is the save's contract with the sim, so it belongs in one
+ * place: `sanitizeSavedFish` reads exactly these fields back on the
+ * next launch, and a field named here but not saved (or saved but not
+ * read) is a fish that quietly loses part of its identity.
+ *
+ * `entry` is the trap it exists to catch. An archive.org fish add-on
+ * can hold several packs, and a fish's entry says which of them it
+ * came from; without it in the save the fish comes back as "some
+ * fish from that add-on", and `legacyEntries` has to guess from its id
+ * — which is right until you remove an earlier fish, and then the
+ * survivors swap species. */
+export interface SavedFish {
+  id: number;
+  species: string;
+  x: number;
+  y: number;
+  facing: 1 | -1;
+  heading: number;
+  speed: number;
+  cruise: number;
+  vy: number;
+  bandY: number;
+  z: number;
+  hunger: number;
+  scale: number;
+  sheetIdx?: number;
+  pack?: string;
+  entry?: string;
+  name?: string;
+  life?: FishLife;
+}
+
+/** One live fish, as the save writes it. A corpse is never saved (a
+ * dead fish stays dead), so that filter stays at the call site. */
+export function savedFish(f: Fish): SavedFish {
+  return {
+    id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
+    heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
+    bandY: f.bandY, z: f.z, hunger: f.hunger, scale: f.scale,
+    // Optional fields are omitted rather than zeroed: a bogus sheetIdx
+    // or entry must read as "no binding", not bind to slot 0.
+    ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
+    ...(f.pack !== undefined ? { pack: f.pack } : {}),
+    ...(f.entry !== undefined ? { entry: f.entry } : {}),
+    ...(f.name ? { name: f.name } : {}),
+    ...(f.life ? { life: f.life } : {}),
+  };
+}
 
 /**
  * Entries for fish saved before entries were recorded (v0.3.0 saves).
