@@ -281,6 +281,8 @@ const CAUSTIC_ALPHA = 0.14;
 /** Caustic rows shimmer sideways in bands this tall, px. */
 const CAUSTIC_BAND = 4;
 const SHAFT_ALPHA = 0.04;
+const MIN_SUN_FACTOR = 0.01;
+const OPAQUE_ALPHA = 255;
 
 /**
  * Sum of three sines with integer wave numbers across the tile, so the
@@ -335,6 +337,40 @@ function causticStrip(layer: 0 | 1): HTMLCanvasElement {
 
 let strips: HTMLCanvasElement[] | null = null;
 let shaftFill: CanvasGradient | null = null;
+let lightField: HTMLCanvasElement | null = null;
+let lightFieldTick = -1, lightFieldSun = -1;
+let surfaceColor: HTMLCanvasElement | null = null;
+let surfaceMask: HTMLCanvasElement | null = null;
+const opaqueMaterials = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+
+function lightCanvas(w = W, h = H): HTMLCanvasElement {
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  cv.getContext("2d")!.imageSmoothingEnabled = false;
+  return cv;
+}
+
+/** Art is immutable. Cache straight RGB once so lighting cannot turn
+ * transparent sprite edges into blue halos or change their alpha. */
+function opaqueMaterial(source: HTMLCanvasElement): HTMLCanvasElement {
+  const cached = opaqueMaterials.get(source);
+  if (cached) return cached;
+
+  const pixels = source.getContext("2d")!
+    .getImageData(0, 0, source.width, source.height);
+  let hasTransparency = false;
+  for (let i = 3; i < pixels.data.length; i += 4) {
+    if (pixels.data[i] === OPAQUE_ALPHA) continue;
+    hasTransparency = true;
+    pixels.data[i] = OPAQUE_ALPHA;
+  }
+
+  const material = hasTransparency
+    ? lightCanvas(source.width, source.height) : source;
+  if (hasTransparency) material.getContext("2d")!.putImageData(pixels, 0, 0);
+  opaqueMaterials.set(source, material);
+  return material;
+}
 
 /** Shafts: top x, top width, sway phase. */
 const SHAFTS: readonly (readonly [number, number, number])[] =
@@ -349,18 +385,14 @@ export function causticShimmer(band: number, t: number): number {
                     Math.sin(band * 1.9 - t * 0.041) * 0.8);
 }
 
-/**
- * Sunlight in the water: gentle slanted shafts and caustics over the
- * lower tank. Drawn behind the fish, and scaled by daylight so nights
- * stay dark. The waterline is drawSurface's, drawn every frame, nights
- * included.
- */
+/** Mid-water shafts. Caustics light scenery separately, so empty water
+ * does not receive the surface's projected web. */
 export function drawLight(ctx: CanvasRenderingContext2D, light: number,
                           tick: number, motion: WaterMotion,
                           nightFloor = DEMO_NIGHT_LIGHT): void {
   const sun = sunFactor(light, nightFloor);
   const t = motion === "animated" ? tick : 0;
-  if (sun <= 0.01) return;
+  if (sun <= MIN_SUN_FACTOR) return;
   ctx.globalCompositeOperation = "lighter";
 
   if (!shaftFill) {
@@ -381,6 +413,19 @@ export function drawLight(ctx: CanvasRenderingContext2D, light: number,
     ctx.fill();
   }
 
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
+}
+
+/** One tank-space field per light/tick, shared by every receiver. Only
+ * intensities add here; the scene itself is never additively lit. */
+function causticField(sun: number, t: number): HTMLCanvasElement {
+  lightField ??= lightCanvas();
+  if (lightFieldTick === t && lightFieldSun === sun) return lightField;
+
+  const ctx = lightField.getContext("2d")!;
+  ctx.clearRect(0, 0, W, H);
+  ctx.globalCompositeOperation = "lighter";
   strips ??= [causticStrip(0), causticStrip(1)];
   ctx.globalAlpha = CAUSTIC_ALPHA * sun;
   const h = H - CAUSTIC_TOP;
@@ -399,6 +444,73 @@ export function drawLight(ctx: CanvasRenderingContext2D, light: number,
 
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
+  lightFieldTick = t; lightFieldSun = sun;
+  return lightField;
+}
+
+/** Place the supplied image without mutating it or the drawing state.
+ * Called twice, with matching color and alpha images, for one pose. */
+export type SurfacePaint = (ctx: CanvasRenderingContext2D,
+                            source: HTMLCanvasElement) => void;
+
+/** Tank-space envelope containing every band of the painted pose. */
+export interface SurfaceBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+const TANK_BOUNDS: SurfaceBounds = { x: 0, y: 0, w: W, h: H };
+
+/** Light one scenery receiver before it enters the scene's depth order.
+ * Soft-light keeps black black. A separate alpha mask preserves holes
+ * and antialiased edges exactly, including on swaying decor. */
+export function drawCausticSurface(ctx: CanvasRenderingContext2D,
+                                   source: HTMLCanvasElement,
+                                   paint: SurfacePaint, light: number,
+                                   tick: number, motion: WaterMotion,
+                                   nightFloor = DEMO_NIGHT_LIGHT,
+                                   bounds: SurfaceBounds = TANK_BOUNDS): void {
+  const sun = sunFactor(light, nightFloor);
+  if (sun <= MIN_SUN_FACTOR) { paint(ctx, source); return; }
+
+  const x = Math.max(0, Math.floor(bounds.x));
+  const y = Math.max(0, Math.floor(bounds.y));
+  const w = Math.min(W, Math.ceil(bounds.x + bounds.w)) - x;
+  const h = Math.min(H, Math.ceil(bounds.y + bounds.h)) - y;
+  if (w <= 0 || h <= 0) return;
+
+  surfaceColor ??= lightCanvas();
+  surfaceMask ??= lightCanvas();
+  const color = surfaceColor.getContext("2d")!;
+  const mask = surfaceMask.getContext("2d")!;
+
+  // Shade opaque RGB first, then restore authored alpha. Blending on
+  // the original translucent sprite would brighten its clear pixels.
+  // Reuse fixed buffers, but rasterize only this receiver's bounds.
+  color.save();
+  color.beginPath(); color.rect(0, 0, w, h); color.clip();
+  color.fillStyle = "#000";
+  color.fillRect(0, 0, w, h);
+  color.save();
+  color.translate(-x, -y);
+  paint(color, opaqueMaterial(source));
+  color.restore();
+
+  mask.save();
+  mask.beginPath(); mask.rect(0, 0, w, h); mask.clip();
+  mask.clearRect(0, 0, w, h);
+  mask.translate(-x, -y);
+  paint(mask, source);
+  mask.restore();
+
+  color.globalCompositeOperation = "soft-light";
+  const field = causticField(sun, motion === "animated" ? tick : 0);
+  color.drawImage(field, x, y, w, h, 0, 0, w, h);
+  color.globalCompositeOperation = "destination-in";
+  color.drawImage(surfaceMask, 0, 0, w, h, 0, 0, w, h);
+  color.restore();
+  ctx.drawImage(surfaceColor, 0, 0, w, h, x, y, w, h);
 }
 
 // ---- refraction ------------------------------------------------------------
