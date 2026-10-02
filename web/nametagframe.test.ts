@@ -25,6 +25,9 @@ describe("Fish Names frame-loop hygiene", () => {
     // The extraction reached the function's end, not a truncation.
     expect(fn).toContain("nameTags.sync(");
     expect(fn).toMatch(/throughCrt \? crtClientRect\(\) : tankRect\(\)/);
+    // Rename-proof: the decision is evaluated exactly once per call,
+    // so a mid-loop re-read (the old bug shape) fails this test.
+    expect(fn.match(/crtMapsPointer\(/g)).toHaveLength(1);
     // A call, not the word: the block's comments explain why no fresh
     // layout read belongs here.
     expect(fn).not.toMatch(/\.getBoundingClientRect\(\)/);
