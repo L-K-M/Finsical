@@ -36,7 +36,7 @@ describe("alertOriginIn", () => {
   // an alert narrower than the case's tank still centers on it and a
   // standard-width alert narrows instead of overhanging the monitor.
   it("centers on the box, not the viewport", () => {
-    // A 320-wide screen at x 352 in a 1024 viewport: a 240-wide alert
+    // A 320-wide screen at x 352 in a 1024 viewport: a 304-wide alert
     // centers on the screen, 8 px in from its edge after the width
     // clamp narrowed it (alertWidth(320) = 304 keeps EDGE=8).
     expect(alertOriginIn({ left: 352, top: 148, width: 320, height: 200 },

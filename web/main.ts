@@ -104,7 +104,13 @@ ctx.imageSmoothingEnabled = false;
 // over a 320 px Plus-case tank at browser sizes).
 const alertScreenEl = document.getElementById("screen");
 if (alertScreenEl)
-  setAlertBounds(() => alertScreenEl.getBoundingClientRect());
+  setAlertBounds(() => {
+    // Before the first layout (or in markup without a sized screen) a
+    // zero rect would squeeze the alert to nothing — fall back to the
+    // whole viewport instead.
+    const r = alertScreenEl.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 ? r : null;
+  });
 
 // The loop only draws after a sim tick; requestPaint() asks for one draw
 // without a tick, for changes the sim doesn't make (feeding, taps,
