@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A fish that dies stays in the tank after you quit, as in the
+  original: its body rests on the gravel and keeps fouling the water
+  until you remove it in Tank Overview. Quitting used to make bodies
+  disappear.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's

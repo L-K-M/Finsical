@@ -1291,6 +1291,41 @@ describe("deaths out of sight", () => {
   });
 });
 
+describe("a body restored from a save", () => {
+  /** A dead fish's save, as the tank page restores it. */
+  function restoredBody(sim: Sim): ReturnType<Sim["addFish"]> {
+    const donor = new Sim({ width: 320, height: 200 }, 3);
+    const d = donor.addFish({ x: 160, y: 60 });
+    donor.advanceLife(1);
+    d.life!.ate = 0;
+    d.life!.health = 1;
+    donor.advanceLife(40 * 24 * 3600);
+    expect(d.life!.dead).toBeTruthy();
+    return sim.addFish({ x: 160, y: 60, life: structuredClone(d.life!),
+                         corpse: "sink", state: "dead" });
+  }
+
+  it("stays dead and silent: no second death event", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 4);
+    const f = restoredBody(sim)!;
+    sim.advanceLife(3600);
+    for (let i = 0; i < 600; i++) sim.tick();
+    expect(f.state).toBe("dead");
+    expect(sim.events.filter((e) => e.type === "dead")).toHaveLength(0);
+  });
+
+  it("settles on the gravel and keeps fouling the water", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 5);
+    const f = restoredBody(sim)!;
+    for (let i = 0; i < 600; i++) sim.tick();
+    expect(f.corpse).toBe("rest");
+    expect(f.y).toBeGreaterThan(150);
+    const before = sim.aquarium.water.ammonia;
+    sim.advanceLife(6 * 3600);
+    expect(sim.aquarium.water.ammonia).toBeGreaterThan(before);
+  });
+});
+
 describe("lifecycle", () => {
   it("the dead do not startle", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);

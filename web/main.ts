@@ -379,7 +379,9 @@ function sanitizeSavedFish(f: Partial<Fish> & { x: number; y: number }):
     out.life = life;
     // A body is found on the bottom, as the original reloads its
     // dead: it settles straight there rather than floating up again.
-    if (life.dead) out.corpse = "sink";
+    // Restored already dead, so the sim doesn't announce the death
+    // (and ring its sound) again on every launch.
+    if (life.dead) { out.corpse = "sink"; out.state = "dead"; }
   }
   if (typeof f.entry === "string") out.entry = f.entry;
   return out;
@@ -457,8 +459,10 @@ function tankSnapshot(): SavedTank {
   return {
     v: rosterComplete ? 2 : 1,
     tickCount: sim.tickCount, waterQuality: sim.waterQuality,
-    // Corpses don't get saved — a dead fish stays dead.
-    fish: sim.fish.filter((f) => f.state !== "dead").map((f) => ({
+    // Bodies are saved too: as in the original, a dead fish stays on
+    // the gravel, fouling the water, until you take it out. Its life
+    // record (life.dead) brings it back dead, never alive.
+    fish: sim.fish.map((f) => ({
       id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
       heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
       bandY: f.bandY, z: f.z, hunger: f.hunger, scale: f.scale,
