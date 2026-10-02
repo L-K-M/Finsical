@@ -51,6 +51,8 @@ import { capRefusal, entryKey, entryOfSlot, entryStem, legacyEntries,
          partName } from "./tankmodel.js";
 import { nextNotice, noticePoint } from "./curiosity.js";
 import type { Notice } from "./curiosity.js";
+import { laserAim } from "./laser.js";
+import type { LaserAim } from "./laser.js";
 import { containPoint, isFeedZone } from "./feedzone.js";
 import { mountNameTags } from "./nametags.js";
 import { cleanFishName, fishLabel, NAME_MAX } from "./fishname.js";
@@ -69,7 +71,8 @@ import { stateLabel } from "./overviewmodel.js";
 import { crtClientToTank, crtTankToClient, initCrt, sanitizeCrtConfig }
   from "./crt.js";
 import { bubbleOffset, bubblePops, drawAir, drawBubblePop,
-         drawBubbles, drawFood, drawLight, drawMurk, drawRefraction,
+         drawBubbles, drawFood, drawLaser, drawLight, drawMurk,
+         drawRefraction,
          drawSurface, drawTorch, feedPinch, keepTorch, sunFactor,
          tapBubble, torchShows } from "./water.js";
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
@@ -738,6 +741,29 @@ function seePointer(p: { x: number; y: number } | null): void {
   sim.notice = noticePoint(notice, sim.tickCount);
 }
 
+// The laser-pointer toy (bare J): while it is on, a red dot rides the
+// pointer over the water and the same notice above gathers the fish,
+// so the dot needs no separate lure. It hides over the air strip and
+// with the pointer off the picture.
+let laserOn = false;
+let laser: LaserAim | null = null;
+/** The water's top at tank x — the rendered per-column waterline. */
+function waterTopAt(x: number): number {
+  const i = Math.min(waterline.length - 1, Math.max(0, Math.round(x)));
+  return waterline[i] ?? SURFACE;
+}
+/** Toggle the toy. Turning it on strikes the dot at the pointer's
+ * current spot; the arrow goes away over the water (body.laser), so
+ * the dot itself is the pointer. */
+function setLaser(on: boolean): void {
+  laserOn = on;
+  document.body.classList.toggle("laser", on);
+  const p = mouseClient && tankPoint(mouseClient.x, mouseClient.y);
+  laser = on && p ? laserAim(p, waterTopAt(p.x)) : null;
+  seePointer(p);
+  requestPaint();
+}
+
 // Hover a fish and its species (and mood) pops up in a little
 // balloon — a nod to System 7's Balloon Help.
 const fishTip = document.createElement("div");
@@ -802,6 +828,12 @@ function onTankMove(e: PointerEvent): void {
   lastClient = { x: e.clientX, y: e.clientY };
   const p = tankPoint(e.clientX, e.clientY);
   seePointer(p);
+  // The dot follows the primary pointer on touch too: dragging a
+  // finger along the water is the toy's natural gesture.
+  if (laserOn) {
+    laser = p ? laserAim(p, waterTopAt(p.x)) : null;
+    requestPaint();
+  }
   if (e.pointerType === "touch") return; // no hover on touch
   mouseClient = lastClient;
   lastHover = p;
@@ -822,12 +854,16 @@ function onTankLeave(e: PointerEvent): void {
   // the mouse's hover — restore its position instead.
   if (e.pointerType === "touch") {
     lastClient = mouseClient;
-    seePointer(mouseClient && tankPoint(mouseClient.x, mouseClient.y));
+    const mp = mouseClient && tankPoint(mouseClient.x, mouseClient.y);
+    seePointer(mp);
+    if (laserOn)
+      laser = mp ? laserAim(mp, waterTopAt(mp.x)) : null;
     return;
   }
   mouseClient = null;
   lastClient = null;
   lastHover = null;
+  if (laserOn) { laser = null; requestPaint(); } // the dot left with it
   if (torchLit) requestPaint(); // put the torch out, even while paused
   fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
@@ -2784,6 +2820,8 @@ window.addEventListener("keydown", (e) => {
     setNames(!namesOn); // bare N: ⌘N is New
   } else if (bare && k === "z") {
     setZen(!zen); // bare Z: ⌘Z is Undo via the Edit menu
+  } else if (bare && k === "j") {
+    setLaser(!laserOn); // bare J: shine the laser-pointer toy
   } else if (bare && k === "s" && !inNativeShell()) {
     // Browser-only — the app opens stats.html via Tank ▸ Tank Stats.
     // Reuse without re-navigating: a reload would wipe the 90 s trend
@@ -3612,6 +3650,11 @@ function render(now: Date, target: RenderTarget = "screen"): void {
   if (torch) keepTorch(ctx, torch.x, torch.y, 1 - sun);
   drawNight(now);
   if (torch) drawTorch(ctx);
+
+  // The laser dot rides over the night veil: it is the brightest thing
+  // in the tank while the toy is on, exactly as a real dot would be.
+  // A saved picture leaves the viewer's pointer out, like the torch.
+  if (laser && target === "screen") drawLaser(ctx, laser.x, laser.y);
 
   // The cat presses its paw to the outside of the glass — painted after
   // the murk and night tints, which can't dim what's on the viewer's

@@ -269,6 +269,7 @@ function shortcutsContent(c: HTMLElement): void {
     ["P", "Pause or resume the tank"],
     ["C", "Toggle the CRT effect"],
     ["N", "Show or hide every fish's name"],
+    ["J", "Shine a laser dot for the fish to chase"],
     ["S", "Open Tank Stats"],
     ["⌘I / Ctrl-I", "Import add-ons"],
     ["Esc", "Close the front window"],

@@ -750,3 +750,18 @@ export function drawTorch(ctx: CanvasRenderingContext2D): void {
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
 }
+
+/** The laser toy's dot: a pale core, a red body and a soft halo, in
+ * whole pixels like the rest of the tank and bright enough to read
+ * over the night veil. */
+export function drawLaser(ctx: CanvasRenderingContext2D, x: number,
+                          y: number): void {
+  ctx.fillStyle = "rgba(255, 60, 60, 0.16)";
+  ctx.fillRect(x - 3, y - 3, 7, 7);
+  ctx.fillStyle = "rgba(255, 40, 40, 0.5)";
+  ctx.fillRect(x - 2, y - 2, 5, 5);
+  ctx.fillStyle = "#ff2b2b";
+  ctx.fillRect(x - 1, y - 1, 3, 3);
+  ctx.fillStyle = "#ffe6e6";
+  ctx.fillRect(x, y, 1, 1);
+}
