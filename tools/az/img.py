@@ -2,25 +2,32 @@
 import struct, zlib
 
 
+class ImgError(ValueError):
+    """A BMP that is malformed, unsupported or implausibly sized."""
+
+
 def read_bmp(d, off=0):
     """Decode a BMP at d[off:]. Returns (w, h, rgba_bytes, bmp_size)."""
-    assert d[off:off + 2] == b'BM'
+    # Untrusted input: raise, never assert — run under python -O an
+    # assert would let garbage decode as a 0x0 image.
+    if d[off:off + 2] != b'BM':
+        raise ImgError('not a BMP')
     size = struct.unpack_from('<I', d, off + 2)[0]
     px_off = struct.unpack_from('<I', d, off + 10)[0]
     hdr = struct.unpack_from('<I', d, off + 14)[0]
     if hdr < 40:
-        raise ValueError(f'unsupported DIB header size {hdr}')
+        raise ImgError(f'unsupported DIB header size {hdr}')
     w, h = struct.unpack_from('<ii', d, off + 18)
     bpp, comp = struct.unpack_from('<HI', d, off + 28)
     ncol = struct.unpack_from('<I', d, off + 46)[0] or (1 << bpp)
     if comp not in (0, 1):
-        raise ValueError(f'unsupported compression {comp}')
+        raise ImgError(f'unsupported compression {comp}')
     # Untrusted input: raise rather than assert, so python -O cannot skip
     # it. 8192 matches core/data/bmp.ts — past it the row loops below would
     # grind through billions of pixels and the RGBA buffer would dwarf the
     # file it came from.
     if not (0 < w <= 8192 and 0 < abs(h) <= 8192):
-        raise ValueError(f'implausible BMP size {w}x{h}')
+        raise ImgError(f'implausible BMP size {w}x{h}')
     # An 8-bit palette holds 256 entries at most; a longer count reads as
     # far as the file goes, the same clamp bmp_palette applies. 24/32-bit
     # files carry no colour table at all — don't read pixel data as one.
@@ -78,7 +85,7 @@ def read_bmp(d, off=0):
             else:  # RLE8 rows are in stored order; flip like uncompressed rows
                 idx = rows[row]
         else:
-            raise ValueError(f'bpp {bpp} unsupported')
+            raise ImgError(f'bpp {bpp} unsupported')
         for x in range(w):
             r, g, b = pal[idx[x]] if idx[x] < len(pal) else (0, 0, 0)
             i = (y * w + x) * 4
