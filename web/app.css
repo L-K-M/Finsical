@@ -253,7 +253,9 @@ body.crt canvas#tank { opacity: 0; }
 #pftraits .pfgroup:first-child { margin-top: 12px; }
 #pftraits .pfgroup + .pfgroup { margin-top: 24px; }
 #pfpicture .pfgroup { margin-top: 12px; }
-#pfpicture .pfgroup + .pfgroup { margin-top: 30px; }
+/* 24, as on the Monitor pane: at 30 the third group's bottom ran into
+   the caption's separator once the Vertical skew row joined it. */
+#pfpicture .pfgroup + .pfgroup { margin-top: 24px; }
 .pfrow { display: flex; gap: 20px; }
 .pfrow + .pfrow { margin-top: 6px; }
 .pfslider { flex: none; width: 125px; }
@@ -287,13 +289,16 @@ body.crt canvas#tank { opacity: 0; }
 #pane-effects .osm-checkbox { display: flex; width: max-content; }
 #pane-effects .osm-checkbox + .osm-checkbox { margin-top: 6px; }
 
-/* Lighting: titled pop-ups in a group box. */
+/* Lighting: titled pop-ups in a group box, starting where every other
+   pane's first group does. */
+#pane-lighting .pfgroup { margin-top: 12px; }
 .pflrow { display: flex; gap: 24px; }
 .pflrow + .pflrow { margin-top: 10px; }
 .pflctl { display: flex; align-items: center; gap: 6px; }
 /* Row titles right-aligned on one edge, so the pop-ups line up. */
 .pflrow > .pflctl:first-child .osm-popup-title { width: 82px; text-align: right; }
 #pl-mode { width: 160px; }
+/* The floor; prefs.ts widens both to the longest hour label. */
 .pfhour { width: 76px; }
 
 /* Caption area along the bottom, with Defaults at its right. */

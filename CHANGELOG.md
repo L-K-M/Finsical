@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- In Preferences, the Lighting pane's hour pop-ups show the whole
+  time, AM or PM included, instead of "8:00 …", and its group lines
+  up with the other panes'. The Picture pane's Color group no longer
+  runs into the caption's separator line.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's
