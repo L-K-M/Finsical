@@ -601,6 +601,8 @@ describe("isArchiveUrl", () => {
       "https://archive.org.evil.com/x", "https://example.com/x",
       "https://notarchive.org/x", null, 7, "", undefined,
     ])
-      expect(isArchiveUrl(bad)).toBe(false);
+      expect(isArchiveUrl(bad),
+             `isArchiveUrl(${JSON.stringify(bad)}) should be rejected`)
+        .toBe(false);
   });
 });

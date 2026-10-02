@@ -201,16 +201,19 @@ function zipWeigh(url: string, bytes: number): void {
     zipEvict(k);
   }
 }
-/** The hosts archive.org serves content from: the site and its node
- * mirrors (iaNNNN…). Listing pages have handed out both, and the
- * downloader follows redirects across them, so the listing parser, the
- * install validator and the cache must agree on one definition. */
+/** The hosts archive.org serves content from: the site and its
+ * subdomains — the download hosts and node mirrors (iaNNNN…), and the
+ * listing pages that hand them out. Deliberately broad: the listing
+ * parser always accepted any subdomain, and the downloader follows
+ * redirects across them, so the parser, the install validator and the
+ * cache share this one definition. */
 export function isArchiveHost(hostname: string): boolean {
   return hostname === "archive.org" || hostname.endsWith(".archive.org");
 }
 
-/** Whether `raw` is an https URL on archive.org or one of its node
- * mirrors — the shape the add-on import pipeline accepts end to end. */
+/** Whether `raw` is an https URL on archive.org or one of its
+ * subdomains — the shape the add-on import pipeline accepts end to
+ * end. */
 export function isArchiveUrl(raw: unknown): boolean {
   if (typeof raw !== "string") return false;
   try {
