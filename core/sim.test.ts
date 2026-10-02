@@ -1346,6 +1346,7 @@ describe("lifecycle", () => {
     expect(fry).toBe(1);
     // The fry renders from its own blob after a relaunch; without the
     // parent's entry it would rebind to the add-on's last entry's art.
+    expect(sim.fish.length).toBe(3);
     expect(sim.fish[2]!.entry).toBe("guppy-b.fsh");
   });
 
