@@ -71,8 +71,18 @@ describe("standalone web build", () => {
     // hold the two hand-maintained lists to that promise.
     expect(lists[1], "tarball WEB_FILES").toEqual(lists[0]);
     const makefile = readFileSync(join(root, "macos/Makefile"), "utf8");
-    const cp = /cp \.\.\/web\/index\.html[\s\S]*?\$\(OSMIUM\)/.exec(makefile)?.[0];
-    expect(cp, "macOS staging cp").toBeTruthy();
+    // Take the whole logical cp command: its continuation lines end in
+    // a backslash, the last does not. Extracting only up to a marker
+    // inside the command would hide files listed after it and could be
+    // satisfied by an unrelated mention elsewhere in the file.
+    const lines = makefile.split("\n");
+    const start = lines.findIndex((l) => l.includes("cp ../web/index.html"));
+    expect(start, "macOS staging cp").toBeGreaterThanOrEqual(0);
+    let cp = "";
+    for (let i = start; i < lines.length; i++) {
+      cp += lines[i] + "\n";
+      if (!lines[i].endsWith("\\")) break;
+    }
     expect(cp).toContain("../web/icon.svg");
   });
 
