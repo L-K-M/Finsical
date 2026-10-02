@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- When an add-on's download is cut off part way, the Import window
+  says to check the connection and offers Try Again. It used to show
+  the browser's own wording, such as "network error", beside a
+  disabled Try Again, as if the add-on itself could not be read.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's

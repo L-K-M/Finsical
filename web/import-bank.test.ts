@@ -13,7 +13,8 @@ vi.mock("./store.js", async (orig) => ({
   metaGet: async () => null,
   metaPut: async () => true,
 }));
-const { importAddon, listAddons, loadProblem } = await import("./import.js");
+const { importAddon, installProblem, listAddons, loadProblem,
+        transientFailure } = await import("./import.js");
 
 const ITEM = "https://archive.org/download/aquazonewithguppiesandaddons";
 const PAGE = `${ITEM}/Missing%20addons%20Aquazone.7z/`;
@@ -74,5 +75,42 @@ describe("the game's sound bank on archive.org", () => {
     // Not memoized either: the next try asks archive.org again.
     await importAddon(url).catch(() => {});
     expect(calls).toBe(2);
+  });
+});
+
+describe("a download that fails in transit", () => {
+  const url = `${ITEM}/Missing%20addons%20Aquazone.7z/cut.REZ`;
+  /** A body that sends a chunk, then dies the way each engine says. */
+  const cut = (msg: string) => new Response(new ReadableStream({
+    pull(c) { c.enqueue(new Uint8Array([1, 2])); c.error(new TypeError(msg)); },
+  }));
+
+  for (const msg of ["network error",                    // Chromium
+                     "Error in body stream",             // Firefox
+                     "The network connection was lost."]) // WebKit
+    it(`offers Try Again for a body cut off with "${msg}"`, async () => {
+      vi.stubGlobal("fetch", async () => cut(msg));
+      const e = await importAddon(url).catch((x: unknown) => x);
+      expect(transientFailure(e)).toBe(true);
+      // Told apart by message, like the other download failures.
+      expect(transientFailure((e as Error).message)).toBe(true);
+      expect(installProblem(e)).toBe("Check the connection and try again.");
+    });
+
+  it("offers Try Again when the request itself is dropped", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new TypeError("The network connection was lost.");
+    });
+    const e = await importAddon(url).catch((x: unknown) => x);
+    expect(transientFailure(e)).toBe(true);
+  });
+
+  it("still calls a stalled download too slow", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new DOMException("The operation was aborted.", "AbortError");
+    });
+    const e = await importAddon(url).catch((x: unknown) => x);
+    expect(transientFailure(e)).toBe(true);
+    expect(loadProblem(e)).toBe("The download took too long — try again.");
   });
 });
