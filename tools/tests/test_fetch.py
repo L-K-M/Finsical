@@ -240,6 +240,25 @@ class TestHarvest(unittest.TestCase):
         _harvest("one.zip", buf.getvalue(), self.out)
         self.assertFalse(os.path.exists(stale))
 
+    def test_unimportable_source_keeps_earlier_bundles(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("a/fish.fsh", fake_pack(bmp_8bit()))
+            z.writestr("b/fish.fsh", fake_pack(bmp_8bit()))
+        _harvest("two.zip", buf.getvalue(), self.out)
+        base = os.path.join(self.out, "fish.azpack")
+        stale = os.path.join(self.out, "fish-2.azpack")
+        self.assertTrue(os.path.isdir(base))
+        self.assertTrue(os.path.isdir(stale))
+        tools.fetch._EMITTED.clear()  # simulate a second process run
+        # A later run meets a same-named source it cannot import: the
+        # earlier bundles must survive. Cleaning numbered siblings before
+        # the data proves importable destroyed the previous good result.
+        self.assertIsNone(
+            _emit_source("fish.bin", b"not importable", self.out))
+        self.assertTrue(os.path.isdir(base))
+        self.assertTrue(os.path.isdir(stale))
+
     def test_cached_get_reuse_and_part_cleanup(self):
         path = os.path.join(self.out, "a.zip")
 

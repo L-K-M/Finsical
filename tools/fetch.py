@@ -92,22 +92,31 @@ def _emit_source(name: str, data: bytes, outdir: str) -> str | None:
     while out in _EMITTED:
         out = os.path.join(outdir, f"{base}-{n}.azpack")
         n += 1
-    n = 2  # drop numbered siblings orphaned by earlier runs
-    stale = os.path.join(outdir, f"{base}-{n}.azpack")
-    while os.path.isdir(stale) and stale not in _EMITTED:
-        shutil.rmtree(stale, ignore_errors=True)
-        n += 1
-        stale = os.path.join(outdir, f"{base}-{n}.azpack")
+
+    def drop_stale_siblings() -> None:
+        # Numbered siblings orphaned by earlier runs go only after this
+        # run proved the base name importable: cleaning them first
+        # destroyed a previous good bundle when the new source decoded
+        # to nothing.
+        k = 2
+        stale = os.path.join(outdir, f"{base}-{k}.azpack")
+        while os.path.isdir(stale) and stale not in _EMITTED:
+            shutil.rmtree(stale, ignore_errors=True)
+            k += 1
+            stale = os.path.join(outdir, f"{base}-{k}.azpack")
+
     try:
         if is_pack(data):
             shutil.rmtree(out, ignore_errors=True)
             emit(Pack(data), out)
             _EMITTED.add(out)
+            drop_stale_siblings()
             return out
         if has_sounds(data):
             shutil.rmtree(out, ignore_errors=True)
             emit_sounds(data, out)
             _EMITTED.add(out)
+            drop_stale_siblings()
             return out
     except Exception as e:
         if os.path.isdir(out):
