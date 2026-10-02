@@ -58,4 +58,22 @@ describe("node-mirror listing links", () => {
     expect(listed.map((it) => it.inner)).toEqual(["banggai"]);
     expect(listed.every((it) => isArchiveUrl(it.url))).toBe(true);
   });
+
+  it("drop a plain-http link the installer would refuse", async () => {
+    // The parser and the validator must agree on scheme: an http href
+    // listed here would always fail with 'invalid add-on item'. Use the
+    // gravel collection — the rename path rewrites URLs to https, so it
+    // could not show the raw href this test is about.
+    const page = "https://archive.org/download/aquazonewithguppiesandaddons/" +
+      "gravel.zip/";
+    const html = '<a href="http://archive.org/download/' +
+      'aquazonewithguppiesandaddons/gravel.zip/brownsand.grv">' +
+      'brownsand.grv</a>';
+    vi.stubGlobal("fetch", async (u: string) =>
+      String(u) === page
+        ? new Response(html, { status: 200 })
+        : new Response(null, { status: 404 }));
+    const listed = await listAddons((c) => c.outer === "gravel.zip");
+    expect(listed).toEqual([]);
+  });
 });

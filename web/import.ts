@@ -434,8 +434,10 @@ async function listCollection(col: Collection): Promise<Importable[]> {
     let u: URL;
     try { u = new URL(m[1]!, pageUrl(item, outer)); }
     catch { continue; } // malformed href — not an entry link
-    // Entry links live on archive.org or its node mirrors (iaNNNN…).
-    if (!isArchiveHost(u.hostname))
+    // Entry links must be exactly what remoteInstall accepts: https on
+    // archive.org or its node mirrors (iaNNNN…), so an http:// link
+    // can't be listed yet always fail to install.
+    if (!isArchiveUrl(u.href))
       continue;
     let path: string;
     try { path = decodeURIComponent(u.pathname); }
