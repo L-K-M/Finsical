@@ -47,6 +47,7 @@ import { coverCrop, decorCanvases, imageCanvas, isBackdropImage,
          isGravelImage,
          previewOf, soundIcon, swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
+import { needsCleanPicture } from "./picture.js";
 import { capRefusal, entryKey, entryOfSlot, entryStem, legacyEntries,
          partName } from "./tankmodel.js";
 import { nextNotice, noticePoint } from "./curiosity.js";
@@ -2569,12 +2570,15 @@ function takePicture(): void {
   out.height = TANK.height * 2;
   const c = out.getContext("2d")!;
   c.imageSmoothingEnabled = false;
-  // A paused canvas carries the scrim and the PAUSED label, and a
-  // hovering pointer may light the torch — repaint without them for
-  // the shot, then put them back. Both renders run inside this task,
-  // so nothing flickers.
+  // Repaint without screen-only overlays for the shot, then put them
+  // back. Both renders run inside this task, so nothing flickers.
   const d = new Date();
-  const clean = paused || torchLit;
+  const clean = needsCleanPicture({
+    paused,
+    torchLit,
+    bootActive: bootT0 !== null,
+    focusActive: focusId !== null,
+  });
   if (clean) render(d, "picture");
   c.drawImage(canvas, 0, 0, out.width, out.height);
   if (clean) render(d);
@@ -3483,16 +3487,14 @@ function drawMidWater(floor: number): void {
     if (p) drawSnail(p.x, p.paused, snail.dir);
   }
 }
-/** Who a frame is for: the live screen, or a Take a Picture souvenir,
- * which leaves out what only the viewer's pointer and the pause put
- * there (the torch, the scrim). */
+/** Who a frame is for: the live screen, or a Take a Picture souvenir. */
 type RenderTarget = "screen" | "picture";
 function render(now: Date, target: RenderTarget = "screen"): void {
   // The startup parade owns the canvas until it fades: black, desktop,
   // marching icons — then the tank draws normally under a fading boot
   // screen, so the crossfade needs no compositing machinery.
   let bootFade = -1;
-  if (bootT0 !== null) {
+  if (target === "screen" && bootT0 !== null) {
     const elapsed = performance.now() - bootT0;
     const phase = bootPhase(elapsed, bootDoneAt);
     if (phase === "done") bootT0 = null;
@@ -3526,7 +3528,7 @@ function render(now: Date, target: RenderTarget = "screen"): void {
   // The Overview's pick spotlights its fish with a marching-ants
   // marquee — the Finder's own selection cue. Ants march on the sim
   // clock so a paused tank doesn't freeze them mid-stroke.
-  if (focusId !== null) {
+  if (target === "screen" && focusId !== null) {
     // The lease lapsed — the overview is gone and can't lift it.
     // Clearing the owner too lets any live Overview's next beat
     // reclaim the spotlight after the holder dies silently.
