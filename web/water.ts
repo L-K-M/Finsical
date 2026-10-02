@@ -582,18 +582,19 @@ export function drawSurface(ctx: CanvasRenderingContext2D,
 }
 
 /** The line's per-column alpha: the daylight base and, when the glint
- * center `gx` is given (waves on), the brighter travelling core. The
- * old inline formula also evaluated a wider `d < 9` ring, but that
- * term (`0.2 + 0.35·sun`) never exceeds the base (`0.3 + 0.25·sun`)
- * for sun ≤ 1, so it is omitted; x = 211 in the tests pins that the
- * skirt still reads as plain base. The slope term and the fill stay in
- * drawSurface. */
+ * center `gx` is given (waves on), the brighter travelling core. `sun`
+ * is clamped to [0, 1] here: the old inline formula also evaluated a
+ * wider `d < 9` ring (`0.2 + 0.35·sun`), but that term never exceeds
+ * the base (`0.3 + 0.25·sun`) in that domain, so it is omitted; x = 211
+ * in the tests pins the skirt as plain base and sun = 2 pins the clamp.
+ * The slope term and the fill stay in drawSurface. */
 export function surfaceAlpha(x: number, gx: number | null, sun: number,
                              highlight: boolean): number {
-  const base = highlight ? 0.6 : 0.3 + 0.25 * sun;
+  const s = Math.min(1, Math.max(0, sun));
+  const base = highlight ? 0.6 : 0.3 + 0.25 * s;
   if (gx === null) return base;
   const d = Math.abs(x - gx);
-  const glint = d < 3 ? 0.35 + 0.5 * sun : 0;
+  const glint = d < 3 ? 0.35 + 0.5 * s : 0;
   return Math.max(base, glint);
 }
 

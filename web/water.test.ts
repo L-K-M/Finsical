@@ -347,6 +347,9 @@ describe("surfaceAlpha", () => {
     // The old formula's d<9 outer ring never beat the daylight base,
     // so the skirt past the 6-px core is plain base line.
     expect(surfaceAlpha(211, 205, 1, false)).toBeCloseTo(0.55, 10);
+    // Out-of-domain sun clamps to 1, so the skirt stays base there too
+    // (the old ring would have won at sun=2).
+    expect(surfaceAlpha(211, 205, 2, false)).toBeCloseTo(0.55, 10);
     // Night dims both the base and the glint.
     expect(surfaceAlpha(205, 205, 0, false)).toBeCloseTo(0.35, 10);
   });
