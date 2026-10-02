@@ -747,8 +747,9 @@ fishTip.id = "fishtip";
 fishTip.style.display = "none";
 document.body.appendChild(fishTip);
 /** The fish to name under a hovered point — none while Get Info, a
- * menu, the add-on window, a document window or an alert is up (the
- * tip would float over them). */
+ * menu, the add-on window, a document window or an alert is up, or
+ * while the boot parade owns the canvas (the tip would float over
+ * them). */
 const anyOverlayOpen = (): boolean =>
   !!(infoCard || importPanel.isOpen || menuOpen() || docOpen() ||
      alertOpen() || bootActive(bootT0));
