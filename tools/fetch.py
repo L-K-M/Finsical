@@ -105,19 +105,22 @@ def _emit_source(name: str, data: bytes, outdir: str) -> str | None:
             k += 1
             stale = os.path.join(outdir, f"{base}-{k}.azpack")
 
+    def finish() -> str:
+        # Register before cleaning: drop_stale_siblings must not rmtree
+        # the bundle just emitted when `out` is itself a numbered name.
+        _EMITTED.add(out)
+        drop_stale_siblings()
+        return out
+
     try:
         if is_pack(data):
             shutil.rmtree(out, ignore_errors=True)
             emit(Pack(data), out)
-            _EMITTED.add(out)
-            drop_stale_siblings()
-            return out
+            return finish()
         if has_sounds(data):
             shutil.rmtree(out, ignore_errors=True)
             emit_sounds(data, out)
-            _EMITTED.add(out)
-            drop_stale_siblings()
-            return out
+            return finish()
     except Exception as e:
         if os.path.isdir(out):
             shutil.rmtree(out, ignore_errors=True)
