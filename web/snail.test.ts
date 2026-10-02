@@ -73,7 +73,8 @@ describe("snailArtCol", () => {
     // head must sit in the left half (the center column is allowed if
     // SNAIL_W is odd). Without this a fully flipped snailArtCol would
     // still satisfy the mirror check below.
-    expect(headCols(-1).every((x) => x < SNAIL_W / 2)).toBe(true);
+    // A violation prints the offending columns instead of just false.
+    expect(headCols(-1).filter((x) => x >= SNAIL_W / 2)).toEqual([]);
     // Mirroring is its own inverse, so the right-crawler's head columns
     // are exactly the left-crawler's reflected; comparing directly also
     // stays valid when SNAIL_W is odd and an "e" lands on the center
