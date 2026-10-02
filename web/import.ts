@@ -156,6 +156,19 @@ export function decorCopyRoom(decors: ReadonlyArray<{ pack: string }>,
     decors.filter((d) => d.pack === src).length);
 }
 
+/** Why another copy of a plant or accessory can't go in (null: it
+ * can): the tank already holds as many as a save restores. Asked before
+ * an install, so the click says so instead of playing the scenery
+ * sound and reporting an add that placed nothing. */
+export function decorRefusal(decors: ReadonlyArray<{ pack: string }>,
+                             it: { section: string; url: string }):
+    string | null {
+  if (it.section !== "plants" && it.section !== "accessories") return null;
+  if (decorCopyRoom(decors, it.url) > 0) return null;
+  const what = it.section === "plants" ? "plant" : "accessory";
+  return `This ${what} is already in the tank ${DECOR_COPIES_MAX} times.`;
+}
+
 /** The persisted copy count, clamped to sanity (storage is untrusted). */
 function decorCopies(it: Importable): number {
   return clampDecorCopies(it.copies);
