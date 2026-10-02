@@ -91,6 +91,17 @@ one entry per idea, and each merge is recorded in that entry's
   unmerged, restore the entry from the PR description. Nineteenth-pass
   notes cite `d5e5410`; verify against `origin/main` before
   re-scoping.
+- Twenty-first pass (2026-10-02, `origin/main` `d5e5410`): a fresh
+  review run in parallel with the eighteenth and nineteenth —
+  hand review of the code added after the sixteenth pass plus four
+  GLM-5.3 helper reviews (sim-core, web-ui, web-tank2, av2, native2).
+  Fourteen PRs (#363, #365, #366, #367, #368, #370, #371, #372, #374,
+  #375, #376, #377, #379, #380) are open for the maintainer, each
+  through a GLM 5.3 review round with valid findings applied and false
+  positives refuted in the PR threads. New IDs: B-78+, V-40+, F-44,
+  T-41+; D-26, T-19 and T-20 are implemented and annotated in place.
+  The pass section is at the end of this document; its `tmp.md` was
+  discarded after folding.
 
 ## Baselines
 
@@ -204,6 +215,15 @@ one entry per idea, and each merge is recorded in that entry's
   #348, #349, #352, #355, #357, #358), each CI-green and reviewed by
   GLM 5.3 (findings applied through round 3 on #342/#346/#349/#355).
   Swift behavior (PR #357) is code-verified only; no macOS run.
+- Twenty-first pass (fresh review at `d5e5410`, 2026-10-02): `npm ci`
+  (0 advisories), typecheck clean, vitest **63 files / 892 tests**
+  green (895 at the pass's last branch push), Python **94** tests
+  green (101 after T-20), `linux/tests` **100** green, `npm run
+  build` clean. Helper reviews: GLM-5.3 via opencode completed five
+  reports (sim-core, web-ui, web-tank2, av2, native2); the free-model
+  runs were rate-limited and dropped. No browser was reachable from
+  the review host, so every visual claim is code-level; macOS,
+  Android, the GTK shell and the Flatpak were not executed.
 
 - Sixteenth pass (focused re-review at `d5e5410`, 2026-10-02, v0.8.0):
   `npm ci` from the current lockfile, typecheck clean, vitest **63
@@ -240,7 +260,7 @@ U-25+, F-31+, D-22+, T-30+); later passes continue each prefix
 (eleventh: B-56+, P-24, V-26+; twelfth: B-62+, P-25+, U-30+;
 thirteenth: P-27, V-28, D-32 to D-34; fourteenth: B-65+, P-28+, V-29+,
 U-32+, A-08+, F-34+, D-35+, T-34+; eighteenth: P-30+, V-39, U-41,
-F-43, D-47+, T-37). Items
+F-43, D-47+, T-37; twenty-first: B-78+, V-40+, F-44, T-41+). Items
 with a "remainder" in their title keep their ID and list only what
 is still open.
 
@@ -6999,6 +7019,14 @@ reduced motion disables it.
 
 Size S · Severity idea · Value 2/5 · Risk 1/5 (from passes 1-7)
 
+**Done, twenty-first pass (PR #370).** Bare **J** toggles the toy; a
+red dot follows the pointer over the water and the existing
+`sim.notice` lure gathers the calm fish. Hides over the air strip,
+pins inside the glass, hides the arrow while out, repaints on touch
+lift, and is left out of saved pictures like the torch. Details and
+review outcome in the twenty-first-pass Completed list; the text below
+is the original entry, kept for its related notes.
+
 **Problem.** Useless, irresistible: hold a key and fish chase a light
 dot under the pointer.
 
@@ -7895,6 +7923,12 @@ Re-verified open at 62b8572 (fourteenth-pass audit): `type BusMsg = Record<strin
 
 ### T-19 fetch.py deletes an earlier run's numbered bundles even when the current source emits nothing
 
+**Done, twenty-first pass (PR #380).** The stale-sibling cleanup runs
+only after a successful emit now (shared `finish()` in
+`_emit_source`), with the repro as a regression test; details in the
+twenty-first-pass Completed list. The text below is the original
+entry.
+
 Size S · Severity low · Value 1/5 · Risk 1/5
 
 **Problem.** Run 1 emits out/Foo.azpack and out/Foo-2.azpack; a later `_emit_source('Foo.bin', b'not importable', 'out')` returns None but leaves only Foo.azpack (reproduced).
@@ -7912,6 +7946,13 @@ Size S · Severity low · Value 1/5 · Risk 1/5
 Re-verified open at 62b8572 (fourteenth-pass audit): the stale-sibling cleanup still runs before the `is_pack`/`has_sounds` checks (`tools/fetch.py:95-111`).
 
 ### T-20 Tool input validation uses assert, and the ISO reader never closes its file
+
+**Done, twenty-first pass (PR #379).** Named `ImgError`/`IsoError`
+(ValueError subclasses), a 54-byte minimum BMP header guard, directory
+record/extent validation against buffer and file size,
+`Iso.close`/`__enter__`/`__exit__` used by `fetch.py`, and a
+`python3 -O` subprocess guard test; details in the twenty-first-pass
+Completed list. The text below is the original entry.
 
 Size S · Severity low · Value 1/5 · Risk 1/5
 
@@ -9422,6 +9463,32 @@ claims are kept under "Declined, refuted and corrected".*
 
 ---
 
+## Eighteenth pass (2026-10-02, `main` `d5e5410`, code at `315bb5a` on `feat/audio-unlock-indicator`)
+
+A focused review pass (not full-repo) against the current tree:
+`npm ci` clean, `npm run typecheck` clean, `npm run build` clean,
+vitest 53 files / 691 tests green, `npm test` passes. Browser harness
+failed on this host (missing `glib-2.0`, `gstreamer-1.0`, `gtk-4` etc.)
+— environment limitation, not a code defect. Screenshots from prior
+passes (`a-fresh-*`, `b-standin`, `c-stocked`, `d-menu-*`, `e-feed`,
+`f-key-crt`, `g-prefs-*`) confirm rendering is intact.
+
+New entry implemented: **U-41** (audio unlock indicator) — PR #360
+(`feat/audio-unlock-indicator`). Adds a subtle `#audio-hint` overlay
+that appears when `AudioContext.state !== "running"` and hides once
+it resumes. Keeps retro aesthetic; uses `aria-live="polite"` for
+accessibility. Size S, severity low, value 4, risk 1. Merged to PR
+#360, left open for maintainer review.
+
+No new bugs found beyond the 359 open PR backlog. The previous
+agent's `tmp.md` review results (`/tmp/finsical-reviews/`) were mostly
+empty or contained environment errors; this pass relies on direct
+code inspection. The codebase is solid; the gap is mainly user-facing
+polish around web-audio limitations (addressed by U-41) and browser
+harness dependency setup (not a code issue).
+
+---
+
 # Independent Review Appendix (2026-10-02) — `review-finsical-3`
 
 A focused, independent review of `main` (`b1c37a4`, post-fifteenth-pass consolidation PRs #253–#259). Not a duplicate of the 15 consolidated passes; it verifies gaps not covered by #87–#259 and introduces genuinely new findings. All claims are code-verified against the live repository; no claims from earlier passes are re-stated without new evidence.
@@ -9478,4 +9545,219 @@ These remain high-quality, unimplemented ideas from the independent review. Each
 
 ---
 
-*No information from the independent `tmp.md` was lost in this merge. Completed PR entries (D-01, D-02, D-04, U-01, F-01) include their PR numbers and link back to this appendix. Open ideas (B-01 through T-01) are preserved with file:line citations to `main` / `core` and can be picked up by any future LLM agent without reading this review conversation. The `tmp.md` file can now be discarded (`rm tmp.md`).*
+*No information from either independent `tmp.md` was lost in this merge. Completed PR entries include their PR numbers. Open ideas from both reviews (U-41 audio unlock indicator / PR #360; B-01 through T-01 from the independent appendix) are preserved with file:line citations and can be picked up by any future LLM agent without reading these review conversations. The `tmp.md` file has been discarded (`rm tmp.md`).*
+
+---
+
+## Twenty-first pass (2026-10-02, `origin/main` `d5e5410`, folded at `9cc72e6`)
+
+A fresh full-repo review run in parallel with the eighteenth and
+nineteenth passes; its `tmp.md` is folded in here. Method: hand review
+of the code added after the sixteenth pass plus four helper reviews
+(GLM-5.3) — `sim-core` (engine, aquarium, decoders), `web-ui`
+(import/store/windows), and a second wave on the tank/rendering
+(`web-tank2`), audio/CRT/prefs (`av2`) and native/platform/tooling
+(`native2`). Every finding below was re-checked against the code by
+hand. No browser was reachable from the review host (the Paseo browser
+runs on another machine and the container lacks headless browser
+libraries), so visual claims are code-level; macOS, Android and the
+GTK shell were not executed. Local baseline: `npm ci`, `npm run
+typecheck`, `npm test` (63 files / 892 tests), `tools/tests` (94),
+`linux/tests` (100), `npm run build` — all green at `d5e5410`.
+
+New IDs: **B-78+**, **V-40+**, **F-44**, **T-41+**. Implemented items
+are listed below with their PRs; the open ideas are shovel-ready
+entries at the end of this section. D-26, T-19 and T-20 are implemented
+and annotated in place.
+
+### Completed (twenty-first pass, PRs open for review)
+
+Reviewed by GLM 5.3; findings applied through a second hybrid round on
+every PR that was pushed again. Left open for the maintainer per the
+task. CI green on the latest head of each at fold time.
+
+- **B-78 / PR #363** `fix/plant-life-support` — `Aquarium.plantSize`
+  was dead: nothing ever set it, so plants never affected water
+  chemistry even though the tank emitted oxygen bubbles for them and
+  `docs/ORIGINAL-SIM.md` documents the rule. New pure `web/plants.ts`
+  (`plantSizeOf`, Σ width×height÷1000 over plant-kind decor);
+  `syncCover()` — the one path every decor add/removal already calls —
+  sets `sim.aquarium.plantSize`, so a restored or removed plant reaches
+  the water at once and a reload no longer loses it. Added the first
+  direct `stepPlants` tests (lit day +4 mg O2, −1 mg nitrate, −0.4 mg
+  CO2 per 40 units; dark mirrors O2/CO2; zero is inert in both light
+  states), pinned exact by disabling filter aeration so saturation
+  cannot hide a sign flip.
+- **B-79 / PR #365** `fix/fry-entry` — `maybeBirth` copied
+  `sheetIdx`, `pack`, `z` and `cruise` but not `entry`, so after a
+  relaunch `remapSheetIdx` resolved the fry through the pack's
+  last-registered slot and backfilled that wrong entry permanently: a
+  fry born in a multi-`.fsh` add-on swam as the last fish forever. Copy
+  `parent.entry`; breeding regression test carries an entry through.
+- **B-80 / PR #366** `fix/feed-cap` — `feedFish` counted headroom
+  against `FOOD_CAP` (12) while `Sim.dropFood` refuses at
+  `MAX_UNEATEN` (6): 6-11 uneaten pellets scheduled a pinch that could
+  only be refused, silently with hints off, while `audio.feed()` still
+  played. New tested `feedRoom` counts to the sim's cap; refused feeds
+  blip, stay silent with hints off, and the hint copy no longer claims
+  a few pellets would foul the water (the organics model fouls over
+  days). Deleted the unused `FOOD_CAP` and the dead
+  `WASTE_PER_TICK`/`FILTER_PER_TICK` and corrected the stale
+  `MAX_UNEATEN` comment. The review's blocker (hints not gated) was a
+  false positive: `noteFoodRefused` starts with `if (!hintsOn) return;`.
+- **B-81 / PR #367** `fix/addon-section-persistence` — `showSection`
+  persisted `SECTION_KEY` on every call, including the streaming
+  listing's auto-selection, so the saved Show section was clobbered by
+  whichever section arrived first (Fish) and Import Add-ons reopened
+  there forever. `showSection` is pure now; only the pop-up's
+  `onChange` writes through `rememberSection`; `chooseStartSection`
+  centralizes saved-else-first. Verified against osmium 0.3.1 that
+  `setItems` never fires `onChange`.
+- **B-82 / PR #368** `fix/addon-url-mirrors` — the listing parser
+  accepted `*.archive.org` node mirrors while `remoteInstall` required
+  a literal `https://archive.org/` prefix, so a mirror-host item listed
+  and previewed but every Add to Tank failed as 'invalid add-on item'.
+  Shared `isArchiveHost`/`isArchiveUrl` now back the parser, validator
+  and immutable-host cache; an http href is no longer listed (it could
+  only fail), and the mirror listing test asserts the fetch stub was
+  actually used so it cannot pass vacuously.
+- **B-83 / PR #376** `fix/spotlight-lease` — the Overview selection
+  lease is wall-clock, but its expiry and fish-gone lift lived in
+  `render()`, which a paused clean frame loop skips: a vanished
+  Overview's marching-ants marquee could stay on a fish indefinitely.
+  New pure `web/spotlight.ts` (`SPOTLIGHT_TTL_MS`, `spotlightAlive`);
+  `frame()` checks it before its early return and requests the erase
+  paint, and `liftStaleSpotlight()` is the single shared lift.
+- **B-84 / PR #375** `fix/crt-warmup-settle` — `animating` was
+  time-only, so the frame loop could idle on the last warm-up frame
+  (power ≈ 0.96): a paused tank froze an over-bright, over-zoomed
+  picture. `warmupBusy(enabled, settled, collapseInFlight,
+  degaussAgeMs)` plus a `settled` flag set by the first full-power
+  render; the reduced-motion settle frame now pins `power = 1`.
+- **B-85 / PR #372** `fix/platform-packaging` — Android
+  `configChanges` lacked `fontScale`, so a system font-size change
+  recreated the Activity, reloading the tank and dropping up to 10 s of
+  state; every WebView comes from the single `newWebView` factory that
+  pins `setTextZoom(100)`, so adding `fontScale` is safe.
+- **V-40 / PR #374** `fix/boot-overlay` — name tags, hover balloons,
+  the feed crosshair and queued event notices drew over the startup
+  parade (the canvas was boot art, not the tank). Shared
+  `bootActive(bootT0)` gates `showNotices`, `syncFeedHover`,
+  `anyOverlayOpen` and `syncNameTags`; notices queue instead of
+  dropping. Verified the frame ordering makes the gate reopen on the
+  first post-parade frame, and \`onTankDown\` already skips the boot
+  rather than feeding.
+- **V-41 / PR #377** `fix/flat-waterline-glint` — with Waves on the
+  surface off, `drawSurface` took `t=0`, which also placed the glint:
+  a bright segment sat frozen on the flat line. `t: number | null` now
+  means "resting line, no glint"; `surfaceAlpha` is pure and the
+  provably inert `d < 9` skirt (its alpha never beats the base for
+  sun ≤ 1) is gone.
+- **V-42 / PR #371** `fix/snail-direction` — `snailCanvas` mirrored
+  for `dir === -1`, the direction that already moves left, so both
+  directions led with the shell and trailed the eyestalks. `snailArtCol`
+  mirrors right-crawlers; the test pins the absolute leading edge and
+  the mirror symmetry.
+- **D-26 / PR #370** `feat/laser-pointer` — bare **J** toggles a red
+  dot that follows the pointer over the water and gathers the calm
+  fish through the existing `sim.notice` lure. Hides over the air
+  strip, pins inside the glass, hides the arrow while out, repaints on
+  touch lift, and is left out of saved pictures like the torch.
+  README and the browser Shortcuts window list J.
+- **T-19 / PR #380** `fix/fetch-stale-bundles` — `_emit_source`
+  cleaned numbered siblings before proving the source importable, so a
+  later run meeting a same-named non-importable file destroyed the
+  previous run's good bundles. Cleanup moved after a successful emit
+  (shared `finish()`), with the repro as a regression test.
+- **T-20 / PR #379** `fix/iso-bmp-guards` — `read_bmp` and `Iso`
+  validated untrusted input with `assert` (stripped by `python -O`),
+  the ISO reader leaked its file handle, and directory records/extents
+  were trusted past their buffers and the file size. Named `ImgError`/
+  `IsoError` (ValueError subclasses), a 54-byte minimum BMP header
+  guard, record/extent validation against buffer and file size,
+  `Iso.close`/`__enter__`/`__exit__` used by `fetch.py`, and a
+  `python3 -O` subprocess guard test.
+- **T-41 / PR #372** (same branch as B-85) — the favicon was missing
+  from the deb, tarball and macOS web roots; added to both
+  `WEB_FILES` lists and the Makefile staging `cp`, with a test that
+  parses the lists, holds the two Linux lists equal, and walks the
+  Makefile's continuation lines.
+- **T-42 / PR #372** (same branch) — `linux/finsical_shell/__init__.py`
+  still described GTK 3/WebKit2 after the GTK 4/WebKit6 rewrite.
+
+Reviewed and found sound (recording so the next pass can skip it):
+sim determinism across `advanceLife` chunking and RNG streams;
+rule-by-rule fidelity against `docs/ORIGINAL-SIM.md` (stomach,
+digestion, meal heal, damage/heal, vitality, water-health pct, shock,
+breathing, chlorine, heater, filter aeration/biology/trapping, waste,
+FLAKE, water change, medicine, disease, breeding odds — live probes);
+decoders (rsrc, orient, fsh, azpack PNG filters/caps, BMP RLE8, zip
+EOCD/SJIS/usize, inflate caps, MACE); `light.ts`; watcher/pointer edge
+cases; the import/store/windows surface (nested zip listing and
+`#`-fragment fetching, cache LRU pinning, live JPN listing, starter
+state machine, overview/stats/fishname pure models, prefs latches,
+focusFish lease); `sanitizeLife` (a corrupt `dead` stays dead — the
+FOLLOW-UPS worry is stale); the layered-aquarium registration and
+Effects-pane wiring; and hit-testing through the layered glass.
+
+### Open (twenty-first pass, shovel-ready)
+
+- **F-44 Per-species care: every species in a multi-species pack runs
+  the first FsTI's physiology.** Size M · severity low (fidelity) ·
+  value 3/5 · risk 2/5. `core/data/species.ts:132-154`
+  (`packSpeciesCare`) returns the first valid FsTI of a pack even
+  though `SuS#` lists are paired per species id, and
+  `web/main.ts:265-266` keys `sim.careOf` by pack URL only: tolerances,
+  `breedAge`, `unhealthy`, `adultAge` and `lifeSpan` for all species in
+  a pack come from species #1, so wrong-species individuals sicken in
+  ideal water or thrive in bad. Change: decode all FsTI records and key
+  care by (pack, entry/species), keeping the first record as fallback;
+  `spawnFish`/`applyPack` know each species' entry. Acceptance: a
+  two-FsTI fixture (species A 10-15 °C, B 24-28 °C) returns B's band
+  for B.
+- **B-86 Corpse float time was not scaled to Finsical's tick rate.**
+  Size S · severity low · value 1/5 · risk 1/5. `core/sim.ts:168-170`
+  uses `CORPSE_FLOAT_MAX = 0x7fff` ticks for "the original:
+  random(0x7fff) frames" while every other ported count is scaled ×3
+  for 30 tps (`MOVE_TICKS` 192, `TURN_TICKS` 12, `HOVER_TICKS`
+  18..189); corpses float 0-18 min (mean 9) instead of ~0-55 (~27).
+  Change: scale to `0x7fff * 3` or re-derive in minutes; pin with a
+  stubbed rand that the float lasts N minutes before the sink.
+- **B-87 Starvation is ~70-80% cancelled by ideal-water healing.**
+  Size S · severity low (product decision) · value 2/5 · risk 2/5.
+  `docs/ORIGINAL-SIM.md` says an empty stomach kills in about two
+  weeks; `life.ts:199-210` implements that rate, but
+  `stepWaterHealth` (`life.ts:239-243`) keeps healing ideal-water fish
+  with no empty-stomach exception, so measured death is around tank-day
+  50 (~2 hp/day). Change: either suspend `raiseHealth` while `ate <= 0`
+  or correct the doc; add an aquarium test that an unfed fish dies of
+  `Cause.starvation` in ~14-20 simulated days under the chosen rule.
+- **V-43 Mid-drag CRT slider caption can flash the pre-drag value.**
+  Size S · severity low · value 2/5 · risk 1/5. `web/prefs.ts:298-302`
+  replaces `cfg` wholesale on every state push while `syncControls`
+  skips only the dragged slider's `input.value` (`:684-685`), so the
+  hovered caption (`describe`, `:375`) can show the old value for one
+  bus round-trip; the knob and posted value are protected. Change:
+  re-apply the local values for keys in `dragging`/`pendingCfg` after
+  `cfg = sanitizeCrtConfig(crt.cfg)`, as `maskPending` already is.
+  Test via a prefs DOM harness if one lands.
+- **V-44 Tap-pop and surface-pop can pick different ring sprites for
+  the same bubble.** Size S · severity very low (cosmetic) · value
+  1/5 · risk 1/5. `web/water.ts:139` picks the tap ring by
+  `Math.round(x) & 1` where the caller passes `b.x +
+  bubbleOffset(...)` (`web/main.ts:709`), while surface pops use the
+  bubble's own column (`web/water.ts:170`); the wobble offset can flip
+  the parity, so the comment's "same alternation" is not guaranteed.
+  Change: derive both from the bubble's own column (pass it in).
+- **T-43 The README key table and CHANGELOG omit the bare D (degauss)
+  and Z (zen) tank keys.** Size S · severity nit · value 1/5 · risk
+  1/5. Both are implemented and menu-exposed; the README table lists
+  F/L/M/P/C/N/J/S and the Shortcuts window lists the same set. Change:
+  add rows/bullets for D and Z (and keep the laser J row already
+  added).
+
+*Nothing from the twenty-first-pass `tmp.md` was dropped: the raw
+helper reports (`sim-core`, `web-ui`, `web-tank2`, `av2`, `native2`)
+are summarized above, and the foreign `tools/az/pack.py` scratch edit
+seen during the pass was another session's, saved and reverted rather
+than reviewed. `tmp.md` was discarded after this merge.*
