@@ -350,6 +350,8 @@ describe("surfaceAlpha", () => {
     // Out-of-domain sun clamps to 1, so the skirt stays base there too
     // (the old ring would have won at sun=2).
     expect(surfaceAlpha(211, 205, 2, false)).toBeCloseTo(0.55, 10);
+    // Negative sun clamps to 0, so the skirt keeps the 0.3 base floor.
+    expect(surfaceAlpha(211, 205, -1, false)).toBeCloseTo(0.3, 10);
     // Night dims both the base and the glint.
     expect(surfaceAlpha(205, 205, 0, false)).toBeCloseTo(0.35, 10);
   });
