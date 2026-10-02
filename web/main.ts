@@ -117,6 +117,20 @@ let focusId: number | null = null;
 // would freeze the lease mid-flight.
 let focusAt = -Infinity;
 let focusOwner = "";
+/** Lift a spotlight whose wall-clock lease lapsed or whose fish left
+ * the tank; true when it lifted. One definition shared by render() (a
+ * paint in itself) and frame() (which must request one). */
+function liftStaleSpotlight(): boolean {
+  if (focusId === null ||
+      spotlightAlive(focusId, focusAt, Date.now(),
+                     sim.fish.some((f) => f.id === focusId)))
+    return false;
+  // Clearing the owner too lets any live Overview's next beat reclaim
+  // the spotlight after the holder dies silently.
+  focusId = null;
+  focusOwner = "";
+  return true;
+}
 
 // ---- persistence ---------------------------------------------------------
 // Tank state (fish, water, installed add-ons) survives restarts via
@@ -3524,39 +3538,31 @@ function render(now: Date, target: RenderTarget = "screen"): void {
   // The Overview's pick spotlights its fish with a marching-ants
   // marquee — the Finder's own selection cue. Ants march on the sim
   // clock so a paused tank doesn't freeze them mid-stroke.
-  if (focusId !== null &&
-      !spotlightAlive(focusId, focusAt, Date.now(),
-                      sim.fish.some((f) => f.id === focusId))) {
-    // The lease lapsed or the fish left the tank — lift the spotlight
-    // (and its owner, so any live Overview's next beat can reclaim it).
-    focusId = null;
-    focusOwner = "";
-  }
-  if (focusId !== null) {
-    const f = sim.fish.find((x) => x.id === focusId);
-    if (f) {
-      // halfW/halfH are the fish's unscaled sprite extents; a
-      // juvenile's box shrinks with its growth scale. The fallbacks
-      // box a fish whose sheet hasn't bound yet.
-      const hw = (f.halfW ?? 10) * f.scale + 3;
-      const hh = (f.halfH ?? 7) * f.scale + 3;
-      const x0 = Math.max(1, Math.round(f.x - hw));
-      const y0 = Math.max(1, Math.round(f.y - hh));
-      const x1 = Math.min(TANK.width - 1, Math.round(f.x + hw));
-      const y1 = Math.min(TANK.height - 1, Math.round(f.y + hh));
-      ctx.save();
-      ctx.setLineDash([2, 2]);
-      ctx.lineWidth = 1;
-      // The ants hold still under reduced motion, like the water.
-      ctx.lineDashOffset = waterMotion === "animated"
-        ? -(sim.tickCount % 8) / 2 : 0;
-      ctx.strokeStyle = "rgba(0,0,0,.8)";
-      ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
-      ctx.lineDashOffset += 1;
-      ctx.strokeStyle = "rgba(255,255,255,.8)";
-      ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
-      ctx.restore();
-    }
+  liftStaleSpotlight();
+  const focused = focusId === null ? undefined
+    : sim.fish.find((x) => x.id === focusId);
+  if (focused) {
+    // halfW/halfH are the fish's unscaled sprite extents; a
+    // juvenile's box shrinks with its growth scale. The fallbacks
+    // box a fish whose sheet hasn't bound yet.
+    const hw = (focused.halfW ?? 10) * focused.scale + 3;
+    const hh = (focused.halfH ?? 7) * focused.scale + 3;
+    const x0 = Math.max(1, Math.round(focused.x - hw));
+    const y0 = Math.max(1, Math.round(focused.y - hh));
+    const x1 = Math.min(TANK.width - 1, Math.round(focused.x + hw));
+    const y1 = Math.min(TANK.height - 1, Math.round(focused.y + hh));
+    ctx.save();
+    ctx.setLineDash([2, 2]);
+    ctx.lineWidth = 1;
+    // The ants hold still under reduced motion, like the water.
+    ctx.lineDashOffset = waterMotion === "animated"
+      ? -(sim.tickCount % 8) / 2 : 0;
+    ctx.strokeStyle = "rgba(0,0,0,.8)";
+    ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
+    ctx.lineDashOffset += 1;
+    ctx.strokeStyle = "rgba(255,255,255,.8)";
+    ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
+    ctx.restore();
   }
 
   // Ambient motion (swell, glint, shimmer) holds still under reduced
@@ -3871,13 +3877,7 @@ function frame(now: number): void {
   // frame, including ones the loop below skips: a paused tank would
   // otherwise hold a dead Overview's marquee until the next paint.
   // Lifting it asks for that paint, which erases the ants.
-  if (focusId !== null &&
-      !spotlightAlive(focusId, focusAt, Date.now(),
-                      sim.fish.some((f) => f.id === focusId))) {
-    focusId = null;
-    focusOwner = "";
-    requestPaint();
-  }
+  if (liftStaleSpotlight()) requestPaint();
   if (ticks === 0 && !frameDirty && !crtBusy && bootT0 === null) return;
   frameDirty = false;
   render(frameDate);
