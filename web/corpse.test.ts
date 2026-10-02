@@ -2,6 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 import { corpseSprite } from "./corpse.js";
 
 describe("corpseSprite", () => {
+  it("keeps the live sprite when muted-frame allocation fails", () => {
+    const output = { width: 0, height: 0, getContext: () => null };
+    vi.stubGlobal("document", { createElement: () => output });
+    const source = { width: 4, height: 2 } as HTMLCanvasElement;
+
+    try {
+      expect(corpseSprite(source)).toBe(source);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("composites and caches a muted sprite without Canvas filter", () => {
     const calls: unknown[][] = [];
     const context = {
