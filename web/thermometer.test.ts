@@ -65,6 +65,11 @@ describe("thermoTip", () => {
     expect(thermoTip(26.4, 26.5)).toBe("Water 26.4 °C");
   });
 
+  it("says so rather than print NaN for a reading that isn't a number",
+     () => {
+    expect(thermoTip(NaN, 26)).toBe("Water temperature unknown");
+  });
+
   it("adds the heater's setting while the water is still getting there",
      () => {
     expect(thermoTip(22, 26.5))

@@ -17,6 +17,12 @@ describe("sanitizeEffects", () => {
     expect(c.sunlight).toBe(true); // untouched key = default
   });
 
+  it("keeps the thermometer switch through a round trip", () => {
+    expect(EFFECTS_DEFAULTS.thermometer).toBe(true);
+    expect(sanitizeEffects({ thermometer: false }).thermometer).toBe(false);
+    expect(sanitizeEffects({ murk: false }).thermometer).toBe(true);
+  });
+
   it("rejects non-booleans instead of truthiness", () => {
     const c = sanitizeEffects({ torch: 0, snail: "off", sway: 1 });
     expect(c.torch).toBe(EFFECTS_DEFAULTS.torch);

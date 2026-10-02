@@ -40,6 +40,8 @@ export function stripShades(temp: number): CellShade[] {
 /** The reading the strip's hover tip gives: the water, and the heater's
  * setting when the water hasn't reached it yet. */
 export function thermoTip(water: number, heater: number): string {
+  // As cellShade: a reading that isn't a number shows nothing lit.
+  if (!Number.isFinite(water)) return "Water temperature unknown";
   const w = `Water ${water.toFixed(1)} °C`;
   return Math.abs(water - heater) >= 0.5
     ? `${w}, heater set to ${heater.toFixed(1)} °C` : w;
