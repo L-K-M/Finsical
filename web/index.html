@@ -16,10 +16,9 @@
 </head>
 <body class="tankpage">
   <noscript><p>Finsical needs JavaScript to run the aquarium.</p><style>#screen,#machine,#screenback{display:none}</style></noscript>
-  <!-- Three layers: the dark screen backplate under the aquarium, then
-       the machine art on top so its glass and reflections overlay the
-       water. #machine is pointer-events:none — clicks fall through to
-       the tank, or to the page body (a window drag) elsewhere. -->
+  <!-- Startup adds rear case art below the backplate and aquarium.
+       Front art stays on top. Both art layers pass pointer input
+       through to the tank or the page's window-drag handler. -->
   <div id="screenback"></div>
   <div id="screen">
     <canvas id="tank" width="320" height="200" role="img"
