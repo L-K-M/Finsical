@@ -287,6 +287,9 @@ export function drawBoot(ctx: CanvasRenderingContext2D, phase: BootPhase,
     return;
   }
   desktopFill(ctx);
+  // The cached sprites are rasterized at 2x logical pixels; blit them
+  // nearest-neighbour so nothing can soften them on the way in.
+  ctx.imageSmoothingEnabled = false;
   // The smiling bowl, centered a touch high like the Happy Mac.
   ctx.drawImage(iconCanvas(BOWL_ART), Math.round(w / 2 - 16),
                 Math.round(h * 0.3));
