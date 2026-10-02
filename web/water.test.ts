@@ -9,7 +9,7 @@ import {
   causticShimmer, causticTile, causticValue, feedPinch, murkParams,
   MURK_BOTTOM, MURK_TOP, pelletDrift, PINCH_CENTER_SPREAD, PINCH_MAX,
   PINCH_SPREAD, REFRACT_ROWS,
-  refractShift, sunFactor, torchRadius, torchShows,
+  refractShift, sunFactor, surfaceAlpha, torchRadius, torchShows,
 } from "./water.js";
 import { SURFACE_MAX, SURFACE_W } from "./surface.js";
 
@@ -327,5 +327,22 @@ describe("torch", () => {
     }
     expect(torchRadius(0.35)).toBe(24);
     expect(torchRadius(1)).toBe(40);
+  });
+});
+
+describe("surfaceAlpha", () => {
+  it("shows no glint when the waves are off (null center)", () => {
+    // With the effect off the line is the original's flat one: no
+    // frozen bright segment from the glint's t=0 position.
+    expect(surfaceAlpha(205, null, 1, false)).toBeCloseTo(0.55, 10);
+    expect(surfaceAlpha(0, null, 1, false)).toBeCloseTo(0.55, 10);
+    expect(surfaceAlpha(160, null, 1, true)).toBeCloseTo(0.6, 10);
+  });
+
+  it("brightens a travelling band when a center is given", () => {
+    expect(surfaceAlpha(205, 205, 1, false)).toBeGreaterThan(0.55);
+    expect(surfaceAlpha(0, 205, 1, false)).toBeCloseTo(0.55, 10);
+    // Night dims both the base and the glint.
+    expect(surfaceAlpha(205, 205, 0, false)).toBeCloseTo(0.35, 10);
   });
 });

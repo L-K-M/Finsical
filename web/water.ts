@@ -544,13 +544,16 @@ const UNDERSIDE = [0.3, 0.14, 0.05] as const;
  * catches the lamp, with a glint travelling along it. Under it the
  * surface's underside mirrors the light as a silvery band, which is
  * what makes a waterline read from the front. `highlight` brightens the
- * whole line while a click would feed.
+ * whole line while a click would feed. `t` null means the waves are
+ * off: the resting line, with no glint at all (a frozen one at t=0
+ * read as an artifact of the disabled effect).
  */
 export function drawSurface(ctx: CanvasRenderingContext2D,
-                            line: Int16Array, sun: number, t: number,
-                            highlight: boolean): void {
-  const gx = W / 2 + (Math.sin(t * 0.011) * 0.6 +
-                      Math.sin(t * 0.027 + 1) * 0.4) * W * 0.42;
+                            line: Int16Array, sun: number,
+                            t: number | null, highlight: boolean): void {
+  const gx = t === null ? null
+    : W / 2 + (Math.sin(t * 0.011) * 0.6 +
+               Math.sin(t * 0.027 + 1) * 0.4) * W * 0.42;
   // Screen-blended, so the band lifts what is under it instead of
   // painting over it.
   ctx.globalCompositeOperation = "screen";
@@ -566,18 +569,28 @@ export function drawSurface(ctx: CanvasRenderingContext2D,
   }
   ctx.globalCompositeOperation = "source-over";
 
-  const base = highlight ? 0.6 : 0.3 + 0.25 * sun;
   ctx.fillStyle = highlight ? "#ffffff" : "#e8f6ff";
   for (let x = 0; x < W; x++) {
     const y = line[x]!;
     const slope = Math.abs(line[Math.min(W - 1, x + 1)]! -
                            line[Math.max(0, x - 1)]!);
-    const d = Math.abs(x - gx);
-    const glint = d < 3 ? 0.35 + 0.5 * sun : d < 9 ? 0.2 + 0.35 * sun : 0;
-    ctx.globalAlpha = Math.min(1, Math.max(base, glint) + slope * 0.18 * sun);
+    ctx.globalAlpha = Math.min(1, surfaceAlpha(x, gx, sun, highlight) +
+                                  slope * 0.18 * sun);
     ctx.fillRect(x, y, 1, 1);
   }
   ctx.globalAlpha = 1;
+}
+
+/** The line's per-column alpha: the daylight base and, when the glint
+ * center `gx` is given (waves on), the brighter travelling band. The
+ * slope term and the fill stay in drawSurface. */
+export function surfaceAlpha(x: number, gx: number | null, sun: number,
+                             highlight: boolean): number {
+  const base = highlight ? 0.6 : 0.3 + 0.25 * sun;
+  if (gx === null) return base;
+  const d = Math.abs(x - gx);
+  const glint = d < 3 ? 0.35 + 0.5 * sun : d < 9 ? 0.2 + 0.35 * sun : 0;
+  return Math.max(base, glint);
 }
 
 // ---- murk ------------------------------------------------------------------

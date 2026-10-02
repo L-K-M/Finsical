@@ -3590,7 +3590,7 @@ function render(now: Date, target: RenderTarget = "screen"): void {
   // The waterline divides feeding from tapping, so it brightens while
   // a click would feed. Under the murk and night overlays, so it dims
   // with the water instead of glowing at night.
-  drawSurface(ctx, waterline, sun, effects.surface ? t : 0,
+  drawSurface(ctx, waterline, sun, effects.surface ? t : null,
               overFeedZone);
   drawBubbles(ctx, sim.bubbles, waterline);
   if (effects.splashes) {
