@@ -2981,7 +2981,12 @@ window.addEventListener("dragleave", (e) => {
 // modal so the cursor greys out.
 window.addEventListener("dragover", (e) => {
   e.preventDefault();
-  if (e.dataTransfer && !dropAllowed()) e.dataTransfer.dropEffect = "none";
+  const allowed = dropAllowed();
+  // Re-evaluate on every dragover: a modal may have opened (or
+  // closed) since the drag began, and the cue must follow it either
+  // way rather than promising a drop that will be refused.
+  if (dragDepth > 0) setDragging(allowed);
+  if (e.dataTransfer && !allowed) e.dataTransfer.dropEffect = "none";
 }, true);
 // Capture phase: a drop ends the drag without a leave event, and a
 // descendant handler that stops propagation must not strand the cue —

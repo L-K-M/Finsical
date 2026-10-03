@@ -84,6 +84,9 @@ let registered = false;
  * open count, so the two can't drift. */
 const stack: Alert[] = [];
 const frontmost = (): Alert | undefined => stack[stack.length - 1];
+/** Each open alert's own window, so handing focus to the one a stack
+ * uncovers does not depend on DOM order matching stack order. */
+const windows = new WeakMap<Alert, HTMLElement>();
 
 /** True while any alert is up: the tank ignores taps meanwhile. */
 export function alertOpen(): boolean {
@@ -272,11 +275,7 @@ export function showAlert(spec: AlertSpec): Alert {
       // scrim; with nothing left, restore whatever had it before.
       const below = frontmost();
       if (below) {
-        // The remaining alert took focus when it opened; hand it back
-        // rather than dropping the keyboard behind the scrim.
-        const win2 = [...document.querySelectorAll<HTMLElement>(".alertwin")]
-          .pop();
-        win2?.focus({ preventScroll: true });
+        windows.get(below)?.focus({ preventScroll: true });
       } else if (opener?.isConnected) {
         opener.focus({ preventScroll: true });
       }
@@ -286,6 +285,7 @@ export function showAlert(spec: AlertSpec): Alert {
   };
 
   stack.push(alert);
+  windows.set(alert, win);
   document.body.append(scrim);
   alert.update(spec);
   if (field.hidden) win.focus({ preventScroll: true });
