@@ -195,10 +195,11 @@ body.crt canvas#tank { opacity: 0; }
    native window (.osm-page, .osm-page-window). */
 
 /* ---- Preferences (web/prefs.ts) ----------------------------------------
-   A fixed-size control panel, 564 x 517 (native window 565 x 518 with
-   the shadow). Pane buttons down an 80px strip on the left, parted from
-   the pane by a gray/black/white line, as in Desktop Pictures, and
-   sized like its pane buttons: 54 x 40, on a 70px pitch. */
+   A control panel designed at 564 x 517 (native window 565 x 518 with
+   the shadow) that still fills whatever window it gets in a browser
+   tab. Pane buttons down an 80px strip on the left, parted from the
+   pane by a gray/black/white line, as in Desktop Pictures, and sized
+   like its pane buttons: 54 x 40, on a 70px pitch. */
 #pwin:not(.osm-shaded) .osm-content { display: flex; }
 #pfstrip {
   flex: none; width: 80px; padding-top: 12px;
@@ -210,11 +211,23 @@ body.crt canvas#tank { opacity: 0; }
   position: relative; flex: 1; min-width: 0;
   border-left: 1px solid #000; box-shadow: inset 1px 0 #fff;
 }
-.pfpane { position: absolute; left: 14px; right: 14px; top: 12px; }
+/* The pane fills the window between its top margin and the caption
+   area, the way Overview's list and Stats's tabs fill theirs — the
+   machine list and preview well stretch with it, and the group-box
+   panes centre so a taller-than-designed window (a browser tab, a
+   phone) shows no dead gray band above the captions. `safe center`
+   falls back to `center` where it is unsupported; both keep the
+   designed layout when content already fills the pane. */
+.pfpane {
+  position: absolute; left: 14px; right: 14px; top: 12px; bottom: 74px;
+  display: flex; flex-direction: column;
+  justify-content: center;
+  justify-content: safe center;
+}
 .pfpane[hidden] { display: none; }
 
 /* Machine: the cases in a list box beside a preview well. */
-#pfmachines { position: absolute; left: 0; top: 0; width: 190px; height: 383px; }
+#pfmachines { position: absolute; left: 0; top: 0; bottom: 0; width: 190px; }
 /* Names fit the 190 px list (the Performas drop "Macintosh"); a longer
    one ends in an ellipsis rather than cut through a glyph. */
 #pfmachines .osm-row {
@@ -222,7 +235,7 @@ body.crt canvas#tank { opacity: 0; }
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
 #pfpreview {
-  position: absolute; left: 204px; right: 0; top: 0; height: 383px;
+  position: absolute; left: 204px; right: 0; top: 0; bottom: 0;
   display: flex; align-items: center; justify-content: center;
   background: #fff;
 }
