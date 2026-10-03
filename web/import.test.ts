@@ -1,8 +1,10 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { browserGeometry, DECOR_COPIES_MAX, decorCopyRoom, fragDecode,
-         fragEncode, importAddon, installProblem, listAddons,
+import { browserGeometry, chooseStartSection, DECOR_COPIES_MAX,
+         decorCopyRoom, decorRefusal, fragDecode,
+         fragEncode, importAddon, installProblem, isArchiveUrl, listAddons,
          loadProblem, transientFailure, isListed, orphanedSounds,
-         qualifySoundItemName, recordAddon, isSavedAddon, usablePacks,
+         qualifySoundItemName, recordAddon, rememberSection, isSavedAddon,
+         usablePacks,
          usableProblem }
   from "./import.js";
 import type { Importable, PackResult } from "./import.js";
@@ -360,6 +362,28 @@ describe("decorCopyRoom", () => {
   });
 });
 
+describe("decorRefusal", () => {
+  const full = Array.from({ length: DECOR_COPIES_MAX },
+                          () => ({ pack: "p.plt" }));
+  it("refuses another copy once the pack fills its cap", () => {
+    expect(decorRefusal(full, { section: "plants", url: "p.plt" }))
+      .toBe(`This plant is already in the tank ${DECOR_COPIES_MAX} times.`);
+    expect(decorRefusal(full, { section: "accessories", url: "p.plt" }))
+      .toBe(`This accessory is already in the tank ${DECOR_COPIES_MAX} times.`);
+  });
+  it("lets a copy in while there is room, or for another pack", () => {
+    expect(decorRefusal(full.slice(1), { section: "plants", url: "p.plt" }))
+      .toBeNull();
+    expect(decorRefusal(full, { section: "plants", url: "other.plt" }))
+      .toBeNull();
+  });
+  it("leaves the other sections alone", () => {
+    // A backdrop or gravel replaces the last one; nothing piles up.
+    for (const section of ["fish", "gravel", "backgrounds", "sounds"])
+      expect(decorRefusal(full, { section, url: "p.plt" })).toBeNull();
+  });
+});
+
 describe("isListed", () => {
   const it0 = (url: string): Importable =>
     ({ url, inner: url, section: "fish" }) as Importable;
@@ -585,5 +609,46 @@ describe("isSavedAddon", () => {
     expect(isSavedAddon(ok)).toBe(true);
     expect(isSavedAddon({ ...ok, section: "" })).toBe(true);
     expect(isSavedAddon({ ...ok, sounds: [] })).toBe(true);
+  });
+});
+
+describe("chooseStartSection", () => {
+  it("keeps the saved section once it has arrived", () => {
+    expect(chooseStartSection("sounds", ["fish", "sounds"])).toBe("sounds");
+  });
+
+  it("shows the first arrived section until the saved one does", () => {
+    expect(chooseStartSection("sounds", ["fish"])).toBe("fish");
+    expect(chooseStartSection(null, ["fish", "sounds"])).toBe("fish");
+  });
+});
+
+describe("rememberSection", () => {
+  it("writes the user's pick through the injected store", () => {
+    let wrote: string | null = null;
+    rememberSection("sounds", {
+      get: () => null, set: (s) => { wrote = s; },
+    });
+    expect(wrote).toBe("sounds");
+  });
+});
+
+describe("isArchiveUrl", () => {
+  it("accepts the site and its node mirrors over https", () => {
+    expect(isArchiveUrl("https://archive.org/download/x/y.zip")).toBe(true);
+    expect(isArchiveUrl("https://ia801504.us.archive.org/download/x/y.zip"))
+      .toBe(true);
+  });
+
+  it("rejects other hosts, schemes, lookalikes and non-strings", () => {
+    for (const bad of [
+      "http://archive.org/x", "https://evilarchive.org/x",
+      "https://archive.org@evil.com/x", "https://archive.org:8443/x",
+      "https://archive.org.evil.com/x", "https://example.com/x",
+      "https://notarchive.org/x", null, 7, "", undefined,
+    ])
+      expect(isArchiveUrl(bad),
+             `isArchiveUrl(${JSON.stringify(bad)}) should be rejected`)
+        .toBe(false);
   });
 });

@@ -74,7 +74,8 @@ window.addEventListener("drop", (e) => {
       console.warn("snd persist failed for", recs.length, "records");
       return;
     }
-    bus.post({ op: "soundsLoaded", name: recs[0]!.name });
+    bus.post({ op: "soundsLoaded", name: recs[0]!.name,
+               names: recs.map((r) => r.name) });
   })().catch((err) => console.warn("sound drop failed:", err));
 });
 
