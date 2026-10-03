@@ -29,6 +29,11 @@ export const DISEASES: readonly Disease[] = [
   { id: 407, name: "ARDS", growth: 1, severity: 1, contagion: 50 },
 ];
 
+/** The one disease a shock hands out (Set_*_Rofc: a temperature jump
+ * gives White Spot 40 % of the time). Named so callers need not know
+ * it is table entry 0. */
+export const WHITE_SPOT = 0;
+
 export function diseaseIndex(id: number): number {
   return DISEASES.findIndex((d) => d.id === id);
 }

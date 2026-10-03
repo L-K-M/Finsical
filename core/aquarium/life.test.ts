@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { Cause, sanitizeLife } from "./life.js";
+import { Cause, newLife, sanitizeLife, shock, susceptibleTo } from "./life.js";
+import { makeRng } from "../rng.js";
+import { DEFAULT_CARE } from "../data/species.js";
+import type { SpeciesCare } from "../data/species.js";
 
 describe("sanitizeLife", () => {
   it("keeps a valid record and clamps the rest", () => {
@@ -26,5 +29,37 @@ describe("sanitizeLife", () => {
     expect(dead(12)!.dead).toEqual({ cause: 12, at: 0 });
     expect(sanitizeLife({ health: 50, age: 1 })!.dead).toBeNull();
     expect(sanitizeLife({ health: 50, age: 1, dead: null })!.dead).toBeNull();
+  });
+});
+
+describe("shock", () => {
+  /** A temperature jump past the species' rate of change, which is
+   * what hands out White Spot 40% of the time. */
+  const shockTemp = (care: SpeciesCare, seed: number) => {
+    const rand = makeRng(seed);
+    const life = newLife(rand, care, care.adultAge);
+    const ctx = { rand, care, weight: 25,
+                  events: { died: () => {}, sick: () => {}, recovered: () => {} } };
+    return { life, step: shock(life, "temp", care.tolerance.temp.rateOfChange + 1, ctx) };
+  };
+
+  it("gives a susceptible species White Spot", () => {
+    const { life, step } = shockTemp(DEFAULT_CARE, 3);
+    expect(step).toBe("applied");
+    expect(life.sick?.disease).toBe(0);
+  });
+
+  it("never gives White Spot to a species that does not catch it", () => {
+    const meka: SpeciesCare = { ...DEFAULT_CARE, susceptible: [405, 406, 407] };
+    for (let seed = 1; seed <= 40; seed++) {
+      const { life } = shockTemp(meka, seed);
+      expect(life.sick).toBeNull();
+    }
+    expect(susceptibleTo(meka, 0)).toBe(false);
+    expect(susceptibleTo(meka, 5)).toBe(true);
+    // A species with no list of its own falls back to the stock five.
+    const plain: SpeciesCare = { ...DEFAULT_CARE, susceptible: [] };
+    expect(susceptibleTo(plain, 0)).toBe(true);
+    expect(susceptibleTo(plain, 7)).toBe(false);
   });
 });

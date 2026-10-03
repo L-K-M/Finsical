@@ -168,6 +168,23 @@ describe("fish", () => {
     expect(weak.life.sick?.disease).toBe(0);
   });
 
+  it("sickness skips a species that never catches it", () => {
+    const rand = makeRng(8);
+    const a = new Aquarium(rand);
+    // The carrier is a Meka-species fish (Red Rust B only); the only
+    // healthy fish in the tank is a stock one that cannot catch it.
+    const meka: SpeciesCare =
+      { ...DEFAULT_CARE, susceptible: [406] };
+    const sick = resident(1, rand, meka);
+    const stock = resident(2, rand);
+    sick.life.sick = { disease: 6, amount: 5 };   // Red Rust B
+    stock.life.health = 40;
+    for (const r of [sick, stock]) r.life.ate = 5;
+    a.advanceMinutes(10 * DAY, [sick, stock]);
+    // ARDS- and Red-Rust-adjacent ids stay out of a stock fish.
+    expect(stock.life.sick).toBeNull();
+  });
+
   it("a dead fish decays into ammonia", () => {
     const a = new Aquarium(makeRng(9));
     const r = resident(1, makeRng(9));

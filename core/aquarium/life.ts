@@ -8,7 +8,7 @@
  * keeps accumulating; that is what lets the original's integer health
  * steps add up over hours (see Aquarium).
  */
-import { DISEASES, diseaseIndex } from "./disease.js";
+import { DISEASES, WHITE_SPOT, diseaseIndex } from "./disease.js";
 import { DEFAULT_CARE, WATER_TOLERANCES } from "../data/species.js";
 import type { SpeciesCare, ToleranceKey } from "../data/species.js";
 import type { Water } from "./water.js";
@@ -142,12 +142,28 @@ export function kill(l: FishLife, cause: number, ctx: LifeCtx, at = 0): void {
   ctx.events.died(cause);
 }
 
+/** The disease ids a species can fall sick with: its own list, or the
+ * stock list when it names none — the same fallback the original's
+ * Pick_Random_Sickness makes. Every infection path asks through this,
+ * so a fish immune to a disease never catches it by contagion and the
+ * Meka-only ailments (Red Rust, Red Rust B, ARDS) stay out of a stock
+ * tank. */
+export function diseaseIdsOf(care: SpeciesCare): readonly number[] {
+  return care.susceptible.length
+    ? care.susceptible : DEFAULT_CARE.susceptible;
+}
+
 /** Pick_Random_Sickness: one of the species' diseases, as a table
  * index (−1 when the species lists none the table knows). */
 export function pickDisease(ctx: LifeCtx): number {
-  const ids = ctx.care.susceptible.length
-    ? ctx.care.susceptible : DEFAULT_CARE.susceptible;
+  const ids = diseaseIdsOf(ctx.care);
   return diseaseIndex(ids[randInt(ctx.rand, 0, ids.length - 1)]!);
+}
+
+/** Whether table entry `idx` is one of the species' diseases. */
+export function susceptibleTo(care: SpeciesCare, idx: number): boolean {
+  const d = DISEASES[idx];
+  return !!d && diseaseIdsOf(care).includes(d.id);
 }
 
 /** Start_New_Fish_Sick: the disease knocks the fish's vitality and
@@ -267,8 +283,9 @@ export function shock(l: FishLife, k: ToleranceKey, delta: number,
   const roc = Math.max(1, ctx.care.tolerance[k].rateOfChange);
   const d = Math.abs(delta);
   if (d <= roc) return "wait";
-  if (k === "temp" && randInt(ctx.rand, 1, 100) <= 40 && !l.sick) {
-    startSickness(l, 0, ctx);
+  if (k === "temp" && randInt(ctx.rand, 1, 100) <= 40 && !l.sick &&
+      susceptibleTo(ctx.care, WHITE_SPOT)) {
+    startSickness(l, WHITE_SPOT, ctx);
     return "applied";
   }
   return lowerHealth(l, d / roc * 250, WATER_TOLERANCES.indexOf(k) + 1, ctx);
