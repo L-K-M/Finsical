@@ -30,6 +30,11 @@
   included, starts the sound. The old "Click for sound" note showed
   even with no sounds to play and in the apps, and only a click in
   the water made it go away.
+- Preferences ▸ Monitor grows a **Flyback whine** switch: the CRT's
+  transformer sings at 15.7 kHz while the monitor simulation runs,
+  the way real tubes did. It is off by default, faint enough that
+  younger ears find it first, and Mute and the volume slider reach it
+  like every other sound.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's

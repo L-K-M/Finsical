@@ -18,6 +18,10 @@ export interface SoundConfig {
    * music switch, Preferences' Sound pane). Off by default — the
    * tank's sounds come from the original's bank. */
   music: boolean;
+  /** The CRT's flyback whine — off by default, and only while the tube
+   * runs. Part of the sound settings so Mute and the volume slider
+   * reach it, though its checkbox lives in the Monitor pane. */
+  flyback: boolean;
   /** Schema marker: 2 since the gain curve turned quadratic. Absent
    * on older saves; only sanitizeSoundConfig reads it. Required, so a
    * hand-built config can't silently opt back into the migration. */
@@ -27,7 +31,7 @@ export interface SoundConfig {
 export const SOUND_DEFAULTS: Readonly<SoundConfig> =
   Object.freeze<SoundConfig>({
     volume: 0.84, muted: false, bubbles: true, ambient: true,
-    music: false, v: 2,
+    music: false, flyback: false, v: 2,
   });
 
 /** Slider position → master gain. Quadratic: the ear hears roughly
@@ -50,7 +54,7 @@ export function sanitizeSoundConfig(raw: unknown): SoundConfig {
   const mark = r.v;
   if (typeof mark === "number" && Number.isInteger(mark) &&
       mark > SOUND_DEFAULTS.v) c.v = mark;
-  for (const k of ["muted", "bubbles", "ambient", "music"] as const) {
+  for (const k of ["muted", "bubbles", "ambient", "music", "flyback"] as const) {
     const v = r[k];
     if (typeof v === "boolean") c[k] = v;
   }
@@ -144,6 +148,14 @@ const BLOOP_HZ = [500, 1300] as const;
 const BLOOP_S = 0.09;
 const BLOOP_GAIN = 0.12;
 
+/** The flyback transformer's whine: NTSC line frequency with the
+ * mains hum beside it. Levels sit around -44 dBFS — as loud as a real
+ * tube's, which younger ears find and older ones don't. */
+const FLYBACK_HZ = 15734;
+const FLYBACK_MAINS_HZ = 120;
+const FLYBACK_GAIN = 0.006;
+const FLYBACK_MAINS_GAIN = 0.002;
+
 /** Stereo position of a tank event at x in a w-wide tank: the edges
  * pan to ±0.8 — a clear sense of side without a hard pan. */
 export function panFor(x: number, w: number): number {
@@ -194,6 +206,10 @@ export class TankAudio {
   private bubblesOn = SOUND_DEFAULTS.bubbles;
   private ambientOn = SOUND_DEFAULTS.ambient;
   private musicOn = SOUND_DEFAULTS.music;
+  private flybackOn = SOUND_DEFAULTS.flyback;
+  // The flyback pair while live: the 15.7 kHz fundamental and the
+  // mains hum beside it, stopped and dropped on every switch off.
+  private flybackOscs: OscillatorNode[] | null = null;
   // The one install-feedback source still playing, so a newer install
   // (or Add Again) replaces it instead of stacking copies.
   private feedbackSrc: AudioBufferSourceNode | null = null;
@@ -415,6 +431,47 @@ export class TankAudio {
     // Also aborts a loop still waiting on a pending resume() in play().
     this.ambientWanted = false;
     this.ambientGen++;
+  }
+
+  /** The CRT's flyback whine. The tank page owns the policy — the
+   * Sound pane's opt-in and the tube being on — and switches this with
+   * the tube. The synth is two oscillators into the master, so Mute
+   * and the volume slider reach it like everything else. */
+  setFlyback(on: boolean): void {
+    this.flybackOn = on;
+    if (on) this.startFlyback();
+    else this.stopFlyback();
+  }
+
+  private startFlyback(): void {
+    if (!this.flybackOn || this.flybackOscs) return;
+    // Created even while hidden or locked: a suspended context holds
+    // the pair silent, and resuming (a gesture, the page returning)
+    // sounds it — no retry bookkeeping. This is also the one sound
+    // that can create the context: a tank with no sounds installed
+    // still has a tube.
+    const ac = this.context();
+    const mk = (hz: number, gain: number): OscillatorNode => {
+      const osc = ac.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = hz;
+      const g = ac.createGain();
+      g.gain.value = gain;
+      osc.connect(g).connect(this.master!);
+      osc.start();
+      return osc;
+    };
+    this.flybackOscs = [
+      mk(FLYBACK_HZ, FLYBACK_GAIN),
+      mk(FLYBACK_MAINS_HZ, FLYBACK_MAINS_GAIN),
+    ];
+  }
+
+  private stopFlyback(): void {
+    for (const o of this.flybackOscs ?? []) {
+      try { o.stop(); } catch { /* already ended */ }
+    }
+    this.flybackOscs = null;
   }
 
   /** Browsers gate audio behind a user gesture; call from pointerdown,

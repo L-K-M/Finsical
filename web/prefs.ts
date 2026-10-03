@@ -268,6 +268,10 @@ function el(tag: string, cls = "", text = ""): HTMLElement {
 }
 
 const onBox = document.getElementById("crt-on") as HTMLInputElement;
+// Declared beside onBox, not with the Sound pane's controls: it lives
+// in the Monitor pane but carries a sound setting, and syncEnabled —
+// which runs before the Sound section — dims it with the tube.
+const flybackBox = document.getElementById("crt-flyback") as HTMLInputElement;
 const warnEl = document.getElementById("crt-warn")!;
 const descEl = document.getElementById("pfdesc")!;
 const defaultsBtn = document.getElementById("pfdefaults") as HTMLButtonElement;
@@ -701,6 +705,8 @@ function syncEnabled(): void {
   // acts through the tube may come live.
   const live = crtAvail && onBox.checked;
   for (const input of sliders.values()) setEnabled(input, live);
+  // The whine is the tube's: nothing to sing while the CRT is off.
+  setEnabled(flybackBox, live);
   if (maskBtn) maskBtn.disabled = !live;
   for (const btn of presetBtns) btn.disabled = !live;
   // Defaults only resets CRT sliders — dim it where none are live
@@ -895,6 +901,7 @@ function syncSound(): void {
   bubblesBox.checked = sound.bubbles;
   ambientBox.checked = sound.ambient;
   musicBox.checked = sound.music;
+  flybackBox.checked = sound.flyback;
   // Mute keeps the volume, so the slider dims instead of dropping to
   // Off, the way Mac OS 8 dims controls that depend on an off switch.
   setEnabled(volInput, !sound.muted);
@@ -940,6 +947,12 @@ captioned({ label: "Fish music", input: musicBox,
               "near the surface, an octave down at night. Off by " +
               "default: the tank's own sounds come from the original." },
           document.getElementById("pfmusic")!);
+captioned({ label: "Flyback whine", input: flybackBox,
+            blurb: "The CRT's transformer singing at 15.7 kHz, as real " +
+              "tubes did — faint, and younger ears hear it better. It " +
+              "plays only while the monitor simulation runs, and Mute " +
+              "and the volume slider reach it like every sound." },
+          document.getElementById("pfflyback")!);
 
 volInput.addEventListener("input", () =>
   postSound({ volume: Number(volInput.value) / 100 }));
@@ -959,7 +972,9 @@ ambientBox.addEventListener("change", () =>
   postSound({ ambient: ambientBox.checked }));
 musicBox.addEventListener("change", () =>
   postSound({ music: musicBox.checked }));
-for (const id of ["pfmute", "pfbubbles", "pfambient", "pfmusic"])
+flybackBox.addEventListener("change", () =>
+  postSound({ flyback: flybackBox.checked }));
+for (const id of ["pfmute", "pfbubbles", "pfambient", "pfmusic", "pfflyback"])
   trackHighlight(document.getElementById(id)!);
 syncSound();
 
