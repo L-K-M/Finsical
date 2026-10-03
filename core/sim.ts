@@ -4,7 +4,7 @@ import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
 import { demoLight, DUSK_LIGHT } from "./light.js";
 import { Aquarium } from "./aquarium/aquarium.js";
 import type { Resident } from "./aquarium/aquarium.js";
-import { hungerOf, newLife, randInt, stomachSize, vigorOf }
+import { hungerOf, newLife, randInt, rescaleStomach, stomachSize, vigorOf }
   from "./aquarium/life.js";
 import type { FishLife } from "./aquarium/life.js";
 import { DEFAULT_CARE } from "./data/species.js";
@@ -109,7 +109,7 @@ export interface Fish {
 /** Lifecycle transitions queued for the renderer/audio to react to;
  * the caller drains the array each tick. */
 export interface SimEvent {
-  type: "sick" | "dead" | "birth";
+  type: "sick" | "dead" | "birth" | "golden";
   fish: Fish;
 }
 
@@ -137,6 +137,49 @@ export const BOTTOM_PAD = 12;
 /** Share of a big sprite's half-extent kept inside the glass; the rest
  * may pass behind the frame, the way fish reach a real tank's edge. */
 const EDGE_KEEP = 0.8;
+
+/** One fish's place in a Clean Up grid. */
+export interface Slot {
+  x: number;
+  y: number;
+}
+
+
+/** The place `i` of `n` fish in a Clean Up grid: rows of
+ * Sim.FORMATION_COLUMNS, evenly spread across the tank's width and
+ * down its usable depth, so no two fish share a spot however many
+ * there are. A part-full last row is centred, the way the Finder
+ * centres a short row of icons. Pure, so the layout can be checked
+ * without a sim.
+ *
+ *   n = 14, columns 6
+ *     row 0:  0  1  2  3  4  5      top of the band
+ *     row 1:  6  7  8  9 10 11      middle
+ *     row 2:       12 13            centred under the row above
+ */
+export function gridSlot(i: number, n: number, tank: Tank): Slot {
+  const cols = Math.max(1, Sim.FORMATION_COLUMNS);
+  // A count that is not a usable number still has to yield a place:
+  // this is called from cleanUp with a roster length, but a NaN must
+  // not turn every fish's destination into NaN and strand the tank.
+  const count = Number.isFinite(n) ? Math.max(1, Math.floor(n)) : 1;
+  // The index is clamped for the same reason. Left alone, one past the
+  // roster gives a row with no seats in it, and x becomes Infinity.
+  const k = Math.min(Math.max(0,
+    Number.isFinite(i) ? Math.floor(i) : 0), count - 1);
+  const row = Math.floor(k / cols);
+  const rows = Math.ceil(count / cols);
+  // How many slots the fish's own row holds, so a short row centres.
+  const inRow = Math.min(cols, count - row * cols);
+  const col = k - row * cols;
+  const x = tank.width * (col + 0.5) / inRow;
+  // One row sits at the band's top, the last at its bottom, and any
+  // rows between spread evenly across the band.
+  const t = rows < 2 ? 0.5 : row / (rows - 1);
+  const y = tank.height * (Sim.FORMATION_TOP +
+    (Sim.FORMATION_BOTTOM - Sim.FORMATION_TOP) * t);
+  return { x, y };
+}
 
 /** Smallest signed angle delta, wrapped to [−π, π). */
 export function wrapAngle(d: number): number {
@@ -171,14 +214,10 @@ const CORPSE_FLOAT_MAX = 0x7fff;
 /** Sick fish keep to the bottom fifth of their range. */
 const SICK_DEPTH = 0.8;
 /** Uneaten pellets the tank holds before dropFood refuses: past it a
- * feed only adds waste. Even at the cap, six rotting pellets drain
- * quality ~7x faster than the filter recovers it, so sustained
- * overfeeding still fouls the tank without a water change. */
+ * feed only adds waste. Sustained cap-bound overfeeding does cloud the
+ * water, but over days, not minutes — the organics model, not a direct
+ * quality drain, is what fouls it. */
 export const MAX_UNEATEN = 6;
-/** Quality drained per tick per rotting pellet (~0.14 over a full rot). */
-const WASTE_PER_TICK = 1 / 10000;
-/** Filtration: recovers a fouled tank over ~7 min of clean water. */
-const FILTER_PER_TICK = 1 / 12000;
 /** Below this water quality fish start gasping: wander targets pull
  * toward the surface, all the way to just under it at quality 0. */
 const GASP_QUALITY = 0.45;
@@ -252,6 +291,21 @@ const DEFAULT_BODY = 20;
 const HOVER_ODDS = 0.3;
 const HOVER_TICKS_MIN = 18;
 const HOVER_TICKS_RANGE = 171;
+/** How long a fish holds its place in a Clean Up (about 3 s), long
+ * enough that it does not visibly shuffle between strokes. */
+const FORMATION_HOLD_TICKS = 90;
+/** Speed ceiling multiplier while a fish is on its way to its place.
+ * A fish in a hurry, not a different fish: the braking, the roll and
+ * the arrival are the ordinary ones. */
+const FORMATION_SPEED = 2.2;
+/** How often a fish reconsiders its destination during a Clean Up.
+ * The ordinary wander only looks at a new destination every
+ * MOVE_TICKS (192 — six seconds), which is far longer than a roll
+ * call: a fish whose place lay behind it would swim the wrong way for
+ * the whole formation and never roll round. This is the cadence that
+ * lets maybeTurn() turn it promptly. */
+const FORMATION_DECIDE_TICKS = 24;
+
 /** Prints the glass keeps of where fish settled, oldest first. Runtime
  *  state only — never saved, so every visit to the tank starts with
  *  clean glass and accumulates a history while it is open. */
@@ -352,6 +406,11 @@ const SPAWN_SCALE_RANGE = 0.25;
 const GROWTH = 0.06;
 const MAX_SCALE = 1;
 const BUBBLE_CHANCE = 0.004;
+/** Per tick, the chance a sick fish sneezes: about once every 20 s at
+ * 30 ticks a second. */
+const SNEEZE_CHANCE = 1 / 600;
+/** A sneeze's backward jolt, px per tick, easing off: about 3 px. */
+const SNEEZE_JOLT = [1.2, 0.9, 0.6, 0.3] as const;
 /** Per tick, a bubble working loose from the gravel: one every ~8 s. */
 const AMBIENT_BUBBLE = 0.004;
 /** How far a bubble rises per tick. */
@@ -372,6 +431,8 @@ export const WAKE_LIGHT = 0.6;
  * FRY_SCALE is the juvenile minimum addFish clamps to, so a newborn
  * reads visibly smaller than its parents and grows up on its meals. */
 const MINUTES_PER_DAY = 24 * 60;
+const AQUARIUM_STREAM_SALT = 0x5eed;
+const PLANT_UNIT_AREA = 1000;
 const BREED_ODDS = 15;
 const CONCEIVE_ODDS = 50;
 const BREED_HEALTH = 75;
@@ -406,6 +467,13 @@ export class Sim {
    * changes: fish pass behind and in front of it, and hide behind it
    * when scared. */
   cover: readonly Cover[] = [];
+  /** Total drawn area of the plant decor, in px² — Σ width × height
+   * over every plant the view placed. Plants are what oxygenate the
+   * water: this becomes the aquarium model's plant size, so a lit tank
+   * with greenery gains oxygen and loses nitrate and CO₂. Set it
+   * alongside `cover` (the view knows which decor are plants); the
+   * aquarium owns what that area does to the water. */
+  plantArea = 0;
   /** Spawn a bubble at a point — the view emits these for decor
    * (plants oxygenating); the lifecycle (rise, surface pop) is the
    * same as a gravel bubble's. */
@@ -465,9 +533,24 @@ export class Sim {
 
   constructor(tank: Tank, seed = 1) {
     this.tank = tank;
+    this.seed = seed;
     this.rand = makeRng(seed);
     this.zRand = makeRng(seed ^ 0x2de9);
-    this.aquarium = new Aquarium(makeRng(seed ^ 0x5eed));
+    this.aquarium = new Aquarium(makeRng(seed ^ AQUARIUM_STREAM_SALT));
+  }
+
+  /** The seed the streams derive from, so a restore can rebuild the
+   * aquarium's stream the way the constructor did (see restoreAquarium). */
+  private readonly seed: number;
+
+  /** Install a saved aquarium on the sim's own seeded stream — the
+   * same derivation the constructor uses — so a restored tank keeps
+   * the ?seed= replay pin. Restoring on Math.random here broke it:
+   * the life model's rolls (shock sickness, contagion, cures, birth
+   * mutations) diverged between identical seeded launches. */
+  restoreAquarium(raw: unknown): void {
+    this.aquarium = Aquarium.fromJSON(raw,
+                                     makeRng(this.seed ^ AQUARIUM_STREAM_SALT));
   }
 
   /** Advance the aquarium's clock by real seconds (at its speed) and
@@ -475,6 +558,9 @@ export class Sim {
   advanceLife(realSeconds: number): void {
     const a = this.aquarium;
     a.lightOn = this.light > SLEEP_LIGHT;
+    // Plant chemistry works in units of 1000 px² (Sim_Plant); the view
+    // hands over raw px², so scale it here rather than at every caller.
+    a.plantSize = this.plantArea / PLANT_UNIT_AREA;
     const day = Math.floor(a.minutes / MINUTES_PER_DAY);
     a.advance(realSeconds, this.residents());
     this.syncLife();
@@ -525,6 +611,12 @@ export class Sim {
   /** Fish whose sickness has already fired a "sick" event — the life
    * model carries the disease; the flag just debounces the hook. */
   private sickSeen = new WeakSet<Fish>();
+
+  /** Sneezing fish, by the ticks of jolt they have done. Not saved: a
+   * sneeze lasts a few ticks. */
+  private sneezes = new WeakMap<Fish, number>();
+  /** Whether `f` is jolting from a sneeze this tick. */
+  sneezing(f: Fish): boolean { return this.sneezes.has(f); }
 
   /** Copy the life model's state onto what the swim code reads. */
   private syncLife(): void {
@@ -607,15 +699,120 @@ export class Sim {
     const i = this.fish.findIndex((f) => f.id === id);
     if (i < 0) return false;
     this.fish.splice(i, 1);
+    this.formation?.slots.delete(id);
     return true;
+  }
+
+  /** Count uneaten pellets without allocating in each feeding path. */
+  uneatenCount(): number {
+    let count = 0;
+    for (const food of this.food) if (!food.eaten) count++;
+    return count;
+  }
+
+  // ---- Clean Up ----------------------------------------------------------
+  // Tank > Clean Up lines the fish up in a neat grid for a few seconds:
+  // the Finder's own joke, since System 7's Special menu and Mac OS 8's
+  // View menu snapped icons into a grid. Pure whimsy, and it falls
+  // apart the moment the tank has something better to do — a tap or a
+  // feed breaks it up.
+  /** Where each fish is to stand, and the tick the roll call ends.
+   * Runtime only, never saved: a restored tank starts free. */
+  private formation: { slots: Map<number, Slot>; until: number } | null =
+    null;
+
+  /** How long the fish hold their places, in ticks (about 8 s). */
+  static readonly FORMATION_TICKS = 240;
+  /** Fish per row: six fits the 320 px tank with a body between. */
+  static readonly FORMATION_COLUMNS = 6;
+  /** Rows are spread down the tank's usable depth. */
+  static readonly FORMATION_TOP = 0.18;
+  static readonly FORMATION_BOTTOM = 0.82;
+
+  /** Line the tank up: every living fish takes a place in the grid.
+   * Rows are filled from the top by where the fish already swim, and
+   * the seats in a row are handed out left to right, both matched on
+   * position rather than on size or name — see the body. Returns how
+   * many were placed, so the caller can say nothing when there is
+   * nobody to line up. */
+  cleanUp(): number {
+    const alive = this.fish.filter((f) => f.state !== "dead");
+    if (!alive.length) return 0;
+    const slots = new Map<number, Slot>();
+    // Rows are decided by where the fish already are — the ones near
+    // the top of the tank stand at the top — and inside a row each
+    // fish takes the place nearest its own x. That pairing keeps every
+    // trip shortest: a greedy "nearest free slot" hands the most
+    // isolated fish the furthest one and it spends the whole roll call
+    // crossing the tank, and a grid with a straggler still crossing
+    // reads as broken rather than as a joke.
+    const cols = Sim.FORMATION_COLUMNS;
+    const rows = [...alive].sort((a, b) => a.y - b.y || a.id - b.id);
+    for (let r = 0; r * cols < rows.length; r++) {
+      const rowFish = rows.slice(r * cols, (r + 1) * cols);
+      const rowSlots: Slot[] = [];
+      for (let i = r * cols; i < Math.min((r + 1) * cols,
+           rows.length); i++)
+        rowSlots.push(gridSlot(i, rows.length, this.tank));
+      rowSlots.sort((a, b) => a.x - b.x);
+      [...rowFish].sort((a, b) => a.x - b.x).forEach((f, i) => {
+        const p = rowSlots[i];
+        if (!p) return;
+        // Clamped into the fish's own swimming room: a big fish keeps a
+        // wider berth of the glass, so an edge slot it could never
+        // reach would have it swimming the width of the tank forever.
+        const { x0, x1, y0, y1 } = this.room(f);
+        slots.set(f.id, { x: Math.min(x1, Math.max(x0, p.x)),
+                          y: Math.min(y1, Math.max(y0, p.y)) });
+      });
+    }
+    this.formation =
+      { slots, until: this.tickCount + Sim.FORMATION_TICKS };
+    // Send everyone to their place at once. A fish parked on a hover —
+    // or one whose wander target is already inside braking distance —
+    // would otherwise keep re-arming the arrival branch and never
+    // reach the decide() that hands it its slot, so it would hold its
+    // old spot for the whole roll call. An idle tank is exactly when
+    // somebody reaches for Clean Up, and an idle tank is full of
+    // hovering fish.
+    for (const f of alive) {
+      f.hover = 0;
+      f.phase = 0;
+      f.latch = -1;
+      this.decide(f);
+    }
+    // The pointer watch stands down: a fish drifting over to look at
+    // the cursor would pull it off its place.
+    this._noticeFish = [];
+    this.notice = null;
+    // Every fish re-decides at its next decision point, so none swims
+    // off with a stale target.
+    return slots.size;
+  }
+
+  /** Break up a formation early; a no-op when there is none. */
+  dissolveFormation(): void { this.formation = null; }
+
+  /** True while the fish are standing in their places. */
+  get forming(): boolean {
+    return this.formation !== null && this.tickCount < this.formation.until;
+  }
+
+  /** The place a fish is to hold, or null outside a formation. Read by
+   * the tests that pin the grid, and by anything that wants to show
+   * where the fish are meant to be. */
+  slotFor(f: Fish): Slot | null {
+    const form = this.formation;
+    if (!form || this.tickCount >= form.until) return null;
+    return form.slots.get(f.id) ?? null;
   }
 
   /** Drop a food pellet at x (kept off the side glass); it sinks to the
    * gravel. Returns the pellet, so callers can mark where it went in —
    * or null when the tank already holds MAX_UNEATEN uneaten pellets. */
   dropFood(x: number): Food | null {
-    if (this.food.filter((f) => !f.eaten).length >= MAX_UNEATEN)
-      return null;
+    if (this.uneatenCount() >= MAX_UNEATEN) return null;
+    this.dissolveFormation(); // dinner beats parade
     const cx = Math.min(Math.max(x, MARGIN), this.tank.width - MARGIN);
     const pellet = { x: cx, y: FOOD_ENTRY_Y, eaten: false, settled: 0,
                      golden: this.rand() < GOLDEN_ODDS };
@@ -635,6 +832,7 @@ export class Sim {
   /** Knock on the glass: startle fish near (x, y), strength fading
    * with distance like the original's 1 − dist/radius falloff. */
   tap(x: number, y: number): void {
+    this.dissolveFormation(); // roll call off, the glass has news
     for (const f of this.fish) {
       if (f.state === "dead") continue; // the dead do not startle
       const dx = f.x - x, dy = f.y - y;
@@ -676,6 +874,10 @@ export class Sim {
 
   tick(): void {
     this.tickCount++;
+    // A roll call that has run its course is forgotten, so a fish
+    // removed later has no stale slot to look up.
+    if (this.formation && this.tickCount >= this.formation.until)
+      this.formation = null;
     const lt = this.light;
     this.darkTicks = lt < SLEEP_LIGHT ? this.darkTicks + 1 : 0;
     this.brightTicks = lt >= WAKE_LIGHT ? this.brightTicks + 1 : 0;
@@ -690,7 +892,7 @@ export class Sim {
     this._noticeFish = this._noticeFish.filter((f) =>
       this.fish.includes(f) && f.state !== "dead" && inRange(f) &&
       f.hideTicks === 0 && (f.state === "drift" || f.state === "turn"));
-    if (n && this._noticeFish.length < NOTICE_CAP) {
+    if (n && !this.forming && this._noticeFish.length < NOTICE_CAP) {
       // Fill the open slots with the nearest drifters not already
       // watching — a small crowd presses the glass, like the original.
       const cand: { f: Fish; d: number }[] = [];
@@ -778,15 +980,22 @@ export class Sim {
     // which would make fish 0 first to bed and first up every night.
     const h = mix32(f.id + 1);
     if (f.state === "sleep") {
-      if (this.brightTicks > LIE_IN_MIN + (h >>> 16) % LIE_IN_SPREAD ||
-          peckish) {
+      // A fish already in bed gets up for the roll call; the place it
+      // has to be is set below, where the formation is consulted.
+      if (this.forming) {
+        this.setState(f, "drift");
+        this.decide(f);
+        this.maybeTurn(f);
+      } else if (this.brightTicks > LIE_IN_MIN + (h >>> 16) % LIE_IN_SPREAD ||
+                 peckish) {
         this.setState(f, "drift");
         this.decide(f);
         this.maybeTurn(f); // like the startle exit: roll, don't pitch over
       }
     } else if (f.state !== "startle" && !peckish &&
                this.darkTicks > BEDTIME_MIN + h % BEDTIME_SPREAD) {
-      this.setState(f, "sleep");
+      // A fish stands the roll call even at night.
+      if (!this.forming) this.setState(f, "sleep");
     }
 
     if (f.state === "sleep") {
@@ -903,20 +1112,29 @@ export class Sim {
       // A fish watching the pointer from inside the standoff holds
       // there instead of re-deciding.
       if (!food && !turning && nd > standoff &&
-          (f.phase >= MOVE_TICKS || dist < 4)) {
+          (f.phase >= MOVE_TICKS || dist < 4 ||
+           (this.forming && f.phase >= FORMATION_DECIDE_TICKS))) {
         if (dist >= BRAKE_DIST && f.strokes < MAX_STROKES) {
           // Out of budget short of the destination: another stroke at
           // the same one, carrying the speed it has.
           f.strokes++;
           this.resumeStroke(f);
         } else if (dist < BRAKE_DIST && f.hideTicks === 0 && rank < 0 &&
-                   this.rand() < HOVER_ODDS) {
+                   (this.forming || this.rand() < HOVER_ODDS)) {
           // Arrived (not pressed to the glass): sometimes hang here.
-          f.hover = HOVER_TICKS_MIN +
-            Math.floor(this.rand() * HOVER_TICKS_RANGE);
+          // A fish at its place in a Clean Up always does, and holds
+          // on longer, so the grid reads as a grid.
+          f.hover = this.forming ? FORMATION_HOLD_TICKS
+            : HOVER_TICKS_MIN +
+              Math.floor(this.rand() * HOVER_TICKS_RANGE);
           f.tx = f.x; f.ty = f.y;
           f.phase = 0;
           f.latch = -1;
+          // The trip is done: refund the stroke budget, as the wander
+          // path's decide() does. A fish that crossed the tank to a
+          // Clean Up place would otherwise arrive with its budget
+          // spent and hold on a lurch for the rest of the call.
+          f.strokes = 0;
           this.noteRest(f.x, f.y);
           dist = 0;
         } else {
@@ -962,6 +1180,14 @@ export class Sim {
       // straight at its pellet, past vertical if need be.
       const axis = f.facing > 0 ? 0 : Math.PI;
       const cur = clampPitch(wrapAngle(f.heading - axis));
+      // A fish hurrying to its place in a Clean Up pushes harder than
+      // it cruises: at the sim's own pace a fish at the far side of
+      // the tank is still crossing after the roll call has ended, and
+      // a grid with one straggler reads as a bug, not a joke. The
+      // ceiling applies only while it is on its way; the brake and the
+      // arrival are untouched, so it settles exactly as it would
+      // otherwise.
+      const ceiling = this.forming ? f.cruise * FORMATION_SPEED : f.cruise;
       const aimX = food ? f.tx - f.x : Math.abs(f.tx - f.x) * f.facing;
       const want = turning ? cur : clampPitch(
         wrapAngle(Math.atan2(f.ty - f.y, aimX) - axis),
@@ -983,8 +1209,8 @@ export class Sim {
         // catches up, so fish never stop dead between strokes.
         if (f.latch < 0) {
           if (dist < BRAKE_DIST) { f.latch = f.phase; f.peak = f.speed; }
-          else f.speed = Math.max(f.speed * GLIDE, Math.min(f.cruise,
-                                  f.cruise * (f.phase + 1) ** 2 / RAMP_DIV));
+          else f.speed = Math.max(f.speed * GLIDE, Math.min(ceiling,
+                                  ceiling * (f.phase + 1) ** 2 / RAMP_DIV));
         } else {
           const g = f.phase - f.latch;
           // A seeking fish keeps a brake floor near pellet-fall speed so
@@ -994,9 +1220,9 @@ export class Sim {
           // restores it), so a very sick fish can indeed lose a pellet
           // to the gravel. That's the point of the penalty.
           const floor = food
-            ? Math.min(f.cruise,
-                       Math.max(f.cruise * 0.15, FOOD_SINK * 1.5))
-            : f.cruise * 0.15;
+            ? Math.min(ceiling,
+                       Math.max(ceiling * 0.15, FOOD_SINK * 1.5))
+            : ceiling * 0.15;
           f.speed = Math.max(floor, f.peak - g * g * f.peak / BRAKE_DIV);
         }
 
@@ -1027,16 +1253,12 @@ export class Sim {
             // A meal puts a little size on — asymptotic toward adult.
             f.scale += (MAX_SCALE - f.scale) * GROWTH;
             // The stomach grows with the fish, or an adult keeps a
-            // juvenile appetite; preserve fill across the rescale.
-            const life = this.lifeOf(f);
-            const stomach = stomachSize(this.weightOf(f));
-            if (stomach !== life.stomach && life.stomach > 0) {
-              life.ate = Math.round(life.ate / life.stomach * stomach);
-              life.stomach = stomach;
-            }
+            // juvenile appetite; the share it holds survives the rescale.
+            rescaleStomach(this.lifeOf(f), this.weightOf(f));
             this.setState(f, "drift");
             this.decide(f);
             if (food.golden) {
+              this.events.push({ type: "golden", fish: f });
               // A golden meal earns a victory roll whether or not the
               // next destination lies behind.
               this.startTurn(f, this.rand() < 0.5 ? 1 : -1);
@@ -1051,6 +1273,13 @@ export class Sim {
     }
 
     if (f.state !== "sleep") this.stepDepth(f);
+
+    const jolt = this.sneezes.get(f);
+    if (jolt !== undefined) {
+      f.x -= f.facing * SNEEZE_JOLT[jolt]!;
+      if (jolt + 1 < SNEEZE_JOLT.length) this.sneezes.set(f, jolt + 1);
+      else this.sneezes.delete(f);
+    }
 
     const { x0, x1, y0, y1 } = this.room(f);
     let hit = false;
@@ -1104,12 +1333,24 @@ export class Sim {
       this.bubbles.push({
         x: f.x + f.facing * Math.max(6, this.halfW(f) - 3), y: f.y - 3 });
     }
+    // A sick fish sneezes now and then: a puff of a bubble and a little
+    // jolt backwards, so the sickness shows in more than its pallor.
+    // The roll comes only for a sick fish, so a healthy tank draws the
+    // same numbers as before.
+    if (f.life?.sick && !this.sneezes.has(f) &&
+        this.rand() < SNEEZE_CHANCE) {
+      this.bubbles.push({
+        x: f.x + f.facing * Math.max(6, this.halfW(f) - 1), y: f.y - 1 });
+      this.sneezes.set(f, 0);
+    }
   }
 
   /** A dead fish rolls belly-up and rises to the surface, floats there
    * a while, then sinks and comes to rest on the gravel, where it stays
    * until it is taken out (Do_Dieing_Event). */
   private tickCorpse(f: Fish): void {
+    // A fish that died mid-sneeze doesn't jolt on as a corpse.
+    this.sneezes.delete(f);
     // A corpse isn't bound by the fish's living depth band: it floats
     // just under the surface and finally rests on the gravel
     // (Do_Dieing_Event), so use tank-wide bounds with a body margin.
@@ -1147,6 +1388,22 @@ export class Sim {
    * the original's per-tick swim-bound jitter.
    */
   private decide(f: Fish): void {
+    // A Clean Up overrides every other destination: the fish's place in
+    // the grid is where it is going, until the roll call ends.
+    const slot = this.slotFor(f);
+    if (slot) {
+      const { x0, x1, y0, y1 } = this.room(f);
+      f.tx = Math.min(x1, Math.max(x0, slot.x));
+      f.ty = Math.min(y1, Math.max(y0, slot.y));
+      f.phase = 0;
+      f.latch = -1;
+      // A new trip refunds the budget, like a wandering decision. The
+      // formation's shorter cadence can spend it before a slow fish
+      // arrives; retaining it would keep resetting the ramp instead
+      // of giving the fish another speed-preserving stroke.
+      f.strokes = 0;
+      return;
+    }
     const { x0, x1, y0, y1 } = this.room(f);
     if (f.hideTicks > 0 && f.hideIn) {
       // Hiding: potter about behind the cover, below its top.
@@ -1372,6 +1629,10 @@ export class Sim {
         z: parent.z,
         ...(parent.sheetIdx !== undefined ? { sheetIdx: parent.sheetIdx } : {}),
         ...(parent.pack !== undefined ? { pack: parent.pack } : {}),
+        // Without the entry a restored fry rebinds through the pack's
+        // last-registered slot and adopts that species' art (main.ts
+        // remapSheetIdx backfills it, so the mistake is permanent).
+        ...(parent.entry !== undefined ? { entry: parent.entry } : {}),
       });
       // Born today: a fry starts its life at age 0, not as the young
       // adult a newly bought fish arrives as.

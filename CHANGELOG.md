@@ -2,6 +2,91 @@
 
 ## Unreleased
 
+- A fish from an add-on that holds several packs now keeps its own
+  pack across a restart. The save did not record which of the add-on's
+  packs a fish came from, so on the next launch it had to guess from
+  the fish's id. The guess is right until you remove an earlier fish
+  from Tank Overview, and then the survivors change species.
+- A fish that dies stays in the tank after you quit, as in the
+  original: its body rests on the gravel and keeps fouling the water
+  until you remove it in Tank Overview. Quitting used to make bodies
+  disappear.
+- **Tank > Clean Up** lines the fish up in a neat grid for a few
+  seconds, the way the Finder's Clean Up snapped icons into one. They
+  swim to their places, hold still, and drift off again when the roll
+  call is over; a knock on the glass or a feed brings it forward
+  early. Slow fish get fresh strokes on their way instead of spending
+  the rest of the call short of their places.
+- A sick fish sneezes now and then: it puffs a small bubble and jerks
+  back a little, so you can spot an ailing fish without opening Tank
+  Stats.
+- Preferences' Sound pane gains **Fish music**, off by default: each
+  fish plays one soft plucked note as it turns, from a pentatonic
+  scale picked by how deep it swims, panned to where it sits across
+  the glass, an octave lower at night, with a higher grace note when
+  it eats. A gate lets one note at a time through and caps how many
+  land in any two seconds, so a full tank stays calm.
+- Muting or hiding the tank ends finite sound tails before the audio
+  device sleeps. Those tails and deferred gesture cues no longer
+  replay on the next wake; the ambient loop and tube tone continue
+  normally when sound returns.
+- In a browser that holds sound back until you click, the tank shows
+  a Turn On Sound button, and a click anywhere on the page, the case
+  included, starts the sound. The old "Click for sound" note showed
+  even with no sounds to play and in the apps, and only a click in
+  the water made it go away.
+- Preferences ▸ Monitor grows a **Flyback whine** switch: the CRT's
+  transformer sings at 15.7 kHz while the monitor simulation runs,
+  the way real tubes did. It is off by default, faint enough that
+  younger ears find it first, and Mute and the volume slider reach it
+  like every other sound.
+- If the browser or the system closes Finsical's local storage under
+  it (clearing site data, or WebKit's storage process restarting), the
+  tank opens it again. It used to treat every cached add-on as missing
+  and download it again, call dropped files "storage is full", and
+  stop saving sounds until you quit.
+- When an add-on's download is cut off part way, the Import window
+  says to check the connection and offers Try Again. It used to show
+  the browser's own wording, such as "network error", beside a
+  disabled Try Again, as if the add-on itself could not be read.
+- If part of the Internet Archive doesn't answer while Finsical stocks
+  a new tank, it says which starter items it couldn't reach and offers
+  them again, instead of finishing without the plant and the
+  background and never offering them again.
+- Once a plant or accessory is in the tank 16 times, Add Again and
+  dropping its file again say so and leave the tank alone. They used
+  to play the scenery sound and report the add-on as added while
+  nothing new appeared.
+- Tank Stats tidies up: Copy Summary keeps its title and says
+  "Summary copied." beside it, a second click no longer cuts that
+  message short, the Heater and water steppers' minus signs and the
+  Time pop-up's "2x faster" are drawn in the window's own font, the
+  Keeping labels share one font, and with no fish the hunger row
+  shows just a dash, lined up with the water quality reading.
+- With Fish Names on, name tags no longer pile on top of each other
+  when fish crowd together at the surface or round the food. A tag
+  moves to the other side of its fish to make room, or steps aside
+  for a moment until there is room again.
+- The Get Info card is drawn like a Mac OS 8 floating window: a
+  platinum face, pinstripes that part around the fish's name, and a
+  solid shadow. Health and hunger each get their own line; together
+  they used to wrap and leave the hunger figure alone on a line. The
+  card sizes itself to its readings, and a long species name wraps
+  instead of pushing the card past the glass. The card's chrome no
+  longer selects its text or shows the I-beam and hand pointers;
+  renaming a fish still gives you a normal text field.
+- In Preferences, the Lighting pane's hour pop-ups show the whole
+  time, AM or PM included, instead of "8:00 …", and its group lines
+  up with the other panes'. The Picture pane's Color group no longer
+  runs into the caption's separator line, a long caption ends in an
+  ellipsis rather than a clipped glyph, and the panes fill the window
+  instead of leaving a gray band above the captions.
+- Dialogs line up the Mac OS 8 way: a button beside the default
+  button sits level with it in About and Import Add-ons, the
+  Shortcuts window's OK sits at the bottom right, and a focused text
+  field gets Mac OS 8.5's lavender ring instead of a black double
+  ring that looked like a second default button. Tank Overview dims
+  Empty Tank… when there is nothing to empty.
 - After a stall (a tab switch, a system hiccup) the tank resumes with
   at most 100 ms of catch-up instead of 200 ms; frames slower than
   that now run the tank a little slow rather than fast-forwarding.
@@ -42,53 +127,6 @@
   inside of the glass, and the marks a corner collects build into a
   greasy bloom. The glass remembers while the tank is open and starts
   clean on the next visit.
-- Tank Stats tidies up: Copy Summary keeps its title and says
-  "Summary copied." beside it, a second click no longer cuts that
-  message short, the Heater and water steppers' minus signs and the
-  Time pop-up's "2x faster" are drawn in the window's own font, the
-  Keeping labels share one font, and with no fish the hunger row
-  shows just a dash, lined up with the water quality reading.
-- With Fish Names on, name tags no longer pile on top of each other
-  when fish crowd together at the surface or round the food. A tag
-  moves to the other side of its fish to make room, or steps aside
-  for a moment until there is room again.
-- The Get Info card is drawn like a Mac OS 8 floating window: a
-  platinum face, pinstripes that part around the fish's name, and a
-  solid shadow. Health and hunger each get their own line; together
-  they used to wrap and leave the hunger figure alone on a line. The
-  card sizes itself to its readings, and a long species name wraps
-  instead of pushing the card past the glass. The card's chrome no
-  longer selects its text or shows the I-beam and hand pointers;
-  renaming a fish still gives you a normal text field.
-- In Preferences, the Lighting pane's hour pop-ups show the whole
-  time, AM or PM included, instead of "8:00 …", and its group lines
-  up with the other panes'. The Picture pane's Color group no longer
-  runs into the caption's separator line, a long caption ends in an
-  ellipsis rather than a clipped glyph, and the panes fill the window
-  instead of leaving a gray band above the captions.
-- Dialogs line up the Mac OS 8 way: a button beside the default
-  button sits level with it in About and Import Add-ons, the
-  Shortcuts window's OK sits at the bottom right, and a focused text
-  field gets Mac OS 8.5's lavender ring instead of a black double
-  ring that looked like a second default button. Tank Overview dims
-  Empty Tank… when there is nothing to empty.
-- If the browser or the system closes Finsical's local storage under
-  it (clearing site data, or WebKit's storage process restarting), the
-  tank opens it again. It used to treat every cached add-on as missing
-  and download it again, call dropped files "storage is full", and
-  stop saving sounds until you quit.
-- When an add-on's download is cut off part way, the Import window
-  says to check the connection and offers Try Again. It used to show
-  the browser's own wording, such as "network error", beside a
-  disabled Try Again, as if the add-on itself could not be read.
-- If part of the Internet Archive doesn't answer while Finsical stocks
-  a new tank, it says which starter items it couldn't reach and offers
-  them again, instead of finishing without the plant and the
-  background and never offering them again.
-- Once a plant or accessory is in the tank 16 times, Add Again and
-  dropping its file again say so and leave the tank alone. They used
-  to play the scenery sound and report the add-on as added while
-  nothing new appeared.
 - On Linux, quitting waits until the tank has saved. It could quit
   before the save ran and lose up to a minute of the tank's life, the
   fish's positions and hunger included.
@@ -110,6 +148,11 @@
   of fouled water, the night torch, and the snail's visits. Each is
   on by default; clearing them brings back the original's plainer
   rendering.
+- Plants now work the way the original's manual describes: every
+  plant in the tank adds oxygen and takes up CO2 and nitrate while the
+  light is on, and breathes the other way after dark. Planted tanks
+  used to run water chemistry identical to bare ones, although the
+  tank already showed plants leaking oxygen bubbles.
 - On Linux, when the window manager resizes the tank (for example with
   KWin's Alt+right-drag), the tank snaps back to its computer case's
   shape once you let go, instead of leaving empty space beside it.
@@ -158,6 +201,11 @@
 - The alert that says the tank is full of uneaten food is now a hint
   you turn on with Tank > Turn Hints On. It no longer interrupts
   feeding by default; a refused feed is silent unless hints are on.
+- Feeding at the tank's food cap is consistent now: Tank > Feed Fish
+  blips the surface and stops, instead of playing the feeding sound
+  over pellets that never appear. With hints on, the tank says the
+  fish still have uneaten food rather than claiming more would foul
+  the water, which a few pellets cannot do.
 - Import Add-ons reopens on the section you last chose. The streaming
   listing used to overwrite that choice with whichever section arrived
   first, so the window landed on Fish and the preference was lost.
@@ -231,6 +279,9 @@
 - A fish add-on that holds several fish now names each fish after its
   own pack. Adding angels.zip used to give two fish both called
   "angels"; they are now "angel" and "blackangel".
+- A fry born in a tank keeps its parents' own pack, so after a relaunch
+  it swims as its own species. It used to come back as the last fish in
+  a multi-fish add-on.
 - A pointer left resting over the tank loses the fish's interest after
   about 20 seconds, so the fish gathered to look at it swim off again
   instead of waiting there for hours. Moving the pointer brings them

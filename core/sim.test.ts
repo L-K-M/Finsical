@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BAND_HALF, BEDTIME_MIN, BEDTIME_SPREAD, BOTTOM_PAD, DAY_TICKS,
+import { gridSlot, BAND_HALF, BEDTIME_MIN, BEDTIME_SPREAD, BOTTOM_PAD, DAY_TICKS,
          FOOD_ROT_TICKS, LIE_IN_MIN, LIE_IN_SPREAD, MARGIN, MAX_UNEATEN,
          NOTICE_RADIUS, PELLET_UNITS, pushRestPrint, REST_PRINTS_MAX, Sim,
          SLEEP_LIGHT, SURFACE, TURN_TICKS, WAKE_LIGHT } from "./sim.js";
@@ -45,6 +45,30 @@ describe("Sim", () => {
     }
     expect(a.fish[0]).toEqual(b.fish[0]);
     expect(a.food).toEqual(b.food);
+  });
+
+  it("restores the aquarium on its own seeded stream", () => {
+    // A cold changeWater rolls sickness from the aquarium's stream, so
+    // two sims restored from one save under one seed must agree — the
+    // ?seed= replay pin. main.ts used to hand fromJSON a Math.random
+    // closure, and identical seeded launches diverged.
+    const save = JSON.parse(
+      JSON.stringify(new Sim({ width: 320, height: 200 }, 7)
+        .aquarium.toJSON()));
+    const shockOutcomes = () => {
+      const sim = new Sim({ width: 320, height: 200 }, 7);
+      sim.restoreAquarium(save);
+      for (let i = 0; i < 20; i++) sim.addFish({ x: 40 + i * 12, y: 100 });
+      sim.aquarium.water.temp = 34;
+      sim.aquarium.changeWater(0.9, 16, sim.residents());
+      return sim.fish.map((f) => [
+        f.life!.sick === null ? 0 : 1,
+        Math.round(f.life!.health),
+      ]);
+    };
+    // Several independent pairs: any divergence anywhere breaks replay.
+    for (let trial = 0; trial < 3; trial++)
+      expect(shockOutcomes()).toEqual(shockOutcomes());
   });
 
   it("defaults each missing or non-finite target field on its own", () => {
@@ -192,6 +216,8 @@ describe("Sim", () => {
     }
     expect(exited).toBeGreaterThanOrEqual(0); // the roll ran its course
     expect(f.facing).toBe((-from) as 1 | -1); // and flipped the profile
+    expect(sim.events.filter((e) => e.type === "golden"))
+      .toEqual([{ type: "golden", fish: f }]);
     // The fresh destination sits ahead of the new facing, not a
     // target the roll left behind it.
     expect((f.x - f.tx) * f.facing).toBeLessThanOrEqual(12);
@@ -272,6 +298,50 @@ describe("Sim", () => {
     for (let i = 0; i < 8; i++) sim.dropFood(20 + i * 30);
     for (let i = 0; i < FOOD_ROT_TICKS + 600; i++) sim.tick();
     expect(sim.waterQuality).toBeGreaterThanOrEqual(0);
+  });
+
+  // Sim_Plant: the view hands over the plant decor's area and the
+  // aquarium turns it into oxygen, nitrate uptake and CO2 scrubbing.
+  it("plants oxygenate the water in light and breathe it back at night",
+      () => {
+        const bare = new Sim({ width: 320, height: 200 }, 4);
+        const green = new Sim({ width: 320, height: 200 }, 4);
+        green.plantArea = 24_000;         // 24 plants' worth of 1000 px²
+        green.setLight(1);
+        bare.setLight(1);
+        green.aquarium.water.nitrate = bare.aquarium.water.nitrate = 40;
+        for (let d = 0; d < 3; d++) {
+          green.advanceLife(24 * 3600);
+          bare.advanceLife(24 * 3600);
+        }
+        expect(green.aquarium.water.nitrate)
+          .toBeLessThan(bare.aquarium.water.nitrate);
+        // In the dark the same foliage respires: oxygen falls, CO2 rises.
+        // Compare swings against the plantless tank, dark on the same
+        // clock, so the fish's own metabolism cancels out and only the
+        // plants' night-time respiration can widen the gap.
+        const lit = { o2: green.aquarium.water.o2, co2: green.aquarium.water.co2 };
+        const bareLit = { o2: bare.aquarium.water.o2, co2: bare.aquarium.water.co2 };
+        green.setLight(0);
+        bare.setLight(0);
+        for (let d = 0; d < 3; d++) {
+          green.advanceLife(24 * 3600);
+          bare.advanceLife(24 * 3600);
+        }
+        expect(lit.o2 - green.aquarium.water.o2)
+          .toBeGreaterThan(bareLit.o2 - bare.aquarium.water.o2);
+        expect(green.aquarium.water.co2 - lit.co2)
+          .toBeGreaterThan(bare.aquarium.water.co2 - bareLit.co2);
+      });
+
+  it("a plantless tank does no photosynthesis at all", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 4);
+    sim.aquarium.water.nitrate = 40;
+    for (let d = 0; d < 2; d++) sim.advanceLife(24 * 3600);
+    expect(sim.aquarium.plantSize).toBe(0);
+    // Nothing took the nitrate up (the filter may add a little back, so
+    // this only pins that the plant term stayed out of the water).
+    expect(sim.aquarium.water.nitrate).toBeGreaterThan(39);
   });
 
   it("refuses pellets past the uneaten cap, and eating frees a slot",
@@ -538,6 +608,67 @@ describe("Sim", () => {
     let low = 0;
     for (let i = 0; i < 3000; i++) { sim.tick(); if (i > 1500 && f.y > 140) low++; }
     expect(low).toBeGreaterThan(1200);
+  });
+
+  it("a sick fish sneezes now and then, a healthy one never", () => {
+    const run = (sick: boolean) => {
+      const sim = new Sim({ width: 300, height: 200 }, 4);
+      const f = sim.addFish({ x: 150, y: 100, hunger: 0 });
+      sim.advanceLife(1);
+      if (sick) f.life!.sick = { disease: 0, amount: 20 };
+      let sneezes = 0, puffs = 0, was = false;
+      for (let i = 0; i < 6000; i++) {
+        const before = sim.bubbles.length;
+        sim.tick();
+        const now = sim.sneezing(f);
+        if (now && !was) {
+          sneezes++;
+          // The puff leaves from the mouth, in front of the body; look
+          // at every bubble this tick made, not just the last.
+          if (sim.bubbles.slice(before).some((b) =>
+                (b.x - f.x) * f.facing > 0)) puffs++;
+        }
+        was = now;
+      }
+      return { sneezes, puffs };
+    };
+    const sick = run(true);
+    // ~10 expected in 200 s at one every ~20 s.
+    expect(sick.sneezes).toBeGreaterThan(3);
+    expect(sick.puffs).toBe(sick.sneezes);
+    expect(run(false).sneezes).toBe(0);
+  });
+
+  it("a sneeze jolts the fish backwards", () => {
+    const sim = new Sim({ width: 300, height: 200 }, 4);
+    const f = sim.addFish({ x: 150, y: 100, hunger: 0 });
+    sim.advanceLife(1);
+    f.life!.sick = { disease: 0, amount: 20 };
+    // At night a fish beds down on the gravel and holds still, so the
+    // only sideways movement left is the jolt.
+    sim.setLight(0);
+    let i = 0;
+    for (; i < 20000 && !(f.state === "sleep" && sim.sneezing(f)); i++)
+      sim.tick();
+    expect(i).toBeLessThan(20000); // found a sleeping fish mid-sneeze
+    expect(sim.sneezing(f)).toBe(true);
+    const x = f.x;
+    while (sim.sneezing(f)) sim.tick();
+    expect((x - f.x) * f.facing).toBeCloseTo(3, 5);
+  });
+
+  it("a fish that dies mid-sneeze stops jolting", () => {
+    const sim = new Sim({ width: 300, height: 200 }, 4);
+    const f = sim.addFish({ x: 150, y: 100, hunger: 0 });
+    sim.advanceLife(1);
+    f.life!.sick = { disease: 0, amount: 20 };
+    for (let i = 0; i < 20000 && !sim.sneezing(f); i++) sim.tick();
+    expect(sim.sneezing(f)).toBe(true);
+    f.life!.dead = { cause: 12, at: 0 };
+    sim.advanceLife(1);
+    expect(f.state).toBe("dead");
+    sim.tick();
+    expect(sim.sneezing(f)).toBe(false);
   });
 
   it("a recovered fish that relapses warns again", () => {
@@ -1291,6 +1422,41 @@ describe("deaths out of sight", () => {
   });
 });
 
+describe("a body restored from a save", () => {
+  /** A dead fish's save, as the tank page restores it. */
+  function restoredBody(sim: Sim): ReturnType<Sim["addFish"]> {
+    const donor = new Sim({ width: 320, height: 200 }, 3);
+    const d = donor.addFish({ x: 160, y: 60 });
+    donor.advanceLife(1);
+    d.life!.ate = 0;
+    d.life!.health = 1;
+    donor.advanceLife(40 * 24 * 3600);
+    expect(d.life!.dead).toBeTruthy();
+    return sim.addFish({ x: 160, y: 60, life: structuredClone(d.life!),
+                         corpse: "sink", state: "dead" });
+  }
+
+  it("stays dead and silent: no second death event", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 4);
+    const f = restoredBody(sim)!;
+    sim.advanceLife(3600);
+    for (let i = 0; i < 600; i++) sim.tick();
+    expect(f.state).toBe("dead");
+    expect(sim.events.filter((e) => e.type === "dead")).toHaveLength(0);
+  });
+
+  it("settles on the gravel and keeps fouling the water", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 5);
+    const f = restoredBody(sim)!;
+    for (let i = 0; i < 600; i++) sim.tick();
+    expect(f.corpse).toBe("rest");
+    expect(f.y).toBeGreaterThan(150);
+    const before = sim.aquarium.water.ammonia;
+    sim.advanceLife(6 * 3600);
+    expect(sim.aquarium.water.ammonia).toBeGreaterThan(before);
+  });
+});
+
 describe("lifecycle", () => {
   it("the dead do not startle", () => {
     const sim = new Sim({ width: 320, height: 200 }, 7);
@@ -1300,10 +1466,11 @@ describe("lifecycle", () => {
   });
 
   /** Two guppies of breeding age and full health. */
-  function breedingPair(sim: Sim): void {
+  function breedingPair(sim: Sim, entry?: string): void {
     for (const x of [100, 120]) {
       const f = sim.addFish({ x, y: 100, species: "guppy", hunger: 0.1,
-                              scale: 1, pack: "p" });
+                              scale: 1, pack: "p",
+                              ...(entry !== undefined ? { entry } : {}) });
       sim.residents(); // creates the fish's life
       f.life!.age = DEFAULT_CARE.breedAge * 1440;
       f.life!.health = 100;
@@ -1329,6 +1496,24 @@ describe("lifecycle", () => {
     expect(baby.scale).toBeLessThan(1); // visibly a juvenile
     expect(baby.pack).toBe("p");
     expect(baby.life!.age).toBe(0);
+  });
+
+  it("a fry keeps its parent's pack entry", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 42);
+    breedingPair(sim, "guppy-b.fsh");
+    let fry = 0;
+    for (let days = 0; days < 200 && !fry; days++) {
+      for (const f of sim.fish) f.life!.ate = f.life!.stomach;
+      sim.advanceLife(24 * 3600);
+      for (const f of sim.fish.slice(0, 2)) f.life!.health = 100;
+      fry = sim.events.filter((e) => e.type === "birth").length;
+      sim.events.length = 0;
+    }
+    expect(fry).toBe(1);
+    // The fry renders from its own blob after a relaunch; without the
+    // parent's entry it would rebind to the add-on's last entry's art.
+    expect(sim.fish.length).toBe(3);
+    expect(sim.fish[2]!.entry).toBe("guppy-b.fsh");
   });
 
   it("never breeds on the swim clock, however long the tank is watched",
@@ -1549,6 +1734,221 @@ describe("depth among the decor", () => {
     sim.tap(95, 120);
     expect(f.state).toBe("startle");
     expect(f.hideTicks).toBe(0);
+  });
+});
+
+// ---- Clean Up (Tank > Clean Up) -----------------------------------------
+// The Finder's joke with living icons: the fish line up in a grid.
+describe("Clean Up", () => {
+  const TANK = { width: 320, height: 200 };
+  /** n fish spread over the tank, then lined up. */
+  function lined(n: number, seed = 7): Sim {
+    const sim = new Sim(TANK, seed);
+    for (let i = 0; i < n; i++)
+      sim.addFish({ x: 10 + (i * 37) % 300, y: 40 + (i * 53) % 140 });
+    sim.cleanUp();
+    return sim;
+  }
+  /** Every fish's distance from its own place, worst first. */
+  const gaps = (sim: Sim): number[] =>
+    sim.fish.map((f) => {
+      const p = sim.slotFor(f)!;
+      return Math.hypot(f.x - p.x, f.y - p.y);
+    });
+
+  it("lays out a grid with a place for every living fish", () => {
+    for (const n of [1, 5, 6, 7, 24]) {
+      const sim = lined(n);
+      const slots = sim.fish.map((f) => sim.slotFor(f)!);
+      expect(slots).toHaveLength(n);
+      // No two fish share a place, however many there are.
+      const keys = new Set(slots.map((p) => `${p.x},${p.y}`));
+      expect(keys.size).toBe(n);
+    }
+  });
+
+  it("has every fish at its place by the end of the roll call", () => {
+    for (const n of [3, 6, 14, 24]) {
+      const sim = lined(n);
+      for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) sim.tick();
+      const g = gaps(sim);
+      // A fish body or two is "in place"; the worst is a straggler
+      // still crossing, which must not happen in a grid that reads.
+      expect(Math.max(...g)).toBeLessThanOrEqual(TANK.width / 3);
+      // Most fish are genuinely standing in their places.
+      const sorted = [...g].sort((a, b) => a - b);
+      expect(sorted[Math.floor(n / 2)]!).toBeLessThan(20);
+    }
+  });
+
+  it("lifts a hovering fish out of its hover to line it up", () => {
+    // A fish parked on a hover re-arms the arrival branch every
+    // decision and would never reach the decide() that hands it its
+    // place, so it would hold its old spot for the whole call. An
+    // idle tank — exactly when somebody reaches for Clean Up — is
+    // mostly hovering fish. Before the fix this run ends at 104 px.
+    const sim = new Sim(TANK, 7);
+    for (let i = 0; i < 6; i++)
+      sim.addFish({ x: 10 + (i * 37) % 300, y: 40 + (i * 53) % 140 });
+    for (const f of sim.fish) {
+      f.hover = 4_000;
+      f.tx = f.x;
+      f.ty = f.y;
+      f.phase = 0;
+      f.latch = -1;
+    }
+    sim.cleanUp();
+    for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) sim.tick();
+    expect(Math.max(...gaps(sim))).toBeLessThanOrEqual(24);
+  });
+
+  it("refunds the stroke budget on arrival", () => {
+    // A fish that crossed the tank on the formation's extra speed must
+    // not arrive with its budget spent, or it holds on a lurch for the
+    // rest of the call.
+    const sim = new Sim(TANK, 7);
+    sim.addFish({ x: 20, y: 100 });
+    sim.addFish({ x: 300, y: 100 });
+    sim.cleanUp();
+    for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) sim.tick();
+    for (const f of sim.fish) {
+      const p = sim.slotFor(f)!;
+      expect(Math.abs(f.x - p.x)).toBeLessThanOrEqual(24);
+      expect(f.strokes).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it.each([0, 8])("settles a slow far fish with %i strokes already spent", (strokes) => {
+    const sim = new Sim(TANK, 7);
+    const f = sim.addFish({ x: 300, y: 100, facing: -1, hunger: 0,
+      heading: Math.PI, cruise: 0.4, strokes });
+    sim.cleanUp();
+    const slot = sim.slotFor(f)!;
+    for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) sim.tick();
+    expect(Math.hypot(f.x - slot.x, f.y - slot.y)).toBeLessThan(24);
+    expect(f.hover).toBeGreaterThan(0);
+  });
+
+  it("keeps the fish inside the glass while they line up", () => {
+    const sim = lined(24);
+    for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) {
+      sim.tick();
+      for (const f of sim.fish) {
+        expect(Number.isFinite(f.x)).toBe(true);
+        expect(Number.isFinite(f.y)).toBe(true);
+        expect(f.x).toBeGreaterThanOrEqual(0);
+        expect(f.x).toBeLessThanOrEqual(TANK.width);
+      }
+    }
+  });
+
+  it("stands every fish down, sleepers included", () => {
+    const sim = lined(6);
+    sim.setLight(0.2);              // dark: they would otherwise bed down
+    for (let t = 0; t < 1500; t++) sim.tick();
+    expect(sim.fish.every((f) => f.state === "sleep")).toBe(true);
+    sim.cleanUp();
+    for (let t = 0; t < 5; t++) sim.tick();
+    expect(sim.fish.every((f) => f.state !== "sleep")).toBe(true);
+  });
+
+  it("breaks up at a knock on the glass", () => {
+    const sim = lined(6);
+    sim.tap(160, 100);
+    expect(sim.forming).toBe(false);
+    expect(sim.slotFor(sim.fish[0]!)).toBeNull();
+  });
+
+  it("breaks up for dinner", () => {
+    const sim = lined(6);
+    expect(sim.dropFood(160)).not.toBeNull();
+    expect(sim.forming).toBe(false);
+  });
+
+  it("ends on its own and forgets its places", () => {
+    const sim = lined(6);
+    for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) sim.tick();
+    expect(sim.forming).toBe(true);
+    sim.tick();
+    expect(sim.forming).toBe(false);
+    expect(sim.slotFor(sim.fish[0]!)).toBeNull();
+    // And the fish are wandering again, not pinned to a ghost grid.
+    sim.fish[0]!.x = 30;
+    sim.fish[0]!.y = 150;
+    for (let t = 0; t < 60; t++) sim.tick();
+    expect(sim.fish[0]!.tx).not.toBe(30);
+  });
+
+  it("lines up nobody in an empty tank, and no corpse", () => {
+    const sim = new Sim(TANK, 3);
+    expect(sim.cleanUp()).toBe(0);
+    sim.addFish({ x: 40, y: 60 });
+    sim.fish[0]!.state = "dead";
+    expect(sim.cleanUp()).toBe(0);
+  });
+
+  it("drops the place of a fish that leaves", () => {
+    const sim = lined(6);
+    const id = sim.fish[2]!.id;
+    expect(sim.removeFish(id)).toBe(true);
+    sim.tick();
+    expect(sim.slotFor(sim.fish[0]!)).not.toBeNull();
+  });
+
+  it("is deterministic for a seed", () => {
+    const run = (): string => {
+      const sim = lined(6);
+      for (let t = 0; t < 120; t++) sim.tick();
+      return sim.fish.map((f) => `${f.x.toFixed(2)},${f.y.toFixed(2)}`).join(" ");
+    };
+    expect(run()).toBe(run());
+  });
+});
+
+describe("gridSlot", () => {
+  const TANK = { width: 320, height: 200 };
+
+  it("puts no two places on top of each other", () => {
+    const keys = new Set<string>();
+    for (const n of [1, 2, 6, 7, 13, 24]) {
+      keys.clear();
+      for (let i = 0; i < n; i++) {
+        const p = gridSlot(i, n, TANK);
+        expect(p.x).toBeGreaterThan(0);
+        expect(p.x).toBeLessThan(TANK.width);
+        expect(p.y).toBeGreaterThan(SURFACE);
+        expect(p.y).toBeLessThan(TANK.height - BOTTOM_PAD);
+        keys.add(`${p.x.toFixed(3)},${p.y.toFixed(3)}`);
+      }
+      expect(keys.size).toBe(n);
+    }
+  });
+
+  it("centres a part-full last row", () => {
+    // Seven fish: a full row of six and one under it, in the middle.
+    const lone = gridSlot(6, 7, TANK);
+    expect(lone.x).toBeCloseTo(TANK.width / 2, 6);
+    // Six fish fill one row end to end.
+    expect(gridSlot(0, 6, TANK).x).toBeLessThan(gridSlot(5, 6, TANK).x);
+  });
+
+  it("survives a count or an index that is not a number", () => {
+    expect(Number.isFinite(gridSlot(0, NaN, TANK).x)).toBe(true);
+    expect(Number.isFinite(gridSlot(0, 0, TANK).x)).toBe(true);
+    // One past the roster would otherwise find an empty row and put
+    // the place at Infinity.
+    for (const i of [6, 7, 999, -1, NaN]) {
+      const p = gridSlot(i, 6, TANK);
+      expect(Number.isFinite(p.x), `x at i=${i}`).toBe(true);
+      expect(Number.isFinite(p.y), `y at i=${i}`).toBe(true);
+      expect(p.x).toBeGreaterThan(0);
+      expect(p.x).toBeLessThan(TANK.width);
+    }
+    for (let i = 0; i < 6; i++)
+      for (let j = i + 1; j < 6; j++)
+        expect(gridSlot(i, 6, TANK)).not.toEqual(gridSlot(j, 6, TANK));
+    expect(gridSlot(6, 6, TANK)).toEqual(gridSlot(5, 6, TANK));
+    expect(gridSlot(-1, 6, TANK)).toEqual(gridSlot(0, 6, TANK));
   });
 });
 

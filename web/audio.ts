@@ -14,6 +14,14 @@ export interface SoundConfig {
   muted: boolean;
   bubbles: boolean;
   ambient: boolean;
+  /** Fish music: each fish that turns plays one soft note (the Fish
+   * music switch, Preferences' Sound pane). Off by default — the
+   * tank's sounds come from the original's bank. */
+  music: boolean;
+  /** The CRT's flyback whine — off by default, and only while the tube
+   * runs. Part of the sound settings so Mute and the volume slider
+   * reach it, though its checkbox lives in the Monitor pane. */
+  flyback: boolean;
   /** Schema marker: 2 since the gain curve turned quadratic. Absent
    * on older saves; only sanitizeSoundConfig reads it. Required, so a
    * hand-built config can't silently opt back into the migration. */
@@ -22,7 +30,8 @@ export interface SoundConfig {
 
 export const SOUND_DEFAULTS: Readonly<SoundConfig> =
   Object.freeze<SoundConfig>({
-    volume: 0.84, muted: false, bubbles: true, ambient: true, v: 2,
+    volume: 0.84, muted: false, bubbles: true, ambient: true,
+    music: false, flyback: false, v: 2,
   });
 
 /** Slider position → master gain. Quadratic: the ear hears roughly
@@ -45,7 +54,7 @@ export function sanitizeSoundConfig(raw: unknown): SoundConfig {
   const mark = r.v;
   if (typeof mark === "number" && Number.isInteger(mark) &&
       mark > SOUND_DEFAULTS.v) c.v = mark;
-  for (const k of ["muted", "bubbles", "ambient"] as const) {
+  for (const k of ["muted", "bubbles", "ambient", "music", "flyback"] as const) {
     const v = r[k];
     if (typeof v === "boolean") c[k] = v;
   }
@@ -76,6 +85,10 @@ export const FEEDBACK_MAX_S = 4;
 const FEEDBACK_FADE_S = 0.6;
 /** Time constant of a master level change (about 3 tau to settle). */
 const LEVEL_GLIDE_S = 0.01;
+/** How long after silence (mute/volume 0) the device suspends: six
+ * time constants of the level glide, by when the fade's tail is
+ * inaudible — suspending sooner could clip it into a click. */
+export const SLEEP_AFTER_MS = LEVEL_GLIDE_S * 6 * 1000;
 /** Event sounds are short. A recording longer than this can only be an
  * imported song, so find() never picks it for a knock or a splash, no
  * matter what it is named. */
@@ -110,6 +123,38 @@ const AMBIENT_GAIN = 0.4;
 const POP_HZ = [700, 1600] as const;
 const POP_S = 0.06;
 const POP_GAIN = 0.25;
+/** The classic Mac alert beep, synthesized when no sound set is
+ * installed: the compact Macs' simple beep was a square wave about a
+ * tenth of a second long. */
+const BEEP_HZ = 223;
+const BEEP_S = 0.13;
+const BEEP_GAIN = 0.5;
+
+/** A fish's note: a plucked string, not a chime. Long enough for the
+ * tail to carry, quiet enough to sit under the water ambience, and
+ * soft to strike so notes can overlap into a chord. */
+const NOTE_S = 1.2;
+const NOTE_ATTACK_S = 0.005;
+export const NOTE_GAIN = 0.16;
+/** The grace note a fish plays when it eats: an octave up, quieter,
+ * so a feeding moment reads as a spark on top of the turn notes. */
+export const NOTE_GRACE_GAIN = 0.1;
+/** The octave partial's share of the fundamental. */
+const PARTIAL_MIX = 0.22;
+
+/** The synthesized bloop under a rising bubble: a sine chirping up
+ * through a fifth, gone in 90 ms, quieter than the pop. */
+const BLOOP_HZ = [500, 1300] as const;
+const BLOOP_S = 0.09;
+const BLOOP_GAIN = 0.12;
+
+/** The flyback transformer's whine: NTSC line frequency with the
+ * mains hum beside it. Levels sit around -44 dBFS — as loud as a real
+ * tube's, which younger ears find and older ones don't. */
+const FLYBACK_HZ = 15734;
+const FLYBACK_MAINS_HZ = 120;
+const FLYBACK_GAIN = 0.006;
+const FLYBACK_MAINS_GAIN = 0.002;
 
 /** Stereo position of a tank event at x in a w-wide tank: the edges
  * pan to ±0.8 — a clear sense of side without a hard pan. */
@@ -119,7 +164,10 @@ export function panFor(x: number, w: number): number {
 }
 
 /** Per-play color: stereo pan (-1..1) and a playback-rate jitter. */
-interface PlayFx { pan?: number; rate?: number; }
+interface PlayFx { pan?: number; rate?: number;
+  /** Seconds of fade-out to schedule before the buffer's end, hiding
+   * a truncated tail (pipopa ends mid-tone). */
+  fadeSec?: number; }
 
 /** True while a user activation is held, so a sound answering that
  * gesture may wait out a locked AudioContext. Older WebKit and test
@@ -157,6 +205,16 @@ export class TankAudio {
   private muted = SOUND_DEFAULTS.muted;
   private bubblesOn = SOUND_DEFAULTS.bubbles;
   private ambientOn = SOUND_DEFAULTS.ambient;
+  private musicOn = SOUND_DEFAULTS.music;
+  private flybackOn = SOUND_DEFAULTS.flyback;
+  // The flyback pair while live: the 15.7 kHz fundamental and the
+  // mains hum beside it, stopped and dropped on every switch off.
+  private flybackOscs: OscillatorNode[] | null = null;
+  // Suspension freezes a source mid-tail. Only continuous sounds may
+  // survive it; finite voices end before sleep instead of replaying
+  // their stale tails on the next wake.
+  private oneShots = new Set<AudioScheduledSourceNode>();
+  private oneShotGen = 0;
   // The one install-feedback source still playing, so a newer install
   // (or Add Again) replaces it instead of stacking copies.
   private feedbackSrc: AudioBufferSourceNode | null = null;
@@ -181,6 +239,9 @@ export class TankAudio {
   private resuming: Promise<void> | null = null;
   // Page hidden: rAF stops and the sim freezes, so the device sleeps too.
   private hidden = false;
+  // Bumped on every level/visibility transition; a deferred suspend
+  // checks it so a quick unmute cancels the pending sleep.
+  private sleepGen = 0;
   // The opening sound plays once per session: due from open() when the
   // set has one, and played as soon as audio runs.
   private openingDue = false;
@@ -270,15 +331,88 @@ export class TankAudio {
     this.ctx = ac;
     // Nothing plays yet, so the first level can be set outright.
     this.master.gain.value = this.level();
-    // Created while hidden (say, a restore decoding sounds in a
-    // background tab): stay asleep until setHidden(false).
-    if (this.hidden)
+    // Nothing has started, so a tank that can't sound anyway (hidden,
+    // or muted at launch) suspends at once — no fade tail to clip.
+    if (!this.shouldRun())
       void ac.suspend().catch(() => { /* closed context */ });
     return ac;
   }
 
+  /** Whether the device should be awake: a hidden or silent
+   * (muted/volume 0) tank sleeps instead of keeping an audio stream
+   * running all day. */
+  private shouldRun(): boolean {
+    return !this.hidden && this.level() > 0;
+  }
+
+  private trackOneShot(source: AudioScheduledSourceNode): void {
+    this.oneShots.add(source);
+    const ended = source.onended;
+    source.onended = (event) => {
+      this.oneShots.delete(source);
+      ended?.call(source, event);
+    };
+  }
+
+  private stopOneShots(): void {
+    this.oneShotGen++;
+    this.feedbackGen++; // also invalidate feedback still waiting on resume
+    for (const source of this.oneShots) {
+      try { source.stop(); } catch { /* already ended */ }
+    }
+    this.oneShots.clear();
+    this.feedbackSrc = null;
+  }
+
+  /** Suspend the device once the level is zero and stays zero, and
+   * resume it when sound comes back. The suspend waits out the level
+   * glide — cutting mid-fade clicks; a level that returns first
+   * cancels it. Hidden owns suspend itself (immediate, on setHidden),
+   * so this stays out of its way. */
+  private syncSleep(): void {
+    const ac = this.ctx;
+    if (!ac || this.hidden) return;
+    ++this.sleepGen;
+    if (this.shouldRun()) {
+      // Already running (the sleep timer was still pending): the wake
+      // work still runs — a muted open latches ambientWanted without
+      // a loop, and this unmute is the first moment it can sound.
+      if (ac.state !== "running")
+        void ac.resume().then(() => this.wake())
+          .catch(() => { /* resume blocked until a user gesture */ });
+      else this.wake();
+      return;
+    }
+    const gen = this.sleepGen;
+    setTimeout(() => {
+      if (this.sleepGen === gen) {
+        this.stopOneShots();
+        void ac.suspend().catch(() => { /* closed context */ });
+      }
+    }, SLEEP_AFTER_MS);
+  }
+
+  /** The device is awake again: play an opening still owed and start
+   * an ambient loop that was wanted but never got a source. Re-checks
+   * live state — a mute or hide that landed since still wins. */
+  private wake(): void {
+    if (!this.shouldRun()) return;
+    this.playOpening();
+    if (this.ambientWanted) this.startAmbient();
+  }
+
   private level(): number {
     return this.muted ? 0 : gainForVolume(this.volume);
+  }
+
+  /** Whether the tank's sounds are waiting on a user gesture: some
+   * have loaded (the context exists only once they have), the page is
+   * visible and audible, and the browser still holds the device
+   * suspended. The tank page offers its Turn On Sound button off this;
+   * muted or hidden, there is nothing a click would let you hear. */
+  get blocked(): boolean {
+    return this.ctx !== null && this.ctx.state === "suspended" &&
+      !this.hidden && this.level() > 0;
   }
 
   /** Glide the live master to the current level: a hard step in the
@@ -293,17 +427,23 @@ export class TankAudio {
   setVolume(v: number): void {
     this.volume = Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
     this.applyLevel();
+    this.syncSleep();
   }
 
   setMuted(muted: boolean): void {
     this.muted = muted;
     this.applyLevel();
+    this.syncSleep();
   }
 
-  /** Switch bubble sounds and the ambient loop. Turning ambience off
-   * stops a live loop; turning it back on restarts it. */
-  setOptions(o: { bubbles?: boolean; ambient?: boolean }): void {
+  /** Switch bubble sounds, the ambient loop and fish music. Turning
+   * ambience off stops a live loop; turning it back on restarts it.
+   * Fish music is synthesized on demand, so its switch only gates
+   * note(). */
+  setOptions(o: { bubbles?: boolean; ambient?: boolean;
+                  music?: boolean }): void {
     if (o.bubbles !== undefined) this.bubblesOn = o.bubbles;
+    if (o.music !== undefined) this.musicOn = o.music;
     if (o.ambient === undefined || o.ambient === this.ambientOn) return;
     this.ambientOn = o.ambient;
     if (o.ambient) {
@@ -319,14 +459,56 @@ export class TankAudio {
     this.ambientGen++;
   }
 
+  /** The CRT's flyback whine. The tank page owns the policy — the
+   * Sound pane's opt-in and the tube being on — and switches this with
+   * the tube. The synth is two oscillators into the master, so Mute
+   * and the volume slider reach it like everything else. */
+  setFlyback(on: boolean): void {
+    this.flybackOn = on;
+    if (on) this.startFlyback();
+    else this.stopFlyback();
+  }
+
+  private startFlyback(): void {
+    if (!this.flybackOn || this.flybackOscs) return;
+    // Created even while hidden or locked: a suspended context holds
+    // the pair silent, and resuming (a gesture, the page returning)
+    // sounds it — no retry bookkeeping. This is also the one sound
+    // that can create the context: a tank with no sounds installed
+    // still has a tube.
+    const ac = this.context();
+    const mk = (hz: number, gain: number): OscillatorNode => {
+      const osc = ac.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = hz;
+      const g = ac.createGain();
+      g.gain.value = gain;
+      osc.connect(g).connect(this.master!);
+      osc.start();
+      return osc;
+    };
+    this.flybackOscs = [
+      mk(FLYBACK_HZ, FLYBACK_GAIN),
+      mk(FLYBACK_MAINS_HZ, FLYBACK_MAINS_GAIN),
+    ];
+  }
+
+  private stopFlyback(): void {
+    for (const o of this.flybackOscs ?? []) {
+      try { o.stop(); } catch { /* already ended */ }
+    }
+    this.flybackOscs = null;
+  }
+
   /** Browsers gate audio behind a user gesture; call from pointerdown,
    * a keydown handler, or any other activation path (native menu JS
    * still needs a prior gesture on some WebKit builds). */
   unlock(): void {
     if (!this.ctx) return;
-    // Hidden, setHidden(false) resumes on return; waking the device
-    // now would undo the suspend for nothing.
-    if (this.hidden) return;
+    // Hidden or muted: setHidden(false) / the next unmute resumes on
+    // its own; waking the device now would undo the suspend for a
+    // tank that cannot sound anyway.
+    if (!this.shouldRun()) return;
     // Menu-driven unlock can resume() without a user activation and
     // reject — expected while suspended, quiet. startAmbient() is
     // already idempotent (ambientSrc guard). Log only failures after
@@ -360,18 +542,21 @@ export class TankAudio {
    * asked for while hidden, or whose gated start was dropped). */
   setHidden(hidden: boolean): void {
     this.hidden = hidden;
+    // Supersede a silent-suspend timer queued just before hiding —
+    // the suspend below owns the sleep now.
+    this.sleepGen++;
     const ac = this.ctx;
     if (!ac) return;
-    if (hidden) {
-      void ac.suspend().catch(() => { /* closed context */ });
+    if (hidden || !this.shouldRun()) {
+      // Muted while hidden stays asleep on return until an unmute.
+      if (hidden || ac.state === "running") {
+        this.stopOneShots();
+        void ac.suspend().catch(() => { /* closed context */ });
+      }
       return;
     }
     void ac.resume()
-      .then(() => {
-        if (this.hidden) return;
-        this.playOpening();
-        if (this.ambientWanted) this.startAmbient();
-      })
+      .then(() => this.wake())
       .catch(() => { /* resume blocked until a user gesture */ });
   }
 
@@ -406,7 +591,7 @@ export class TankAudio {
     // gesture retry. Without an activation (a remote relay, a drop
     // whose walk outlasted the gesture) resume() rejects quietly and
     // the cue drops rather than firing long after the install.
-    if (!buf || !this.ctx || this.hidden) return;
+    if (!buf || !this.ctx || this.hidden || this.level() === 0) return;
     if (this.ctx.state === "suspended") {
       // A live gesture always starts a fresh resume — a parked one
       // (a gesture-less unlock() can stay pending forever on an
@@ -446,6 +631,7 @@ export class TankAudio {
       if (this.feedbackSrc === src) this.feedbackSrc = null;
     };
     this.feedbackSrc = src;
+    this.trackOneShot(src);
   }
 
   /** The first sound named one of `subs`, else the first with one as
@@ -500,9 +686,10 @@ export class TankAudio {
   private play(buf: AudioBuffer | null, gain = 0.8, loop = false,
                retry = true, fx?: PlayFx): AudioBufferSourceNode | null {
     if (!buf || !this.ctx) return null;
-    // Hidden: drop the sound rather than resume() the device below. A
-    // wanted ambient loop starts from setHidden(false) instead.
-    if (this.hidden) return null;
+    // Hidden or silent (muted/volume 0): drop the sound rather than
+    // resume() the device below for one nobody would hear. A wanted
+    // ambient loop restarts from setHidden(false) / syncSleep.
+    if (this.hidden || this.level() === 0) return null;
     if (this.ctx.state === "suspended" && retry) {
       // Only the ambient loop and a sound answering the gesture in
       // progress wait out the lock. Anything else (bubbles from a
@@ -511,12 +698,14 @@ export class TankAudio {
       if (!loop && !gestureActive()) return null;
       const ac = this.ctx;
       const gen = this.ambientGen;
+      const oneShotGen = this.oneShotGen;
       void ac.resume()
         .then(() => {
           // Superseded by load(), a newer ambient call, or a second
           // ambient call that raced in while resume was pending.
           if (loop && (gen !== this.ambientGen || !this.ambientWanted ||
                        this.ambientSrc)) return;
+          if (!loop && oneShotGen !== this.oneShotGen) return;
           const n = this.play(buf, gain, loop, false);
           if (n && loop) this.ambientSrc = n; // keep the loop stoppable
         })
@@ -530,6 +719,13 @@ export class TankAudio {
     if (fx?.rate && fx.rate !== 1) src.playbackRate.value = fx.rate;
     const g = this.ctx.createGain();
     g.gain.value = gain;
+    if (fx?.fadeSec) {
+      // Fade before the buffer's end — in played seconds, so a
+      // non-unit rate can't push it past the last sample.
+      const end = this.ctx.currentTime +
+        Math.max(0, buf.duration / (fx.rate || 1) - fx.fadeSec - 0.02);
+      g.gain.setTargetAtTime(0, end, 0.005);
+    }
     const pan = fx?.pan ?? 0;
     // StereoPannerNode needs WebKit 14.1+, fine for macOS 12 — and a
     // pan of 0 keeps the direct path, so the node is opt-in only.
@@ -541,6 +737,7 @@ export class TankAudio {
       src.connect(g).connect(this.master!); // created with ctx
     }
     src.start();
+    if (!loop) this.trackOneShot(src);
     return src;
   }
 
@@ -594,6 +791,62 @@ export class TankAudio {
   birth(): void {
     this.play(this.named("eventbirth"), 0.8);
   }
+  /** A medicine-backed recovery uses the original EventTiyu sound. */
+  recovery(): void {
+    const sound = this.named("eventtiyu") ?? this.named("eventbirth");
+    if (sound) this.play(sound, 0.7);
+  }
+  /** A golden meal — a rare victory worth a fanfare. */
+  golden(): void {
+    this.play(this.named("eventcouple") ?? this.named("pipopa"), 0.85);
+  }
+
+  /** A Mac OS 8 alert opening: the game's own caution sound
+   * (pipopa, fading out before its truncated end) when a sound set
+   * carrying it is installed — otherwise the classic Mac beep,
+   * synthesized so a tank with no sounds still speaks. An alert
+   * follows a user gesture, so the audio device is created (and
+   * woken) on demand here — a sound-less tank owns no context until
+   * its first alert. Routed through the master gain like everything
+   * else, so Mute and the volume slider hold. */
+  alertBeep(): void {
+    // A silent or hidden alert must not undo the device's sleep.
+    if (!this.shouldRun()) return;
+    const own = this.named("pipopa");
+    if (own) {
+      this.play(own, 0.6, false, true, { fadeSec: 0.05 });
+      return;
+    }
+    const ac = this.context();
+    // Created mid-gesture the context may still be settling: beep the
+    // moment it runs, or drop the sound (an alert nobody can act on
+    // shouldn't spend a second resume()).
+    if (ac.state === "suspended") {
+      const gen = this.oneShotGen;
+      void ac.resume()
+        .then(() => {
+          if (ac.state === "running" && gen === this.oneShotGen)
+            this.alertBeep();
+        })
+        .catch(() => { /* resume blocked until a user gesture */ });
+      return;
+    }
+    if (ac.state !== "running" || !this.master) return;
+    const t = ac.currentTime;
+    const osc = ac.createOscillator();
+    osc.type = "square";
+    osc.frequency.value = BEEP_HZ;
+    const g = ac.createGain();
+    // Exponential ramps can't start from 0: a 4 ms attack and decay
+    // keep the square wave from clicking on or off.
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(BEEP_GAIN, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + BEEP_S);
+    osc.connect(g).connect(this.master);
+    osc.start(t);
+    osc.stop(t + BEEP_S + 0.01);
+    this.trackOneShot(osc);
+  }
 
   /** Fish are begging — the original's timer chime as a dinner bell.
    * Returns false only while audio can't sound, so the caller keeps
@@ -629,13 +882,96 @@ export class TankAudio {
     this.play(this.named("timeronoff"), 0.45);
   }
 
-  /** A bubble rising. The original has no sound for one, so this plays
-   * a short bubble sound the user added, never the filter's loop —
-   * panned to the bubble, pitched a touch at random. */
+  /** One fish's note (Fish music, off unless the user asks for it):
+   * a soft kalimba struck at `freq`, panned to the fish. Synthesized
+   * rather than sampled — there is no record of a fish turning — and
+   * built the same way pop() is: nothing without a running context,
+   * so a note never spends a resume() the user has to make.
+   *
+   * The voice is a triangle with a quiet sine an octave up, the
+   * struck-string partial that makes a kalimba read as plucked. Both
+   * share one envelope that starts and ends at a whisper, so a note
+   * can never click.
+   */
+  note(freq: number, pan = 0, gain = NOTE_GAIN): void {
+    if (!this.musicOn || !this.shouldRun()) return;
+    const ac = this.ctx;
+    if (!ac || !this.master || this.hidden || ac.state !== "running" ||
+        !Number.isFinite(freq) || freq <= 0 ||
+        // An exponential ramp throws on a zero or negative target, so
+        // the level needs the same guard as the pitch.
+        !Number.isFinite(gain) || gain <= 0) return;
+    const t = ac.currentTime;
+    const env = ac.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(gain, t + NOTE_ATTACK_S);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + NOTE_S);
+    const body = ac.createOscillator();
+    body.type = "triangle";
+    body.frequency.value = freq;
+    const partial = ac.createOscillator();
+    partial.type = "sine";
+    partial.frequency.value = freq * 2;
+    const partialGain = ac.createGain();
+    partialGain.gain.value = PARTIAL_MIX;
+    partial.connect(partialGain).connect(env);
+    body.connect(env);
+    // Pan only off-centre and only where the WebView has a panner, the
+    // way pop() and play() do.
+    let out: AudioNode = env;
+    if (pan !== 0 && typeof ac.createStereoPanner === "function") {
+      const p = ac.createStereoPanner();
+      p.pan.value = pan;
+      env.connect(p);
+      out = p;
+    }
+    out.connect(this.master);
+    for (const osc of [body, partial]) {
+      osc.start(t);
+      osc.stop(t + NOTE_S + 0.01);
+      this.trackOneShot(osc);
+    }
+  }
+
+  /** A bubble rising. A short bubble sound the user added wins —
+   * never the filter's loop — panned to the bubble and pitched a touch
+   * at random. With none, a soft bloop is synthesized, the way pop()
+   * falls back to its plip. */
   bubble(pan = 0): void {
-    if (!this.bubblesOn) return;
-    this.play(this.find(["bubble"], FILTER_BUBBLING), 0.4, false, true,
-              { pan, rate: 0.94 + Math.random() * 0.12 });
+    if (!this.bubblesOn || !this.shouldRun()) return;
+    const own = this.find(["bubble"], FILTER_BUBBLING);
+    if (own) {
+      this.play(own, 0.4, false, true,
+                { pan, rate: 0.94 + Math.random() * 0.12 });
+      return;
+    }
+    const ac = this.ctx;
+    if (!ac || !this.master || this.hidden || ac.state !== "running")
+      return;
+    const t = ac.currentTime;
+    const f0 = BLOOP_HZ[0] + Math.random() * (BLOOP_HZ[1] - BLOOP_HZ[0]);
+    const osc = ac.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(f0, t);
+    // The rising chirp of a real bubble clearing the surface: keep
+    // climbing across the whole pulse rather than flattening early.
+    osc.frequency.exponentialRampToValueAtTime(f0 * 1.5, t + BLOOP_S);
+    const g = ac.createGain();
+    // Exponential ramps can't start from 0: from a whisper to the peak
+    // in 4 ms, then away, so it never clicks on or off.
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(BLOOP_GAIN, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + BLOOP_S);
+    if (pan !== 0 && typeof ac.createStereoPanner === "function") {
+      const p = ac.createStereoPanner();
+      p.pan.value = pan;
+      osc.connect(p).connect(g).connect(this.master);
+    } else {
+      osc.connect(g).connect(this.master);
+    }
+    osc.start(t);
+    osc.stop(t + BLOOP_S + 0.01);
+    this.trackOneShot(osc);
   }
 
   /** A bubble popped by a click, panned to it. A sound the user added
@@ -649,7 +985,8 @@ export class TankAudio {
     const own = this.find(["pop"]);
     if (own) { this.play(own, 0.5, false, true, { pan }); return; }
     const ac = this.ctx;
-    if (!ac || !this.master || this.hidden || ac.state !== "running")
+    if (!ac || !this.master || this.hidden || this.level() === 0 ||
+        ac.state !== "running")
       return;
     const t = ac.currentTime;
     const osc = ac.createOscillator();
@@ -673,6 +1010,7 @@ export class TankAudio {
     }
     osc.start(t);
     osc.stop(t + POP_S + 0.01);
+    this.trackOneShot(osc);
   }
 
   /** The degauss coil's BWONG — synthesized, not a bank sound: a 55 Hz
@@ -681,7 +1019,7 @@ export class TankAudio {
    * degauss the user can't hear shouldn't spend a resume(). */
   degauss(): void {
     if (!this.ctx || !this.master || this.hidden ||
-        this.ctx.state !== "running") return;
+        this.level() === 0 || this.ctx.state !== "running") return;
     const t = this.ctx.currentTime;
     const thump = this.ctx.createOscillator();
     thump.type = "sine";
@@ -692,6 +1030,7 @@ export class TankAudio {
     thump.connect(tg).connect(this.master);
     thump.start(t);
     thump.stop(t + 0.3);
+    this.trackOneShot(thump);
     const whine = this.ctx.createOscillator();
     whine.type = "sawtooth";
     whine.frequency.setValueAtTime(900, t);
@@ -705,13 +1044,16 @@ export class TankAudio {
     whine.connect(lp).connect(wg).connect(this.master);
     whine.start(t);
     whine.stop(t + 0.7);
+    this.trackOneShot(whine);
   }
 
   /** The tank has opened with its saved sounds loaded: start the
    * bubbling, and play the opening sound now if audio may start by
    * itself (the app), else on the first unlock (a browser). */
   open(): void {
-    this.openingDue = this.named(OPENING) !== null;
+    // Silent at launch: skip the opening outright so the first unmute
+    // doesn't play it hours late.
+    this.openingDue = this.level() > 0 && this.named(OPENING) !== null;
     this.startAmbient();
     this.playOpening();
   }

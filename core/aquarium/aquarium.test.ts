@@ -5,6 +5,7 @@ import type { SpeciesCare } from "../data/species.js";
 import { Aquarium } from "./aquarium.js";
 import type { Resident } from "./aquarium.js";
 import { Cause, newLife, vitalityAt } from "./life.js";
+import { DISEASES } from "./disease.js";
 import { acidity, hardness, o2Saturation, tapWater } from "./water.js";
 
 const DAY = 24 * 60;
@@ -93,6 +94,68 @@ describe("equipment", () => {
   });
 });
 
+describe("plants", () => {
+  it("photosynthesise by day: oxygen up, CO2 and nitrate down", () => {
+    const bare = new Aquarium(makeRng(1));
+    const planted = new Aquarium(makeRng(1));
+    for (const a of [bare, planted]) {
+      a.water.nitrate = 10;
+      a.water.co2 = 20;
+      // Avoid saturation and the filter's aeration, which would pin O2
+      // and hide a sign flip in the plants' term.
+      a.water.o2 = 400;
+      a.filter.power = 0;
+    }
+    // Σ w×h÷1000 = 40 reads as a well-planted 100-litre tank.
+    planted.plantSize = 40;
+    planted.lightOn = true;
+    live(bare, DAY, []);
+    live(planted, DAY, []);
+    // A day: O2 +40 × 0.1 = 4 mg, nitrate 40 × 0.025 = 1 mg, CO2
+    // 40 × 0.01 = 0.4 mg.
+    expect(planted.water.o2).toBeCloseTo(bare.water.o2 + 4, 6);
+    expect(planted.water.nitrate).toBeCloseTo(bare.water.nitrate - 1, 6);
+    expect(planted.water.co2).toBeCloseTo(bare.water.co2 - 0.4, 6);
+  });
+
+  it("breathe in the dark: oxygen down, CO2 up, nitrate untouched", () => {
+    const bare = new Aquarium(makeRng(1));
+    const planted = new Aquarium(makeRng(1));
+    for (const a of [bare, planted]) {
+      a.water.nitrate = 10;
+      a.water.co2 = 20;
+      a.water.o2 = 400;
+      a.filter.power = 0;
+    }
+    planted.plantSize = 40;
+    planted.lightOn = false;
+    live(bare, DAY, []);
+    live(planted, DAY, []);
+    expect(planted.water.o2).toBeCloseTo(bare.water.o2 - 4, 6);
+    expect(planted.water.co2).toBeCloseTo(bare.water.co2 + 0.4, 6);
+    expect(planted.water.nitrate).toBeCloseTo(bare.water.nitrate, 6);
+  });
+
+  it("do nothing at plantSize 0, whatever the light", () => {
+    for (const lightOn of [true, false]) {
+      const bare = new Aquarium(makeRng(1));
+      const idle = new Aquarium(makeRng(1));
+      for (const a of [bare, idle]) {
+        a.water.co2 = 20;
+        a.water.nitrate = 10;
+        a.water.o2 = 400;
+        a.filter.power = 0;
+      }
+      idle.lightOn = bare.lightOn = lightOn;
+      live(bare, DAY, []);
+      live(idle, DAY, []);
+      expect(idle.water.o2).toBeCloseTo(bare.water.o2, 6);
+      expect(idle.water.co2).toBeCloseTo(bare.water.co2, 6);
+      expect(idle.water.nitrate).toBeCloseTo(bare.water.nitrate, 6);
+    }
+  });
+});
+
 describe("fish", () => {
   it("empties its stomach in 18 hours, then slowly starves", () => {
     const a = new Aquarium(makeRng(2));
@@ -166,6 +229,24 @@ describe("fish", () => {
     for (const r of [sick, weak, strong]) r.life.ate = 5;
     a.advanceMinutes(10 * DAY, [sick, weak, strong]);
     expect(weak.life.sick?.disease).toBe(0);
+  });
+
+  it("sickness skips a species that never catches it", () => {
+    const rand = makeRng(8);
+    const a = new Aquarium(rand);
+    // The carrier is a Meka-species fish (Red Rust B only); the only
+    // healthy fish in the tank is a stock one that cannot catch it.
+    const rustB = DISEASES.findIndex((d) => d.name === "Red Rust B");
+    const meka: SpeciesCare =
+      { ...DEFAULT_CARE, susceptible: [DISEASES[rustB]!.id] };
+    const sick = resident(1, rand, meka);
+    const stock = resident(2, rand);
+    sick.life.sick = { disease: rustB, amount: 5 };
+    stock.life.health = 40;
+    for (const r of [sick, stock]) r.life.ate = 5;
+    a.advanceMinutes(10 * DAY, [sick, stock]);
+    // The Meka-only disease stays out of a stock fish.
+    expect(stock.life.sick).toBeNull();
   });
 
   it("a dead fish decays into ammonia", () => {
@@ -337,6 +418,20 @@ describe("time", () => {
     expect(b.filter.dirt).toBe(17);
     expect(b.doses).toEqual([{ medicine: 1100, ml: 40, clock: 0 }]);
     expect(b.speed).toBe(2.5);
+  });
+
+  it("keeps a restored frozen tank safe during a long absence", () => {
+    const a = new Aquarium(makeRng(14));
+    a.setSpeed(0);
+    a.addMedicine(1100, 40);
+    const b = Aquarium.fromJSON(JSON.parse(JSON.stringify(a)), makeRng(1));
+    const r = resident(1, makeRng(14));
+    const before = JSON.stringify({ tank: b.toJSON(), life: r.life });
+
+    b.advance(30 * DAY * 60, [r]);
+
+    expect(b.speed).toBe(0);
+    expect(JSON.stringify({ tank: b.toJSON(), life: r.life })).toBe(before);
   });
 
   it("rejects garbage in a save", () => {

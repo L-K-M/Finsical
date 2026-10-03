@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FEEDBACK_MAX_S, gainForVolume, loadSoundConfig, panFor,
-         SOUND_DEFAULTS, sanitizeSoundConfig,
+         SLEEP_AFTER_MS, SOUND_DEFAULTS, sanitizeSoundConfig,
          TankAudio } from "./audio.js";
 import type { AzpackManifest } from "../core/data/azpack.js";
 
@@ -26,6 +26,10 @@ class FakeNode {
 }
 class FakeGain extends FakeNode { gain = new FakeParam(); }
 class FakePanner extends FakeNode { pan = new FakeParam(); }
+class FakeFilter extends FakeNode {
+  type = "lowpass";
+  frequency = new FakeParam();
+}
 class FakeBuffer {
   readonly numberOfChannels = 1;
   constructor(readonly duration: number,
@@ -68,6 +72,7 @@ class FakeContext {
     this.gains.push(g);
     return g;
   }
+  createBiquadFilter(): FakeFilter { return new FakeFilter(); }
   panners: FakePanner[] = [];
   createStereoPanner(): FakePanner {
     const p = new FakePanner();
@@ -567,6 +572,41 @@ describe("TankAudio ambient restarts", () => {
   });
 });
 
+describe("TankAudio.blocked", () => {
+  it("is false for a tank with no sounds, which has nothing to unlock",
+     () => {
+    // No sound ever loaded: no context, so no click would play anything.
+    expect(new TankAudio().blocked).toBe(false);
+  });
+
+  it("is true only while a loaded tank waits on a gesture", async () => {
+    const { audio, ac } = await tank({ drop: 1 });
+    expect(audio.blocked).toBe(false); // running: nothing to ask for
+    ac.state = "suspended"; // the browser's autoplay lock
+    expect(audio.blocked).toBe(true);
+    audio.unlock();
+    await flush();
+    expect(ac.state).toBe("running");
+    expect(audio.blocked).toBe(false);
+  });
+
+  it("is false while muted, at volume 0 or hidden", async () => {
+    const { audio, ac } = await tank({ drop: 1 });
+    ac.state = "suspended";
+    audio.setMuted(true);
+    expect(audio.blocked).toBe(false);
+    audio.setMuted(false);
+    audio.setVolume(0);
+    expect(audio.blocked).toBe(false);
+    audio.setVolume(0.5);
+    expect(audio.blocked).toBe(true);
+    // Hidden suspends the device on purpose; it isn't a lock to lift.
+    audio.setHidden(true);
+    await flush();
+    expect(audio.blocked).toBe(false);
+  });
+});
+
 describe("TankAudio.setHidden", () => {
   it("keeps the device asleep when a gesture unlocks while hidden", async () => {
     const { audio, ac } = await tank({ [LOOP]: 30, bubble: 1 });
@@ -639,9 +679,343 @@ describe("TankAudio.setHidden", () => {
   });
 });
 
+// A muted or volume-0 tank suspends its device: nothing to hear, so
+// no stream to keep running. The suspend lands SLEEP_AFTER_MS (60 ms)
+// after the level hits zero; the tests sit it out in real time.
+describe("TankAudio silent sleep", () => {
+  const sleepBeat = (): Promise<void> =>
+    new Promise((r) => setTimeout(r, SLEEP_AFTER_MS + 40));
+
+  it.each(["mute", "volume zero", "hidden"])(
+    "ends live one-shots before %s sleep without ending continuous sound", async (mode) => {
+      vi.useFakeTimers();
+      try {
+        const { audio, ac } = await tank({ [LOOP]: 30, drop: 8,
+          pipopa: 1, feedback: 8 });
+        audio.startAmbient();
+        audio.setFlyback(true);
+        const tube = [...ac.oscs];
+        audio.setOptions({ music: true });
+        audio.feed();
+        audio.playImported("feedback");
+        audio.alertBeep();
+        audio.note(440);
+        audio.bubble();
+        audio.pop();
+        audio.degauss();
+        const voices = [...ac.sources.filter(s => !s.loop),
+          ...ac.oscs.filter(o => !tube.includes(o))];
+        expect(voices.length).toBeGreaterThan(5);
+        if (mode === "hidden") audio.setHidden(true);
+        else {
+          if (mode === "mute") audio.setMuted(true);
+          else audio.setVolume(0);
+          expect(voices.every(s => !s.stops.includes(undefined))).toBe(true);
+        }
+        await vi.advanceTimersByTimeAsync(SLEEP_AFTER_MS + 1);
+        expect(ac.state).toBe("suspended");
+        for (const voice of voices) expect(voice.stops).toContain(undefined);
+        expect(ac.loops()).toBe(1);
+        expect(tube.every(o => o.stops.length === 0)).toBe(true);
+
+        if (mode === "hidden") audio.setHidden(false);
+        else if (mode === "mute") audio.setMuted(false);
+        else audio.setVolume(SOUND_DEFAULTS.volume);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(ac.state).toBe("running");
+        expect(ac.loops()).toBe(1);
+        expect(ac.sources.filter(s => !s.loop)).toHaveLength(
+          voices.filter(s => !(s instanceof FakeOsc)).length);
+      } finally { vi.useRealTimers(); }
+    });
+
+  it("keeps live one-shots when a quick unmute cancels sleep", async () => {
+    vi.useFakeTimers();
+    try {
+      const { audio, ac } = await tank({ drop: 8 });
+      audio.feed();
+      audio.setMuted(true);
+      audio.setMuted(false);
+      await vi.advanceTimersByTimeAsync(SLEEP_AFTER_MS + 1);
+      expect(ac.state).toBe("running");
+      expect(ac.sources[0]!.stops).toEqual([]);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("drops a deferred gesture cue superseded by sleep and wake", async () => {
+    vi.useFakeTimers();
+    try {
+      const { audio, ac } = await tank({ drop: 8 });
+      stubActivation(true);
+      ac.state = "suspended";
+      let release!: () => void;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      vi.spyOn(ac, "resume").mockReturnValueOnce(held);
+      audio.feed();
+      audio.setMuted(true);
+      await vi.advanceTimersByTimeAsync(SLEEP_AFTER_MS + 1);
+      audio.setMuted(false);
+      await vi.advanceTimersByTimeAsync(0);
+      release();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(ac.state).toBe("running");
+      expect(ac.sources).toHaveLength(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("forgets naturally ended one-shots before sleeping", async () => {
+    vi.useFakeTimers();
+    try {
+      const { audio, ac } = await tank({ drop: 8 });
+      audio.feed();
+      const source = ac.sources[0]!;
+      expect(source.onended).not.toBeNull();
+      source.onended!();
+      const stop = vi.spyOn(source, "stop");
+      audio.setMuted(true);
+      await vi.advanceTimersByTimeAsync(SLEEP_AFTER_MS + 1);
+      expect(stop).not.toHaveBeenCalled();
+      expect(ac.state).toBe("suspended");
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each(["mute", "volume zero"])(
+    "drops synthesized notes during the %s fade before sleep", async (mode) => {
+      const { audio, ac } = await tank({ [LOOP]: 30 });
+      audio.setOptions({ music: true });
+      if (mode === "mute") audio.setMuted(true);
+      else audio.setVolume(0);
+      // The device is still fading. New envelopes would survive its
+      // suspension and sound as stale events when it wakes much later.
+      audio.note(440);
+      audio.bubble();
+      audio.pop();
+      audio.degauss();
+      expect(ac.oscs).toHaveLength(0);
+    });
+
+  it("does not create a device for an alert while muted", async () => {
+    const before = FakeContext.last;
+    const audio = new TankAudio();
+    audio.setMuted(true);
+    audio.alertBeep();
+    await flush();
+    expect(FakeContext.last).toBe(before);
+  });
+
+  it("an alert cannot wake a muted device", async () => {
+    const { audio, ac } = await tank({ IntoWater: 1 });
+    audio.setMuted(true);
+    await sleepBeat();
+    const resumes = vi.spyOn(ac, "resume");
+    audio.alertBeep();
+    await flush();
+    expect(resumes).not.toHaveBeenCalled();
+    expect(ac.state).toBe("suspended");
+    expect(ac.oscs).toHaveLength(0);
+  });
+
+  it("suspends on mute after the glide, and wakes on unmute", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.open();
+    expect(ac.loops()).toBe(1);
+    const suspends = vi.spyOn(ac, "suspend");
+    audio.setMuted(true);
+    await flush();
+    expect(suspends).not.toHaveBeenCalled(); // fade still playing out
+    await sleepBeat();
+    expect(suspends).toHaveBeenCalledTimes(1);
+    await flush();
+    expect(ac.state).toBe("suspended");
+
+    audio.setMuted(false);
+    await flush();
+    expect(ac.state).toBe("running");
+    expect(ac.loops()).toBe(1); // the paused loop continues
+  });
+
+  it("drops event sounds and unlocks instead of resuming", async () => {
+    const { audio, ac } = await tank({ side: 1, center: 2, drop: 3 });
+    audio.setMuted(true);
+    await sleepBeat();
+    await flush();
+    const resumes = vi.spyOn(ac, "resume");
+    audio.tap(5, 5, 100, 100);
+    audio.feed();
+    audio.unlock();
+    await sleepBeat();
+    expect(resumes).not.toHaveBeenCalled();
+    expect(ac.state).toBe("suspended");
+    expect(ac.sources).toHaveLength(0); // nothing was even scheduled
+  });
+
+  it("a quick unmute before the beat keeps the device awake", async () => {
+    const { audio, ac } = await tank({ bubble: 1 });
+    const suspends = vi.spyOn(ac, "suspend");
+    audio.setMuted(true);
+    await flush();
+    audio.setMuted(false);
+    await sleepBeat();
+    expect(suspends).not.toHaveBeenCalled();
+    expect(ac.state).toBe("running");
+  });
+
+  it("sleeps on volume 0 like on mute", async () => {
+    const { audio, ac } = await tank({ bubble: 1 });
+    audio.setVolume(0);
+    await sleepBeat();
+    await flush();
+    expect(ac.state).toBe("suspended");
+    audio.setVolume(0.5);
+    await flush();
+    expect(ac.state).toBe("running");
+  });
+
+  it("creates the context suspended when muted at launch", async () => {
+    const audio = new TankAudio();
+    audio.setMuted(true);
+    await audio.addWavs([{ name: LOOP, wav: wav(30) }]);
+    await flush();
+    expect(FakeContext.last!.state).toBe("suspended");
+    audio.setMuted(false);
+    await flush();
+    expect(FakeContext.last!.state).toBe("running");
+  });
+
+  it("stays asleep when unmuted while hidden", async () => {
+    const { audio, ac } = await tank({ bubble: 1 });
+    audio.setHidden(true);
+    await flush();
+    audio.setMuted(true);
+    audio.setMuted(false);
+    await sleepBeat();
+    expect(ac.state).toBe("suspended");
+    audio.setHidden(false);
+    await flush();
+    expect(ac.state).toBe("running");
+  });
+
+  it("plays no opening on the first unmute of a muted launch", async () => {
+    const { audio, ac } = await tank({ aqua: 5 });
+    audio.setMuted(true);
+    audio.open();
+    audio.setMuted(false);
+    await flush();
+    audio.unlock(); // the first gesture, long after launch
+    await flush();
+    expect(ac.sources.filter((s) => s.starts > 0)).toHaveLength(0);
+  });
+
+  it("starts the wanted loop on unmute even before it slept", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.setMuted(true);       // sleep timer armed, device still up
+    audio.open();               // muted open latches ambientWanted only
+    audio.setMuted(false);      // unmute before the suspend landed
+    await flush();
+    expect(ac.state).toBe("running");
+    expect(ac.loops()).toBe(1); // no resume happened, wake still ran
+  });
+
+  it("plays a pending opening when the unmute wakes the device",
+     async () => {
+    const { audio, ac } = await tank({ aqua: 5, [LOOP]: 30 });
+    ac.state = "suspended"; // autoplay-gated at launch
+    audio.open();           // opening stays owed behind the lock
+    audio.setMuted(true);
+    audio.setMuted(false);  // the unmute itself is the wake
+    await flush();
+    expect(ac.state).toBe("running");
+    expect(ac.sources.filter((s) => s.starts > 0 && !s.loop))
+      .toHaveLength(1); // the opening played at unmute, not hours later
+    expect(ac.loops()).toBe(1);
+  });
+
+  it("keeps the wake's ambient restart through a volume tweak",
+     async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.setMuted(true);
+    audio.open();              // muted: wanted, no source, no retry
+    await sleepBeat();
+    await flush();
+    expect(ac.state).toBe("suspended");
+    audio.setMuted(false);     // resume in flight…
+    audio.setVolume(0.7);      // …and a slider tick lands before it ends
+    await flush();
+    expect(ac.state).toBe("running");
+    expect(ac.loops()).toBe(1);
+  });
+});
+
+describe("TankAudio.setFlyback", () => {
+  /** Oscillators still started and not stopped: the live whine. */
+  const live = (ac: FakeContext): FakeOsc[] =>
+    ac.oscs.filter((o) => o.starts > 0 && !o.stops.length);
+
+  it("sings line frequency and mains hum into the master", async () => {
+    // One clip builds the context and its master; the whine is pure
+    // oscillator and needs nothing from the bank.
+    const { audio, ac, master } = await tank({ tone: 1 });
+    audio.setFlyback(true);
+    const oscs = live(ac);
+    expect(oscs).toHaveLength(2);
+    const [fund, harm] = oscs;
+    expect(fund!.frequency.value).toBe(15734);
+    expect(harm!.frequency.value).toBe(120);
+    // Each oscillator rides its own gain into the master, so volume
+    // and mute reach the whine like every other sound.
+    for (const o of oscs) {
+      const g = o.out[0] as FakeGain;
+      expect(g.out[0]).toBe(master);
+    }
+    expect((fund!.out[0] as FakeGain).gain.value).toBeCloseTo(0.006, 6);
+    expect((harm!.out[0] as FakeGain).gain.value).toBeCloseTo(0.002, 6);
+
+    audio.setFlyback(false);
+    expect(live(ac)).toHaveLength(0);
+    expect(oscs.every((o) => o.stops.length === 1)).toBe(true);
+    // Switching on again builds a fresh pair; off with none live is a
+    // quiet no-op either way.
+    audio.setFlyback(false);
+    audio.setFlyback(true);
+    expect(live(ac)).toHaveLength(2);
+  });
+
+  it("is off unless asked for, whatever the tank plays", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30, bubble: 1 });
+    audio.open();
+    await flush();
+    expect(live(ac)).toHaveLength(0);
+  });
+
+  it("holds its breath in a hidden tab: built, but the device asleep", async () => {
+    // No sounds installed, so the context exists only for the whine.
+    const audio = new TankAudio();
+    audio.setHidden(true);
+    await flush();
+    audio.setFlyback(true);
+    await flush(); // context() suspends on a promise, like the real one
+    const ac = FakeContext.last!;
+    // context() suspends a context made while hidden; the pair is
+    // already built, silent until the page returns.
+    expect(ac.state).toBe("suspended");
+    expect(live(ac)).toHaveLength(2);
+
+    audio.setHidden(false);
+    await flush();
+    expect(ac.state).toBe("running");
+    expect(live(ac)).toHaveLength(2);
+  });
+});
+
 // The original game's event sounds, by the names its 'snd ' resources
 // carry (core/data/sndbank.ts). Durations tell the buffers apart.
 describe("TankAudio event sounds", () => {
+  it("a real recovery uses the original recovery sound", async () => {
+    const { audio, ac } = await tank({ EventTiyu: 7, EventBirth: 8 });
+    audio.recovery();
+    expect(ac.sources.map((s) => s.buffer?.duration)).toEqual([7]);
+  });
+
   const played = (ac: FakeContext): (number | undefined)[] =>
     ac.sources.map((s) => s.buffer?.duration);
 
@@ -698,6 +1072,80 @@ describe("TankAudio event sounds", () => {
     audio.tap(160, 100, 320, 200); // middle of the glass -> center
     audio.tap(10, 100, 320, 200); // near the edge -> side
     expect(played(ac)).toEqual([7, 8]);
+  });
+
+  it("an alert plays the game's pipopa, faded out before its cut end",
+     async () => {
+    const { audio, ac } = await tank({ pipopa: 1 });
+    audio.alertBeep();
+    expect(ac.sources).toHaveLength(1);
+    const src = ac.sources[0]!;
+    expect(src.buffer?.duration).toBe(1);
+    // The bank's caution sound ends mid-tone; the fade must land
+    // before the buffer's last samples. The envelope gain is the last
+    // one the context made for this source.
+    const fade = ac.gains.at(-1)!.gain.targets[0]!;
+    expect(fade[0]).toBe(0);
+    expect(fade[1]).toBeLessThan(11);
+    expect(ac.oscs).toHaveLength(0);
+  });
+
+  it("an alert without any sound set synthesizes the classic beep",
+     async () => {
+    const { audio, ac } = await tank({ IntoWater: 1 });
+    audio.alertBeep();
+    expect(ac.sources).toHaveLength(0); // no buffer played
+    expect(ac.oscs).toHaveLength(1);
+    const osc = ac.oscs[0]!;
+    expect(osc.type).toBe("square");
+    expect(osc.frequency.value).toBeGreaterThan(150);
+    expect(osc.frequency.value).toBeLessThan(300);
+    // Into the master chain, so Mute and the volume hold.
+    expect(osc.out[0]!.out[0]).toBe(ac.gains[0]);
+    expect(osc.stops[0]).toBeGreaterThan(10); // stops after it starts
+  });
+
+  it("a tank that owns no context yet still gets its first beep",
+     async () => {
+    // No addWavs: the audio device is created on demand by the alert
+    // itself. The fake context runs from birth, so this beeps at once.
+    const audio = new TankAudio();
+    audio.alertBeep();
+    const ac = FakeContext.last!;
+    expect(ac).toBeDefined();
+    expect(ac.oscs).toHaveLength(1);
+  });
+
+  it("a suspended context beeps once its resume settles", async () => {
+    const { audio, ac } = await tank({ IntoWater: 1 });
+    ac.state = "suspended";
+    audio.alertBeep();
+    expect(ac.oscs).toHaveLength(0); // nothing while suspended
+    await new Promise((r) => setTimeout(r, 0)); // resume settles
+    expect(ac.oscs).toHaveLength(1);
+  });
+
+  it("an exact-name match still wins for the alert beep", async () => {
+    const { audio, ac } = await tank({ "Pipopa remix": 2 });
+    audio.alertBeep();
+    expect(ac.sources).toHaveLength(0); // not a substring match
+    expect(ac.oscs).toHaveLength(1);
+  });
+
+  it("a hidden tank stays silent — no context, no beep", async () => {
+    const { audio, ac } = await tank({ IntoWater: 1 });
+    audio.setHidden(true);
+    audio.alertBeep();
+    expect(ac.sources).toHaveLength(0);
+    expect(ac.oscs).toHaveLength(0);
+  });
+
+  it("a hidden tank stays silent even with pipopa installed", async () => {
+    const { audio, ac } = await tank({ pipopa: 1 });
+    audio.setHidden(true);
+    audio.alertBeep();
+    expect(ac.sources).toHaveLength(0); // the guard fires first
+    expect(ac.oscs).toHaveLength(0);
   });
 
   it("stays silent on tap with only a song installed", async () => {
@@ -859,6 +1307,62 @@ describe("TankAudio bubbles, as the original plays them", () => {
     expect(played(ac)).toEqual([[2, false]]);
   });
 
+  it("bloops a synthesized chirp when no bubble sound exists",
+     async () => {
+    const { audio, ac, master } = await tank({ [LOOP]: 30 });
+    audio.bubble();
+    expect(ac.sources).toHaveLength(0); // the loop is never a bubble
+    expect(ac.oscs).toHaveLength(1);
+    const o = ac.oscs[0]!;
+    expect(o.starts).toBe(1);
+    expect(o.stops[0]).toBeLessThan(ac.currentTime + 0.11);
+    // The chirp rises through its fifth (500-1300 Hz → ×1.5).
+    const [from, to] = o.frequency.points;
+    expect(from![0]).toBeGreaterThanOrEqual(500);
+    expect(from![0]).toBeLessThanOrEqual(1300);
+    expect(to![0]).toBe(from![0] * 1.5);
+    // Its gain starts and ends near silence so it never clicks.
+    const g = (o.out[0] as FakeGain).gain.points;
+    expect(g[0]![0]).toBeLessThan(0.001);
+    expect(g.at(-1)![0]).toBeLessThan(0.001);
+    expect(sinkOf(o)).toBe(master);
+  });
+
+  it("pans the bloop to the bubble that rose", async () => {
+    const { audio, ac, master } = await tank({ [LOOP]: 30 });
+    audio.bubble(0.6);
+    const panner = ac.oscs[0]!.out[0] as FakePanner;
+    expect(panner).toBeInstanceOf(FakePanner);
+    expect(panner.pan.value).toBe(0.6);
+    expect(panner.out[0]!.out[0]).toBe(master);
+  });
+
+  it("prefers the user's own bubble sound over the bloop", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30, "bubble pop": 2 });
+    audio.bubble();
+    expect(played(ac)).toEqual([[2, false]]);
+    expect(ac.oscs).toHaveLength(0);
+  });
+
+  it("makes no bloop with bubbles off, while hidden or suspended, " +
+     "or without a device", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.setOptions({ bubbles: false });
+    audio.bubble();
+    audio.setOptions({ bubbles: true });
+    audio.setHidden(true);
+    audio.bubble();
+    audio.setHidden(false);
+    ac.state = "suspended"; // gated, waiting on a gesture
+    audio.bubble();
+    ac.state = "running";
+    expect(ac.oscs).toHaveLength(0);
+    audio.bubble(); // running again — the gate must reopen
+    expect(ac.oscs).toHaveLength(1);
+    new TankAudio().bubble(); // no context yet — never creates one
+    expect(FakeContext.last).toBe(ac);
+  });
+
   it("plays the opening sound once as the tank opens", async () => {
     const { audio, ac } = await tank({ [LOOP]: 30, aqua: 5 });
     audio.open();
@@ -930,6 +1434,80 @@ describe("TankAudio stereo placement", () => {
   });
 });
 
+describe("Fish music", () => {
+  it("stays silent until the user asks for it", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.note(440);
+    expect(ac.oscs).toHaveLength(0);
+    audio.setOptions({ music: true });
+    audio.note(440);
+    expect(ac.oscs).toHaveLength(2); // the note and its partial
+  });
+
+  it("builds one plucked voice into the master gain", async () => {
+    const { audio, ac, master } = await tank({ [LOOP]: 30 });
+    audio.setOptions({ music: true });
+    audio.note(440);
+    const [body, partial] = ac.oscs;
+    expect(body!.type).toBe("triangle");
+    expect(body!.frequency.value).toBe(440);
+    // The octave partial is the struck string a kalimba carries.
+    expect(partial!.frequency.value).toBe(880);
+    // Both share one envelope, so a note cannot click on or off.
+    const env = body!.out[0] as FakeGain;
+    expect(partial!.out[0]!.out[0]).toBe(env);
+    const g = env.gain.points;
+    expect(g[0]![0]).toBeLessThan(0.001);
+    expect(g.at(-1)![0]).toBeLessThan(0.001);
+    expect(sinkOf(body!)).toBe(master);
+    expect(body!.stops[0]).toBeGreaterThan(ac.currentTime);
+  });
+
+  it("pans the note to the fish that played it", async () => {
+    const { audio, ac, master } = await tank({ [LOOP]: 30 });
+    audio.setOptions({ music: true });
+    audio.note(440, -0.5);
+    const panner = ac.oscs[0]!.out[0]!.out[0] as FakePanner;
+    expect(panner).toBeInstanceOf(FakePanner);
+    expect(panner.pan.value).toBe(-0.5);
+    expect(panner.out[0]).toBe(master);
+    // Dead centre skips the panner, as pop() does.
+    audio.note(440, 0);
+    expect(ac.oscs[2]!.out[0]).toBeInstanceOf(FakeGain);
+  });
+
+  it("stays quiet while hidden, and never on a silent context", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.setOptions({ music: true });
+    audio.setHidden(true);
+    audio.note(440);
+    audio.setHidden(false);
+    ac.state = "suspended";
+    audio.note(440);
+    expect(ac.oscs).toHaveLength(0);
+  });
+
+  it("ignores a pitch or level that is not a note", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.setOptions({ music: true });
+    for (const f of [0, -1, NaN, Infinity])
+      audio.note(f);
+    // An exponential ramp throws on a zero or negative target, so a
+    // bad level has to be refused rather than crash the caller.
+    for (const g of [0, -1, NaN, Infinity])
+      audio.note(440, 0, g);
+    expect(ac.oscs).toHaveLength(0);
+  });
+
+  it("carries the flag through the config's trust boundary", () => {
+    expect(SOUND_DEFAULTS.music).toBe(false);
+    expect(sanitizeSoundConfig({ music: true }).music).toBe(true);
+    expect(sanitizeSoundConfig({ music: "yes" }).music).toBe(false);
+    // A save written before the switch existed keeps it off.
+    expect(loadSoundConfig({ volume: 0.5 }).music).toBe(false);
+  });
+});
+
 // Trust boundary for localStorage and the Preferences bus messages.
 describe("sanitizeSoundConfig", () => {
   it("returns defaults for non-objects", () => {
@@ -949,8 +1527,12 @@ describe("sanitizeSoundConfig", () => {
     expect(sanitizeSoundConfig({ volume: -1, v: 2 }).volume).toBe(0);
     const c = sanitizeSoundConfig({
       volume: NaN, muted: "yes", bubbles: 0, ambient: null,
+      flyback: "loud",
     });
     expect(c).toEqual(SOUND_DEFAULTS);
+    // An explicit opt-in survives the round-trip.
+    expect(sanitizeSoundConfig({ flyback: true, v: 2 }).flyback)
+      .toBe(true);
   });
 
   it("maps a pre-quadratic volume to the slider that replays it", () => {
@@ -995,7 +1577,7 @@ describe("sanitizeSoundConfig", () => {
 
   it("round-trips a full config as a copy", () => {
     const off = { volume: 0, muted: true, bubbles: false,
-                  ambient: false, v: 2 };
+                  ambient: false, music: false, flyback: true, v: 2 };
     expect(sanitizeSoundConfig(off)).toEqual(off);
     const c = sanitizeSoundConfig(SOUND_DEFAULTS);
     expect(c).toEqual(SOUND_DEFAULTS);

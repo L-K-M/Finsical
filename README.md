@@ -217,7 +217,10 @@ and has the controls to keep it on its Keeping tab:
 - **Medicine:** Green Remedy and Methylene Blue cure the common fish
   diseases; the water treatments soften the water, raise or lower the
   pH, and remove chlorine. A dose dissolves over a few hours.
-- **Time:** real time, or up to 100 times faster.
+- **Time:** real time, up to 100 times faster, or **Frozen (0×)**.
+  Frozen stops aging, hunger, water simulation and medicine dissolving,
+  but fish keep swimming. It stays with an exported tank.
+  **Pause Simulation** also stops swimming and feeding.
 
 Fish fall sick when poor water, hunger or shocks wear their health
 down, and a sick fish can pass its disease to the weakest fish in the
@@ -242,6 +245,7 @@ Menu commands in the app:
 | Fish Names (checked while on) | Tank | |
 | Mute Sound (checked while muted) | Tank | Option-Cmd-S |
 | Pause Simulation, Resume Simulation | Tank | Cmd-P |
+| Clean Up (browser build only; the fish line up in a grid for a few seconds) | Tank | |
 | Support the Internet Archive | Tank | (opens archive.org/donate in your browser) |
 | Close, Minimize | Window | Cmd-W, Cmd-M |
 | Float Above Other Windows, Show on All Desktops | Window | (on by default, remembered) |
@@ -343,12 +347,24 @@ AquaZone did:
 | You remove a fish | Water running out |
 | Change Water | The water change |
 | The lamp goes on or off | The light switch |
+| An alert opens (the tap sign, a refused feed, a tank-file problem) | The game's caution sound (pipopa) when the sound set carries it; otherwise, a synthesized classic Mac beep |
 
-The game has no sound for a single rising bubble. **Bubble sounds**
-plays one only if you add a short sound with "bubble" in its name.
-The rest of the set, for breeding, sickness, medicine, the filter,
-timers and the game's dialogs, has no matching feature in Finsical
-yet.
+The game has no sound for a single rising bubble, so **Bubble sounds**
+plays a soft synthesized bloop now and then; a short sound you add
+with "bubble" in its name plays instead.
+Timers and the rest of the game's dialog sounds have no matching
+feature in Finsical yet.
+
+**Fish music** (Preferences, Sound) turns the tank into a small desk
+instrument: each fish plays one soft plucked note as it turns, from a
+pentatonic scale chosen by how deep it swims, panned to where it is
+across the glass, an octave down at night, with a higher grace note
+when it eats. It is off until you ask for it.
+
+One sound Finsical adds that AquaZone's Mac never had: **Flyback
+whine** (Preferences ▸ Monitor) sings the CRT's transformer at
+15.7 kHz while the monitor simulation runs — off by default, and at
+about the level a real tube's sat, which younger ears notice first.
 
 ## Windows
 

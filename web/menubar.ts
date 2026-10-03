@@ -114,6 +114,9 @@ export interface TankMenuActions {
   togglePause(): void;
   toggleNames(): void;
   toggleZen(): void;
+  /** The Finder's Clean Up: the fish line up in a grid for a few
+   * seconds. A no-op in an empty tank. */
+  cleanUp(): void;
   toggleScold(): void;
   toggleHints(): void;
   toggleBoot(): void;
@@ -385,6 +388,7 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
             action: a.toggleNames },
           { title: s.zen ? "Leave Zen Mode" : "Enter Zen Mode",
             action: a.toggleZen },
+          { title: "Clean Up", action: a.cleanUp },
           MENU_SEPARATOR,
           { title: "Take a Picture", action: a.takePicture },
           { title: "Export Tank…", action: a.exportTank },

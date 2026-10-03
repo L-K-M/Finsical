@@ -3,12 +3,10 @@ import { BOTTOM_PAD, DAY_TICKS, FOOD_ENTRY_Y, Sim,
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, moonIllumination,
          nightFloor, sanitizeLighting, twilightTint } from "../core/light.js";
 import { fishPose, pitch, restPose } from "../core/pose.js";
-import { FISH_CAP, FOOD_CAP, HUNGER_SEEK, TANK_SIZE }
+import { FISH_CAP, HUNGER_SEEK, TANK_SIZE }
   from "../core/tuning.js";
 import { planFrame } from "../core/loop.js";
-import { Aquarium } from "../core/aquarium/aquarium.js";
 import type { SavedAquarium } from "../core/aquarium/aquarium.js";
-import { sanitizeLife } from "../core/aquarium/life.js";
 import { DEFAULT_CARE, sanitizeCare } from "../core/data/species.js";
 import type { SpeciesCare } from "../core/data/species.js";
 import { conditionLabel, eventText, noticeText } from "./lifecopy.js";
@@ -22,14 +20,15 @@ import { decorDepth, drawOrder } from "../core/depth.js";
 import { bodySize, pickDrawableSheet }
   from "../core/data/swimsheet.js";
 import { fishScale } from "./artscale.js";
-import { loadSoundConfig, panFor, sanitizeSoundConfig, TankAudio }
-  from "./audio.js";
+import { loadSoundConfig, panFor, sanitizeSoundConfig, TankAudio,
+         NOTE_GAIN, NOTE_GRACE_GAIN } from "./audio.js";
+import { NoteGate, noteFor } from "./fishmusic.js";
 import { drawRipples, drawSplashes, newSplash, tickRipples,
          tickSplashes } from "./fx.js";
 import type { Ripple, Splash } from "./fx.js";
 import { sanitizeEffects } from "./effects.js";
 import { pushButton } from "osmium-ui";
-import { alertOpen, setAlertBounds, showAlert } from "./alert.js";
+import { alertOpen, setAlertBounds, setAlertSound, showAlert } from "./alert.js";
 import { recentTaps, shouldScold } from "./scold.js";
 import { backfillStarterSounds, launchOffer, showWelcome }
   from "./welcome.js";
@@ -51,7 +50,7 @@ import { placeholderFrames } from "./placeholder.js";
 import { corpseSprite } from "./corpse.js";
 import { needsCleanPicture } from "./picture.js";
 import { capRefusal, entryKey, entryOfSlot, entryStem, legacyEntries,
-         partName } from "./tankmodel.js";
+         partName, restoredFish, savedFish } from "./tankmodel.js";
 import { nextNotice, noticePoint } from "./curiosity.js";
 import type { Notice } from "./curiosity.js";
 import { laserAim } from "./laser.js";
@@ -64,6 +63,7 @@ import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
   from "./catpaw.js";
 import type { PawVisit } from "./catpaw.js";
 import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
+import { plantAreaOf } from "./plants.js";
 import { spotlightAlive } from "./spotlight.js";
 import { THERMO_H, THERMO_W, thermoCanvas, thermoTip }
   from "./thermometer.js";
@@ -76,11 +76,13 @@ import { claimTank } from "./tankclaim.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
 import { stateLabel } from "./overviewmodel.js";
+import { DIARY_LIMIT, sanitizeDiary } from "./diary.js";
+import type { DiaryEntry } from "./diary.js";
 import { crtClientToTank, crtTankToClient, initCrt, sanitizeCrtConfig }
   from "./crt.js";
 import { bubbleOffset, bubblePops, drawAir, drawBubblePop, drawCausticSurface,
          drawBubbles, drawFood, drawLaser, drawLight, drawMurk,
-         drawRefraction, drawSurface, drawTorch, feedPinch, keepTorch,
+         drawRefraction, drawSurface, drawTorch, feedPinch, feedRoom, keepTorch,
          paintSmudges, smudgePrint, sunFactor, tapBubble, torchShows }
   from "./water.js";
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
@@ -97,7 +99,7 @@ import type { Machine } from "./machines.js";
 import type { Lighting } from "../core/light.js";
 import type { BusMsg } from "./bus.js";
 import type { Importable } from "./import.js";
-import type { Fish } from "../core/sim.js";
+import type { Fish, FishState } from "../core/sim.js";
 import type { SnailVisit } from "./snail.js";
 import type { AzpackManifest, IndexedImage } from "../core/data/azpack.js";
 
@@ -181,6 +183,7 @@ interface SavedTank {
   /** Each installed fish pack's care needs, by pack url, so catch-up
    * can run before the packs themselves have restored. */
   care?: Record<string, SpeciesCare>;
+  journal?: DiaryEntry[];
 }
 /** The structural check shared by loadTank and tank-file import:
  * unknown keys ride along — save fields this build doesn't know yet
@@ -191,7 +194,7 @@ function parseTank(raw: unknown): SavedTank | null {
       !Array.isArray(s.fish) || !Array.isArray(s.addons))
     return null;
   // Fish entries only need to be objects: the restore path's filter +
-  // sanitizeSavedFish drop or clamp anything malformed. Add-on records
+  // restoredFish drop or clamp anything malformed. Add-on records
   // are fetched by URL, so a malformed one is dropped here; it must
   // not cost the whole tank.
   const addons = s.addons.filter(isSavedAddon);
@@ -224,6 +227,7 @@ function loadTank(): SavedTank | null {
 }
 const saved = loadTank();
 const installedAddons: Importable[] = (saved?.addons ?? []).map(sceneryFix);
+const journal = sanitizeDiary(saved?.journal);
 
 // ---- startup parade (web/boot.ts) ---------------------------------------
 // A 90s-Mac boot over the first seconds: black, the smiling fishbowl
@@ -277,28 +281,48 @@ const simSeed = seedPinned
 console.log("tank sim seed:", simSeed);
 const sim = new Sim(TANK, simSeed);
 const audio = new TankAudio();
+// A Mac OS 8 alert brought its own beep (SysBeep); so does ours —
+// the game's caution sound when installed, the classic synthesized
+// beep when it isn't.
+setAlertSound(() => {
+  // A sound must never block the alert it belongs to.
+  try { audio.alertBeep(); } catch { /* best-effort beep */ }
+});
 // Hidden (Cmd-H, minimized, background tab): rAF stops and the sim
 // freezes, so the ambient loop and the audio device pause with it.
 const syncAudioVisibility = (): void => audio.setHidden(document.hidden);
 document.addEventListener("visibilitychange", syncAudioVisibility);
 syncAudioVisibility();
 
-const audioHint = document.getElementById("audio-hint") as HTMLDivElement | null;
+// Any press on the page is a gesture sound may start from: the case,
+// the menu bar and the Turn On Sound button as much as the water.
+// Capture phase, so a handler that stops propagation can't swallow
+// it; pointerup as well, since a touch only counts once it lifts.
+for (const type of ["pointerdown", "pointerup"] as const)
+  window.addEventListener(type, () => { if (audio.blocked) audio.unlock(); },
+                          { capture: true, passive: true });
+// Turn On Sound: offered while the browser holds back sounds the tank
+// has loaded (TankAudio.blocked) — never for a tank with no sounds, a
+// muted one, or in the apps, which let sound start by itself. The
+// press itself unlocks through the listener above; the action covers
+// keyboard activation.
+const audioHint = document.getElementById("audio-hint") as
+  HTMLButtonElement | null;
+if (audioHint) pushButton(audioHint, () => audio.unlock());
+/** Show or hide Turn On Sound; runs every frame, painted or not, so the
+ * button leaves the moment sound starts even on a paused tank. Zen and
+ * the startup parade keep the screen to themselves. */
 function syncAudioHint(): void {
   if (!audioHint) return;
-  const ctx = (audio as any).ctx as AudioContext | null | undefined;
-  if (!ctx) { audioHint.hidden = false; return; }
-  if (ctx.state === "running") { audioHint.hidden = true; return; }
-  audioHint.hidden = false;
+  const hide = !audio.blocked || zen || bootT0 !== null;
+  if (audioHint.hidden !== hide) audioHint.hidden = hide;
 }
 if (saved) {
   // Storage is untrusted: a negative or fractional tick count would
   // re-persist and skew the day cycle.
   if (Number.isFinite(saved.tickCount))
     sim.tickCount = Math.max(0, Math.trunc(saved.tickCount));
-  if (saved.aquarium)
-    sim.aquarium = Aquarium.fromJSON(saved.aquarium,
-                                     () => Math.random());
+  if (saved.aquarium) sim.restoreAquarium(saved.aquarium);
 }
 // Species care by pack url: from the save now, from each pack as it
 // (re)installs. Fish without a known pack get the stand-in's needs.
@@ -367,62 +391,10 @@ const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
   [0, 1, 2, 3].map((i) =>
     ({ x: 40 + i * 60, y: 50 + i * 30,
        facing: (i % 2 ? -1 : 1) as 1 | -1 }));
-/** Saved fish fields are untrusted input: a corrupted hunger or
- * heading enters the sim (NaN hunger ⇒ fish can never seek food) and
- * then re-persists. Clamp each numeric field; keep x/y finite-or-drop
- * as the hard filter. */
-function sanitizeSavedFish(f: Partial<Fish> & { x: number; y: number }):
-    Partial<Fish> & { x: number; y: number } {
-  const num = (v: number | undefined, lo: number, hi: number,
-               dflt: number): number =>
-    typeof v === "number" && Number.isFinite(v)
-      ? Math.min(hi, Math.max(lo, v)) : dflt;
-  // bandY's fallback must reuse the clamped y — the raw value only
-  // passed the finite check, so a corrupt save could seed an
-  // out-of-bounds band and re-persist it.
-  const y = num(f.y, 0, TANK.height - 1, TANK.height / 2);
-  // Only the fields saveTank writes come back: anything else a save
-  // carries stays out of the sim rather than passing through unchecked.
-  const out: Partial<Fish> & { x: number; y: number } = {
-    x: num(f.x, 0, TANK.width - 1, TANK.width / 2),
-    y,
-    facing: f.facing === -1 ? -1 as const : 1 as const,
-    heading: num(f.heading, -2 * Math.PI, 2 * Math.PI, 0),
-    speed: num(f.speed, 0.1, 8, 1),
-    cruise: num(f.cruise, 0.1, 8, 1),
-    vy: num(f.vy, -8, 8, 0),
-    bandY: num(f.bandY, 0, TANK.height - 1, y),
-    hunger: num(f.hunger, 0, 1, 0.2),
-    // Pre-growth saves carry no scale: those fish are grown, not
-    // juveniles. addFish clamps the value into the sim's range.
-    scale: typeof f.scale === "number" && Number.isFinite(f.scale)
-      ? f.scale : 1,
-    species: typeof f.species === "string" ? f.species : "",
-  };
-  // Optional fields drop rather than zero out — a bogus sheetIdx or
-  // pack must read as "no binding", not bind to slot 0.
-  if (Number.isInteger(f.id) && f.id! >= 0) out.id = f.id!;
-  if (Number.isInteger(f.sheetIdx) && f.sheetIdx! >= 0)
-    out.sheetIdx = f.sheetIdx!;
-  if (typeof f.pack === "string") out.pack = f.pack;
-  const name = cleanFishName(f.name);
-  if (name) out.name = name;
-  if (typeof f.z === "number" && Number.isFinite(f.z))
-    out.z = Math.min(1, Math.max(0, f.z));
-  const life = sanitizeLife(f.life);
-  if (life) {
-    out.life = life;
-    // A body is found on the bottom, as the original reloads its
-    // dead: it settles straight there rather than floating up again.
-    if (life.dead) out.corpse = "sink";
-  }
-  if (typeof f.entry === "string") out.entry = f.entry;
-  return out;
-}
 const roster = (saved?.fish ?? [])
   .filter((f): f is Partial<Fish> & { x: number; y: number } =>
     !!f && Number.isFinite(f.x) && Number.isFinite(f.y))
-  .map(sanitizeSavedFish);
+  .map(restoredFish);
 // A saved, deliberately empty v=2 roster stays empty (Empty Tank, or
 // every fish removed); only a missing or pre-roster save gets starters.
 const keepEmpty = saved?.v === 2 && saved.fish.length === 0;
@@ -449,6 +421,7 @@ const pendingNotices: string[] = [];
 function collectEvents(): void {
   const ev = sim.aquarium.events.splice(0);
   for (const e of ev) {
+    if (e.kind === "recovered") audio.recovery();
     const f = sim.fish.find((x) => x.id === e.fish);
     pendingNotices.push(eventText(e, f?.name || f?.species || "A fish"));
   }
@@ -500,21 +473,14 @@ function tankSnapshot(): SavedTank {
   return {
     v: rosterComplete ? 2 : 1,
     tickCount: sim.tickCount, waterQuality: sim.waterQuality,
-    // Corpses don't get saved — a dead fish stays dead.
-    fish: sim.fish.filter((f) => f.state !== "dead").map((f) => ({
-      id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
-      heading: f.heading, speed: f.speed, cruise: f.cruise, vy: f.vy,
-      bandY: f.bandY, z: f.z, hunger: f.hunger, scale: f.scale,
-      ...(f.sheetIdx !== undefined ? { sheetIdx: f.sheetIdx } : {}),
-      ...(f.pack !== undefined ? { pack: f.pack } : {}),
-      ...(f.name ? { name: f.name } : {}),
-      ...(f.life ? { life: f.life } : {}),
-    })),
+    // Bodies keep fouling the water until removed, including after a restart.
+    fish: sim.fish.map(savedFish),
     addons: installedAddons,
     scenery: sceneryChoice,
     aquarium: sim.aquarium.toJSON(),
     savedAt: lifeClock,
     care: Object.fromEntries(careByPack),
+    journal: [...journal],
   };
 }
 // Set by a tank import before it reloads: the pagehide /
@@ -1133,6 +1099,8 @@ function layoutInfo(): void {
 
 // A knocking spree gets the public aquarium's sign (web/scold.ts).
 const SCOLD_KEY = "finsical:scoldSign";
+const SCOLD_CLEAR_MS = 4_200;
+let scoldTimer: ReturnType<typeof setTimeout> | undefined;
 let glassTaps: number[] = [];
 let scoldedAt: number | null = null;
 let scoldOn = true;
@@ -1145,9 +1113,15 @@ function noteGlassTap(): void {
   if (!shouldScold(glassTaps, now, scoldedAt)) return;
   scoldedAt = now;
   glassTaps = [];
-  showAlert({ icon: "caution",
-              text: "Please don't tap on the glass. It frightens the fish.",
-              buttons: [{ title: "OK", default: true, cancel: true }] });
+  // Keep the live region mounted: a non-modal reminder must still be announced.
+  const banner = document.getElementById("scold-banner")!;
+  banner.textContent = "Please don't tap on the glass: it frightens the fish.";
+  banner.classList.add("is-active");
+  clearTimeout(scoldTimer);
+  scoldTimer = setTimeout(() => {
+    banner.classList.remove("is-active");
+    banner.textContent = "";
+  }, SCOLD_CLEAR_MS);
 }
 
 // With hints on, a refused feed (the tank already holds MAX_UNEATEN
@@ -1164,8 +1138,8 @@ function noteFoodRefused(): void {
   if (now - foodRefusedAt < 60_000) return;
   foodRefusedAt = now;
   showAlert({ icon: "note",
-              text: "The tank is full of food the fish haven't eaten. " +
-                    "More would only foul the water.",
+              text: "The fish still have uneaten food. Let them finish " +
+                    "before feeding again.",
               buttons: [{ title: "OK", default: true, cancel: true }] });
 }
 
@@ -1381,7 +1355,7 @@ function decorX(i: number, dn: number, w: number): number {
   return Math.min(Math.max(Math.round(decorAnchor(i, dn) - w / 2), 0),
                   Math.max(0, TANK.width - w));
 }
-/** Tell the fish where the decor stands, after any add or removal. */
+/** Sync decor geometry and plant area; the Sim owns its chemistry units. */
 function syncCover(): void {
   const dn = decors.length;
   sim.cover = decors.map((d, i) => {
@@ -1390,6 +1364,10 @@ function syncCover(): void {
     return { x0, x1: x0 + f.width,
              top: TANK.height - DECOR_FLOOR - f.height, depth: d.depth };
   });
+  sim.plantArea = plantAreaOf(decors.map((d) => {
+    const f = d.frames[0]!;
+    return { plant: d.plant, width: f.width, height: f.height };
+  }));
 }
 /** The floor anchor a decor piece centers on — shared by the renderer
  * and the plant-bubble emitter so the two can't drift apart. */
@@ -1814,6 +1792,7 @@ function sendState(): void {
     },
     sound: soundCfg,
     effects,
+    journal: [...journal],
   });
 }
 
@@ -2336,6 +2315,7 @@ function setCrt(on: boolean): void {
   }
   // Report even when GL is missing — the prefs checkbox needs the
   // "can't enable" answer either way.
+  syncFlyback();
   postState();
 }
 /** Ring the degauss coil — the raster wobble plus the BWONG. Silent
@@ -2383,7 +2363,15 @@ let soundCfg: SoundConfig = loadSoundConfig(
 function configureAudio(): void {
   audio.setVolume(soundCfg.volume);
   audio.setMuted(soundCfg.muted);
-  audio.setOptions({ bubbles: soundCfg.bubbles, ambient: soundCfg.ambient });
+  audio.setOptions({ bubbles: soundCfg.bubbles, ambient: soundCfg.ambient,
+                     music: soundCfg.music });
+  syncFlyback();
+}
+/** The flyback whine follows two switches: the Monitor pane's opt-in
+ *  and the tube actually running. Sound it only when both hold — the
+ *  policy lives here, the synth in TankAudio. */
+function syncFlyback(): void {
+  audio.setFlyback(soundCfg.flyback && crtOn);
 }
 configureAudio();
 /** Merge a partial config (Sound pane, Mute Sound, the M key) onto the
@@ -2402,6 +2390,28 @@ const toggleMute = (): void => {
   audio.unlock(); // Tank > Mute Sound can be the first gesture
   applySoundConfig({ muted: !soundCfg.muted });
 };
+
+// ---- fish music -----------------------------------------------------------
+// Sound > Fish music: a fish that turns its corner plays one soft note
+// from a pentatonic scale, deeper fish lower and night an octave down
+// (web/fishmusic.ts). Off unless the user asks for it.
+const musicGate = new NoteGate();
+/** The state each fish was in last tick. A WeakMap so a fish removed
+ * from the tank takes its entry with it — no roster bookkeeping, and
+ * no id that could be reused. */
+const musicState = new WeakMap<Fish, FishState>();
+/** One fish's note, if the gate lets one through this tick. `at` is
+ * anywhere in the tank: the fish itself, or the pellet it ate. */
+function playNote(at: { x: number; y: number }, octave: number,
+                 gain: number): void {
+  // Ask the switch before the gate: a note that cannot sound must not
+  // spend a slot, or turning Fish music on would open on a gate still
+  // warm with notes nobody heard.
+  if (!soundCfg.music) return;
+  if (!musicGate.try(sim.tickCount)) return;
+  const n = noteFor(at, TANK, sim.light < WAKE_LIGHT, octave);
+  audio.note(n.freq, n.pan, gain);
+}
 
 // ---- tank effects --------------------------------------------------------
 // The drawn extras the original game never had — each a checkbox on
@@ -2736,7 +2746,7 @@ function feedFish(): void {
   const x = 30 + Math.random() * (TANK.width - 60);
   const hungry = sim.fish.filter(
     (f) => f.state !== "dead" && f.hunger > HUNGER_SEEK).length;
-  const room = FOOD_CAP - sim.food.filter((p) => !p.eaten).length;
+  const room = feedRoom(sim.uneatenCount());
   // The cap refuses a pellet with a bare blip where it would have
   // landed — whether it's refused now or at drop time.
   const blip = (bx: number): void => {
@@ -2746,15 +2756,18 @@ function feedFish(): void {
   if (room <= 0) {
     // The tank's already full of uneaten food — no pellets, no shake.
     blip(x);
+    noteFoodRefused();
     return;
   }
   for (const p of feedPinch(Math.random, Math.min(hungry, room))) {
     setTimeout(() => {
       if (paused) return; // paused since the pinch was scattered
+      if (alertOpen()) return; // the modal owns a pinch still falling
       // Re-check at drop time: a second click fills the tank while a
       // first pinch is still falling.
-      if (sim.food.filter((q) => !q.eaten).length >= FOOD_CAP) {
+      if (feedRoom(sim.uneatenCount()) <= 0) {
         blip(x + p.dx);
+        noteFoodRefused();
         return;
       }
       const pellet = sim.dropFood(x + p.dx);
@@ -2775,7 +2788,7 @@ function toggleAutoFeed(): void {
 function feederDrop(): void {
   const x = 30 + Math.random() * (TANK.width - 60);
   for (const p of feedPinch(Math.random, 0)) {
-    if (sim.food.length >= AUTOFEED_MAX_FOOD) break; // cap, not just a gate
+    if (sim.uneatenCount() >= AUTOFEED_MAX_FOOD) break; // cap, not just a gate
     const pellet = sim.dropFood(x + p.dx);
     if (!pellet) break; // a racer refilled the tank past MAX_UNEATEN
     splashAt(pellet.x, pellet.y, PUSH.pellet);
@@ -3043,6 +3056,7 @@ mountTankMenuBar({
   togglePause: () => { setPaused(!paused); },
   toggleNames: () => { setNames(!namesOn); },
   toggleZen: () => setZen(!zen),
+  cleanUp: () => { sim.cleanUp(); requestPaint(); },
   toggleScold: () => {
     scoldOn = !scoldOn;
     // Drop the in-flight tally too, so a spree can't span the toggle:
@@ -4102,6 +4116,16 @@ let bellCalmTicks = 0;
  * bubble — a thin stream in daylight, not a fountain. */
 const PLANT_BUBBLE = 0.006;
 
+function recordMilestone(event: string, fishId?: number): void {
+  const d = new Date(), p = (n: number) => String(n).padStart(2, "0");
+  const ts = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
+    `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  journal.push({ date: ts, event,
+                 ...(fishId !== undefined ? { fishId } : {}) });
+  if (journal.length > DIARY_LIMIT)
+    journal.splice(0, journal.length - DIARY_LIMIT);
+}
+
 function tickSim(): void {
   const bubbles = sim.bubbles.length;
   const pellets = sim.food.slice();
@@ -4111,22 +4135,31 @@ function tickSim(): void {
   // Lifecycle: each transition rings its original event sound. A birth
   // also binds the fry's sprite extents and splashes it in.
   let rosterChanged = false;
+  let goldenHeard = false;
   for (const e of sim.events.splice(0)) {
     if (e.type === "sick") audio.sick();
     else if (e.type === "dead") {
       audio.dead();
       rosterChanged = true; // the roster shrank — don't resurrect it on reload
+      recordMilestone(`Fish ${e.fish.species || "Unknown"} died`, e.fish.id);
     } else if (e.type === "birth") {
       bindExtents(e.fish);
       splashAt(e.fish.x, e.fish.y, PUSH.newFish);
       audio.birth();
       rosterChanged = true; // the roster grew
+      recordMilestone(`New fry: ${e.fish.species || "Unknown"}`, e.fish.id);
+    } else if (e.type === "golden") {
+      recordMilestone("Golden meal!", e.fish.id);
+      if (!goldenHeard) {
+        audio.golden();
+        goldenHeard = true;
+      }
     }
   }
-  if (rosterChanged) saveTank();
+  if (rosterChanged || goldenHeard) saveTank();
   // The feeder runs on tank time (tickCount), so a restored tank
   // resumes mid-cycle rather than restarting the countdown.
-  if (autoFeed && sim.fish.length && sim.food.length < AUTOFEED_MAX_FOOD &&
+  if (autoFeed && sim.fish.length && sim.uneatenCount() < AUTOFEED_MAX_FOOD &&
       sim.tickCount % AUTOFEED_TICKS === 0)
     feederDrop();
   // Snail visits run on the sim clock so a paused tank's snail waits.
@@ -4165,14 +4198,33 @@ function tickSim(): void {
   // A pellet eaten this tick is already spliced out of sim.food — its
   // `eaten` flag still reads on the snapshot taken above.
   for (const p of pellets)
-    if (p.eaten && !sim.food.includes(p))
+    if (p.eaten && !sim.food.includes(p)) {
       audio.eat(panFor(p.x, TANK.width));
+      // The eater gets a grace note where the pellet was: an octave
+      // up and quieter.
+      playNote(p, 1, NOTE_GRACE_GAIN);
+    }
+  // A fish entering its roll plays its note; the roll lasts several
+  // ticks, so only the transition counts. A fish seen for the first
+  // time — the tick it is restored on — is recorded silently: a busy
+  // tank would otherwise open with a chord of notes for fish that
+  // happened to be mid-turn, which is the one thing the gate exists
+  // to stop.
+  for (const f of sim.fish) {
+    const was = musicState.get(f);
+    musicState.set(f, f.state);
+    if (was !== undefined && was !== "turn" && f.state === "turn")
+      playNote(f, 0, NOTE_GAIN);
+  }
   if (effects.splashes)
     for (let i = pops.length - 1; i >= 0; i--)
       if (++pops[i]!.age > 8) pops.splice(i, 1);
-  // Sparse bloops: only some spawns make a sound. Checked per tick so
-  // the odds don't depend on how often the tank is drawn.
-  if (sim.bubbles.length > bubbles && Math.random() < 0.25) {
+  // Sparse bloops: only some spawns make a sound — now that a missing
+  // "bubble" record falls back to a synthesized bloop, the draw stays
+  // low enough for a full tank to read as ambience, not chatter.
+  // Checked per tick so the odds don't depend on how often the tank
+  // is drawn.
+  if (sim.bubbles.length > bubbles && Math.random() < 0.15) {
     const b = sim.bubbles[sim.bubbles.length - 1]!;
     audio.bubble(panFor(b.x, TANK.width));
   }
@@ -4215,6 +4267,7 @@ function frame(now: number): void {
   // their own clock — collapse in particular must keep drawing after
   // crtOn has already cleared. The boot parade also animates on its
   // own clock: it needs a draw per frame even before the first tick.
+  syncAudioHint();
   const crtBusy = crt?.animating ?? false;
   // The spotlight lease is wall-clock, so it must be checked on every
   // frame, including ones the loop below skips: a paused tank would
@@ -4239,7 +4292,6 @@ function frame(now: number): void {
                                  clientY: lastClient.y });
     }
   }
-  syncAudioHint();
   if (crtOn || crtBusy) crt?.render();
 }
 // A resize changes the CRT buffer size, and resizing a WebGL canvas

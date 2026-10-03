@@ -6,6 +6,7 @@ import { curesFor, deriveStats, deriveWater, hungerLabel,
 import { DAY_TICKS, Sim } from "../core/sim.js";
 import { hourLabel } from "../core/light.js";
 import { HUNGER_SEEK, QUALITY_SEEK } from "../core/tuning.js";
+import type { StatsInput } from "./statsmodel.js";
 
 const base = {
   fish: [
@@ -17,6 +18,15 @@ const base = {
 };
 
 describe("deriveStats", () => {
+  it("keeps the latest valid diary event when an imported entry is corrupt", () => {
+    const journal = [
+      { date: "2026-10-03 12:00:00", event: "Golden meal!", fishId: 4 },
+      null,
+    ] as unknown as StatsInput["journal"];
+    expect(deriveStats({ ...base, journal }).latestMilestone)
+      .toBe("Golden meal!");
+  });
+
   it("averages hunger across fish and finds the hungriest", () => {
     const s = deriveStats(base);
     expect(s.fishCount).toBe(2);
@@ -106,6 +116,40 @@ describe("deriveStats", () => {
 
   it("reports healthy when nothing needs doing", () => {
     expect(deriveStats(base).advice[0]).toMatch(/healthy/);
+  });
+
+  it("warns about depleted oxygen even while fish can still eat", () => {
+    const s = deriveStats({ ...base, waterQuality: 0.4,
+                           aquarium: { oxygenSat: 0.4 } });
+    expect(s.advice[0]).toMatch(/Oxygen.*filter/);
+    expect(s.advice.join(" ")).not.toMatch(/healthy/);
+  });
+
+  it("keeps chlorine and oxygen ahead of feeding advice, even when starving", () => {
+    const s = deriveStats({ ...base, waterQuality: 0.4,
+      fish: [{ hunger: 0.9, state: "drift" }],
+      aquarium: { oxygenSat: 0.2, chlorine: 0.5, filterDirt: 95 },
+    });
+    expect(s.advice).toHaveLength(2);
+    expect(s.advice[0]).toMatch(/chlorine/);
+    expect(s.advice[1]).toMatch(/Oxygen/);
+  });
+
+  it("prioritizes chlorine and oxygen before treatment in a sick tank", () => {
+    const s = deriveStats({ ...base, waterQuality: 0.2,
+      fish: [{ species: "Guppy", hunger: 0.9, sick: 0 }],
+      aquarium: { oxygenSat: 0.2, chlorine: 0.5 },
+    });
+    expect(s.advice).toHaveLength(2);
+    expect(s.advice[0]).toMatch(/chlorine/);
+    expect(s.advice[1]).toMatch(/Oxygen/);
+  });
+
+  it("does not report low oxygen at half saturation or without fish", () => {
+    expect(deriveStats({ ...base, aquarium: { oxygenSat: 0.5 } })
+      .advice.join(" ")).not.toMatch(/Oxygen/);
+    expect(deriveStats({ ...base, fish: [], aquarium: { oxygenSat: 0.1 } })
+      .advice.join(" ")).not.toMatch(/Oxygen/);
   });
 
   it("caps advice at two lines, most urgent first", () => {
