@@ -776,14 +776,21 @@ function waterTopAt(x: number): number {
  * the dot itself is the pointer. */
 function setLaser(on: boolean): void {
   laserOn = on;
-  document.body.classList.toggle("laser", on);
   // lastClient, not mouseClient: a touch pointer updates it before the
   // hover-only branch returns, so a keyboard toggle after a finger drag
   // strikes the dot where the finger just was.
   const p = lastClient && tankPoint(lastClient.x, lastClient.y);
   laser = on && p ? laserAim(p, waterTopAt(p.x)) : null;
+  laserCursor();
   seePointer(p);
   requestPaint();
+}
+
+/** The dot is the pointer only while it shines: over the air strip or
+ * off the picture there is no dot, so the arrow must come back or the
+ * pointer just vanishes (body.laser hides it canvas-wide). */
+function laserCursor(): void {
+  document.body.classList.toggle("laser", laser !== null);
 }
 
 // Hover a fish and its species (and mood) pops up in a little
@@ -859,6 +866,7 @@ function onTankMove(e: PointerEvent): void {
   // finger along the water is the toy's natural gesture.
   if (laserOn) {
     laser = p ? laserAim(p, waterTopAt(p.x)) : null;
+    laserCursor();
     requestPaint();
   }
   if (e.pointerType === "touch") return; // no hover on touch
@@ -885,6 +893,7 @@ function onTankLeave(e: PointerEvent): void {
     seePointer(mp);
     if (laserOn) {
       laser = mp ? laserAim(mp, waterTopAt(mp.x)) : null;
+      laserCursor();
       requestPaint(); // the dot moved or went out — even while paused
     }
     return;
@@ -892,7 +901,8 @@ function onTankLeave(e: PointerEvent): void {
   mouseClient = null;
   lastClient = null;
   lastHover = null;
-  if (laserOn) { laser = null; requestPaint(); } // the dot left with it
+  // The dot left with the pointer — and so must its cursor swap.
+  if (laserOn) { laser = null; laserCursor(); requestPaint(); }
   if (torchLit) requestPaint(); // put the torch out, even while paused
   fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
@@ -3797,7 +3807,8 @@ function render(now: Date, target: RenderTarget = "screen"): void {
   // The laser dot rides over the night veil: it is the brightest thing
   // in the tank while the toy is on, exactly as a real dot would be.
   // A saved picture leaves the viewer's pointer out, like the torch.
-  if (laser && target === "screen") drawLaser(ctx, laser.x, laser.y);
+  if (laser && target === "screen" && !anyOverlayOpen())
+    drawLaser(ctx, laser.x, laser.y);
 
   // The cat presses its paw to the outside of the glass — painted after
   // the murk and night tints, which can't dim what's on the viewer's

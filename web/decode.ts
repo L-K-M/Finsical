@@ -26,18 +26,32 @@ export function decodeImage(img: HTMLImageElement): Promise<void> {
     } catch { /* decode best effort — commit anyway */ }
   };
   return new Promise((ok) => {
-    img.onload = () => {
+    let done = false;
+    const commit = (): void => {
+      if (!done) { done = true; ok(); }
+    };
+    const prove = (): void => {
       if (typeof img.decode === "function") {
         // Rejects on a corrupt image — still commit (see above).
-        img.decode().then(ok, ok);
+        img.decode().then(commit, commit);
         // decode() may never settle (custom-scheme sources): after a
         // task, the forced draw is the proof — then commit anyway.
-        setTimeout(() => { forceDecode(); ok(); }, 0);
+        // Skipped if decode() already settled: no wasted raster.
+        setTimeout(() => { if (!done) forceDecode(); commit(); }, 0);
         return;
       }
       forceDecode();
-      ok();
+      commit();
     };
-    img.onerror = () => ok();
+    // Already settled before the handlers went on — a cached asset (or
+    // a caller that set src first) never fires onload/onerror again,
+    // so without this branch the promise would wedge forever.
+    if (img.complete) {
+      if (img.naturalWidth > 0) prove();
+      else commit(); // load already failed — broken asset commits
+      return;
+    }
+    img.onload = prove;
+    img.onerror = () => commit();
   });
 }

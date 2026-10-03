@@ -9,7 +9,9 @@
  */
 
 /** The printed temperatures, °C, warmest at the top: the heater's
- * 16-36 °C range, in the 2° steps a real strip uses. */
+ * 16-36 °C range trimmed one 2° step at each end, in the steps a real
+ * strip uses, so water at the extremes reads as the end cell's tint
+ * (16.0 °C itself lights nothing). */
 export const THERMO_CELLS: readonly number[] =
   [34, 32, 30, 28, 26, 24, 22, 20, 18];
 

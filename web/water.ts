@@ -943,6 +943,8 @@ export function drawTorch(ctx: CanvasRenderingContext2D): void {
  * over the night veil. */
 export function drawLaser(ctx: CanvasRenderingContext2D, x: number,
                           y: number): void {
+  x = Math.round(x);
+  y = Math.round(y);
   ctx.fillStyle = "rgba(255, 60, 60, 0.16)";
   ctx.fillRect(x - 3, y - 3, 7, 7);
   ctx.fillStyle = "rgba(255, 40, 40, 0.5)";

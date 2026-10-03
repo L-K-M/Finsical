@@ -1179,7 +1179,13 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     get enabled() { return enabled; },
     get usable() { return !lost; },
     get animating() {
-      return warmupBusy(enabled, settled, Number.isFinite(offT0),
+      // Backstop: `settled` only flips inside render(); if render()
+      // can't reach the ramp (e.g. a lost context), the frame loop
+      // must not spin forever waiting on it.
+      return warmupBusy(enabled,
+                        settled ||
+                          performance.now() - powerT0 > 2 * POWERON_MS,
+                        Number.isFinite(offT0),
                         performance.now() - degaussT0);
     },
     // A copy — the live cfg could otherwise be mutated without the

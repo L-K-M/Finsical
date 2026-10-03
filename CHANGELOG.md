@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- After a stall (a tab switch, a system hiccup) the tank resumes with
+  at most 100 ms of catch-up instead of 200 ms; frames slower than
+  that now run the tank a little slow rather than fast-forwarding.
 - Press J for a laser-pointer toy: a red dot follows the pointer over
   the water and the fish chase it, the way they gather at a resting
   pointer. The arrow hides while the dot is out, and the dot stops at
