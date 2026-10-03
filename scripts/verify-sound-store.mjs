@@ -14,6 +14,7 @@ const BROWSER_TIMEOUT_MS = 30_000;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 const CLEANUP_RETRIES = 5;
 const CLEANUP_RETRY_MS = 100;
+assert.equal(typeof WebSocket, "function", "verify:sound-store needs Node.js 22+");
 const candidates = process.env.FINSICAL_CHROMIUM
   ? [process.env.FINSICAL_CHROMIUM]
   : ["google-chrome", "chromium", "chromium-browser",
@@ -58,7 +59,8 @@ window.addEventListener('message', async ({ data }) => {
     parent.postMessage({ id: data.id, error: String(error) }, '*');
   }
 });
-Store.sndsMerge([]).then(() => parent.postMessage({ ready: side }, '*'));
+Store.sndsMerge([]).then(() => parent.postMessage({ ready: side }, '*'),
+  error => parent.postMessage({ ready: side, error: String(error) }, '*'));
 `;
 
 const fixture = String.raw`
@@ -77,7 +79,12 @@ async function test(name, run) {
   try { await run(); passed.push(name); }
   catch (error) { failures.push(name + ': ' + error.message); }
 }
+function finish() {
+  document.getElementById('results').textContent = JSON.stringify({ passed, failures });
+  window.storeResult = { passed, failures };
+}
 async function run() {
+  if (failures.length) { finish(); return; }
   await test('concurrent merges keep every record', async () => {
     for (let i = 0; i < 10; i++)
       await Promise.all([0, 1].map(side => call(side, {
@@ -110,12 +117,12 @@ async function run() {
     check((await call(1, { op: 'get' })).some(r => r.name === 'after-abort'),
       'abort poisoned subsequent writes');
   });
-  document.getElementById('results').textContent = JSON.stringify({ passed, failures });
-  window.storeResult = { passed, failures };
+  finish();
 }
 window.addEventListener('message', ({ data }) => {
   if (data.ready !== undefined) {
     ready.add(data.ready);
+    if (data.error) failures.push('Worker ' + data.ready + ' startup: ' + data.error);
     if (ready.size === frames.length) void run();
     return;
   }
@@ -205,9 +212,9 @@ try {
     if (!report) await new Promise((resolve) => setTimeout(resolve, 25));
   }
   assert.ok(report, "Browser fixture did not return results");
-  assert.equal(report.passed.length + report.failures.length, 4, "Missing checks");
   for (const name of report.passed) console.log("PASS: " + name);
   assert.equal(report.failures.length, 0, report.failures.join("\n"));
+  assert.equal(report.passed.length, 4, "Missing checks");
 } finally {
   if (child && child.exitCode === null) {
     const exited = new Promise((resolve) => child.once("exit", resolve));
