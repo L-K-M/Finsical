@@ -786,11 +786,13 @@ function setLaser(on: boolean): void {
   requestPaint();
 }
 
-/** The dot is the pointer only while it shines: over the air strip or
- * off the picture there is no dot, so the arrow must come back or the
- * pointer just vanishes (body.laser hides it canvas-wide). */
+/** The dot is the pointer only while it shines: over the air strip,
+ * off the picture or behind an open overlay there is no dot, so the
+ * arrow must come back or the pointer just vanishes (body.laser hides
+ * it canvas-wide). */
 function laserCursor(): void {
-  document.body.classList.toggle("laser", laser !== null);
+  document.body.classList.toggle("laser",
+                                 laser !== null && !anyOverlayOpen());
 }
 
 // Hover a fish and its species (and mood) pops up in a little
