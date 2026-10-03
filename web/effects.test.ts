@@ -36,3 +36,13 @@ describe("sanitizeEffects", () => {
     expect(sanitizeEffects({ murk: "x" }, base).murk).toBe(false);
   });
 });
+
+describe("smudges default", () => {
+  it("is the one extra off by default — the glass starts clean", () => {
+    // Every other extra keeps the tank's long-standing look; the
+    // prints change the glass itself, so a tank opts in.
+    expect(EFFECTS_DEFAULTS.smudges).toBe(false);
+    expect(sanitizeEffects({}).smudges).toBe(false);
+    expect(sanitizeEffects({ smudges: true }).smudges).toBe(true);
+  });
+});

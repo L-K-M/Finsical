@@ -271,6 +271,63 @@ export function drawFood(ctx: CanvasRenderingContext2D,
   ctx.globalAlpha = 1;
 }
 
+// ---- glass smudges ---------------------------------------------------------
+// Where a fish settles, it leaves faint prints on the inside of the
+// glass (core/sim.ts's restPrints; the Effects pane switches the layer
+// on and off). Pure geometry and painting here, so the tank page only
+// caches and composites.
+
+/** One print's size in tank px: a fingertip's smear, wider than tall. */
+const SMUDGE_W = 9;
+const SMUDGE_H = 5;
+/** How far a print's pair of marks sit apart. */
+export const SMUDGE_SPREAD = 4;
+/** Each print's faintness. Prints that land on the same corner overlap
+ *  into a bloom; one alone barely reads, the way a clean tank looks. */
+export const SMUDGE_ALPHA = 0.02;
+
+/** One mark on the glass. */
+export interface Smudge {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  alpha: number;
+}
+
+/** The marks one rest leaves: a pair of smears either side of where
+ *  the fish settled, jittered by the print's sequence number so no
+ *  two rests paint the identical shape. Deterministic — the same rest
+ *  paints the same marks every frame, so a cache holds. */
+export function smudgePrint(p: { x: number; y: number; n: number }):
+    Smudge[] {
+  // A cheap integer hash of n picks the pair's angle and tilt.
+  const h = Math.imul(p.n * 0x85eb, 0x27d4eb4f) >>> 0;
+  const ang = (h % 628) / 100;
+  const dx = Math.cos(ang) * SMUDGE_SPREAD;
+  const dy = Math.sin(ang) * SMUDGE_SPREAD * 0.5;
+  return [
+    { x: p.x + dx, y: p.y + dy, w: SMUDGE_W, h: SMUDGE_H,
+      alpha: SMUDGE_ALPHA },
+    { x: p.x - dx, y: p.y - dy, w: SMUDGE_W * 0.8, h: SMUDGE_H * 0.8,
+      alpha: SMUDGE_ALPHA },
+  ];
+}
+
+/** Paint the glass's prints: soft white ellipses, faint enough to sit
+ *  under the fish as a greasy film rather than over them. */
+export function paintSmudges(ctx: CanvasRenderingContext2D,
+                             marks: readonly Smudge[]): void {
+  ctx.fillStyle = "#fff";
+  for (const m of marks) {
+    ctx.globalAlpha = m.alpha;
+    ctx.beginPath();
+    ctx.ellipse(m.x, m.y, m.w / 2, m.h / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
 // ---- caustics, shafts ------------------------------------------------------
 
 export const CAUSTIC_TILE_W = 64;

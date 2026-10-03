@@ -70,8 +70,8 @@ import { crtClientToTank, crtTankToClient, initCrt, sanitizeCrtConfig }
   from "./crt.js";
 import { bubbleOffset, bubblePops, drawAir, drawBubblePop, drawCausticSurface,
          drawBubbles, drawFood, drawLight, drawMurk, drawRefraction,
-         drawSurface, drawTorch, feedPinch, keepTorch, sunFactor,
-         tapBubble, torchShows } from "./water.js";
+         drawSurface, drawTorch, feedPinch, keepTorch, paintSmudges,
+         smudgePrint, sunFactor, tapBubble, torchShows } from "./water.js";
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
   from "./surface.js";
 import {
@@ -3500,11 +3500,41 @@ function drawMidWater(floor: number): void {
     drawLight(ctx, sim.light, sim.tickCount, waterMotion, floor);
 
   drawFood(ctx, sim.food);
+  // Where fish have settled, faint prints on the glass under them
+  // (Effects pane, off by default).
+  drawSmudges();
   // The snail crawls the gravel at mid depth, not over the water.
   if (snail) {
     const p = snailPose(snail, sim.tickCount, TANK.width);
     if (p) drawSnail(p.x, p.paused, snail.dir);
   }
+}
+
+// The prints live on an offscreen canvas that only changes when a rest
+// happens — one blit per frame instead of an ellipse per print. The
+// signature covers every input the painting reads: the sequence number
+// moves on every rest, the length catches the cap dropping the oldest.
+const smudgeCv = document.createElement("canvas");
+smudgeCv.width = TANK.width;
+smudgeCv.height = TANK.height;
+let smudgeSig = "";
+function drawSmudges(): void {
+  if (!effects.smudges) {
+    if (smudgeSig !== "") {
+      smudgeSig = "";
+      smudgeCv.getContext("2d")!.clearRect(0, 0, TANK.width, TANK.height);
+    }
+    return;
+  }
+  const prints = sim.restPrints;
+  const sig = `${prints.length}:${prints.at(-1)?.n ?? 0}`;
+  if (sig !== smudgeSig) {
+    smudgeSig = sig;
+    const c = smudgeCv.getContext("2d")!;
+    c.clearRect(0, 0, TANK.width, TANK.height);
+    paintSmudges(c, prints.flatMap(smudgePrint));
+  }
+  ctx.drawImage(smudgeCv, 0, 0);
 }
 /** Who a frame is for: the live screen, or a Take a Picture souvenir,
  * which leaves out what only the viewer's pointer and the pause put

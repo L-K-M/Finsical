@@ -992,6 +992,11 @@ const FX_SPECS: { key: keyof EffectsConfig; label: string;
     blurb: "Every so often a snail creeps in and crosses the gravel. " +
       "The cat stays either way — that visitor was the original's " +
       "own." },
+  { key: "smudges", label: "Prints on the glass",
+    blurb: "Wherever a fish settles, it leaves a faint print on the " +
+      "inside of the glass, and the marks a corner collects build " +
+      "into a greasy bloom. The glass remembers while the tank is " +
+      "open — never between visits — and off by default." },
 ];
 const fxBoxes = new Map<keyof EffectsConfig, HTMLInputElement>();
 

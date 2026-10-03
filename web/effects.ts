@@ -4,9 +4,10 @@
  * surface, tap ripples and feed splashes, swaying decor, fouled-water
  * murk, the night torch and the snail's visits. Each is a checkbox on
  * Preferences' Effects pane; every one defaults on, so a tank keeps
- * its looks until somebody asks for the original's plainer rendering.
- * The tank page owns the state, persists it, and applies posts from
- * the pane — this module is the shape both sides share.
+ * its looks until somebody asks for the original's plainer rendering —
+ * except the glass prints, which change the glass itself and so
+ * default off. The tank page owns the state, persists it, and applies
+ * posts from the pane — this module is the shape both sides share.
  */
 export interface EffectsConfig {
   /** Sun shafts through the water and the caustic web over the lower
@@ -31,13 +32,19 @@ export interface EffectsConfig {
   /** The snail that creeps across the gravel every so often
    * (snail.ts). */
   snail: boolean;
+  /** Prints on the inside of the glass where fish have settled
+   * (smudges in water.ts): the one extra that changes the glass
+   * itself, so it alone defaults off — and its history is per visit,
+   * never saved. */
+  smudges: boolean;
 }
 
-/** Every extra on: the tank's long-standing look. */
+/** Every extra on: the tank's long-standing look. The glass prints
+ *  are the one exception — see smudges. */
 export const EFFECTS_DEFAULTS: Readonly<EffectsConfig> =
   Object.freeze<EffectsConfig>({
     sunlight: true, surface: true, splashes: true, sway: true,
-    murk: true, torch: true, snail: true,
+    murk: true, torch: true, snail: true, smudges: false,
   });
 
 /** Validate a stored or posted effects config, field by field, onto

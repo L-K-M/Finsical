@@ -7,9 +7,10 @@ import { makeRng } from "../core/rng.js";
 import {
   bubbleOffset, bubblePops, bubbleSize, CAUSTIC_TILE_H, CAUSTIC_TILE_W, drawAir,
   causticShimmer, causticTile, causticValue, feedPinch, murkParams,
-  MURK_BOTTOM, MURK_TOP, pelletDrift, PINCH_CENTER_SPREAD, PINCH_MAX,
-  PINCH_SPREAD, REFRACT_ROWS,
-  refractShift, sunFactor, torchRadius, torchShows,
+  MURK_BOTTOM, MURK_TOP, paintSmudges, pelletDrift, PINCH_CENTER_SPREAD,
+  PINCH_MAX, PINCH_SPREAD, REFRACT_ROWS,
+  refractShift, SMUDGE_ALPHA, SMUDGE_SPREAD, smudgePrint, sunFactor,
+  torchRadius, torchShows,
 } from "./water.js";
 import { SURFACE_MAX, SURFACE_W } from "./surface.js";
 
@@ -327,5 +328,50 @@ describe("torch", () => {
     }
     expect(torchRadius(0.35)).toBe(24);
     expect(torchRadius(1)).toBe(40);
+  });
+});
+
+describe("glass smudges", () => {
+  it("paints each rest as a pair of faint marks around it", () => {
+    const marks = smudgePrint({ x: 100, y: 120, n: 7 });
+    expect(marks).toHaveLength(2);
+    for (const m of marks) {
+      expect(m.alpha).toBe(SMUDGE_ALPHA);
+      // A print sits on the glass where the fish settled, not pages
+      // away from it.
+      expect(Math.abs(m.x - 100)).toBeLessThanOrEqual(SMUDGE_SPREAD + 1);
+      expect(Math.abs(m.y - 120)).toBeLessThanOrEqual(SMUDGE_SPREAD + 1);
+    }
+    // The pair straddles the rest point rather than stacking on it.
+    expect(marks[0]!.x).not.toBe(marks[1]!.x);
+  });
+
+  it("is deterministic per print, and distinct between prints", () => {
+    expect(smudgePrint({ x: 50, y: 60, n: 3 }))
+      .toEqual(smudgePrint({ x: 50, y: 60, n: 3 }));
+    const a = smudgePrint({ x: 50, y: 60, n: 1 });
+    const b = smudgePrint({ x: 50, y: 60, n: 2 });
+    expect(a).not.toEqual(b);
+  });
+
+  it("stacks marks where fish share a corner rather than replacing", () => {
+    const marks = [{ x: 80, y: 90, n: 1 }, { x: 82, y: 91, n: 5 }]
+      .flatMap(smudgePrint);
+    expect(marks).toHaveLength(4);
+  });
+
+  it("paints every mark through the passed context, faintly", () => {
+    const ellipses: number[][] = [];
+    const alphas: number[] = [];
+    const ctx = {
+      fillStyle: "", globalAlpha: 1,
+      beginPath: () => {},
+      ellipse: (...a: number[]) => { ellipses.push(a); },
+      fill: () => { alphas.push(1); },
+    } as unknown as CanvasRenderingContext2D;
+    const marks = smudgePrint({ x: 10, y: 20, n: 9 });
+    paintSmudges(ctx, marks);
+    expect(ellipses).toHaveLength(2);
+    expect(ctx.globalAlpha).toBe(1); // leaves the alpha as it found it
   });
 });

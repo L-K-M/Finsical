@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Preferences ▸ Effects grows a **Prints on the glass** switch, off by
+  default: wherever a fish settles it leaves a faint print on the
+  inside of the glass, and the marks a corner collects build into a
+  greasy bloom. The glass remembers while the tank is open and starts
+  clean on the next visit.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's
