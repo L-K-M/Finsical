@@ -120,7 +120,30 @@ body.crt canvas#tank { opacity: 0; }
 .dbwin { width: 344px; max-width: calc(100vw - 24px); }
 /* Osmium positions window content absolutely inside a sized window; a
    document window sizes to its content instead, so the content flows. */
-.dbwin .osm-content { position: static; margin: 21px 5px 5px; }
+.dbwin .osm-content {
+  position: static; margin: 21px 5px 5px;
+  /* Clear the menu bar (28), frame (26) and bottom margin (8).
+     Short screens scroll the document rather than lose its OK button. */
+  max-height: max(0px, calc(100vh - 62px)); overflow-y: auto;
+  box-sizing: border-box;
+}
+/* WebKit's native scrolling keeps keyboard and touch support. Its
+   default rounded bar would be out of place in a Platinum document. */
+.dbwin .osm-content::-webkit-scrollbar { width: 16px; }
+.dbwin .osm-content::-webkit-scrollbar-track {
+  background: var(--osm-sprite-scroll-track) 0 0 / 16px 1px repeat-y;
+}
+.dbwin .osm-content::-webkit-scrollbar-thumb {
+  background: #ccc; border: 1px solid #000; border-radius: 0;
+  box-shadow: inset 1px 1px #fff, inset -1px -1px #888;
+}
+.dbwin .osm-content::-webkit-scrollbar-button:single-button { height: 16px; }
+.dbwin .osm-content::-webkit-scrollbar-button:vertical:decrement {
+  background: var(--osm-sprite-scroll-up) 0 0 / 16px 16px no-repeat;
+}
+.dbwin .osm-content::-webkit-scrollbar-button:vertical:increment {
+  background: var(--osm-sprite-scroll-down) 0 0 / 16px 16px no-repeat;
+}
 .dbdoc { padding: 4px 14px 12px; font: var(--osm-font-small); }
 .dbabout { text-align: center; }
 .dbabout .dbicon {
