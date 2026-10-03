@@ -644,7 +644,7 @@ describe("TankAudio.setFlyback", () => {
   const live = (ac: FakeContext): FakeOsc[] =>
     ac.oscs.filter((o) => o.starts > 0 && !o.stops.length);
 
-  it("sings at line frequency and its harmonic into the master", async () => {
+  it("sings line frequency and mains hum into the master", async () => {
     // One clip builds the context and its master; the whine is pure
     // oscillator and needs nothing from the bank.
     const { audio, ac, master } = await tank({ tone: 1 });

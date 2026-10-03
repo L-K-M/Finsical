@@ -115,13 +115,13 @@ const AMBIENT_GAIN = 0.4;
 const POP_HZ = [700, 1600] as const;
 const POP_S = 0.06;
 const POP_GAIN = 0.25;
-/** The flyback transformer's whine: NTSC line frequency and the mains
- * harmonic beside it. Levels sit around -44 dBFS — as loud as a real
+/** The flyback transformer's whine: NTSC line frequency with the
+ * mains hum beside it. Levels sit around -44 dBFS — as loud as a real
  * tube's, which younger ears find and older ones don't. */
 const FLYBACK_HZ = 15734;
-const FLYBACK_HARMONIC_HZ = 120;
+const FLYBACK_MAINS_HZ = 120;
 const FLYBACK_GAIN = 0.006;
-const FLYBACK_HARMONIC_GAIN = 0.002;
+const FLYBACK_MAINS_GAIN = 0.002;
 
 /** Stereo position of a tank event at x in a w-wide tank: the edges
  * pan to ±0.8 — a clear sense of side without a hard pan. */
@@ -170,8 +170,8 @@ export class TankAudio {
   private bubblesOn = SOUND_DEFAULTS.bubbles;
   private ambientOn = SOUND_DEFAULTS.ambient;
   private flybackOn = SOUND_DEFAULTS.flyback;
-  // The flyback pair while live: the 15.7 kHz fundamental and its
-  // harmonic, stopped and dropped on every switch off.
+  // The flyback pair while live: the 15.7 kHz fundamental and the
+  // mains hum beside it, stopped and dropped on every switch off.
   private flybackOscs: OscillatorNode[] | null = null;
   // The one install-feedback source still playing, so a newer install
   // (or Add Again) replaces it instead of stacking copies.
@@ -365,7 +365,7 @@ export class TankAudio {
     };
     this.flybackOscs = [
       mk(FLYBACK_HZ, FLYBACK_GAIN),
-      mk(FLYBACK_HARMONIC_HZ, FLYBACK_HARMONIC_GAIN),
+      mk(FLYBACK_MAINS_HZ, FLYBACK_MAINS_GAIN),
     ];
   }
 
