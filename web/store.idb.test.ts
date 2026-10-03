@@ -114,6 +114,9 @@ describe("store.ts after the browser closes its connection", () => {
         .toBe(true);
       await expect(store.sndsMerge([{ name: "x", wav: new Uint8Array(1) }]))
         .resolves.toBeTruthy();
+      // The write landed through the reopened connection, not a stale one.
+      expect(await store.sndsGet())
+        .toEqual([{ name: "x", wav: new Uint8Array(1) }]);
       expect(idb.opens()).toBe(2);
     });
   }
