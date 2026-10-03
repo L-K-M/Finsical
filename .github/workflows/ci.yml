@@ -30,6 +30,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run verify:sound-store
+      - run: npm run verify:spectator
       # The runner's Chrome exercises real Canvas blending and alpha.
       - run: npm run test:caustics
       - run: python3 -m unittest discover -s tools/tests -p 'test_*.py' -t .
