@@ -1179,12 +1179,10 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     get enabled() { return enabled; },
     get usable() { return !lost; },
     get animating() {
-      // Backstop: `settled` only flips inside render(); if render()
-      // can't reach the ramp (e.g. a lost context), the frame loop
-      // must not spin forever waiting on it.
-      return warmupBusy(enabled,
-                        settled ||
-                          performance.now() - powerT0 > 2 * POWERON_MS,
+      // Elapsed time alone cannot settle the last visible frame after
+      // a stall/hidden tab. Context loss clears enabled above, so it
+      // already stops owing frames without a warm-up timeout.
+      return warmupBusy(enabled, settled,
                         Number.isFinite(offT0),
                         performance.now() - degaussT0);
     },

@@ -19,7 +19,10 @@
 - Switching the CRT effect on over a paused tank settles the picture
   at full power. The warm-up could stop one frame short, leaving the
   still picture slightly over-bright and over-zoomed until anything
-  moved.
+  moved. Returning after a long stall still draws the settled frame.
+- Closing an alert over a text-field dialog returns typing to that
+  field without losing its selection. Closing a background alert
+  leaves the active control's focus alone.
 - The Tank Overview's selection spotlight lets go when the window
   that picked the fish is gone, even while the tank is paused. It used
   to stay lit on a still tank until something moved.
@@ -69,6 +72,23 @@
   field gets Mac OS 8.5's lavender ring instead of a black double
   ring that looked like a second default button. Tank Overview dims
   Empty Tank… when there is nothing to empty.
+- If the browser or the system closes Finsical's local storage under
+  it (clearing site data, or WebKit's storage process restarting), the
+  tank opens it again. It used to treat every cached add-on as missing
+  and download it again, call dropped files "storage is full", and
+  stop saving sounds until you quit.
+- When an add-on's download is cut off part way, the Import window
+  says to check the connection and offers Try Again. It used to show
+  the browser's own wording, such as "network error", beside a
+  disabled Try Again, as if the add-on itself could not be read.
+- If part of the Internet Archive doesn't answer while Finsical stocks
+  a new tank, it says which starter items it couldn't reach and offers
+  them again, instead of finishing without the plant and the
+  background and never offering them again.
+- Once a plant or accessory is in the tank 16 times, Add Again and
+  dropping its file again say so and leave the tank alone. They used
+  to play the scenery sound and report the add-on as added while
+  nothing new appeared.
 - On Linux, quitting waits until the tank has saved. It could quit
   before the save ran and lose up to a minute of the tank's life, the
   fish's positions and hunger included.
@@ -138,6 +158,13 @@
 - The alert that says the tank is full of uneaten food is now a hint
   you turn on with Tank > Turn Hints On. It no longer interrupts
   feeding by default; a refused feed is silent unless hints are on.
+- Import Add-ons reopens on the section you last chose. The streaming
+  listing used to overwrite that choice with whichever section arrived
+  first, so the window landed on Fish and the preference was lost.
+- Add-ons whose listing links point at an archive.org node mirror
+  install again. The importer listed them but the Add to Tank
+  validator only accepted the archive.org host itself, so those items
+  always failed with "invalid add-on item".
 - Alerts no longer show the browser's rounded focus ring around their
   frame.
 - The Mac app opens its tank when you run it from where you unzipped

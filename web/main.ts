@@ -33,11 +33,12 @@ import { alertOpen, setAlertBounds, showAlert } from "./alert.js";
 import { recentTaps, shouldScold } from "./scold.js";
 import { backfillStarterSounds, launchOffer, showWelcome }
   from "./welcome.js";
-import { clampDecorCopies, decorCopyRoom, fetchAddon, installProblem,
+import { clampDecorCopies, decorCopyRoom, decorRefusal, fetchAddon,
+         installProblem,
          mountImportPanel, orphanedSounds, recordAddon,
          qualifySoundItemName, isListed, isSavedAddon, sceneryFix,
          usablePacks,
-         usableProblem, COLLECTIONS }
+         usableProblem, COLLECTIONS, isArchiveUrl }
   from "./import.js";
 import { SWAY_AMP, SWAY_BANDS, swayOffset } from "./sway.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
@@ -359,8 +360,7 @@ function applyLighting(raw: unknown): void {
   if (lighting.lamp !== lampWas) audio.lampSwitch();
   syncLight(new Date());
   requestPaint(); // shows at once, even while no tick runs
-  try { localStorage.setItem(LIGHTING_KEY, JSON.stringify(lighting)); }
-  catch { /* storage unavailable */ }
+  savePreference(LIGHTING_KEY, JSON.stringify(lighting));
   postState();
 }
 const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
@@ -479,6 +479,12 @@ function runLife(): void {
 const claim = claimTank(() => location.reload()); // lease stolen
                                                   // mid-session
 const tankOwner = claim.owned;
+/** Local view controls may change; only the owner persists shared preferences. */
+function savePreference(key: string, value: string): void {
+  if (!tankOwner) return;
+  try { localStorage.setItem(key, value); }
+  catch { /* storage unavailable */ }
+}
 if (!tankOwner) {
   setInterval(() => { if (claim.ownerGone()) location.reload(); },
               1_500);
@@ -534,14 +540,30 @@ function saveTank(): void {
 // A .fins file is the saved-tank JSON — how an aquarium moves between
 // Macs or survives a cleared profile. Add-ons are stored by URL, so an
 // imported tank re-downloads its packs on the next launch.
+/** What to do with the anchor's href after the click: "keep" leaves it
+ * alone (a data: URL or one that stays useful); "revoke" schedules the
+ * object URL's release — revoking in the same tick can abort a download
+ * where saving starts asynchronously. */
+type HrefCleanup = "keep" | "revoke";
+/** Click a download anchor. A detached anchor's click() is ignored by
+ * some browsers (Firefox, Safari), so append it for the click, then
+ * remove. */
+function downloadAnchor(href: string, name: string,
+                        cleanup: HrefCleanup, revokeMs = 5000): void {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  if (cleanup === "revoke")
+    setTimeout(() => URL.revokeObjectURL(href), revokeMs);
+}
 function exportTank(): void {
   const blob = new Blob([JSON.stringify(tankSnapshot(), null, 2)],
                         { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "finsical-tank.fins";
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+  const href = URL.createObjectURL(blob);
+  downloadAnchor(href, "finsical-tank.fins", "revoke", 10_000);
 }
 
 const tankFile = document.createElement("input");
@@ -552,7 +574,7 @@ document.body.appendChild(tankFile);
 tankFile.addEventListener("change", () => {
   const f = tankFile.files?.[0];
   tankFile.value = ""; // picking the same file twice must re-fire
-  if (!f) return;
+  if (!f || !tankOwner) return;
   // A saved tank is a few KB of JSON; anything bigger isn't one, and
   // a huge file would freeze the tab in JSON.parse before parseTank
   // ever saw it.
@@ -1654,8 +1676,9 @@ async function handleSounds(
   await audio.addWavs(recs)
     .catch((e) => console.warn("sound decode skipped:", e));
   // Persist best-effort — a quota failure logs, never breaks import.
-  void sndsMerge(recs).catch((e) =>
-    console.warn("snd persist failed:", e));
+  if (tankOwner)
+    void sndsMerge(recs).catch((e) =>
+      console.warn("snd persist failed:", e));
   // The Add-to-Tank click and the file drop are gestures; a context
   // still locked at decode time must resume before the feedback plays.
   if (live) { audio.unlock(); audio.playImported(recs[0]!.name); }
@@ -1675,7 +1698,9 @@ const importPanel = mountImportPanel({
     // A boot in progress marches each restored add-on in as an icon.
     if (bootT0 !== null) { paradeIcons.push(paradeIcon(it.section)); }
   },
-  refuse: (it, fish) => fishRefusal(it.section, fish),
+  refuse: (it, fish) =>
+    !tankOwner ? "This copy of the tank is view only."
+      : fishRefusal(it.section, fish) ?? decorRefusal(decors, it),
   preview: previewOf,
 });
 
@@ -1985,12 +2010,27 @@ function onBusMessage(m: BusMsg): void {
     if (nm) applyMachine(nm);
   } else if (m.op === "soundsLoaded") {
     // The panel page dropped sound files into the shared IndexedDB
-    // store — re-read it (merges under the same name) and optionally
-    // play the named record as feedback.
+    // store — re-read it and decode just the records it names
+    // (sndsGet can't filter by name; the read is still whole), then
+    // optionally play the named record as feedback. Decoding the
+    // whole store on every drop did up to 64 MB of WAV decode the
+    // bank already had.
     void sndsGet().then((recs) => {
       if (!recs?.length) return;
+      const names = Array.isArray(m.names)
+        ? new Set(m.names.filter(
+            (n): n is string => typeof n === "string"))
+        : null;
+      // A sender that names none predates the names field — decode
+      // the store as before rather than silently skipping the drop.
+      const fresh = names ? recs.filter((r) => names.has(r.name)) : recs;
+      if (!fresh.length) {
+        console.warn("soundsLoaded names matched no store records",
+          [...names ?? []]);
+        return;
+      }
       // Returned, so the outer catch sees addWavs rejections too.
-      return audio.addWavs(recs).then(() => {
+      return audio.addWavs(fresh).then(() => {
         if (typeof m.name === "string") audio.playImported(m.name);
         audio.startAmbient();
       });
@@ -2115,8 +2155,7 @@ function emptyTank(): void {
 const KNOWN_SECTIONS = new Set(COLLECTIONS.map((c) => c.section));
 const installsInFlight = new Map<string, Promise<void>>();
 async function remoteInstall(it: Importable, again: boolean): Promise<void> {
-  if (!it?.url || typeof it.url !== "string" ||
-      !it.url.startsWith("https://archive.org/") ||
+  if (!isArchiveUrl(it?.url) ||
       !KNOWN_SECTIONS.has(it.section) ||
       typeof it.inner !== "string" || !it.inner.trim()) {
     bus.post({ op: "installFailed", url: it?.url ?? "",
@@ -2157,9 +2196,10 @@ function installAddon(it: Importable, again: boolean): Promise<void> {
     bus.post({ op: "installed", url: it.url });
     return Promise.resolve();
   }
-  // A fish pack can't be added past the population cap — refuse up
-  // front so the panel explains it instead of fetching for nothing.
-  const refusal = fishRefusal(it.section);
+  // A fish pack can't be added past the population cap, nor a plant
+  // past its copy cap — refuse up front so the panel explains it
+  // instead of fetching for nothing.
+  const refusal = fishRefusal(it.section) ?? decorRefusal(decors, it);
   if (refusal) {
     bus.post({ op: "installFailed", url: it.url, error: refusal });
     return Promise.reject(new Error(refusal));
@@ -2238,8 +2278,7 @@ function setPaused(on: boolean): boolean {
     // affordance would lag the state until the mouse next moved.
     syncFeedHover();
     requestPaint(); // the banner comes and goes without a tick
-    try { localStorage.setItem(PAUSE_KEY, on ? "1" : "0"); }
-    catch { /* storage unavailable — pause is session-only */ }
+    savePreference(PAUSE_KEY, on ? "1" : "0");
     postState();
   }
   return paused;
@@ -2263,8 +2302,7 @@ function setNames(on: boolean): boolean {
     if (!on) nameTags.clear();
     else fishTip.style.display = "none"; // the tags replace the tip
     requestPaint(); // tags follow the next render
-    try { localStorage.setItem(NAMES_KEY, on ? "1" : "0"); }
-    catch { /* storage unavailable — session-only */ }
+    savePreference(NAMES_KEY, on ? "1" : "0");
     postState();
   }
   return namesOn;
@@ -2294,8 +2332,7 @@ function setCrt(on: boolean): void {
   // rather than show black until the next tick.
   if (crtOn) requestPaint();
   if (crt !== null) {
-    try { localStorage.setItem(CRT_KEY, crtOn ? "1" : "0"); }
-    catch { /* storage unavailable */ }
+    savePreference(CRT_KEY, crtOn ? "1" : "0");
   }
   // Report even when GL is missing — the prefs checkbox needs the
   // "can't enable" answer either way.
@@ -2323,8 +2360,7 @@ function applyCrtConfig(raw: unknown): void {
   crtCfg = sanitizeCrtConfig(merged);
   crt?.configure(crtCfg);
   requestPaint(); // slider drags show up at once
-  try { localStorage.setItem(CRT_CFG_KEY, JSON.stringify(crtCfg)); }
-  catch { /* storage unavailable */ }
+  savePreference(CRT_CFG_KEY, JSON.stringify(crtCfg));
   postState();
 }
 // Machine selection is declared up here, not in the machine-case
@@ -2359,8 +2395,7 @@ function applySoundConfig(raw: unknown): void {
       if (v !== undefined) merged[k] = v;
   soundCfg = sanitizeSoundConfig(merged);
   configureAudio();
-  try { localStorage.setItem(SOUND_KEY, JSON.stringify(soundCfg)); }
-  catch { /* storage unavailable */ }
+  savePreference(SOUND_KEY, JSON.stringify(soundCfg));
   postState();
 }
 const toggleMute = (): void => {
@@ -2411,8 +2446,7 @@ function applyEffects(raw: unknown): void {
     pawNextAt = pawRevisitAt(sim.tickCount);
   }
   requestPaint(); // the change shows at once, even while paused
-  try { localStorage.setItem(EFFECTS_KEY, JSON.stringify(effects)); }
-  catch { /* storage unavailable */ }
+  savePreference(EFFECTS_KEY, JSON.stringify(effects));
   postState();
 }
 
@@ -2619,8 +2653,7 @@ function commitMachine(m: Machine): void {
   rearShellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
   rearShellEl.innerHTML = backgroundMarkup(m);
   layoutMachine();
-  try { localStorage.setItem(MACHINE_KEY, m.id); }
-  catch { /* storage unavailable */ }
+  savePreference(MACHINE_KEY, m.id);
   // native geometry and the picker now describe the committed art
   postState();
 }
@@ -2736,8 +2769,7 @@ function feedFish(): void {
 function toggleAutoFeed(): void {
   audio.unlock(); // Tank ▸ Auto-Feed can be the first gesture
   autoFeed = !autoFeed;
-  try { localStorage.setItem(AUTOFEED_KEY, autoFeed ? "1" : "0"); }
-  catch { /* storage unavailable */ }
+  savePreference(AUTOFEED_KEY, autoFeed ? "1" : "0");
   postState();
 }
 function feederDrop(): void {
@@ -2783,17 +2815,8 @@ function takePicture(): void {
     `${pad(d.getSeconds())}.png`;
   // A detached anchor's click() is ignored by some browsers — append
   // it for the click, then remove.
-  const save = (href: string, revoke = false): void => {
-    const a = document.createElement("a");
-    a.href = href;
-    a.download = name;
-    document.body.append(a);
-    a.click();
-    a.remove();
-    // Revoking in the same tick can abort the download where blob
-    // saves start asynchronously (Safari, Firefox).
-    if (revoke) setTimeout(() => URL.revokeObjectURL(href), 5000);
-  };
+  const save = (href: string, cleanup: HrefCleanup = "keep"): void =>
+    downloadAnchor(href, name, cleanup);
   const saveBlob = (blob: Blob | null): void => {
     if (!blob) { save(out.toDataURL("image/png")); return; }
     // WKWebView ignores <a download> entirely — hand the PNG bytes to
@@ -2809,12 +2832,12 @@ function takePicture(): void {
       // last resort (ignored by WKWebView, harmless elsewhere).
       r.onerror = () => {
         console.warn("takePicture: FileReader failed:", r.error);
-        save(URL.createObjectURL(blob), true);
+        save(URL.createObjectURL(blob), "revoke");
       };
       r.readAsDataURL(blob);
       return;
     }
-    save(URL.createObjectURL(blob), true);
+    save(URL.createObjectURL(blob), "revoke");
   };
   // toBlob encodes off the critical path where supported; toDataURL
   // (synchronous on the main thread) is the fallback.
@@ -2834,8 +2857,7 @@ function changeWater(cfg: Partial<WaterChange> = {}): void {
   const t = typeof cfg.temp === "number" && Number.isFinite(cfg.temp)
     ? Math.min(36, Math.max(16, cfg.temp)) : waterChangeCfg.temp;
   waterChangeCfg = { fraction: f, temp: t };
-  try { localStorage.setItem(CHANGE_KEY, JSON.stringify(waterChangeCfg)); }
-  catch { /* storage unavailable */ }
+  savePreference(CHANGE_KEY, JSON.stringify(waterChangeCfg));
   sim.changeWater(f, t);
   collectEvents();
   audio.changeWater();
@@ -3027,18 +3049,15 @@ mountTankMenuBar({
     // taps counted before "off" would otherwise complete the moment
     // the sign comes back on inside the 8 s window.
     if (!scoldOn) glassTaps = [];
-    try { localStorage.setItem(SCOLD_KEY, scoldOn ? "on" : "off"); }
-    catch { /* storage unavailable */ }
+    savePreference(SCOLD_KEY, scoldOn ? "on" : "off");
   },
   toggleHints: () => {
     hintsOn = !hintsOn;
-    try { localStorage.setItem(HINTS_KEY, hintsOn ? "on" : "off"); }
-    catch { /* storage unavailable */ }
+    savePreference(HINTS_KEY, hintsOn ? "on" : "off");
   },
   toggleBoot: () => {
     bootEnabled = !bootEnabled;
-    try { localStorage.setItem(BOOT_KEY, bootEnabled ? "on" : "off"); }
-    catch { /* storage unavailable */ }
+    savePreference(BOOT_KEY, bootEnabled ? "on" : "off");
   },
   state: () => ({ autoFeed, crtUsable: crt?.usable ?? false, crtOn,
                   lampOn: lighting.lamp, muted: soundCfg.muted, paused,
@@ -3111,13 +3130,16 @@ void (async () => {
     // to restore leaves whatever the chain picked, until a retry.
     applySceneryChoice();
     remapSheetIdx(); reconcileFish();
-    // An offer still due brings the sounds with the rest.
-    backfillStarterSounds({
-      welcomePending: offer !== null,
-      hasSounds: storedSounds > 0 ||
-        installedAddons.some((a) => a.section === "sounds"),
-      install: (it) => installAddon(it, false),
-    }).catch((e) => console.warn("starter sounds skipped:", e));
+    // An offer still due brings the sounds with the rest. A view-only
+    // tab installs nothing: its writes (welcome state, starter sounds)
+    // would land in the owner tab's origin without ever being saved here.
+    if (tankOwner)
+      backfillStarterSounds({
+        welcomePending: offer !== null,
+        hasSounds: storedSounds > 0 ||
+          installedAddons.some((a) => a.section === "sounds"),
+        install: (it) => installAddon(it, false),
+      }).catch((e) => console.warn("starter sounds skipped:", e));
   })
   // A step above throwing used to end the chain silently: the tank
   // came up missing art or fish, and the retry below — the whole
@@ -3135,7 +3157,9 @@ void (async () => {
 // First launch: offer to stock the tank (web/welcome.ts). Accepting
 // installs through the same path as the Import Add-ons window, and the
 // stand-ins leave once a real fish is in; declining keeps them.
-if (offer) {
+// Only the owning tab may offer: the welcome writes shared state
+// (web/welcome.ts), and an answer here would stand in for the owner.
+if (offer && tankOwner) {
   showWelcome(offer, {
     install: (it) => installAddon(it, false),
     installed: stillListed,
@@ -3170,8 +3194,11 @@ async function walkEntry(ent: FileSystemEntry, prefix: string,
 // frame and a hint. dragenter/dragleave nest per element, so a depth
 // counter — not the events alone — owns the class. A modal alert or
 // document window stands down: nothing under it may act, so the cue
-// must not promise a drop that will be ignored.
-const dropAllowed = (): boolean => !alertOpen() && !docOpen();
+// must not promise a drop that will be ignored. A view-only tab
+// stands down too — its drops land nowhere a save can record, so the
+// cue must not promise one either.
+const dropAllowed = (): boolean =>
+  !alertOpen() && !docOpen() && tankOwner;
 let dragDepth = 0;
 const setDragging = (on: boolean): void => {
   document.body.classList.toggle("dragging", on);
@@ -3238,7 +3265,9 @@ window.addEventListener("drop", (e) => {
   e.preventDefault();
   // A modal alert or document window owns the page: the scrim stops
   // taps, so a drop must stand down too, or files import behind the
-  // scrim while its feedback paints under it.
+  // scrim while its feedback paints under it. A view-only tab owns
+  // nothing to write to — dropped bytes would land in the owner's
+  // origin with no save here to record them.
   if (!dropAllowed()) return;
   // A drop is a gesture — wake audio now so the install feedback can
   // still answer it once the (async) decode finishes.
@@ -3384,19 +3413,21 @@ window.addEventListener("drop", (e) => {
         }
         continue;
       }
-      // A full tank takes no new fish: say so rather than store and
-      // record a pack whose fish never spawns.
-      const refusal = p.sheets.size ? fishRefusal("fish") : null;
-      if (refusal) {
-        console.warn(`drop: ${name}: ${refusal}`);
-        if (!notes.includes(refusal)) notes.push(refusal);
-        continue;
-      }
       // A dropped pack has no home URL — mint a local: identity so the
       // bytes persist (the only copy lives in IndexedDB) and the pack
       // restores next launch like an installed add-on. Same-named
       // drops reuse the record and overwrite the stored bytes.
       const url = `${LOCAL_PREFIX}${name}`;
+      // A full tank takes no new fish, and a plant dropped again takes
+      // no copy past its cap: say so rather than store and record a
+      // pack that adds nothing.
+      const refusal = p.sheets.size ? fishRefusal("fish")
+        : decorRefusal(decors, { section: p.section, url });
+      if (refusal) {
+        console.warn(`drop: ${name}: ${refusal}`);
+        if (!notes.includes(refusal)) notes.push(refusal);
+        continue;
+      }
       // Await the write: a quota/private-mode failure should be logged
       // now, not discovered as a missing pack on next launch. The
       // catch is belt-and-braces: packPut's contract is never-fail,
