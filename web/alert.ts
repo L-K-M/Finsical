@@ -307,12 +307,15 @@ export function showAlert(spec: AlertSpec): Alert {
     },
     close() {
       if (!open) return;
+      const wasFrontmost = frontmost() === alert;
       open = false;
       const at = stack.indexOf(alert);
       if (at >= 0) stack.splice(at, 1);
       ro.disconnect();
       window.removeEventListener("resize", place);
       scrim.remove();
+      // A background progress window must not steal an active control's focus.
+      if (!wasFrontmost) return;
       // Closing a stacked alert leaves the one beneath on screen, so
       // hand the keyboard to it rather than dropping focus behind the
       // scrim; with nothing left, restore whatever had it before.
