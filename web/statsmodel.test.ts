@@ -115,10 +115,20 @@ describe("deriveStats", () => {
     expect(s.advice.join(" ")).not.toMatch(/healthy/);
   });
 
-  it("keeps chlorine and oxygen ahead of routine feeding advice", () => {
+  it("keeps chlorine and oxygen ahead of feeding advice, even when starving", () => {
     const s = deriveStats({ ...base, waterQuality: 0.4,
       fish: [{ hunger: 0.9, state: "drift" }],
       aquarium: { oxygenSat: 0.2, chlorine: 0.5, filterDirt: 95 },
+    });
+    expect(s.advice).toHaveLength(2);
+    expect(s.advice[0]).toMatch(/chlorine/);
+    expect(s.advice[1]).toMatch(/Oxygen/);
+  });
+
+  it("prioritizes chlorine and oxygen before treatment in a sick tank", () => {
+    const s = deriveStats({ ...base, waterQuality: 0.2,
+      fish: [{ species: "Guppy", hunger: 0.9, sick: 0 }],
+      aquarium: { oxygenSat: 0.2, chlorine: 0.5 },
     });
     expect(s.advice).toHaveLength(2);
     expect(s.advice[0]).toMatch(/chlorine/);

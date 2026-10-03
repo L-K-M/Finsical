@@ -190,9 +190,10 @@ function advice(st: TankStats, water: number): string[] {
   const w = st.water;
   if (w && w.chlorine > 0.1)
     out.push("There is chlorine in the water — add Chlorine Remover, " +
-              "or let it gas off over a few days.");
+             "or let it gas off over a few days.");
+  // Some medicines consume oxygen, so aeration precedes treatment advice.
   if (w && w.oxygenPct < OXYGEN_WARN_PCT)
-    out.push("Oxygen is low — reduce crowding in Tank Overview and " +
+    out.push("Oxygen is low: reduce crowding in Tank Overview and " +
              "let the filter aerate the water.");
   for (const f of st.sick.slice(0, 1)) {
     const cures = curesFor(f.disease);
