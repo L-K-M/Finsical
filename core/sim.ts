@@ -4,7 +4,7 @@ import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
 import { demoLight, DUSK_LIGHT } from "./light.js";
 import { Aquarium } from "./aquarium/aquarium.js";
 import type { Resident } from "./aquarium/aquarium.js";
-import { hungerOf, newLife, randInt, stomachSize, vigorOf }
+import { hungerOf, newLife, randInt, rescaleStomach, stomachSize, vigorOf }
   from "./aquarium/life.js";
 import type { FishLife } from "./aquarium/life.js";
 import { DEFAULT_CARE } from "./data/species.js";
@@ -994,13 +994,8 @@ export class Sim {
             // A meal puts a little size on — asymptotic toward adult.
             f.scale += (MAX_SCALE - f.scale) * GROWTH;
             // The stomach grows with the fish, or an adult keeps a
-            // juvenile appetite; preserve fill across the rescale.
-            const life = this.lifeOf(f);
-            const stomach = stomachSize(this.weightOf(f));
-            if (stomach !== life.stomach && life.stomach > 0) {
-              life.ate = Math.round(life.ate / life.stomach * stomach);
-              life.stomach = stomach;
-            }
+            // juvenile appetite; the share it holds survives the rescale.
+            rescaleStomach(this.lifeOf(f), this.weightOf(f));
             this.setState(f, "drift");
             this.decide(f);
             if (food.golden) {
