@@ -759,6 +759,11 @@ export class TankAudio {
   birth(): void {
     this.play(this.named("eventbirth"), 0.8);
   }
+  /** A medicine-backed recovery uses the original EventTiyu sound. */
+  recovery(): void {
+    const sound = this.named("eventtiyu") ?? this.named("eventbirth");
+    if (sound) this.play(sound, 0.7);
+  }
   /** A golden meal — a rare victory worth a fanfare. */
   golden(): void {
     this.play(this.named("eventcouple") ?? this.named("pipopa"), 0.85);

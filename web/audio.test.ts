@@ -912,6 +912,12 @@ describe("TankAudio.setFlyback", () => {
 // The original game's event sounds, by the names its 'snd ' resources
 // carry (core/data/sndbank.ts). Durations tell the buffers apart.
 describe("TankAudio event sounds", () => {
+  it("a real recovery uses the original recovery sound", async () => {
+    const { audio, ac } = await tank({ EventTiyu: 7, EventBirth: 8 });
+    audio.recovery();
+    expect(ac.sources.map((s) => s.buffer?.duration)).toEqual([7]);
+  });
+
   const played = (ac: FakeContext): (number | undefined)[] =>
     ac.sources.map((s) => s.buffer?.duration);
 

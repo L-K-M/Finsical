@@ -386,6 +386,7 @@ const pendingNotices: string[] = [];
 function collectEvents(): void {
   const ev = sim.aquarium.events.splice(0);
   for (const e of ev) {
+    if (e.kind === "recovered") audio.recovery();
     const f = sim.fish.find((x) => x.id === e.fish);
     pendingNotices.push(eventText(e, f?.name || f?.species || "A fish"));
   }
