@@ -144,10 +144,15 @@ body.crt canvas#tank { opacity: 0; }
    with a close box, live hunger and mood underneath. */
 .finfo {
   /* fixed on body: above the machine art (2), under the overlays (10).
-     layoutInfo() feeds it viewport rects, so neither body nor html may
-     gain a transform/filter/perspective/contain — that would re-root
+     layoutInfo() feeds it viewport coordinates, so neither body nor html
+     may gain a transform/filter/perspective/contain — that would re-root
      the fixed containing block and break the math. */
-  position: fixed; z-index: 5; width: 118px;
+  position: fixed; z-index: 5;
+  /* As wide as its readings need, so "Health 81%  Hunger 100%" stays on
+     one line: a fixed 118px box broke the line between the label and
+     its number. min-width keeps the card's box when a fish has only a
+     name, max-width stops a long species name running off the glass. */
+  width: max-content; min-width: 118px; max-width: 220px;
   background: #fff; border: 1px solid #000;
   box-shadow: 1px 1px 0 rgba(0, 0, 0, .3);
   font: var(--osm-font-small); line-height: 12px;
@@ -187,6 +192,10 @@ body.crt canvas#tank { opacity: 0; }
   font: var(--osm-font-small); line-height: 11px; appearance: none;
 }
 .finedit:focus { outline: none; }
+/* Health and mood are one short fact each ("Health 81%  Hunger 100%",
+   "Swimming, peckish"): keep them on one line. The kind line above is
+   a species name and may wrap, so it is left alone. */
+.finbody > div:not(:first-child) { white-space: nowrap; }
 .finbody { padding: 2px 6px 5px; }
 
 /* ---- client windows --------------------------------------------------
