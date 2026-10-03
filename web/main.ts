@@ -939,6 +939,8 @@ function layoutInfo(): void {
 
 // A knocking spree gets the public aquarium's sign (web/scold.ts).
 const SCOLD_KEY = "finsical:scoldSign";
+const SCOLD_CLEAR_MS = 4_200;
+let scoldTimer: ReturnType<typeof setTimeout> | undefined;
 let glassTaps: number[] = [];
 let scoldedAt: number | null = null;
 let scoldOn = true;
@@ -951,9 +953,15 @@ function noteGlassTap(): void {
   if (!shouldScold(glassTaps, now, scoldedAt)) return;
   scoldedAt = now;
   glassTaps = [];
-  showAlert({ icon: "caution",
-              text: "Please don't tap on the glass. It frightens the fish.",
-              buttons: [{ title: "OK", default: true, cancel: true }] });
+  // Keep the live region mounted: a non-modal reminder must still be announced.
+  const banner = document.getElementById("scold-banner")!;
+  banner.textContent = "Please don't tap on the glass: it frightens the fish.";
+  banner.classList.add("is-active");
+  clearTimeout(scoldTimer);
+  scoldTimer = setTimeout(() => {
+    banner.classList.remove("is-active");
+    banner.textContent = "";
+  }, SCOLD_CLEAR_MS);
 }
 
 // With hints on, a refused feed (the tank already holds MAX_UNEATEN
