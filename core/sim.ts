@@ -1,5 +1,5 @@
 import { makeRng } from "./rng.js";
-import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
+import { FISH_CAP, FOOD_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
   from "./tuning.js";
 import { demoLight, DUSK_LIGHT } from "./light.js";
 import { Aquarium } from "./aquarium/aquarium.js";
@@ -171,10 +171,11 @@ const CORPSE_FLOAT_MAX = 0x7fff;
 /** Sick fish keep to the bottom fifth of their range. */
 const SICK_DEPTH = 0.8;
 /** Uneaten pellets the tank holds before dropFood refuses: past it a
- * feed only adds waste. Even at the cap, six rotting pellets drain
- * quality ~7x faster than the filter recovers it, so sustained
+ * feed only adds waste. Kept as the single FOOD_CAP so the sim and the
+ * tank page refuse at the same count. Even at the cap, rotting pellets
+ * drain quality faster than the filter recovers it, so sustained
  * overfeeding still fouls the tank without a water change. */
-export const MAX_UNEATEN = 6;
+export const MAX_UNEATEN = FOOD_CAP;
 /** Quality drained per tick per rotting pellet (~0.14 over a full rot). */
 const WASTE_PER_TICK = 1 / 10000;
 /** Filtration: recovers a fouled tank over ~7 min of clean water. */
@@ -578,12 +579,18 @@ export class Sim {
     return true;
   }
 
+  /** Uneaten pellets in the tank, without allocating. */
+  uneatenCount(): number {
+    let n = 0;
+    for (const f of this.food) if (!f.eaten) n++;
+    return n;
+  }
+
   /** Drop a food pellet at x (kept off the side glass); it sinks to the
    * gravel. Returns the pellet, so callers can mark where it went in —
    * or null when the tank already holds MAX_UNEATEN uneaten pellets. */
   dropFood(x: number): Food | null {
-    if (this.food.filter((f) => !f.eaten).length >= MAX_UNEATEN)
-      return null;
+    if (this.uneatenCount() >= MAX_UNEATEN) return null;
     const cx = Math.min(Math.max(x, MARGIN), this.tank.width - MARGIN);
     const pellet = { x: cx, y: FOOD_ENTRY_Y, eaten: false, settled: 0,
                      golden: this.rand() < GOLDEN_ODDS };

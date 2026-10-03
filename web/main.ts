@@ -1014,7 +1014,7 @@ function noteGlassTap(): void {
               buttons: [{ title: "OK", default: true, cancel: true }] });
 }
 
-// With hints on, a refused feed (the tank already holds MAX_UNEATEN
+// With hints on, a refused feed (the tank already holds FOOD_CAP
 // pellets) says why, at most once a minute. Hints are opt-in: off, a
 // refused feed is silent.
 const HINTS_KEY = "finsical:hints";
@@ -2508,7 +2508,7 @@ function feedFish(): void {
   const x = 30 + Math.random() * (TANK.width - 60);
   const hungry = sim.fish.filter(
     (f) => f.state !== "dead" && f.hunger > HUNGER_SEEK).length;
-  const room = FOOD_CAP - sim.food.filter((p) => !p.eaten).length;
+  const room = FOOD_CAP - sim.uneatenCount();
   // The cap refuses a pellet with a bare blip where it would have
   // landed — whether it's refused now or at drop time.
   const blip = (bx: number): void => {
@@ -2523,9 +2523,10 @@ function feedFish(): void {
   for (const p of feedPinch(Math.random, Math.min(hungry, room))) {
     setTimeout(() => {
       if (paused) return; // paused since the pinch was scattered
+      if (alertOpen()) return; // modal opened while the pinch fell
       // Re-check at drop time: a second click fills the tank while a
       // first pinch is still falling.
-      if (sim.food.filter((q) => !q.eaten).length >= FOOD_CAP) {
+      if (sim.uneatenCount() >= FOOD_CAP) {
         blip(x + p.dx);
         return;
       }
@@ -2548,9 +2549,9 @@ function toggleAutoFeed(): void {
 function feederDrop(): void {
   const x = 30 + Math.random() * (TANK.width - 60);
   for (const p of feedPinch(Math.random, 0)) {
-    if (sim.food.length >= AUTOFEED_MAX_FOOD) break; // cap, not just a gate
+    if (sim.uneatenCount() >= AUTOFEED_MAX_FOOD) break; // cap, not a gate
     const pellet = sim.dropFood(x + p.dx);
-    if (!pellet) break; // a racer refilled the tank past MAX_UNEATEN
+    if (!pellet) break; // a racer refilled the tank past the cap
     splashAt(pellet.x, pellet.y, PUSH.pellet);
   }
   audio.feederChime();
@@ -3806,7 +3807,7 @@ function tickSim(): void {
   if (rosterChanged) saveTank();
   // The feeder runs on tank time (tickCount), so a restored tank
   // resumes mid-cycle rather than restarting the countdown.
-  if (autoFeed && sim.fish.length && sim.food.length < AUTOFEED_MAX_FOOD &&
+  if (autoFeed && sim.fish.length && sim.uneatenCount() < AUTOFEED_MAX_FOOD &&
       sim.tickCount % AUTOFEED_TICKS === 0)
     feederDrop();
   // Snail visits run on the sim clock so a paused tank's snail waits.
