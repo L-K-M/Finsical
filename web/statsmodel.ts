@@ -10,6 +10,7 @@ import { HUNGER_SEEK, QUALITY_SEEK } from "../core/tuning.js";
 import { MEDICINES } from "../core/aquarium/disease.js";
 import { diseaseName } from "./lifecopy.js";
 import { fishLabel } from "./fishname.js";
+import { sanitizeDiary } from "./diary.js";
 
 export interface StatsFish {
   species?: string;
@@ -42,6 +43,7 @@ export interface StatsInput {
   lighting?: unknown;    // core/light.ts Lighting, validated here
   tickCount?: number;    // 30 ticks per second
   aquarium?: AquariumInput;
+  journal?: unknown;
 }
 
 /** Water readings and equipment, ready to show; NaN-safe. */
@@ -72,6 +74,8 @@ export interface TankStats {
   uptimeMin: number;
   /** Highest tank-age milestone reached, if any (the Fish Diary). */
   milestone: string | null;
+  /** Most recent milestone entry, or null. */
+  latestMilestone: string | null;
   /** Ordered care hints — the most urgent first, capped at two. */
   advice: string[];
   /** Names and diseases of the sick fish, and the count of bodies. */
@@ -137,6 +141,7 @@ export function deriveStats(s: StatsInput): TankStats {
   const light = fin(s.light, 1);
   const phase = light > DUSK_LIGHT ? "day" : "night";
   const uptimeMin = Math.floor(fin(s.tickCount, 0) / 30 / 60);
+  const diary = sanitizeDiary(s.journal);
   const stats: TankStats = {
     fishCount: fish.length,
     avgHunger,
@@ -151,6 +156,7 @@ export function deriveStats(s: StatsInput): TankStats {
     lightLabel: lightLabel(phase, s.lighting),
     uptimeMin,
     milestone: milestone(uptimeMin),
+    latestMilestone: diary[diary.length - 1]?.event ?? null,
     advice: [],
     sick: fish.filter((f) => Number.isInteger(f.sick))
       .map((f) => ({ name: fishLabel(f), disease: f.sick! })),

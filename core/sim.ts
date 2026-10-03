@@ -109,7 +109,7 @@ export interface Fish {
 /** Lifecycle transitions queued for the renderer/audio to react to;
  * the caller drains the array each tick. */
 export interface SimEvent {
-  type: "sick" | "dead" | "birth";
+  type: "sick" | "dead" | "birth" | "golden";
   fish: Fish;
 }
 
@@ -1004,6 +1004,7 @@ export class Sim {
             this.setState(f, "drift");
             this.decide(f);
             if (food.golden) {
+              this.events.push({ type: "golden", fish: f });
               // A golden meal earns a victory roll whether or not the
               // next destination lies behind.
               this.startTurn(f, this.rand() < 0.5 ? 1 : -1);

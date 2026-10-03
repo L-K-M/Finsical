@@ -66,6 +66,8 @@ import { claimTank } from "./tankclaim.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
 import { stateLabel } from "./overviewmodel.js";
+import { DIARY_LIMIT, sanitizeDiary } from "./diary.js";
+import type { DiaryEntry } from "./diary.js";
 import { crtClientToTank, crtTankToClient, initCrt, sanitizeCrtConfig }
   from "./crt.js";
 import { bubbleOffset, bubblePops, drawAir, drawBubblePop, drawCausticSurface,
@@ -145,6 +147,7 @@ interface SavedTank {
   /** Each installed fish pack's care needs, by pack url, so catch-up
    * can run before the packs themselves have restored. */
   care?: Record<string, SpeciesCare>;
+  journal?: DiaryEntry[];
 }
 /** The structural check shared by loadTank and tank-file import:
  * unknown keys ride along — save fields this build doesn't know yet
@@ -188,6 +191,7 @@ function loadTank(): SavedTank | null {
 }
 const saved = loadTank();
 const installedAddons: Importable[] = (saved?.addons ?? []).map(sceneryFix);
+const journal = sanitizeDiary(saved?.journal);
 
 // ---- startup parade (web/boot.ts) ---------------------------------------
 // A 90s-Mac boot over the first seconds: black, the smiling fishbowl
@@ -472,6 +476,7 @@ function tankSnapshot(): SavedTank {
     aquarium: sim.aquarium.toJSON(),
     savedAt: lifeClock,
     care: Object.fromEntries(careByPack),
+    journal: [...journal],
   };
 }
 // Set by a tank import before it reloads: the pagehide /
@@ -1679,6 +1684,7 @@ function sendState(): void {
     },
     sound: soundCfg,
     effects,
+    journal: [...journal],
   });
 }
 
@@ -3782,6 +3788,16 @@ let bellCalmTicks = 0;
  * bubble — a thin stream in daylight, not a fountain. */
 const PLANT_BUBBLE = 0.006;
 
+function recordMilestone(event: string, fishId?: number): void {
+  const d = new Date(), p = (n: number) => String(n).padStart(2, "0");
+  const ts = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
+    `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  journal.push({ date: ts, event,
+                 ...(fishId !== undefined ? { fishId } : {}) });
+  if (journal.length > DIARY_LIMIT)
+    journal.splice(0, journal.length - DIARY_LIMIT);
+}
+
 function tickSim(): void {
   const bubbles = sim.bubbles.length;
   const pellets = sim.food.slice();
@@ -3791,19 +3807,28 @@ function tickSim(): void {
   // Lifecycle: each transition rings its original event sound. A birth
   // also binds the fry's sprite extents and splashes it in.
   let rosterChanged = false;
+  let goldenHeard = false;
   for (const e of sim.events.splice(0)) {
     if (e.type === "sick") audio.sick();
     else if (e.type === "dead") {
       audio.dead();
       rosterChanged = true; // the roster shrank — don't resurrect it on reload
+      recordMilestone(`Fish ${e.fish.species || "Unknown"} died`, e.fish.id);
     } else if (e.type === "birth") {
       bindExtents(e.fish);
       splashAt(e.fish.x, e.fish.y, PUSH.newFish);
       audio.birth();
       rosterChanged = true; // the roster grew
+      recordMilestone(`New fry: ${e.fish.species || "Unknown"}`, e.fish.id);
+    } else if (e.type === "golden") {
+      recordMilestone("Golden meal!", e.fish.id);
+      if (!goldenHeard) {
+        audio.golden();
+        goldenHeard = true;
+      }
     }
   }
-  if (rosterChanged) saveTank();
+  if (rosterChanged || goldenHeard) saveTank();
   // The feeder runs on tank time (tickCount), so a restored tank
   // resumes mid-cycle rather than restarting the countdown.
   if (autoFeed && sim.fish.length && sim.food.length < AUTOFEED_MAX_FOOD &&

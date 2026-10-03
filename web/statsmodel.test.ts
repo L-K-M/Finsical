@@ -6,6 +6,7 @@ import { curesFor, deriveStats, deriveWater, hungerLabel,
 import { DAY_TICKS, Sim } from "../core/sim.js";
 import { hourLabel } from "../core/light.js";
 import { HUNGER_SEEK, QUALITY_SEEK } from "../core/tuning.js";
+import type { StatsInput } from "./statsmodel.js";
 
 const base = {
   fish: [
@@ -17,6 +18,15 @@ const base = {
 };
 
 describe("deriveStats", () => {
+  it("keeps the latest valid diary event when an imported entry is corrupt", () => {
+    const journal = [
+      { date: "2026-10-03 12:00:00", event: "Golden meal!", fishId: 4 },
+      null,
+    ] as unknown as StatsInput["journal"];
+    expect(deriveStats({ ...base, journal }).latestMilestone)
+      .toBe("Golden meal!");
+  });
+
   it("averages hunger across fish and finds the hungriest", () => {
     const s = deriveStats(base);
     expect(s.fishCount).toBe(2);
