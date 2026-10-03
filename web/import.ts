@@ -1375,9 +1375,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       const pv = h.preview(usable);
       // Cache the thumb even if the selection moved on while the fetch
       // was in flight; only the pane waits on it being current.
-      if (pv) { thumbs.set(it.url, pv); storeThumb(it, pv); }
+      const mini = pv && keepThumb(it, pv);
       const r = rowOf(it.url);
-      if (r && pv) paintThumb(r, pv);
+      if (r && mini) paintThumb(r, mini);
       // A stale resolve must not create a Blob URL (it would orphan on
       // the next assignment) or touch the pane: the ref object
       // identifies this showing.
@@ -1516,7 +1516,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     const box = row.querySelector(".ithumb");
     if (!box) return;
     // Replace, don't skip: a pack that reinstalls under the same url
-    // earns a fresh preview, and a re-paint of the same thumb is cheap.
+    // earns a fresh preview. Each row needs its own canvas, a copy of
+    // the kept 38 x 28 mini: cheap, even on every filter keystroke.
     const cv = miniThumb(th);
     cv.style.left = `${Math.floor((MINI_W - cv.width) / 2)}px`;
     cv.style.top = `${Math.floor((MINI_H - cv.height) / 2)}px`;
@@ -1576,6 +1577,22 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         .catch(() => { /* cache skipped */ });
     }, "image/png");
   }
+  // Row thumbs only ever fill the list's 38 x 28 box, so that is all
+  // `thumbs` keeps: a full preview (a 640 x 480 background is 1.2 MB of
+  // canvas) per browsed add-on stayed for the window's life, and the
+  // app hides the Import window rather than closing it. The PNG cache
+  // is written once per add-on and session, not on every selection.
+  const thumbStored = new Set<string>();
+  function keepThumb(it: Importable, pv: HTMLCanvasElement):
+      HTMLCanvasElement {
+    const mini = miniThumb(pv);
+    thumbs.set(it.url, mini);
+    if (!thumbStored.has(it.url)) {
+      thumbStored.add(it.url);
+      storeThumb(it, pv);
+    }
+    return mini;
+  }
   function storedThumbPainted(it: Importable): void {
     const t = rowOf(it.url);
     const th = thumbs.get(it.url);
@@ -1598,7 +1615,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         const cv = document.createElement("canvas");
         cv.width = w; cv.height = h;
         cv.getContext("2d")!.drawImage(bmp, 0, 0);
-        thumbs.set(it.url, cv);
+        thumbs.set(it.url, miniThumb(cv));
+        thumbStored.add(it.url); // already in the cache
         thumbQueued.delete(it.url);
         storedThumbPainted(it);
       };
@@ -1642,10 +1660,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         const usable = usablePacks(rs, it.section);
         const pv = usable.length ? h.preview(usable) : null;
         if (!pv) return;
-        thumbs.set(it.url, pv);
-        storeThumb(it, pv);
+        const mini = keepThumb(it, pv);
         const t = rowOf(it.url);
-        if (t) paintThumb(t, pv);
+        if (t) paintThumb(t, mini);
       }).catch((e) => {
         console.warn(`add-on thumb failed for ${it.inner}:`, e);
       })
@@ -1705,7 +1722,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     }
     markInstalled(it.url, true);
     const pv = h.preview(usable);
-    if (pv) { thumbs.set(it.url, pv); storeThumb(it, pv); }
+    if (pv) keepThumb(it, pv);
     return soundNames;
   }
 
