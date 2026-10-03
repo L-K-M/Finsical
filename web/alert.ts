@@ -113,9 +113,10 @@ let registered = false;
  * open count, so the two can't drift. */
 const stack: Alert[] = [];
 const frontmost = (): Alert | undefined => stack[stack.length - 1];
-/** Each open alert's own window, so handing focus to the one a stack
- * uncovers does not depend on DOM order matching stack order. */
-const windows = new WeakMap<Alert, HTMLElement>();
+/** Each alert's current typing target, or its window without a field.
+ * Uncovering a dialog restores its caret without selecting its value
+ * again; the getter also follows an update that adds/removes the field. */
+const windows = new WeakMap<Alert, () => HTMLElement>();
 
 /** True while any alert is up: the tank ignores taps meanwhile. */
 export function alertOpen(): boolean {
@@ -312,7 +313,7 @@ export function showAlert(spec: AlertSpec): Alert {
       // scrim; with nothing left, restore whatever had it before.
       const below = frontmost();
       if (below) {
-        windows.get(below)?.focus({ preventScroll: true });
+        windows.get(below)?.().focus({ preventScroll: true });
       } else if (opener?.isConnected) {
         opener.focus({ preventScroll: true });
       }
@@ -322,7 +323,7 @@ export function showAlert(spec: AlertSpec): Alert {
   };
 
   stack.push(alert);
-  windows.set(alert, win);
+  windows.set(alert, () => field.hidden ? win : field);
   document.body.append(scrim);
   alert.update(spec);
   if (field.hidden) win.focus({ preventScroll: true });

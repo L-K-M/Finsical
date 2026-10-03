@@ -95,7 +95,7 @@ describe("close() focus ordering", () => {
       close.indexOf("const wasFrontmost = frontmost() === alert;");
     const removal = close.indexOf("stack.splice(at, 1)");
     const bail = close.indexOf("if (!wasFrontmost) return;");
-    const handoff = close.indexOf("windows.get(below)?.focus(");
+    const handoff = close.indexOf("windows.get(below)?.().focus(");
     expect(capture).toBeGreaterThanOrEqual(0);
     expect(removal).toBeGreaterThan(capture);
     expect(bail).toBeGreaterThan(removal);

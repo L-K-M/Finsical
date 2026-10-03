@@ -48,10 +48,14 @@ import { coverCrop, decorCanvases, imageCanvas, isBackdropImage,
          isGravelImage,
          previewOf, soundIcon, swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
+import { corpseSprite } from "./corpse.js";
+import { needsCleanPicture } from "./picture.js";
 import { capRefusal, entryKey, entryOfSlot, entryStem, legacyEntries,
          partName } from "./tankmodel.js";
 import { nextNotice, noticePoint } from "./curiosity.js";
 import type { Notice } from "./curiosity.js";
+import { laserAim } from "./laser.js";
+import type { LaserAim } from "./laser.js";
 import { containPoint, isFeedZone } from "./feedzone.js";
 import { mountNameTags } from "./nametags.js";
 import { cleanFishName, fishLabel, NAME_MAX } from "./fishname.js";
@@ -60,7 +64,11 @@ import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
   from "./catpaw.js";
 import type { PawVisit } from "./catpaw.js";
 import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
-import { bootPhase, drawBoot, fadeProgress, paradeIcon }
+import { spotlightAlive } from "./spotlight.js";
+import { THERMO_H, THERMO_W, thermoCanvas, thermoTip }
+  from "./thermometer.js";
+import { decodeImage } from "./decode.js";
+import { bootActive, bootPhase, drawBoot, fadeProgress, paradeIcon }
   from "./boot.js";
 import { acceptsTankIntent, fishThumbKey, inNativeShell, openBus }
   from "./bus.js";
@@ -71,9 +79,10 @@ import { stateLabel } from "./overviewmodel.js";
 import { crtClientToTank, crtTankToClient, initCrt, sanitizeCrtConfig }
   from "./crt.js";
 import { bubbleOffset, bubblePops, drawAir, drawBubblePop, drawCausticSurface,
-         drawBubbles, drawFood, drawLight, drawMurk, drawRefraction,
-         drawSurface, drawTorch, feedPinch, keepTorch, sunFactor,
-         tapBubble, torchShows } from "./water.js";
+         drawBubbles, drawFood, drawLaser, drawLight, drawMurk,
+         drawRefraction, drawSurface, drawTorch, feedPinch, keepTorch,
+         paintSmudges, smudgePrint, sunFactor, tapBubble, torchShows }
+  from "./water.js";
 import { disturbSurface, newSurface, surfaceLine, SURFACE_W, tickSurface }
   from "./surface.js";
 import {
@@ -132,9 +141,20 @@ let focusId: number | null = null;
 // would freeze the lease mid-flight.
 let focusAt = -Infinity;
 let focusOwner = "";
-/** Wall-clock ms a focus stays live without a re-assert. Sized past
- * the ~60 s clamp browsers put on hidden-tab timers. */
-const FOCUS_TTL = 180_000;
+/** Lift a spotlight whose wall-clock lease lapsed or whose fish left
+ * the tank; true when it lifted. One definition shared by render() (a
+ * paint in itself) and frame() (which must request one). */
+function liftStaleSpotlight(): boolean {
+  if (focusId === null ||
+      spotlightAlive(focusId, focusAt, Date.now(),
+                     sim.fish.some((f) => f.id === focusId)))
+    return false;
+  // Clearing the owner too lets any live Overview's next beat reclaim
+  // the spotlight after the holder dies silently.
+  focusId = null;
+  focusOwner = "";
+  return true;
+}
 
 // ---- persistence ---------------------------------------------------------
 // Tank state (fish, water, installed add-ons) survives restarts via
@@ -435,7 +455,9 @@ function collectEvents(): void {
   if (ev.length) { requestPaint(); saveTank(); }
 }
 function showNotices(): void {
-  if (!pendingNotices.length || alertOpen()) return;
+  // The parade owns the canvas: a catch-up death notice waits for the
+  // water instead of popping over the desktop.
+  if (!pendingNotices.length || alertOpen() || bootActive(bootT0)) return;
   showAlert({ icon: "note", text: noticeText(pendingNotices.splice(0)),
               buttons: [{ title: "OK", default: true, cancel: true }] });
 }
@@ -711,7 +733,7 @@ function setFeedHover(on: boolean): void {
   requestPaint();
 }
 function syncFeedHover(): void {
-  if (!lastClient) { setFeedHover(false); return; }
+  if (!lastClient || bootActive(bootT0)) { setFeedHover(false); return; }
   const p = tankPoint(lastClient.x, lastClient.y);
   // Paused drops the affordance too — the click below is gated the
   // same way, so the cursor mustn't promise a feed that won't land.
@@ -783,6 +805,41 @@ function seePointer(p: { x: number; y: number } | null): void {
   sim.notice = noticePoint(notice, sim.tickCount);
 }
 
+// The laser-pointer toy (bare J): while it is on, a red dot rides the
+// pointer over the water and the same notice above gathers the fish,
+// so the dot needs no separate lure. It hides over the air strip and
+// with the pointer off the picture.
+let laserOn = false;
+let laser: LaserAim | null = null;
+/** The water's top at tank x — the rendered per-column waterline. */
+function waterTopAt(x: number): number {
+  const i = Math.min(waterline.length - 1, Math.max(0, Math.round(x)));
+  return waterline[i] ?? SURFACE;
+}
+/** Toggle the toy. Turning it on strikes the dot at the pointer's
+ * current spot; the arrow goes away over the water (body.laser), so
+ * the dot itself is the pointer. */
+function setLaser(on: boolean): void {
+  laserOn = on;
+  // lastClient, not mouseClient: a touch pointer updates it before the
+  // hover-only branch returns, so a keyboard toggle after a finger drag
+  // strikes the dot where the finger just was.
+  const p = lastClient && tankPoint(lastClient.x, lastClient.y);
+  laser = on && p ? laserAim(p, waterTopAt(p.x)) : null;
+  laserCursor();
+  seePointer(p);
+  requestPaint();
+}
+
+/** The dot is the pointer only while it shines: over the air strip,
+ * off the picture or behind an open overlay there is no dot, so the
+ * arrow must come back or the pointer just vanishes (body.laser hides
+ * it canvas-wide). */
+function laserCursor(): void {
+  document.body.classList.toggle("laser",
+                                 laser !== null && !anyOverlayOpen());
+}
+
 // Hover a fish and its species (and mood) pops up in a little
 // balloon — a nod to System 7's Balloon Help.
 const fishTip = document.createElement("div");
@@ -790,10 +847,12 @@ fishTip.id = "fishtip";
 fishTip.style.display = "none";
 document.body.appendChild(fishTip);
 /** The fish to name under a hovered point — none while Get Info, a
- * menu, the add-on window, a document window or an alert is up (the
- * tip would float over them). */
+ * menu, the add-on window, a document window or an alert is up, or
+ * while the boot parade owns the canvas (the tip would float over
+ * them). */
 const anyOverlayOpen = (): boolean =>
-  !!(infoCard || importPanel.isOpen || menuOpen() || docOpen() || alertOpen());
+  !!(infoCard || importPanel.isOpen || menuOpen() || docOpen() ||
+     alertOpen() || bootActive(bootT0));
 const fishToName = (p: { x: number; y: number }): Fish | null =>
   anyOverlayOpen() ? null : fishAtPoint(p);
 const fishTipLabel = (f: Fish): string =>
@@ -821,6 +880,9 @@ let torchLit = false;
  * declines while Get Info, a menu or an alert is up — the hint
  * follows the same rule. */
 function tipForPoint(p: { x: number; y: number }): string | null {
+  // The thermometer is on the glass, in front of every fish.
+  if (overThermometer(p) && !anyOverlayOpen())
+    return thermoTip(sim.aquarium.water.temp, sim.aquarium.heater.target);
   // With Fish Names on every fish already wears its tag.
   const f = !namesOn && fishToName(p);
   if (f) return fishTipLabel(f);
@@ -847,6 +909,13 @@ function onTankMove(e: PointerEvent): void {
   lastClient = { x: e.clientX, y: e.clientY };
   const p = tankPoint(e.clientX, e.clientY);
   seePointer(p);
+  // The dot follows the primary pointer on touch too: dragging a
+  // finger along the water is the toy's natural gesture.
+  if (laserOn) {
+    laser = p ? laserAim(p, waterTopAt(p.x)) : null;
+    laserCursor();
+    requestPaint();
+  }
   if (e.pointerType === "touch") return; // no hover on touch
   mouseClient = lastClient;
   lastHover = p;
@@ -867,12 +936,20 @@ function onTankLeave(e: PointerEvent): void {
   // the mouse's hover — restore its position instead.
   if (e.pointerType === "touch") {
     lastClient = mouseClient;
-    seePointer(mouseClient && tankPoint(mouseClient.x, mouseClient.y));
+    const mp = mouseClient && tankPoint(mouseClient.x, mouseClient.y);
+    seePointer(mp);
+    if (laserOn) {
+      laser = mp ? laserAim(mp, waterTopAt(mp.x)) : null;
+      laserCursor();
+      requestPaint(); // the dot moved or went out — even while paused
+    }
     return;
   }
   mouseClient = null;
   lastClient = null;
   lastHover = null;
+  // The dot left with the pointer — and so must its cursor swap.
+  if (laserOn) { laser = null; laserCursor(); requestPaint(); }
   if (torchLit) requestPaint(); // put the torch out, even while paused
   fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
@@ -958,6 +1035,7 @@ function editInfoName(): void {
 function closeInfo(): void {
   infoCard?.root.remove();
   infoCard = null;
+  laserCursor(); // the card no longer hides the dot
   requestPaint(); // the fish's name tag comes back, even while paused
 }
 
@@ -1000,6 +1078,9 @@ function openInfo(f: Fish): void {
   document.body.appendChild(root);
   infoCard = { root, name, kind, health, hunger, mood, fish: f,
               edit: null };
+  // The card gates the dot like the other overlays — the arrow comes
+  // back until the card closes, not just on the next pointer move.
+  laserCursor();
   // Position now, not next frame: unpositioned the card would paint
   // once at its in-flow default (the end of body) before landing.
   layoutInfo();
@@ -1318,9 +1399,6 @@ function decorAnchor(i: number, dn: number): number {
 /** Pixels above the tank floor where decor sits — the y-axis half of
  * the shared anchor, for the same reason. */
 const DECOR_FLOOR = 6;
-const fishSlot = new WeakMap<Fish, number>();
-const MAX_FISH_SLOTS = 4096;
-let nextSlot = 0;
 /** One storage alert per drop event — a multi-file drop shouldn't
  * stack them, but a later failing drop deserves its own warning. */
 let storageWarnedAt = -1;
@@ -1928,7 +2006,8 @@ function onBusMessage(m: BusMsg): void {
     applyEffects(m.cfg);
   } else if (m.op === "machine" && typeof m.id === "string") {
     const nm = machineById(m.id);
-    if (nm && nm.id !== machine.id) { applyMachine(nm); postState(); }
+    // Selecting the displayed case must also cancel a pending replacement.
+    if (nm) applyMachine(nm);
   } else if (m.op === "soundsLoaded") {
     // The panel page dropped sound files into the shared IndexedDB
     // store — re-read it and decode just the records it names
@@ -2359,6 +2438,13 @@ function applyEffects(raw: unknown): void {
     // once.
     snailNextAt = snailRevisitAt(sim.tickCount);
   }
+  if (!effects.cat) {
+    // A paw already reaching down leaves at once; the same re-armed
+    // wait as the snail's.
+    pawVisit = null;
+    pawSwatted.clear();
+    pawNextAt = pawRevisitAt(sim.tickCount);
+  }
   requestPaint(); // the change shows at once, even while paused
   savePreference(EFFECTS_KEY, JSON.stringify(effects));
   postState();
@@ -2409,7 +2495,7 @@ const tagSlots: { id: number; label: string; x: number;
  * (the card names it, right where its tag would go). Placed through
  * the same mapping as the card, so the tags follow the CRT's warp. */
 function syncNameTags(): void {
-  if (!namesOn) return;
+  if (!namesOn || bootActive(bootT0)) return;
   // The cached rect (dropped by resize, scroll and layoutMachine),
   // not a fresh layout read: the previous frame's tag style writes
   // already invalidated layout, so a getBoundingClientRect here would
@@ -2546,10 +2632,20 @@ function layoutMachine(): void {
   }
 }
 
-function applyMachine(m: Machine): void {
+// A machine switch must not swap the shell markup and layout in one
+// task: the new case's PNGs haven't decoded yet, so the tank floats
+// caseless for a frame or two — and assigning `machine` early would
+// let layoutMachine() and the raster geometry read the new case while
+// the old art still shows. The art decodes off-DOM first; the model
+// and both SVG layers then commit together, once, and a second switch
+// supersedes a pending one (the token proves it).
+let machineSwap = 0;
+
+function commitMachine(m: Machine): void {
   // A new case is a new tube: ring the degauss coil like a monitor
-  // waking up. The init call passes the stored machine (same id), so
-  // this only fires on an actual swap.
+  // waking up — inside the commit, so a cancelled case never cues it.
+  // The first paint passes the stored machine (same id), so this only
+  // fires on an actual swap.
   if (m.id !== machine.id && crtOn) degaussTube();
   machine = m;
   shellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
@@ -2558,9 +2654,33 @@ function applyMachine(m: Machine): void {
   rearShellEl.innerHTML = backgroundMarkup(m);
   layoutMachine();
   savePreference(MACHINE_KEY, m.id);
+  // native geometry and the picker now describe the committed art
+  postState();
+}
+
+function applyMachine(m: Machine): void {
+  const token = ++machineSwap;
+  // Images only: a vector shell (none currently) has nothing to decode,
+  // so its commit lands a microtask later rather than never.
+  const wait = [m.image, m.rearImage]
+    .filter((u): u is string => !!u)
+    .map((u) => {
+      const img = new Image();
+      const decoded = decodeImage(img);
+      img.src = u;
+      return decoded;
+    });
+  void Promise.all(wait).then(() => {
+    if (token !== machineSwap) return; // a newer switch superseded this
+    commitMachine(m);
+  });
 }
 window.addEventListener("resize", layoutMachine);
-applyMachine(machine);
+// The first case commits synchronously: the shell must exist by the
+// page's load event (the native app reads it at didFinish), and the
+// decode staging that keeps a mid-session swap atomic has nothing to
+// protect before any case is on screen.
+commitMachine(machine);
 // The machine art is pointer-events:none — a press anywhere that
 // isn't the tank or real UI means a grab on the case → window drag.
 document.addEventListener("pointerdown", (e) => {
@@ -2676,12 +2796,16 @@ function takePicture(): void {
   out.height = TANK.height * 2;
   const c = out.getContext("2d")!;
   c.imageSmoothingEnabled = false;
-  // A paused canvas carries the scrim and the PAUSED label, and a
-  // hovering pointer may light the torch — repaint without them for
-  // the shot, then put them back. Both renders run inside this task,
-  // so nothing flickers.
+  // Repaint without screen-only overlays for the shot, then put them
+  // back. Both renders run inside this task, so nothing flickers.
   const d = new Date();
-  const clean = paused || torchLit;
+  const clean = needsCleanPicture({
+    paused,
+    torchLit,
+    bootActive: bootT0 !== null,
+    focusActive: focusId !== null,
+    laserActive: laser !== null,
+  });
   if (clean) render(d, "picture");
   c.drawImage(canvas, 0, 0, out.width, out.height);
   if (clean) render(d);
@@ -2890,6 +3014,8 @@ window.addEventListener("keydown", (e) => {
     setNames(!namesOn); // bare N: ⌘N is New
   } else if (bare && k === "z") {
     setZen(!zen); // bare Z: ⌘Z is Undo via the Edit menu
+  } else if (bare && k === "j") {
+    setLaser(!laserOn); // bare J: shine the laser-pointer toy
   } else if (bare && k === "s" && !inNativeShell()) {
     // Browser-only — the app opens stats.html via Tank ▸ Tank Stats.
     // Reuse without re-navigating: a reload would wipe the 90 s trend
@@ -3452,6 +3578,7 @@ function drawFish(f: Fish): void {
     // RangeError here would abort the rest of every frame, so fall back.
     return drawPlaceholder(f);
   }
+  const sprite = f.state === "dead" ? corpseSprite(cv) : cv;
   ctx.save();
   // finally: a throwing drawImage must not leave its transform behind
   // for everything drawn after it. Whole-pixel offsets: an odd-sized
@@ -3463,16 +3590,15 @@ function drawFish(f: Fish): void {
       if (f.life?.sick) ctx.globalAlpha = 0.55; // wan, but still swimming
       ctx.rotate(pitch(f));
     }
-    ctx.drawImage(cv, -(cv.width >> 1), -(cv.height >> 1));
+    ctx.drawImage(sprite, -(sprite.width >> 1), -(sprite.height >> 1));
   } finally {
     ctx.restore();
   }
 }
 
-/** A dead fish floats belly-up, its colour gone grey. */
+/** A dead fish floats belly-up; corpseSprite has already muted its colour. */
 function bellyUp(): void {
   ctx.scale(1, -1);
-  ctx.filter = "grayscale(0.7) brightness(0.85)";
 }
 
 // Placeholder until real Aquazone assets are imported: a pixel guppy
@@ -3482,6 +3608,7 @@ function drawPlaceholder(f: Fish): void {
   // come from it, so no caller can pass a pitch where a frame goes.
   const frames = placeholderFrames();
   const cv = frames[animFrame(f, frames.length)]!;
+  const sprite = f.state === "dead" ? corpseSprite(cv) : cv;
   const scale = Math.round(f.scale * 20) / 20; // as drawScale rounds it
   ctx.save();
   ctx.translate(Math.round(f.x), Math.round(f.y));
@@ -3490,7 +3617,7 @@ function drawPlaceholder(f: Fish): void {
   ctx.scale(-f.facing * scale, scale);
   // In the mirrored draw space the pitch angle flips sign.
   if (f.state !== "dead") ctx.rotate(-f.facing * pitch(f));
-  ctx.drawImage(cv, -(cv.width >> 1), -(cv.height >> 1));
+  ctx.drawImage(sprite, -(sprite.width >> 1), -(sprite.height >> 1));
   ctx.restore();
 }
 
@@ -3509,6 +3636,17 @@ const defaultGravel = (() => {
   g.fillRect(0, 0, cv.width, cv.height);
   return cv;
 })();
+
+// The thermometer strip (Effects > Thermometer strip) sticks to the
+// front glass at the right, just under the waterline: clear of the
+// feeding strip and the gravel's decor.
+const THERMO_X = TANK.width - THERMO_W - 3;
+const THERMO_Y = SURFACE + 12;
+function overThermometer(p: { x: number; y: number }): boolean {
+  return effects.thermometer &&
+    p.x >= THERMO_X && p.x < THERMO_X + THERMO_W &&
+    p.y >= THERMO_Y && p.y < THERMO_Y + THERMO_H;
+}
 
 // Reduced motion freezes the ambient light (caustics, shafts, glint).
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -3637,22 +3775,60 @@ function drawMidWater(floor: number): void {
     drawLight(ctx, sim.light, sim.tickCount, waterMotion, floor);
 
   drawFood(ctx, sim.food);
+  // Where fish have settled, faint prints on the glass under them
+  // (Effects pane, off by default).
+  drawSmudges();
   // The snail crawls the gravel at mid depth, not over the water.
   if (snail) {
     const p = snailPose(snail, sim.tickCount, TANK.width);
     if (p) drawSnail(p.x, p.paused, snail.dir);
   }
 }
-/** Who a frame is for: the live screen, or a Take a Picture souvenir,
- * which leaves out what only the viewer's pointer and the pause put
- * there (the torch, the scrim). */
+
+// The prints live on an offscreen canvas that only changes when a rest
+// happens — one blit per frame instead of an ellipse per print. The
+// signature covers every input the painting reads: the sequence number
+// moves on every rest, the length catches the cap dropping the oldest.
+const smudgeCv = document.createElement("canvas");
+smudgeCv.width = TANK.width;
+smudgeCv.height = TANK.height;
+let smudgeSig = "";
+function drawSmudges(): void {
+  // TANK_SIZE is frozen today; when variable sizes land (F-51), marks
+  // painted for one size must not scale into the next.
+  if (smudgeCv.width !== TANK.width || smudgeCv.height !== TANK.height) {
+    smudgeCv.width = TANK.width;
+    smudgeCv.height = TANK.height;
+    smudgeSig = ""; // the old marks were painted for the old size
+  }
+  if (!effects.smudges) {
+    if (smudgeSig !== "") {
+      smudgeSig = "";
+      smudgeCv.getContext("2d")!.clearRect(0, 0, TANK.width, TANK.height);
+    }
+    return;
+  }
+  const prints = sim.restPrints;
+  // Indexed last item, not .at(-1): the macOS 12 / Safari 15.0 floor
+  // predates Array.prototype.at.
+  const sig = `${prints.length}:` +
+    `${prints.length ? prints[prints.length - 1]!.n : 0}`;
+  if (sig !== smudgeSig) {
+    smudgeSig = sig;
+    const c = smudgeCv.getContext("2d")!;
+    c.clearRect(0, 0, TANK.width, TANK.height);
+    paintSmudges(c, prints.flatMap(smudgePrint));
+  }
+  ctx.drawImage(smudgeCv, 0, 0);
+}
+/** Who a frame is for: the live screen, or a Take a Picture souvenir. */
 type RenderTarget = "screen" | "picture";
 function render(now: Date, target: RenderTarget = "screen"): void {
   // The startup parade owns the canvas until it fades: black, desktop,
   // marching icons — then the tank draws normally under a fading boot
   // screen, so the crossfade needs no compositing machinery.
   let bootFade = -1;
-  if (bootT0 !== null) {
+  if (target === "screen" && bootT0 !== null) {
     const elapsed = performance.now() - bootT0;
     const phase = bootPhase(elapsed, bootDoneAt);
     if (phase === "done") bootT0 = null;
@@ -3686,43 +3862,34 @@ function render(now: Date, target: RenderTarget = "screen"): void {
 
   // The Overview's pick spotlights its fish with a marching-ants
   // marquee — the Finder's own selection cue. Ants march on the sim
-  // clock so a paused tank doesn't freeze them mid-stroke.
-  if (focusId !== null) {
-    // The lease lapsed — the overview is gone and can't lift it.
-    // Clearing the owner too lets any live Overview's next beat
-    // reclaim the spotlight after the holder dies silently.
-    if (Date.now() - focusAt > FOCUS_TTL) {
-      focusId = null;
-      focusOwner = "";
-    }
-    const f = focusId === null ? null
-      : sim.fish.find((x) => x.id === focusId);
-    // The fish left the tank — lift the spotlight so a recycled id
-    // can't quietly reattach it to a new fish.
-    if (focusId !== null && !f) focusId = null;
-    if (f) {
-      // halfW/halfH are the fish's unscaled sprite extents; a
-      // juvenile's box shrinks with its growth scale. The fallbacks
-      // box a fish whose sheet hasn't bound yet.
-      const hw = (f.halfW ?? 10) * f.scale + 3;
-      const hh = (f.halfH ?? 7) * f.scale + 3;
-      const x0 = Math.max(1, Math.round(f.x - hw));
-      const y0 = Math.max(1, Math.round(f.y - hh));
-      const x1 = Math.min(TANK.width - 1, Math.round(f.x + hw));
-      const y1 = Math.min(TANK.height - 1, Math.round(f.y + hh));
-      ctx.save();
-      ctx.setLineDash([2, 2]);
-      ctx.lineWidth = 1;
-      // The ants hold still under reduced motion, like the water.
-      ctx.lineDashOffset = waterMotion === "animated"
-        ? -(sim.tickCount % 8) / 2 : 0;
-      ctx.strokeStyle = "rgba(0,0,0,.8)";
-      ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
-      ctx.lineDashOffset += 1;
-      ctx.strokeStyle = "rgba(255,255,255,.8)";
-      ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
-      ctx.restore();
-    }
+  // clock so a paused tank doesn't freeze them mid-stroke. Screen
+  // only: a souvenir leaves the marquee out like the other overlays.
+  liftStaleSpotlight();
+  const focused = target === "screen" && focusId !== null
+    ? sim.fish.find((x) => x.id === focusId)
+    : undefined;
+  if (focused) {
+    // halfW/halfH are the fish's unscaled sprite extents; a
+    // juvenile's box shrinks with its growth scale. The fallbacks
+    // box a fish whose sheet hasn't bound yet.
+    const hw = (focused.halfW ?? 10) * focused.scale + 3;
+    const hh = (focused.halfH ?? 7) * focused.scale + 3;
+    const x0 = Math.max(1, Math.round(focused.x - hw));
+    const y0 = Math.max(1, Math.round(focused.y - hh));
+    const x1 = Math.min(TANK.width - 1, Math.round(focused.x + hw));
+    const y1 = Math.min(TANK.height - 1, Math.round(focused.y + hh));
+    ctx.save();
+    ctx.setLineDash([2, 2]);
+    ctx.lineWidth = 1;
+    // The ants hold still under reduced motion, like the water.
+    ctx.lineDashOffset = waterMotion === "animated"
+      ? -(sim.tickCount % 8) / 2 : 0;
+    ctx.strokeStyle = "rgba(0,0,0,.8)";
+    ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
+    ctx.lineDashOffset += 1;
+    ctx.strokeStyle = "rgba(255,255,255,.8)";
+    ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
+    ctx.restore();
   }
 
   // Ambient motion (swell, glint, shimmer) holds still under reduced
@@ -3751,7 +3918,7 @@ function render(now: Date, target: RenderTarget = "screen"): void {
   // The waterline divides feeding from tapping, so it brightens while
   // a click would feed. Under the murk and night overlays, so it dims
   // with the water instead of glowing at night.
-  drawSurface(ctx, waterline, sun, effects.surface ? t : 0,
+  drawSurface(ctx, waterline, sun, effects.surface ? t : null,
               overFeedZone);
   drawBubbles(ctx, sim.bubbles, waterline);
   if (effects.splashes) {
@@ -3764,6 +3931,11 @@ function render(now: Date, target: RenderTarget = "screen"): void {
 
   // Fouled water murks the whole scene.
   if (effects.murk) drawMurk(ctx, sim.waterQuality, t);
+  // On the glass, so the murk can't cloud it; under the night veil,
+  // since a liquid crystal shows by the room's light, not its own.
+  if (effects.thermometer)
+    ctx.drawImage(thermoCanvas(sim.aquarium.water.temp), THERMO_X,
+                  THERMO_Y);
 
   // A mouse or pen hovering the dark tank lights it like a torch, in
   // the colors the scene has before the night veil goes on.
@@ -3773,6 +3945,12 @@ function render(now: Date, target: RenderTarget = "screen"): void {
   if (torch) keepTorch(ctx, torch.x, torch.y, 1 - sun);
   drawNight(now);
   if (torch) drawTorch(ctx);
+
+  // The laser dot rides over the night veil: it is the brightest thing
+  // in the tank while the toy is on, exactly as a real dot would be.
+  // A saved picture leaves the viewer's pointer out, like the torch.
+  if (laser && target === "screen" && !anyOverlayOpen())
+    drawLaser(ctx, laser.x, laser.y);
 
   // The cat presses its paw to the outside of the glass — painted after
   // the murk and night tints, which can't dim what's on the viewer's
@@ -3861,19 +4039,24 @@ function drawNight(now: Date): void {
 }
 
 // ---- the cat ------------------------------------------------------------
-// AquaZone's signature visitor: a paw drops from the top edge every few
-// minutes, bats at the glass a couple of times, and leaves. Tick-driven,
-// so it pauses with the sim and never fires while the tank is hidden.
+// A Finsical extra (Effects > Cat visits): a paw drops from the top edge
+// every few minutes, bats at the glass a couple of times, and leaves.
+// Tick-driven, so it pauses with the sim and never fires while the tank
+// is hidden.
 let pawVisit: PawVisit | null = null;
 /** tickCount of the next allowed visit; -1 until first scheduled. */
 let pawNextAt = -1;
 const pawSwatted = new Set<number>();
+/** tickCount of the cat's next visit after one ends or its Effects box
+ * clears — one expression so the two arms can't drift. */
+const pawRevisitAt = (from: number): number =>
+  from + PAW_GAP + Math.floor(Math.random() * PAW_GAP_RANGE);
 
 function pawTick(): void {
   const t = sim.tickCount;
   if (pawNextAt < 0)
     pawNextAt = t + PAW_FIRST + Math.floor(Math.random() * PAW_FIRST_RANGE);
-  if (!pawVisit && t >= pawNextAt) {
+  if (!pawVisit && effects.cat && t >= pawNextAt) {
     pawVisit = { t0: t, x: pawSpawnX(Math.random),
                  swats: 2 + (Math.random() < 0.4 ? 1 : 0) };
   }
@@ -3881,7 +4064,7 @@ function pawTick(): void {
   if (!pawPose(pawVisit, t)) {
     pawVisit = null;
     pawSwatted.clear();
-    pawNextAt = t + PAW_GAP + Math.floor(Math.random() * PAW_GAP_RANGE);
+    pawNextAt = pawRevisitAt(t);
     return;
   }
   const sw = pawSwatAt(pawVisit, t);
@@ -4033,6 +4216,11 @@ function frame(now: number): void {
   // crtOn has already cleared. The boot parade also animates on its
   // own clock: it needs a draw per frame even before the first tick.
   const crtBusy = crt?.animating ?? false;
+  // The spotlight lease is wall-clock, so it must be checked on every
+  // frame, including ones the loop below skips: a paused tank would
+  // otherwise hold a dead Overview's marquee until the next paint.
+  // Lifting it asks for that paint, which erases the ants.
+  if (liftStaleSpotlight()) requestPaint();
   if (ticks === 0 && !frameDirty && !crtBusy && bootT0 === null) return;
   frameDirty = false;
   render(frameDate);

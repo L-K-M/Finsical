@@ -292,6 +292,61 @@ try {
       assert.deepEqual(afterClose, [true, true]);
     });
 
+  await test("a refused drop clears the cue before another drag", async () => {
+    const result = await evalJs(`(() => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([1], 'x.fsh'));
+      window.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dt }));
+      const alert = __probe.showAlert({ icon: 'note', text: 'Drop blocked',
+        buttons: [{ title: 'OK' }] });
+      window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt,
+        cancelable: true }));
+      const refusedCue = document.body.classList.contains('dragging');
+      alert.close();
+      window.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dt }));
+      const nextCue = document.body.classList.contains('dragging');
+      window.dispatchEvent(new DragEvent('dragleave', { dataTransfer: dt }));
+      return [refusedCue, nextCue,
+        document.body.classList.contains('dragging')];
+    })()`, owner.sessionId);
+    assert.deepEqual(result, [false, true, false]);
+  });
+
+  await test("closing a stacked alert restores typing and the opener", async () => {
+    try {
+      const result = await evalJs(`(() => {
+        const opener = document.createElement('button');
+        document.body.append(opener); opener.focus();
+        const bottom = __probe.showAlert({ icon: 'note', text: 'Name',
+          field: { value: 'abcdef', label: 'Name' },
+          buttons: [{ title: 'OK', default: true }] });
+        const field = document.querySelector('.alertfield');
+        field.setSelectionRange(2, 4);
+        const top = __probe.showAlert({ icon: 'note', text: 'Progress',
+          buttons: [{ title: 'OK', default: true }] });
+        window.__focusCheck = { bottom, top, field, opener };
+        top.close();
+        return { focused: document.activeElement === field,
+          selection: [field.selectionStart, field.selectionEnd] };
+      })()`, owner.sessionId);
+      assert.deepEqual(result, { focused: true, selection: [2, 4] });
+      await call("Input.insertText", { text: "X" }, owner.sessionId);
+      assert.equal(await evalJs("__focusCheck.field.value", owner.sessionId),
+                   "abXef", "typing should resume without another click");
+      assert.equal(await evalJs(`(() => {
+        __focusCheck.bottom.close();
+        return document.activeElement === __focusCheck.opener;
+      })()`, owner.sessionId), true);
+    } finally {
+      await evalJs(`(() => {
+        const check = window.__focusCheck;
+        if (!check) return;
+        check.top.close(); check.bottom.close(); check.opener.remove();
+        delete window.__focusCheck;
+      })()`, owner.sessionId);
+    }
+  });
+
   const spectator = await openPage();
   try {
     await waitFor("!!window.__probe", spectator.sessionId);
@@ -335,7 +390,7 @@ try {
 
   assert.deepEqual(errors, [], "page errors");
   assert.deepEqual(failures, [], failures.join("\n"));
-  assert.equal(passed.length, 5, "Missing checks");
+  assert.equal(passed.length, 7, "Missing checks");
   console.log(`${passed.length} live spectator scenarios passed`);
 } finally {
   if (child && child.exitCode === null) {

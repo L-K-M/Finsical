@@ -2,6 +2,46 @@
 
 ## Unreleased
 
+- After a stall (a tab switch, a system hiccup) the tank resumes with
+  at most 100 ms of catch-up instead of 200 ms; frames slower than
+  that now run the tank a little slow rather than fast-forwarding.
+- Press J for a laser-pointer toy: a red dot follows the pointer over
+  the water and the fish chase it, the way they gather at a resting
+  pointer. The arrow hides while the dot is out, and the dot stops at
+  the waterline.
+- The snail crawls head-first in both directions. It used to lead
+  with its shell, eyestalks trailing, whichever way it went.
+- The startup parade no longer has live-tank chrome floating over it:
+  with Fish Names on, name tags used to hang over the grey desktop,
+  hover balloons and the feed crosshair answered a screen that was not
+  the tank yet, and a catch-up death notice could pop over the parade.
+  They all wait for the water.
+- Switching the CRT effect on over a paused tank settles the picture
+  at full power. The warm-up could stop one frame short, leaving the
+  still picture slightly over-bright and over-zoomed until anything
+  moved. Returning after a long stall still draws the settled frame.
+- Closing an alert over a text-field dialog returns typing to that
+  field without losing its selection. Closing a background alert
+  leaves the active control's focus alone.
+- The Tank Overview's selection spotlight lets go when the window
+  that picked the fish is gone, even while the tank is paused. It used
+  to stay lit on a still tank until something moved.
+- With Waves on the surface off, the waterline is the original's flat
+  line with no bright glint segment frozen on it.
+- The cat that now and then bats at the glass from above is one of
+  Finsical's own extras, not the original's, so it joins the others
+  in Preferences > Effects as Cat visits. It stays on unless you
+  clear the box.
+- A liquid-crystal thermometer strip on the front glass shows the
+  water's temperature at a glance: the cell at the reading lights up
+  green, its neighbours tan or blue, and pointing at it gives the
+  exact temperature and the heater's setting. Preferences > Effects >
+  Thermometer strip takes it off.
+- Preferences ▸ Effects grows a **Prints on the glass** switch, off by
+  default: wherever a fish settles it leaves a faint print on the
+  inside of the glass, and the marks a corner collects build into a
+  greasy bloom. The glass remembers while the tank is open and starts
+  clean on the next visit.
 - Tank Stats tidies up: Copy Summary keeps its title and says
   "Summary copied." beside it, a second click no longer cuts that
   message short, the Heater and water steppers' minus signs and the
