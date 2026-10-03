@@ -77,6 +77,13 @@ export function alertOrigin(vw: number, vh: number, w: number,
 
 let registered = false;
 let openCount = 0;
+/** The open alerts, oldest first. `bindDialogKeys` adds one window
+ * keydown listener per button set and the first to match eats the key
+ * (`preventDefault`), so a stacked pair would answer whichever was
+ * raised first. Only the frontmost alert may claim Return and Escape —
+ * the one the Dialog Manager would act on. */
+const stack: Alert[] = [];
+const frontmost = (a: Alert): boolean => stack[stack.length - 1] === a;
 
 /** True while any alert is up: the tank ignores taps meanwhile. */
 export function alertOpen(): boolean {
@@ -243,7 +250,7 @@ export function showAlert(spec: AlertSpec): Alert {
         bindDialogKeys(ok, cancel, {
           ok: () => ok?.click(),
           cancel: () => cancel?.click(),
-          active: () => open,
+          active: () => open && frontmost(alert),
         });
       }
       if (open) place();
@@ -256,6 +263,8 @@ export function showAlert(spec: AlertSpec): Alert {
       if (!open) return;
       open = false;
       openCount--;
+      const at = stack.indexOf(alert);
+      if (at >= 0) stack.splice(at, 1);
       ro.disconnect();
       window.removeEventListener("resize", place);
       scrim.remove();
@@ -266,6 +275,7 @@ export function showAlert(spec: AlertSpec): Alert {
   };
 
   openCount++;
+  stack.push(alert);
   document.body.append(scrim);
   alert.update(spec);
   if (field.hidden) win.focus({ preventScroll: true });

@@ -3008,6 +3008,10 @@ function dropSay(text: string): void {
 }
 window.addEventListener("drop", (e) => {
   e.preventDefault();
+  // A modal alert or document window owns the page: the scrim stops
+  // taps, so a drop must stand down too, or files import behind the
+  // scrim while its feedback paints under it.
+  if (alertOpen() || docOpen()) return;
   // A drop is a gesture — wake audio now so the install feedback can
   // still answer it once the (async) decode finishes.
   audio.unlock();
