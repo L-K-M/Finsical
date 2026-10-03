@@ -146,6 +146,8 @@ async function stock(alert: Alert, hooks: StarterHooks,
       failedCols.push(col);
       listingProblem ??= e ?? new Error("listing failed");
     });
+  // listAddons always resolves to an array; listing is only null when
+  // retry is set, and then resolveStarter never runs.
   const listed = retry ?? resolveStarter(listing!);
   const unreached = listing ? unreachedStarter(listing, failedCols) : [];
   if (stopped) return;

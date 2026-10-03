@@ -82,6 +82,11 @@ const indexHtml = (await readFile(join(WEB, "index.html"), "utf8"))
            '<script src="fixture.js"></script><script src="bundle.js">');
 assert.notEqual(indexHtml.indexOf("fixture.js"), -1,
                 "index.html no longer loads bundle.js directly");
+// Read once up front like the bundle: a missing install fails here,
+// before Chrome spawns — an awaited read inside the handler would
+// reject the request promise and crash the harness mid-cleanup.
+const osmiumCss =
+  await readFile(join(ROOT, "node_modules/osmium-ui/osmium.css"));
 const server = createServer(async (request, response) => {
   const pathname = new URL(request.url, "http://localhost").pathname;
   response.setHeader("Cache-Control", "no-store");
@@ -95,8 +100,7 @@ const server = createServer(async (request, response) => {
   }
   if (pathname === "/osmium.css") {
     response.setHeader("Content-Type", "text/css");
-    response.end(await readFile(
-      join(ROOT, "node_modules/osmium-ui/osmium.css"))); return;
+    response.end(osmiumCss); return;
   }
   const file = resolve(WEB, "." + (pathname === "/" ? "/index.html" : pathname));
   if (!file.startsWith(WEB + "/")) {
