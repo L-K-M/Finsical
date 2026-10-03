@@ -357,9 +357,9 @@ bus.post({ op: "hello" });
 // Copy Summary — the window's rows as plain text on the clipboard, so
 // a tank's state can leave the app (the tank diary's quick share).
 const copyBtn = document.getElementById("scopy") as HTMLButtonElement;
+let copyTimer: ReturnType<typeof setTimeout> | undefined;
 pushButton(copyBtn, () => {
   const st = lastStats;
-  let copyTimer: ReturnType<typeof setTimeout> | undefined;
   const done = (label: string): void => {
     copyBtn.textContent = label;
     // A re-click inside the window restarts the feedback, not just
