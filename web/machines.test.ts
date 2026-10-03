@@ -5,6 +5,19 @@ import {
   rasterZoom, shellMarkup,
 } from "./machines.js";
 
+// osmium-ui's exports map opens only its index, so the Charcoal 12
+// strike the list rows render in can't be reached by subpath import.
+// Resolve the package's entry through module resolution (any install
+// layout that can resolve "osmium-ui" works — a hardcoded
+// ../node_modules path survives only npm's) and step across to the
+// font file next to it, keeping the entry's own extension so a
+// compiled dist/ layout resolves too.
+const osmiumEntry = import.meta.resolve("osmium-ui");
+const { CHARCOAL_12 } = await import(
+  new URL(`fonts/charcoal12.${
+    osmiumEntry.match(/\.([^./]+)$/)?.[1] ?? "js"}`, osmiumEntry).href) as
+  { CHARCOAL_12: { glyphs: readonly [number, number, ...unknown[]][] } };
+
 // Each machine's `shape` is hand-synced to the outer <rect> geometry
 // of its svg — the native shell unions it into the window's layer
 // mask. If art drifts from shape, the mask clips into or away from
@@ -334,5 +347,31 @@ describe("rasterZoom", () => {
     const aquarium = machineById("aquarium")!;
     expect(aquarium.sy * NATIVE_MIN_SCALE)
       .toBeGreaterThanOrEqual(NATIVE_DRAG_STRIP_HEIGHT);
+  });
+});
+
+describe("machine names", () => {
+  // The Preferences machine list (#pfmachines) is a 190 px column of
+  // Charcoal 12 rows; a name past the row truncates, and the dropped
+  // suffix can be the only thing telling two variants apart ("(II)",
+  // "(Black)") — this guard keeps every name whole.
+  // 190 px list − 17 px scrollbar − 4 px padding − 1 px safety margin.
+  const ROW_TEXT_PX = 190 - 17 - 4 - 1;
+  const advance = new Map(CHARCOAL_12.glyphs.map((g) => [g[0], g[1]]));
+  const nameWidth = (name: string): number =>
+    [...name].reduce((w, c) => {
+      const px = advance.get(c.codePointAt(0)!);
+      // A glyph missing from the strike doesn't draw; counting it as
+      // zero-width would pass a name that actually renders garbled.
+      if (px === undefined)
+        throw new Error(
+          `no Charcoal 12 glyph for U+${
+            c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")
+          } (${JSON.stringify(c)}) in "${name}"`);
+      return w + px;
+    }, 0);
+
+  it.each(MACHINES)("$name fits the Preferences machine list", (m) => {
+    expect(nameWidth(m.name)).toBeLessThanOrEqual(ROW_TEXT_PX);
   });
 });

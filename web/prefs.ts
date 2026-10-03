@@ -4,9 +4,9 @@ import { CRT_DEFAULTS, CRT_MASKS, CRT_PRESETS, presetTube,
 import { MACHINES, previewMarkup, savedMachineId }
   from "./machines.js";
 import type { CrtConfig, CrtLevel, CrtMask, CrtPreset } from "./crt.js";
-import { centerText, hostWindow, mountList, mountPopup, pushButton,
-         registerSprites, setEnabled, trackHighlight, trackPress }
-  from "osmium-ui";
+import { centerText, hostWindow, installOsmium, mountList, mountPopup,
+         pushButton, registerSprites, setEnabled, trackHighlight,
+         trackPress } from "osmium-ui";
 import { ICON_PALETTE, ICON_SPRITES } from "./icons.js";
 import { hourLabel, LIGHTING_DEFAULTS, sanitizeLighting }
   from "../core/light.js";
@@ -799,6 +799,34 @@ const offCtl = lightControl("off", {
   blurb: () => "The timer switches the lights off at this hour, and they " +
     "dim through a sunset glow into a moonlit night.",
 }, HOURS, "Lights off at", (h) => setLighting({ off: h }));
+
+/** Mac OS 8 makes a pop-up as wide as its widest item. The hours' is
+ * "10:00 PM" in a 12-hour locale and "22:00" in a 24-hour one, so it
+ * is measured in the pop-ups' own font once the bitmap strikes are in,
+ * as a min-width over the stylesheet's (which stays the floor). */
+function fitHourPopups(): void {
+  const probe = document.createElement("span");
+  probe.className = "osm-popup-title"; // the pop-up's own font
+  probe.style.cssText =
+    "position: absolute; visibility: hidden; white-space: nowrap";
+  document.body.append(probe);
+  let text = 0;
+  for (const h of HOURS) {
+    probe.textContent = h;
+    text = Math.max(text, probe.getBoundingClientRect().width);
+  }
+  probe.remove();
+  for (const { btn } of [onCtl, offCtl]) {
+    // Computed, not laid out: the Lighting pane may be hidden now.
+    const cs = getComputedStyle(btn);
+    const chrome = ["borderLeftWidth", "borderRightWidth", "paddingLeft",
+                    "paddingRight"] as const;
+    const w = text + chrome.reduce((n, k) => n + parseFloat(cs[k]), 0);
+    btn.style.minWidth = `${Math.ceil(w)}px`;
+  }
+}
+void installOsmium().catch(() => { /* fallback fonts: measure them */ })
+  .finally(fitHourPopups);
 
 // The lamp checkbox, captioned like the pop-ups.
 const lampBox = document.getElementById("pl-lamp") as HTMLInputElement;
