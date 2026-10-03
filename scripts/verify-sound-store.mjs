@@ -205,10 +205,16 @@ try {
   let report;
   // Real time: virtual-time dump-dom can finish before IndexedDB's I/O.
   while (!report && Date.now() < deadline) {
-    const { result } = await call("Runtime.evaluate", {
-      expression: "window.storeResult || null", returnByValue: true,
-    }, sessionId);
-    report = result.value;
+    try {
+      const { result } = await call("Runtime.evaluate", {
+        expression: "window.storeResult || null", returnByValue: true,
+      }, sessionId);
+      report = result.value;
+    } catch (error) {
+      // A first poll can race navigation; application and other CDP errors fail.
+      if (!/Cannot find (?:default execution )?context|Execution context was destroyed/i
+          .test(error.message)) throw error;
+    }
     if (!report) await new Promise((resolve) => setTimeout(resolve, 25));
   }
   assert.ok(report, "Browser fixture did not return results");
