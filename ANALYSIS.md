@@ -11799,3 +11799,140 @@ helper reports (`sim-core`, `web-ui`, `web-tank2`, `av2`, `native2`)
 are summarized above, and the foreign `tools/az/pack.py` scratch edit
 seen during the pass was another session's, saved and reverted rather
 than reviewed. `tmp.md` was discarded after this merge.*
+
+## Twenty-third pass (2026-10-03, `origin/main` `f796688`)
+
+Baseline: `npm ci`, typecheck clean, vitest 63 files / 892 green,
+Python 94 green, `npm run build` clean. Four dimension explorers
+(sim/tank/import+audio/shells) plus AquaZone source research (WIRED
+1994, Moby, GameFAQs, Saturn manual, CD sleeve). Full `tmp.md` (R-01
+to R-39) folded below; nothing dropped, duplicates consolidated.
+
+### Completed (open PRs, left for maintainer review)
+
+- **R-25 / PR #399** `fix/copy-timer-scope` — `copyTimer` hoisted to
+  module scope in `web/stats.ts` so re-clicks restart the 1.5 s
+  feedback. CI green, GLM round 1: 0 actionable (1 outside-diff minor
+  already satisfied by the `clearTimeout` in `done`).
+- **R-09 / PR #400** `fix/art-scale-guards` — `coverCrop`,
+  `decorScale` (`web/render.ts`) and `crtRasterRect` (`web/crt.ts`)
+  guard zero/non-finite inputs (empty rect / `ART_SCALE`), with tests
+  in `cover/render/crt.test.ts`. CI green on first run; GLM pending.
+- **R-01/R-14/R-15 / PR #401** `fix/feed-cap-count` — sim
+  `MAX_UNEATEN` aliases `FOOD_CAP` (12), new `Sim.uneatenCount()`
+  without per-drop allocs; manual feed, pinch re-check, auto-feeder
+  gate/drop all count uneaten the same way; pinch re-check also skips
+  behind modal alerts. `core/sim.test.ts` 101 green.
+
+### Still open (shovel-ready; R-IDs are this pass, mappings to backlog)
+
+- **R-02 Hunger never ages on tick.** Size S-M. `core/sim.ts:449`.
+  `tick()` never ages hunger; headless sim stays at `SPAWN_HUNGER`.
+  Change: drive `advanceLife` from `tick` with fixed dt or document
+  the two-clock contract. Acceptance: N ticks with no `advanceLife`
+  raises hunger. New (no existing entry covers the two-clock split).
+- **R-03 Dead quality constants.** Size S. `core/sim.ts:173-181,520`.
+  `WASTE_PER_TICK`/`FILTER_PER_TICK` dead; quality is
+  oxygen/organics. Change: delete or rewire, fix comments. New.
+- **R-04 Corpses never foul.** Size S. `core/sim.ts:1079-1109` vs
+  `704-706`. Change: `aquarium.spoil()` on death/rot. New; relates to
+  F-12 lifecycle.
+- **R-05 Fry lose entry binding.** Size S. `core/sim.ts:1334-1342`.
+  `maybeBirth` drops `entry`. Change: copy `entry`. Relates to B-14
+  pack identity; verify against B-14/B-92 before scoping.
+- **R-06 Starters never school/breed.** Size S. `core/sim.ts:1175,1324`.
+  Document or give stand-ins a pseudo-species; sick clears school
+  anchor fully. Relates to F-17 breeding.
+- **R-07 Sleep ignores size, loses gasp.** Size S. `core/sim.ts:765,1020,
+  1161`. Floor minus `halfH`; gasp overrides sleep below
+  `QUALITY_SEEK`. Relates to D-01 sleep.
+- **R-08 Startle vy uncapped.** Size S. `core/sim.ts:1219-1221`. Cap
+  vector magnitude at `STARTLE_MAX_SPEED`. New.
+- **R-10 Seek runs foodFor twice.** Size S. `core/sim.ts:743,833,585,
+  658`. Reuse per-tick result; count loop; index by species. Relates
+  to P-01/P-20.
+- **R-11 Drawn drift not in eat distance.** Size S. `web/water.ts:227`
+  vs `core/sim.ts:986`. Add 1.5 px slack or remove drift. New.
+- **R-12 Blank-popup flash.** Size M. `web/menubar.ts:74-90`. Single
+  `window.open(url)` with reuse. New.
+- **R-13 Client windows overflow tiny screens.** Size S.
+  `web/menubar.ts:48-49,192-221`. Clamp size first, cap doc height.
+  Relates to B-96.
+- **R-16 Doubly-nested drop missed.** Size S. `web/main.ts:3042`.
+  Recurse 3 levels for `manifest.json`. Relates to B-13 drop path.
+- **R-17 Live region can stay empty.** Size S. `web/main.ts:3001`.
+  Set text synchronously. Relates to U-20 a11y.
+- **R-18 Loose-mode basename collision.** Size M. `web/import.ts:434`.
+  Qualify with parent on collision. Relates to B-52.
+- **R-19 `#` in entry names.** Size S. `web/import.ts:473`. Split on
+  last `#` or use URL parsing. New.
+- **R-20 Tick-gate freezes CRT life.** Size M. `web/main.ts:3899` +
+  `web/crt.ts:1230`. Run CRT composite every rAF when on, skip
+  `texSubImage2D` when stale. Relates to P-03/P-13.
+- **R-21 Per-frame allocs.** Size S-M. `paintDecor` bands, `drawSurface`
+  320x fillRect, `drawNight` gradient/frame, `querySelector` per
+  mousemove/frame, tip `offsetWidth` per frame, `layoutInfo` thrash.
+  Cull/batch/cache; tip at 10 Hz. Relates to P-01/P-06/P-16.
+- **R-22 Audio hash + parallel decode.** Size M. `web/audio.ts:94,211`.
+  Memo hash; bounded concurrency 4. Relates to P-07.
+- **R-23 EVENT_MAX_S drops long customs.** Size S. `web/audio.ts:79`.
+  Fall back to play + note. Relates to B-19.
+- **R-24 Overview/Stats post into void.** Size S. `web/overview.ts:183,
+  247`, `web/stats.ts:229`. Guard with `tankGone`; dose disabled until
+  water. Relates to B-34/B-55.
+- **R-26 Prefs hover wiped on push.** Size S. `web/prefs.ts:691`.
+  Skip describe while hovering. Relates to V-43.
+- **R-27 Store write amplification + thumb evicts packs.** Size M.
+  `web/store.ts:130,148`. Debounce stat writes; evict thumbs first.
+  Relates to P-01/P-16/B-30.
+- **R-28 Quit can lose 60 s.** Size M. `macos/Finsical.swift:634`,
+  `linux/.../shell.py:178`. Sync save handshake on terminate; shorten
+  interval; shorten `tankclaim` lease on clean exit. Duplicates
+  B-41/B-95; verify before scoping.
+- **R-29 Take-a-Picture fails silently.** Size S. macOS `NSLog` only,
+  Linux GVFS path. Surface alert + URI fallback. Duplicates B-99.
+- **R-30 Shell menu gaps.** Size S. Linux lacks Fish Names/Minimize;
+  macOS only Pause syncs at once; Alt-click taken by WMs. Add items,
+  sync like Pause, `I`/right-click Get Info. Relates to U-44/FOLLOW-UPS.
+- **R-31 Android gaps.** Size M. White flash, renderer-loss counting,
+  drop swallow, folded tap area, `configChanges`. Duplicates
+  B-98/V-47/B-85/T-45; verify before scoping.
+- **R-32 fetch.py exits 0 with 0 bundles.** Size S.
+  `tools/fetch.py:87,65,48`, `iso9660.py:6`, `rsrc.py:153`,
+  `snd.py:59`, `pack.py:63`, `img.py:59,74`, `mace.py:29`. Count
+  failures, hash check, stream caps, close fds, explicit raises.
+  Relates to T-19/T-21/T-22/T-23.
+- **R-33 Docs drift.** Size S. CHANGELOG single Unreleased vs 0.8.0;
+  Debian 12 vs 13; README/man omit D/Z; web copy says Mac. Relates to
+  T-10/T-43/T-01.
+- **R-34 Visual: PAUSED + focus + gravel + tags.** Size S.
+  `web/main.ts:3648,3572,1154`, `web/app.css:145,436,80,100`.
+  Platinum pause, single dotted marquee, gravel cap = `BOTTOM_PAD-2`,
+  finfo 132 px nowrap, nametag ellipsis, `visibility:hidden` CRT
+  source, aspect-ratio box. Relates to V-26/V-30/A-05.
+- **R-35 Mac OS 8/9 widget fidelity.** Size M. Flat fields, stemless
+  balloons. Inset shadows, CSS stem, reuse alert bevel. Relates to
+  A-08/A-09/V-33.
+- **R-36 Accessibility gaps.** Size M. Canvas labels, live mirror,
+  dialog roles/focus, `:focus-visible` rings, `role=status`, 24 px hit
+  areas, darken secondary text, keyboard tap/feed. Relates to U-20.
+- **R-37 AquaZone fidelity slices.** Size L total, S-M each. Breeding-lite
+  behind pref; shop out of scope (import is the shop); sickness dose
+  liters + cure event; filter % + Change Water reset; 2-3 foods;
+  specimen cards from `FsTH`; music slot default off; 2x follow cam.
+  Relates to F-17/F-05/F-12/F-15/F-03/F-32/F-02/D-08.
+- **R-38 Delights (one PR each).** Frenzy shimmer; snail slime + paw;
+  laser `X`; moon-phase status; diary first-egg/cure/100th-feed;
+  Konami tetra; screensaver 0.5x; time-lapse `T`; filter bubble stream
+  by volume; gravel vacuum `V`; right-click fish menu; touch
+  two-finger feed. Relates to D-35..D-46/V-23.
+- **R-39 Deliberately not filed.** `LIGHTING_DEFAULTS` mutability,
+  `clockFmts` unbounded, `phaseAt` ramp, `loop.ts` subtraction,
+  `indexedPixels` palette drop, keystone divide, tarball/metainfo/
+  Flatpak pins (covered by T-44/T-41). Do not re-raise without new
+  evidence.
+
+*Nothing from the twenty-third-pass `tmp.md` (R-01 to R-39) was
+dropped: R-01/R-09/R-14/R-15/R-25 are implemented in open PRs #399 to
+#401 above; the rest are listed open with backlog mappings. `tmp.md`
+was discarded after this merge.*
