@@ -2182,6 +2182,7 @@ function setCrt(on: boolean): void {
   }
   // Report even when GL is missing — the prefs checkbox needs the
   // "can't enable" answer either way.
+  syncFlyback();
   postState();
 }
 /** Ring the degauss coil — the raster wobble plus the BWONG. Silent
@@ -2231,6 +2232,13 @@ function configureAudio(): void {
   audio.setVolume(soundCfg.volume);
   audio.setMuted(soundCfg.muted);
   audio.setOptions({ bubbles: soundCfg.bubbles, ambient: soundCfg.ambient });
+  syncFlyback();
+}
+/** The flyback whine follows two switches: the Monitor pane's opt-in
+ *  and the tube actually running. Sound it only when both hold — the
+ *  policy lives here, the synth in TankAudio. */
+function syncFlyback(): void {
+  audio.setFlyback(soundCfg.flyback && crtOn);
 }
 configureAudio();
 /** Merge a partial config (Sound pane, Mute Sound, the M key) onto the

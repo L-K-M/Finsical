@@ -639,6 +639,67 @@ describe("TankAudio.setHidden", () => {
   });
 });
 
+describe("TankAudio.setFlyback", () => {
+  /** Oscillators still started and not stopped: the live whine. */
+  const live = (ac: FakeContext): FakeOsc[] =>
+    ac.oscs.filter((o) => o.starts > 0 && !o.stops.length);
+
+  it("sings at line frequency and its harmonic into the master", async () => {
+    // One clip builds the context and its master; the whine is pure
+    // oscillator and needs nothing from the bank.
+    const { audio, ac, master } = await tank({ tone: 1 });
+    audio.setFlyback(true);
+    const oscs = live(ac);
+    expect(oscs).toHaveLength(2);
+    const [fund, harm] = oscs;
+    expect(fund!.frequency.value).toBe(15734);
+    expect(harm!.frequency.value).toBe(120);
+    // Each oscillator rides its own gain into the master, so volume
+    // and mute reach the whine like every other sound.
+    for (const o of oscs) {
+      const g = o.out[0] as FakeGain;
+      expect(g.out[0]).toBe(master);
+    }
+    expect((fund!.out[0] as FakeGain).gain.value).toBeCloseTo(0.006, 6);
+    expect((harm!.out[0] as FakeGain).gain.value).toBeCloseTo(0.002, 6);
+
+    audio.setFlyback(false);
+    expect(live(ac)).toHaveLength(0);
+    expect(oscs.every((o) => o.stops.length === 1)).toBe(true);
+    // Switching on again builds a fresh pair; off with none live is a
+    // quiet no-op either way.
+    audio.setFlyback(false);
+    audio.setFlyback(true);
+    expect(live(ac)).toHaveLength(2);
+  });
+
+  it("is off unless asked for, whatever the tank plays", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30, bubble: 1 });
+    audio.open();
+    await flush();
+    expect(live(ac)).toHaveLength(0);
+  });
+
+  it("holds its breath in a hidden tab: built, but the device asleep", async () => {
+    // No sounds installed, so the context exists only for the whine.
+    const audio = new TankAudio();
+    audio.setHidden(true);
+    await flush();
+    audio.setFlyback(true);
+    await flush(); // context() suspends on a promise, like the real one
+    const ac = FakeContext.last!;
+    // context() suspends a context made while hidden; the pair is
+    // already built, silent until the page returns.
+    expect(ac.state).toBe("suspended");
+    expect(live(ac)).toHaveLength(2);
+
+    audio.setHidden(false);
+    await flush();
+    expect(ac.state).toBe("running");
+    expect(live(ac)).toHaveLength(2);
+  });
+});
+
 // The original game's event sounds, by the names its 'snd ' resources
 // carry (core/data/sndbank.ts). Durations tell the buffers apart.
 describe("TankAudio event sounds", () => {
@@ -949,8 +1010,12 @@ describe("sanitizeSoundConfig", () => {
     expect(sanitizeSoundConfig({ volume: -1, v: 2 }).volume).toBe(0);
     const c = sanitizeSoundConfig({
       volume: NaN, muted: "yes", bubbles: 0, ambient: null,
+      flyback: "loud",
     });
     expect(c).toEqual(SOUND_DEFAULTS);
+    // An explicit opt-in survives the round-trip.
+    expect(sanitizeSoundConfig({ flyback: true, v: 2 }).flyback)
+      .toBe(true);
   });
 
   it("maps a pre-quadratic volume to the slider that replays it", () => {
@@ -995,7 +1060,7 @@ describe("sanitizeSoundConfig", () => {
 
   it("round-trips a full config as a copy", () => {
     const off = { volume: 0, muted: true, bubbles: false,
-                  ambient: false, v: 2 };
+                  ambient: false, flyback: true, v: 2 };
     expect(sanitizeSoundConfig(off)).toEqual(off);
     const c = sanitizeSoundConfig(SOUND_DEFAULTS);
     expect(c).toEqual(SOUND_DEFAULTS);

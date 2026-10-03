@@ -344,6 +344,11 @@ The rest of the set, for breeding, sickness, medicine, the filter,
 timers and the game's dialogs, has no matching feature in Finsical
 yet.
 
+One sound Finsical adds that AquaZone's Mac never had: **Flyback
+whine** (Preferences ▸ Monitor) sings the CRT's transformer at
+15.7 kHz while the monitor simulation runs — off by default, and at
+about the level a real tube's sat, which younger ears notice first.
+
 ## Windows
 
 | Window | What it does |
