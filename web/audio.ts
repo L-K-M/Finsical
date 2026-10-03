@@ -114,6 +114,12 @@ const AMBIENT_GAIN = 0.4;
 const POP_HZ = [700, 1600] as const;
 const POP_S = 0.06;
 const POP_GAIN = 0.25;
+/** The classic Mac alert beep, synthesized when no sound set is
+ * installed: the compact Macs' simple beep was a square wave about a
+ * tenth of a second long. */
+const BEEP_HZ = 223;
+const BEEP_S = 0.13;
+const BEEP_GAIN = 0.5;
 
 /** Stereo position of a tank event at x in a w-wide tank: the edges
  * pan to ±0.8 — a clear sense of side without a hard pan. */
@@ -123,7 +129,10 @@ export function panFor(x: number, w: number): number {
 }
 
 /** Per-play color: stereo pan (-1..1) and a playback-rate jitter. */
-interface PlayFx { pan?: number; rate?: number; }
+interface PlayFx { pan?: number; rate?: number;
+  /** Seconds of fade-out to schedule before the buffer's end, hiding
+   * a truncated tail (pipopa ends mid-tone). */
+  fadeSec?: number; }
 
 /** True while a user activation is held, so a sound answering that
  * gesture may wait out a locked AudioContext. Older WebKit and test
@@ -584,6 +593,13 @@ export class TankAudio {
     if (fx?.rate && fx.rate !== 1) src.playbackRate.value = fx.rate;
     const g = this.ctx.createGain();
     g.gain.value = gain;
+    if (fx?.fadeSec) {
+      // Fade before the buffer's end — in played seconds, so a
+      // non-unit rate can't push it past the last sample.
+      const end = this.ctx.currentTime +
+        Math.max(0, buf.duration / (fx.rate || 1) - fx.fadeSec - 0.02);
+      g.gain.setTargetAtTime(0, end, 0.005);
+    }
     const pan = fx?.pan ?? 0;
     // StereoPannerNode needs WebKit 14.1+, fine for macOS 12 — and a
     // pan of 0 keeps the direct path, so the node is opt-in only.
@@ -651,6 +667,48 @@ export class TankAudio {
   /** A golden meal — a rare victory worth a fanfare. */
   golden(): void {
     this.play(this.named("eventcouple") ?? this.named("pipopa"), 0.85);
+  }
+
+  /** A Mac OS 8 alert opening: the game's own caution sound
+   * (pipopa, fading out before its truncated end) when a sound set
+   * carrying it is installed — otherwise the classic Mac beep,
+   * synthesized so a tank with no sounds still speaks. An alert
+   * follows a user gesture, so the audio device is created (and
+   * woken) on demand here — a sound-less tank owns no context until
+   * its first alert. Routed through the master gain like everything
+   * else, so Mute and the volume slider hold. */
+  alertBeep(): void {
+    // A silent or hidden alert must not undo the device's sleep.
+    if (!this.shouldRun()) return;
+    const own = this.named("pipopa");
+    if (own) {
+      this.play(own, 0.6, false, true, { fadeSec: 0.05 });
+      return;
+    }
+    const ac = this.context();
+    // Created mid-gesture the context may still be settling: beep the
+    // moment it runs, or drop the sound (an alert nobody can act on
+    // shouldn't spend a second resume()).
+    if (ac.state === "suspended") {
+      void ac.resume()
+        .then(() => { if (ac.state === "running") this.alertBeep(); })
+        .catch(() => { /* resume blocked until a user gesture */ });
+      return;
+    }
+    if (ac.state !== "running" || !this.master) return;
+    const t = ac.currentTime;
+    const osc = ac.createOscillator();
+    osc.type = "square";
+    osc.frequency.value = BEEP_HZ;
+    const g = ac.createGain();
+    // Exponential ramps can't start from 0: a 4 ms attack and decay
+    // keep the square wave from clicking on or off.
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(BEEP_GAIN, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + BEEP_S);
+    osc.connect(g).connect(this.master);
+    osc.start(t);
+    osc.stop(t + BEEP_S + 0.01);
   }
 
   /** Fish are begging — the original's timer chime as a dinner bell.

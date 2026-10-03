@@ -83,6 +83,15 @@ export function alertOpen(): boolean {
   return openCount > 0;
 }
 
+/** Sound an alert makes when it opens, wired by the host page: the
+ * tank page plays the classic alert beep; client windows, which own
+ * no audio, keep their silence. Null restores the silent default.
+ * Called once per alert, not on in-place updates or progress ticks. */
+let alertSound: (() => void) | null = null;
+export function setAlertSound(fn: (() => void) | null): void {
+  alertSound = fn;
+}
+
 /** Where Tab moves focus among `n` buttons from index `i` (-1: none of
  * them), wrapping; -1 when there are no buttons (focus stays on the
  * alert itself). */
@@ -266,6 +275,10 @@ export function showAlert(spec: AlertSpec): Alert {
   };
 
   openCount++;
+  // Best-effort by contract: a throwing sound must never abort the
+  // alert it belongs to (the tank page's own hook wraps in try/catch
+  // too; this guards any other host's).
+  try { alertSound?.(); } catch { /* best-effort beep */ }
   document.body.append(scrim);
   alert.update(spec);
   if (field.hidden) win.focus({ preventScroll: true });

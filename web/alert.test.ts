@@ -30,6 +30,21 @@ describe("alertOrigin", () => {
   });
 });
 
+describe("setAlertSound wiring", () => {
+  // showAlert builds DOM, so it can't run here; this guard reads the
+  // source instead (the tanksurfaces.test.ts pattern). The hook fires
+  // once per alert, when it opens — never on in-place updates or
+  // progress ticks, which reuse the same window.
+  const src = import.meta.glob<string>("./alert.ts", {
+    query: "?raw", import: "default", eager: true,
+  })["./alert.ts"];
+
+  it("fires the hook exactly where the alert opens", () => {
+    expect(src).toMatch(
+      /openCount\+\+;\s*\/\/ Best-effort[\s\S]*?try \{ alertSound\?\.\(\); \} catch[\s\S]*?document\.body\.append\(scrim\);/);
+  });
+});
+
 describe("focusStep", () => {
   it("cycles Tab through the buttons and wraps both ways", () => {
     expect(focusStep(2, -1, false)).toBe(0);

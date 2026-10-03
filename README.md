@@ -341,12 +341,12 @@ AquaZone did:
 | You remove a fish | Water running out |
 | Change Water | The water change |
 | The lamp goes on or off | The light switch |
+| An alert opens (the tap sign, a refused feed, a tank-file problem) | The game's caution sound (pipopa) when the sound set carries it; otherwise, a synthesized classic Mac beep |
 
 The game has no sound for a single rising bubble. **Bubble sounds**
 plays one only if you add a short sound with "bubble" in its name.
-The rest of the set, for breeding, sickness, medicine, the filter,
-timers and the game's dialogs, has no matching feature in Finsical
-yet.
+Timers and the rest of the game's dialog sounds have no matching
+feature in Finsical yet.
 
 ## Windows
 

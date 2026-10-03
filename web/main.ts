@@ -27,7 +27,7 @@ import { drawRipples, drawSplashes, newSplash, tickRipples,
 import type { Ripple, Splash } from "./fx.js";
 import { sanitizeEffects } from "./effects.js";
 import { pushButton } from "osmium-ui";
-import { alertOpen, showAlert } from "./alert.js";
+import { alertOpen, setAlertSound, showAlert } from "./alert.js";
 import { recentTaps, shouldScold } from "./scold.js";
 import { backfillStarterSounds, launchOffer, showWelcome }
   from "./welcome.js";
@@ -244,6 +244,13 @@ const simSeed = seedPinned
 console.log("tank sim seed:", simSeed);
 const sim = new Sim(TANK, simSeed);
 const audio = new TankAudio();
+// A Mac OS 8 alert brought its own beep (SysBeep); so does ours —
+// the game's caution sound when installed, the classic synthesized
+// beep when it isn't.
+setAlertSound(() => {
+  // A sound must never block the alert it belongs to.
+  try { audio.alertBeep(); } catch { /* best-effort beep */ }
+});
 // Hidden (Cmd-H, minimized, background tab): rAF stops and the sim
 // freezes, so the ambient loop and the audio device pause with it.
 const syncAudioVisibility = (): void => audio.setHidden(document.hidden);
