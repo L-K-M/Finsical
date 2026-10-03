@@ -11,6 +11,9 @@ import { buildSync } from "esbuild";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const BROWSER_TIMEOUT_MS = 30_000;
+const SHUTDOWN_TIMEOUT_MS = 5_000;
+const CLEANUP_RETRIES = 5;
+const CLEANUP_RETRY_MS = 100;
 const candidates = process.env.FINSICAL_CHROMIUM
   ? [process.env.FINSICAL_CHROMIUM]
   : ["google-chrome", "chromium", "chromium-browser",
@@ -206,13 +209,20 @@ try {
   for (const name of report.passed) console.log("PASS: " + name);
   assert.equal(report.failures.length, 0, report.failures.join("\n"));
 } finally {
-  socket?.close();
   if (child && child.exitCode === null) {
     const exited = new Promise((resolve) => child.once("exit", resolve));
-    child.kill("SIGKILL");
+    // A hard kill leaves Chrome's children writing the profile while
+    // cleanup removes it. Ask the browser to close its whole process tree.
+    if (socket?.readyState === WebSocket.OPEN)
+      socket.send(JSON.stringify({ id: 0, method: "Browser.close" }));
+    else child.kill("SIGTERM");
+    const timer = setTimeout(() => child.kill("SIGKILL"), SHUTDOWN_TIMEOUT_MS);
     await exited;
+    clearTimeout(timer);
   }
+  socket?.close();
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));
-  rmSync(temp, { recursive: true, force: true });
+  rmSync(temp, { recursive: true, force: true,
+                maxRetries: CLEANUP_RETRIES, retryDelay: CLEANUP_RETRY_MS });
 }
