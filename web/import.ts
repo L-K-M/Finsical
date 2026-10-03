@@ -895,6 +895,41 @@ const KIND_NAMES: Record<string, string> = {
   sounds: "Sound",
 };
 const SECTION_KEY = "finsical:addonSection";
+
+/** Storage for the Show pop-up's remembered section, injectable for
+ * tests. Only a user's own pick goes through `rememberSection`: the
+ * streaming listing auto-selects whichever section arrived first, and
+ * persisting that used to clobber the saved preference before the saved
+ * section could even arrive, so the window reopened on the wrong
+ * section from then on. */
+export interface SectionPrefs {
+  get(): string | null;
+  set(sec: string): void;
+}
+const SECTION_PREFS: SectionPrefs = {
+  get: () => {
+    try { return localStorage.getItem(SECTION_KEY); }
+    catch { return null; } // storage unavailable
+  },
+  set: (sec) => {
+    try { localStorage.setItem(SECTION_KEY, sec); }
+    catch { /* storage unavailable */ }
+  },
+};
+
+/** Remember a section the user chose in the Show pop-up. */
+export function rememberSection(sec: string,
+                                prefs: SectionPrefs = SECTION_PREFS): void {
+  prefs.set(sec);
+}
+
+/** The section to show now: the saved one as soon as it has arrived,
+ * the first one that did until then. Never a reason to write storage —
+ * auto-landing is not a choice. */
+export function chooseStartSection(saved: string | null,
+                                   sections: readonly string[]): string {
+  return saved !== null && sections.includes(saved) ? saved : sections[0]!;
+}
 /** List rows: 31px for a 38 x 28 thumbnail, and a white rule. */
 const ROW_H = 32;
 const MINI_W = 38, MINI_H = 28;
@@ -1135,7 +1170,12 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   const byUrl = new Map<string, Importable>();
   const popup = mountPopup(popBtn, {
     items: ["Fish"], selected: 0, label: "Show",
-    onChange: (i) => { picked = true; showSection(sections[i]!); },
+    onChange: (i) => {
+      picked = true;
+      const sec = sections[i]!;
+      showSection(sec);
+      rememberSection(sec);
+    },
   });
   function setShowEnabled(on: boolean): void {
     popBtn.disabled = !on;
@@ -1182,7 +1222,6 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
 
   function showSection(sec: string): void {
     section = sec;
-    try { localStorage.setItem(SECTION_KEY, sec); } catch { /* unavailable */ }
     applyFilter();
   }
 
@@ -1681,11 +1720,6 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     h.onInstall?.(it, soundNames);
   }
 
-  function savedSection(): string | null {
-    try { return localStorage.getItem(SECTION_KEY); }
-    catch { return null; } // storage unavailable
-  }
-
   // Invalidates a previous loadListing attempt still in flight — its
   // late collections must not merge into the retried listing.
   let listingGen = 0;
@@ -1707,10 +1741,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     }
     setShowEnabled(true);
     if (!picked) {
-      const sv = savedSection();
       // Land on the saved section once it arrives; until then the
-      // first available section has something to show.
-      showSection(sv && sections.includes(sv) ? sv : sections[0]!);
+      // first available section has something to show. Never persisted
+      // here — auto-landing is not the user's choice.
+      showSection(chooseStartSection(SECTION_PREFS.get(), sections));
     } else if (sections.includes(section)) {
       applyFilter(); // new rows may join the viewed section
     }
@@ -1744,8 +1778,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       all = items;
       // A user's own pick outranks the saved section.
       if (!picked) {
-        const sv = savedSection();
-        const start = sv && sections.includes(sv) ? sv : sections[0]!;
+        const start = chooseStartSection(SECTION_PREFS.get(), sections);
         popup.setItems(sections.map((s) => SECTION_TITLES[s] ?? s),
                        sections.indexOf(start));
         showSection(start);
