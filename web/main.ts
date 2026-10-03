@@ -514,8 +514,8 @@ function downloadAnchor(href: string, name: string, revoke = false,
 function exportTank(): void {
   const blob = new Blob([JSON.stringify(tankSnapshot(), null, 2)],
                         { type: "application/json" });
-  downloadAnchor(URL.createObjectURL(blob), "finsical-tank.fins", true,
-                 10_000);
+  const href = URL.createObjectURL(blob);
+  downloadAnchor(href, "finsical-tank.fins", true, 10_000);
 }
 
 const tankFile = document.createElement("input");
