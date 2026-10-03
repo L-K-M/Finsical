@@ -1245,7 +1245,9 @@ function decorX(i: number, dn: number, w: number): number {
   return Math.min(Math.max(Math.round(decorAnchor(i, dn) - w / 2), 0),
                   Math.max(0, TANK.width - w));
 }
-/** Tell the fish where the decor stands, after any add or removal. */
+/** Tell the fish where the decor stands, after any add or removal,
+ * and hand the aquarium model the plant area it turns into oxygen,
+ * nitrate uptake and CO₂ scrubbing (Sim_Plant, in units of 1000 px²). */
 function syncCover(): void {
   const dn = decors.length;
   sim.cover = decors.map((d, i) => {
@@ -1254,6 +1256,10 @@ function syncCover(): void {
     return { x0, x1: x0 + f.width,
              top: TANK.height - DECOR_FLOOR - f.height, depth: d.depth };
   });
+  // Only plants photosynthesise; an accessory is a rock.
+  sim.plantArea = decors.reduce(
+    (sum, d) => d.plant ? sum + d.frames[0]!.width * d.frames[0]!.height
+                        : sum, 0);
 }
 /** The floor anchor a decor piece centers on — shared by the renderer
  * and the plant-bubble emitter so the two can't drift apart. */

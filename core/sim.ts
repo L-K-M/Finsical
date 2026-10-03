@@ -384,6 +384,13 @@ export class Sim {
    * changes: fish pass behind and in front of it, and hide behind it
    * when scared. */
   cover: readonly Cover[] = [];
+  /** Total drawn area of the plant decor, in px² — Σ width × height
+   * over every plant the view placed. Plants are what oxygenate the
+   * water: this becomes the aquarium model's plant size, so a lit tank
+   * with greenery gains oxygen and loses nitrate and CO₂. Set it
+   * alongside `cover` (the view knows which decor are plants); the
+   * aquarium owns what that area does to the water. */
+  plantArea = 0;
   /** Spawn a bubble at a point — the view emits these for decor
    * (plants oxygenating); the lifecycle (rise, surface pop) is the
    * same as a gravel bubble's. */
@@ -449,6 +456,9 @@ export class Sim {
   advanceLife(realSeconds: number): void {
     const a = this.aquarium;
     a.lightOn = this.light > SLEEP_LIGHT;
+    // Plant chemistry works in units of 1000 px² (Sim_Plant); the view
+    // hands over raw px², so scale it here rather than at every caller.
+    a.plantSize = this.plantArea / 1000;
     const day = Math.floor(a.minutes / MINUTES_PER_DAY);
     a.advance(realSeconds, this.residents());
     this.syncLife();
