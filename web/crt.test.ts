@@ -180,6 +180,11 @@ describe("crtRasterRect", () => {
     // Box spans top-down 20..120, so y-up 80..180; centered: +18.75.
     expect(r[1]).toBeCloseTo(80 + 18.75);
   });
+
+  it("returns an empty rect for zero-size sources", () => {
+    expect(crtRasterRect(100, 200, 0, 200, { x: 0, y: 0, w: 1, h: 1 }))
+      .toEqual([0, 0, 0, 0]);
+  });
 });
 
 // The rows pass smears each scanline once at the raster's device

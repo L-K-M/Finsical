@@ -15,4 +15,9 @@ describe("decorScale", () => {
     // Vallis_l: 464 px would stand 232 px at half size.
     expect(464 * decorScale(464, 200)).toBeCloseTo(192, 9);
   });
+  it("keeps a finite scale for corrupt heights", () => {
+    for (const h of [0, -10, NaN, Infinity])
+      expect(decorScale(h, 200)).toBe(ART_SCALE);
+    expect(decorScale(100, 200)).toBeGreaterThan(0);
+  });
 });

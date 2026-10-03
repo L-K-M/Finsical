@@ -21,4 +21,13 @@ describe("coverCrop", () => {
     expect(coverCrop(100, 100, 320, 200))
       .toEqual({ sx: 0, sy: 18.75, sw: 100, sh: 62.5 });
   });
+
+  it("returns an empty rect for zero-size sources", () => {
+    expect(coverCrop(0, 200, 320, 200).sw *
+           coverCrop(0, 200, 320, 200).sh).toBe(0);
+    expect(coverCrop(320, 0, 320, 200).sw *
+           coverCrop(320, 0, 320, 200).sh).toBe(0);
+    expect(coverCrop(320, 200, 0, 200).sw *
+           coverCrop(320, 200, 0, 200).sh).toBe(0);
+  });
 });

@@ -722,6 +722,9 @@ export function crtRasterRect(bufW: number, bufH: number,
     srcW: number, srcH: number, box: RasterBox): [number, number, number, number] {
   const bx = box.x * bufW, bw = box.w * bufW, bh = box.h * bufH;
   const by = bufH - (box.y + box.h) * bufH; // flip to y-up
+  if (!Number.isFinite(srcW) || !Number.isFinite(srcH) ||
+      srcW <= 0 || srcH <= 0)
+    return [bx, by, 0, 0];
   const s = Math.min(bw / srcW, bh / srcH);
   const w = srcW * s, h = srcH * s;
   return [bx + (bw - w) / 2, by + (bh - h) / 2, w, h];
