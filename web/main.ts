@@ -3519,6 +3519,13 @@ smudgeCv.width = TANK.width;
 smudgeCv.height = TANK.height;
 let smudgeSig = "";
 function drawSmudges(): void {
+  // TANK_SIZE is frozen today; when variable sizes land (F-51), marks
+  // painted for one size must not scale into the next.
+  if (smudgeCv.width !== TANK.width || smudgeCv.height !== TANK.height) {
+    smudgeCv.width = TANK.width;
+    smudgeCv.height = TANK.height;
+    smudgeSig = ""; // the old marks were painted for the old size
+  }
   if (!effects.smudges) {
     if (smudgeSig !== "") {
       smudgeSig = "";

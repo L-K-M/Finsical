@@ -1574,7 +1574,7 @@ describe("rest prints", () => {
       seq = p.n;
       expect(p.x).toBeGreaterThanOrEqual(0);
       expect(p.x).toBeLessThanOrEqual(320);
-      expect(p.y).toBeGreaterThanOrEqual(26); // SURFACE + MARGIN
+      expect(p.y).toBeGreaterThanOrEqual(SURFACE + MARGIN);
       expect(p.y).toBeLessThanOrEqual(200);
     }
     // Runtime-only state: the save whitelist never grew a print list.
