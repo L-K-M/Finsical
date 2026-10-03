@@ -100,7 +100,8 @@ class TestTruncated(unittest.TestCase):
     def test_rejects_truncated_headers_as_img_error(self):
         # A truncated download is the common malformed case; the named
         # error must reach callers instead of struct.error.
-        for blob in (b"", b"BM", b"BM" + bytes(8), b"BM" + bytes(40)):
+        for blob in (b"", b"BM", b"BM" + bytes(8), b"BM" + bytes(12),
+                     b"BM" + bytes(40)):
             with self.subTest(blob=blob):
                 with self.assertRaises(ImgError):
                     read_bmp(blob)

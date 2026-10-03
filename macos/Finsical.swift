@@ -874,13 +874,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         // until relaunch. Only the app's own pages may replace the frame.
         // A real click is different: external links (the bundled pages
         // use _blank, but a same-frame target or a mailto: would land
-        // here) belong in the default browser, not a dead click. Drops
-        // and programmatic loads arrive as .other and stay blocked.
+        // here) belong in the default browser, not a dead click — the
+        // scheme allowlist keeps a file:/data: click just as dead.
+        // Drops and programmatic loads arrive as .other and stay
+        // blocked.
         if action.targetFrame?.isMainFrame == true,
            action.request.url?.scheme?.lowercased()
                != WebHandler.scheme {
             if action.navigationType == .linkActivated,
-               let url = action.request.url {
+               let url = action.request.url,
+               ["http", "https", "mailto"]
+                   .contains(url.scheme?.lowercased() ?? "") {
                 NSWorkspace.shared.open(url)
             }
             NSLog("Finsical: blocked main-frame navigation to "

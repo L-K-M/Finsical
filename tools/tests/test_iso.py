@@ -15,7 +15,9 @@ def _dir_record(extent, size, name, is_dir=False):
     rec = bytearray(33 + len(name))
     rec[0] = len(rec)
     struct.pack_into('<I', rec, 2, extent)
+    struct.pack_into('>I', rec, 6, extent)
     struct.pack_into('<I', rec, 10, size)
+    struct.pack_into('>I', rec, 14, size)
     rec[25] = 2 if is_dir else 0
     rec[32] = len(name)
     rec[33:] = name
@@ -30,6 +32,7 @@ def build_iso(root_extent=17, root_size=SECTOR, file_extent=18,
     pvd = bytearray(SECTOR)
     pvd[0] = 1
     pvd[1:6] = b'CD001'
+    pvd[6] = 1  # descriptor version
     pvd[156:156 + 34] = _dir_record(root_extent, root_size, b'\x00', True)
     img[16 * SECTOR:17 * SECTOR] = pvd
     root = bytearray(SECTOR)
