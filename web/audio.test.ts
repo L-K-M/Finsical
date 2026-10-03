@@ -26,6 +26,10 @@ class FakeNode {
 }
 class FakeGain extends FakeNode { gain = new FakeParam(); }
 class FakePanner extends FakeNode { pan = new FakeParam(); }
+class FakeFilter extends FakeNode {
+  type = "lowpass";
+  frequency = new FakeParam();
+}
 class FakeBuffer {
   readonly numberOfChannels = 1;
   constructor(readonly duration: number,
@@ -68,6 +72,7 @@ class FakeContext {
     this.gains.push(g);
     return g;
   }
+  createBiquadFilter(): FakeFilter { return new FakeFilter(); }
   panners: FakePanner[] = [];
   createStereoPanner(): FakePanner {
     const p = new FakePanner();
@@ -680,6 +685,99 @@ describe("TankAudio.setHidden", () => {
 describe("TankAudio silent sleep", () => {
   const sleepBeat = (): Promise<void> =>
     new Promise((r) => setTimeout(r, SLEEP_AFTER_MS + 40));
+
+  it.each(["mute", "volume zero", "hidden"])(
+    "ends live one-shots before %s sleep without ending continuous sound", async (mode) => {
+      vi.useFakeTimers();
+      try {
+        const { audio, ac } = await tank({ [LOOP]: 30, drop: 8,
+          pipopa: 1, feedback: 8 });
+        audio.startAmbient();
+        audio.setFlyback(true);
+        const tube = [...ac.oscs];
+        audio.setOptions({ music: true });
+        audio.feed();
+        audio.playImported("feedback");
+        audio.alertBeep();
+        audio.note(440);
+        audio.bubble();
+        audio.pop();
+        audio.degauss();
+        const voices = [...ac.sources.filter(s => !s.loop),
+          ...ac.oscs.filter(o => !tube.includes(o))];
+        expect(voices.length).toBeGreaterThan(5);
+        if (mode === "hidden") audio.setHidden(true);
+        else {
+          if (mode === "mute") audio.setMuted(true);
+          else audio.setVolume(0);
+          expect(voices.every(s => !s.stops.includes(undefined))).toBe(true);
+        }
+        await vi.advanceTimersByTimeAsync(SLEEP_AFTER_MS + 1);
+        expect(ac.state).toBe("suspended");
+        for (const voice of voices) expect(voice.stops).toContain(undefined);
+        expect(ac.loops()).toBe(1);
+        expect(tube.every(o => o.stops.length === 0)).toBe(true);
+
+        if (mode === "hidden") audio.setHidden(false);
+        else if (mode === "mute") audio.setMuted(false);
+        else audio.setVolume(SOUND_DEFAULTS.volume);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(ac.state).toBe("running");
+        expect(ac.loops()).toBe(1);
+        expect(ac.sources.filter(s => !s.loop)).toHaveLength(
+          voices.filter(s => !(s instanceof FakeOsc)).length);
+      } finally { vi.useRealTimers(); }
+    });
+
+  it("keeps live one-shots when a quick unmute cancels sleep", async () => {
+    vi.useFakeTimers();
+    try {
+      const { audio, ac } = await tank({ drop: 8 });
+      audio.feed();
+      audio.setMuted(true);
+      audio.setMuted(false);
+      await vi.advanceTimersByTimeAsync(SLEEP_AFTER_MS + 1);
+      expect(ac.state).toBe("running");
+      expect(ac.sources[0]!.stops).toEqual([]);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("drops a deferred gesture cue superseded by sleep and wake", async () => {
+    vi.useFakeTimers();
+    try {
+      const { audio, ac } = await tank({ drop: 8 });
+      stubActivation(true);
+      ac.state = "suspended";
+      let release!: () => void;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      vi.spyOn(ac, "resume").mockReturnValueOnce(held);
+      audio.feed();
+      audio.setMuted(true);
+      await vi.advanceTimersByTimeAsync(SLEEP_AFTER_MS + 1);
+      audio.setMuted(false);
+      await vi.advanceTimersByTimeAsync(0);
+      release();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(ac.state).toBe("running");
+      expect(ac.sources).toHaveLength(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("forgets naturally ended one-shots before sleeping", async () => {
+    vi.useFakeTimers();
+    try {
+      const { audio, ac } = await tank({ drop: 8 });
+      audio.feed();
+      const source = ac.sources[0]!;
+      expect(source.onended).not.toBeNull();
+      source.onended!();
+      const stop = vi.spyOn(source, "stop");
+      audio.setMuted(true);
+      await vi.advanceTimersByTimeAsync(SLEEP_AFTER_MS + 1);
+      expect(stop).not.toHaveBeenCalled();
+      expect(ac.state).toBe("suspended");
+    } finally { vi.useRealTimers(); }
+  });
 
   it.each(["mute", "volume zero"])(
     "drops synthesized notes during the %s fade before sleep", async (mode) => {

@@ -1818,6 +1818,17 @@ describe("Clean Up", () => {
     }
   });
 
+  it.each([0, 8])("settles a slow far fish with %i strokes already spent", (strokes) => {
+    const sim = new Sim(TANK, 7);
+    const f = sim.addFish({ x: 300, y: 100, facing: -1, hunger: 0,
+      heading: Math.PI, cruise: 0.4, strokes });
+    sim.cleanUp();
+    const slot = sim.slotFor(f)!;
+    for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) sim.tick();
+    expect(Math.hypot(f.x - slot.x, f.y - slot.y)).toBeLessThan(24);
+    expect(f.hover).toBeGreaterThan(0);
+  });
+
   it("keeps the fish inside the glass while they line up", () => {
     const sim = lined(24);
     for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) {

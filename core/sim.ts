@@ -1397,9 +1397,11 @@ export class Sim {
       f.ty = Math.min(y1, Math.max(y0, slot.y));
       f.phase = 0;
       f.latch = -1;
-      // The stroke count is kept, unlike every other decide(): a fish
-      // crossing the tank to its place would otherwise get its budget
-      // reset every stroke and never be allowed a second one.
+      // A new trip refunds the budget, like a wandering decision. The
+      // formation's shorter cadence can spend it before a slow fish
+      // arrives; retaining it would keep resetting the ramp instead
+      // of giving the fish another speed-preserving stroke.
+      f.strokes = 0;
       return;
     }
     const { x0, x1, y0, y1 } = this.room(f);

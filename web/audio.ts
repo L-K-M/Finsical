@@ -210,6 +210,11 @@ export class TankAudio {
   // The flyback pair while live: the 15.7 kHz fundamental and the
   // mains hum beside it, stopped and dropped on every switch off.
   private flybackOscs: OscillatorNode[] | null = null;
+  // Suspension freezes a source mid-tail. Only continuous sounds may
+  // survive it; finite voices end before sleep instead of replaying
+  // their stale tails on the next wake.
+  private oneShots = new Set<AudioScheduledSourceNode>();
+  private oneShotGen = 0;
   // The one install-feedback source still playing, so a newer install
   // (or Add Again) replaces it instead of stacking copies.
   private feedbackSrc: AudioBufferSourceNode | null = null;
@@ -340,6 +345,25 @@ export class TankAudio {
     return !this.hidden && this.level() > 0;
   }
 
+  private trackOneShot(source: AudioScheduledSourceNode): void {
+    this.oneShots.add(source);
+    const ended = source.onended;
+    source.onended = (event) => {
+      this.oneShots.delete(source);
+      ended?.call(source, event);
+    };
+  }
+
+  private stopOneShots(): void {
+    this.oneShotGen++;
+    this.feedbackGen++; // also invalidate feedback still waiting on resume
+    for (const source of this.oneShots) {
+      try { source.stop(); } catch { /* already ended */ }
+    }
+    this.oneShots.clear();
+    this.feedbackSrc = null;
+  }
+
   /** Suspend the device once the level is zero and stays zero, and
    * resume it when sound comes back. The suspend waits out the level
    * glide — cutting mid-fade clicks; a level that returns first
@@ -361,8 +385,10 @@ export class TankAudio {
     }
     const gen = this.sleepGen;
     setTimeout(() => {
-      if (this.sleepGen === gen)
+      if (this.sleepGen === gen) {
+        this.stopOneShots();
         void ac.suspend().catch(() => { /* closed context */ });
+      }
     }, SLEEP_AFTER_MS);
   }
 
@@ -523,8 +549,10 @@ export class TankAudio {
     if (!ac) return;
     if (hidden || !this.shouldRun()) {
       // Muted while hidden stays asleep on return until an unmute.
-      if (hidden || ac.state === "running")
+      if (hidden || ac.state === "running") {
+        this.stopOneShots();
         void ac.suspend().catch(() => { /* closed context */ });
+      }
       return;
     }
     void ac.resume()
@@ -603,6 +631,7 @@ export class TankAudio {
       if (this.feedbackSrc === src) this.feedbackSrc = null;
     };
     this.feedbackSrc = src;
+    this.trackOneShot(src);
   }
 
   /** The first sound named one of `subs`, else the first with one as
@@ -669,12 +698,14 @@ export class TankAudio {
       if (!loop && !gestureActive()) return null;
       const ac = this.ctx;
       const gen = this.ambientGen;
+      const oneShotGen = this.oneShotGen;
       void ac.resume()
         .then(() => {
           // Superseded by load(), a newer ambient call, or a second
           // ambient call that raced in while resume was pending.
           if (loop && (gen !== this.ambientGen || !this.ambientWanted ||
                        this.ambientSrc)) return;
+          if (!loop && oneShotGen !== this.oneShotGen) return;
           const n = this.play(buf, gain, loop, false);
           if (n && loop) this.ambientSrc = n; // keep the loop stoppable
         })
@@ -706,6 +737,7 @@ export class TankAudio {
       src.connect(g).connect(this.master!); // created with ctx
     }
     src.start();
+    if (!loop) this.trackOneShot(src);
     return src;
   }
 
@@ -790,8 +822,12 @@ export class TankAudio {
     // moment it runs, or drop the sound (an alert nobody can act on
     // shouldn't spend a second resume()).
     if (ac.state === "suspended") {
+      const gen = this.oneShotGen;
       void ac.resume()
-        .then(() => { if (ac.state === "running") this.alertBeep(); })
+        .then(() => {
+          if (ac.state === "running" && gen === this.oneShotGen)
+            this.alertBeep();
+        })
         .catch(() => { /* resume blocked until a user gesture */ });
       return;
     }
@@ -809,6 +845,7 @@ export class TankAudio {
     osc.connect(g).connect(this.master);
     osc.start(t);
     osc.stop(t + BEEP_S + 0.01);
+    this.trackOneShot(osc);
   }
 
   /** Fish are begging — the original's timer chime as a dinner bell.
@@ -892,6 +929,7 @@ export class TankAudio {
     for (const osc of [body, partial]) {
       osc.start(t);
       osc.stop(t + NOTE_S + 0.01);
+      this.trackOneShot(osc);
     }
   }
 
@@ -933,6 +971,7 @@ export class TankAudio {
     }
     osc.start(t);
     osc.stop(t + BLOOP_S + 0.01);
+    this.trackOneShot(osc);
   }
 
   /** A bubble popped by a click, panned to it. A sound the user added
@@ -971,6 +1010,7 @@ export class TankAudio {
     }
     osc.start(t);
     osc.stop(t + POP_S + 0.01);
+    this.trackOneShot(osc);
   }
 
   /** The degauss coil's BWONG — synthesized, not a bank sound: a 55 Hz
@@ -990,6 +1030,7 @@ export class TankAudio {
     thump.connect(tg).connect(this.master);
     thump.start(t);
     thump.stop(t + 0.3);
+    this.trackOneShot(thump);
     const whine = this.ctx.createOscillator();
     whine.type = "sawtooth";
     whine.frequency.setValueAtTime(900, t);
@@ -1003,6 +1044,7 @@ export class TankAudio {
     whine.connect(lp).connect(wg).connect(this.master);
     whine.start(t);
     whine.stop(t + 0.7);
+    this.trackOneShot(whine);
   }
 
   /** The tank has opened with its saved sounds loaded: start the

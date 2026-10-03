@@ -15,7 +15,8 @@
   seconds, the way the Finder's Clean Up snapped icons into one. They
   swim to their places, hold still, and drift off again when the roll
   call is over; a knock on the glass or a feed brings it forward
-  early.
+  early. Slow fish get fresh strokes on their way instead of spending
+  the rest of the call short of their places.
 - A sick fish sneezes now and then: it puffs a small bubble and jerks
   back a little, so you can spot an ailing fish without opening Tank
   Stats.
@@ -25,6 +26,10 @@
   the glass, an octave lower at night, with a higher grace note when
   it eats. A gate lets one note at a time through and caps how many
   land in any two seconds, so a full tank stays calm.
+- Muting or hiding the tank ends finite sound tails before the audio
+  device sleeps. Those tails and deferred gesture cues no longer
+  replay on the next wake; the ambient loop and tube tone continue
+  normally when sound returns.
 - In a browser that holds sound back until you click, the tank shows
   a Turn On Sound button, and a click anywhere on the page, the case
   included, starts the sound. The old "Click for sound" note showed
