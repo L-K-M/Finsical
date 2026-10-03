@@ -608,6 +608,67 @@ describe("Sim", () => {
     expect(low).toBeGreaterThan(1200);
   });
 
+  it("a sick fish sneezes now and then, a healthy one never", () => {
+    const run = (sick: boolean) => {
+      const sim = new Sim({ width: 300, height: 200 }, 4);
+      const f = sim.addFish({ x: 150, y: 100, hunger: 0 });
+      sim.advanceLife(1);
+      if (sick) f.life!.sick = { disease: 0, amount: 20 };
+      let sneezes = 0, puffs = 0, was = false;
+      for (let i = 0; i < 6000; i++) {
+        const before = sim.bubbles.length;
+        sim.tick();
+        const now = sim.sneezing(f);
+        if (now && !was) {
+          sneezes++;
+          // The puff leaves from the mouth, in front of the body; look
+          // at every bubble this tick made, not just the last.
+          if (sim.bubbles.slice(before).some((b) =>
+                (b.x - f.x) * f.facing > 0)) puffs++;
+        }
+        was = now;
+      }
+      return { sneezes, puffs };
+    };
+    const sick = run(true);
+    // ~10 expected in 200 s at one every ~20 s.
+    expect(sick.sneezes).toBeGreaterThan(3);
+    expect(sick.puffs).toBe(sick.sneezes);
+    expect(run(false).sneezes).toBe(0);
+  });
+
+  it("a sneeze jolts the fish backwards", () => {
+    const sim = new Sim({ width: 300, height: 200 }, 4);
+    const f = sim.addFish({ x: 150, y: 100, hunger: 0 });
+    sim.advanceLife(1);
+    f.life!.sick = { disease: 0, amount: 20 };
+    // At night a fish beds down on the gravel and holds still, so the
+    // only sideways movement left is the jolt.
+    sim.setLight(0);
+    let i = 0;
+    for (; i < 20000 && !(f.state === "sleep" && sim.sneezing(f)); i++)
+      sim.tick();
+    expect(i).toBeLessThan(20000); // found a sleeping fish mid-sneeze
+    expect(sim.sneezing(f)).toBe(true);
+    const x = f.x;
+    while (sim.sneezing(f)) sim.tick();
+    expect((x - f.x) * f.facing).toBeCloseTo(3, 5);
+  });
+
+  it("a fish that dies mid-sneeze stops jolting", () => {
+    const sim = new Sim({ width: 300, height: 200 }, 4);
+    const f = sim.addFish({ x: 150, y: 100, hunger: 0 });
+    sim.advanceLife(1);
+    f.life!.sick = { disease: 0, amount: 20 };
+    for (let i = 0; i < 20000 && !sim.sneezing(f); i++) sim.tick();
+    expect(sim.sneezing(f)).toBe(true);
+    f.life!.dead = { cause: 12, at: 0 };
+    sim.advanceLife(1);
+    expect(f.state).toBe("dead");
+    sim.tick();
+    expect(sim.sneezing(f)).toBe(false);
+  });
+
   it("a recovered fish that relapses warns again", () => {
     const sim = new Sim({ width: 300, height: 200 }, 4);
     const f = sim.addFish({ x: 150, y: 100, hunger: 0 });
