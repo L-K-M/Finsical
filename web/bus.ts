@@ -10,7 +10,7 @@ export interface Bus { post(m: BusMsg): void }
  * what "connected" means. */
 export const TANK_QUIET_MS = 6000;
 
-const TANK_MUTATION_OPS = new Set([
+export const TANK_MUTATION_OPS = new Set([
   "renameFish", "removeFish", "removeAddon", "useAddon", "emptyTank",
 ]);
 
