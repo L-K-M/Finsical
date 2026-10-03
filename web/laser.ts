@@ -18,7 +18,9 @@ export interface LaserAim {
  * waterline): a pointer over the air has nothing to shine on. */
 export function laserAim(p: { x: number; y: number } | null,
                          above = 0): LaserAim | null {
-  if (!p || p.y < above) return null;
+  // A synthesized event can carry NaN/Infinity — no finite aim, no dot.
+  if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) ||
+      p.y < above) return null;
   return {
     x: Math.min(TANK_SIZE.width - 2, Math.max(1, Math.round(p.x))),
     y: Math.min(TANK_SIZE.height - 2, Math.max(1, Math.round(p.y))),

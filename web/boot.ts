@@ -257,7 +257,8 @@ function iconCanvas(art: readonly string[]): HTMLCanvasElement {
   if (!cv) {
     const scale = 2; // the parade's slot size
     cv = document.createElement("canvas");
-    cv.width = art[0]!.length * scale;
+    cv.width = art.reduce((m, row) => Math.max(m, row.length), 0) *
+               scale;
     cv.height = art.length * scale;
     blit(cv.getContext("2d")!, art, 0, 0, scale);
     iconCanvases.set(art, cv);

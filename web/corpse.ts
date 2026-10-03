@@ -11,8 +11,9 @@ export function corpseSprite(source: HTMLCanvasElement): HTMLCanvasElement {
   corpse.width = source.width;
   corpse.height = source.height;
   const ctx = corpse.getContext("2d");
-  // The optional muted copy must not abort the render frame.
-  if (!ctx) return source;
+  // The optional muted copy must not abort the render frame — and a
+  // 0×0 source makes drawImage throw, which is exactly that.
+  if (!ctx || source.width === 0 || source.height === 0) return source;
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(source, 0, 0);
   // source-atop limits both fills to opaque sprite pixels.

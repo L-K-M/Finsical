@@ -58,8 +58,49 @@ describe("decodeImage", () => {
       .then(() => { resolved = true; });
     img.onload!();
     await flush();
+    // decode() still pending — nothing may have resolved yet.
+    expect(resolved).toBe(false);
     // The forced-draw fallback fires one task after onload.
     await new Promise((r) => setTimeout(r, 0));
+    await flush();
+    expect(resolved).toBe(true);
+  });
+
+  it("settles an already-complete image without waiting on handlers",
+     async () => {
+    // A cached asset's onload/onerror already fired (or never will):
+    // resolution must come from the complete check alone.
+    const img = { onload: null, onerror: null, complete: true,
+                  src: "cached.png", naturalWidth: 4,
+                  decode: () => Promise.resolve() };
+    await expect(decodeImage(img as unknown as HTMLImageElement))
+      .resolves.toBeUndefined();
+    expect(img.onload).toBeNull();
+    expect(img.onerror).toBeNull();
+  });
+
+  it("settles a failed cached image (complete, no pixels) at once",
+     async () => {
+    const img = { onload: null, onerror: null, complete: true,
+                  src: "broken.png", naturalWidth: 0 };
+    await expect(decodeImage(img as unknown as HTMLImageElement))
+      .resolves.toBeUndefined();
+  });
+
+  it("waits for onload when complete but no src was assigned yet",
+     async () => {
+    // A fresh Image reports complete before its src lands — decodeImage
+    // runs before the caller's src assignment, and settling on that
+    // empty completeness would skip the decode entirely.
+    const img = { onload: null as (() => void) | null, onerror: null,
+                  complete: true, src: "",
+                  decode: () => Promise.resolve() };
+    let resolved = false;
+    void decodeImage(img as unknown as HTMLImageElement)
+      .then(() => { resolved = true; });
+    await flush();
+    expect(resolved).toBe(false);
+    img.onload!();
     await flush();
     expect(resolved).toBe(true);
   });

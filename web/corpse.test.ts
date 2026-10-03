@@ -14,6 +14,24 @@ describe("corpseSprite", () => {
     }
   });
 
+  it("returns a zero-size source untouched — drawImage would throw", () => {
+    const drawn: unknown[] = [];
+    const output = {
+      width: 0, height: 0,
+      getContext: () => ({ drawImage: (...a: unknown[]) => drawn.push(a) }),
+    };
+    vi.stubGlobal("document", { createElement: () => output });
+    try {
+      for (const [width, height] of [[0, 4], [4, 0]]) {
+        const source = { width, height } as HTMLCanvasElement;
+        expect(corpseSprite(source)).toBe(source);
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(drawn).toEqual([]);
+  });
+
   it("composites and caches a muted sprite without Canvas filter", () => {
     const calls: unknown[][] = [];
     const context = {

@@ -9,6 +9,11 @@ describe("laserAim", () => {
     expect(laserAim({ x: 100, y: 10 }, 10)).toEqual({ x: 100, y: 10 });
   });
 
+  it("hides for non-finite pointer coordinates", () => {
+    expect(laserAim({ x: NaN, y: 50 })).toBeNull();
+    expect(laserAim({ x: 50, y: Infinity })).toBeNull();
+  });
+
   it("rounds and pins the dot a pixel inside the glass", () => {
     expect(laserAim({ x: -5, y: 150 })).toEqual({ x: 1, y: 150 });
     expect(laserAim({ x: 999, y: 999 })).toEqual({ x: 318, y: 198 });

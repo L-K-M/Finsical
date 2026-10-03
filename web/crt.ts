@@ -1179,7 +1179,11 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     get enabled() { return enabled; },
     get usable() { return !lost; },
     get animating() {
-      return warmupBusy(enabled, settled, Number.isFinite(offT0),
+      // Elapsed time alone cannot settle the last visible frame after
+      // a stall/hidden tab. Context loss clears enabled above, so it
+      // already stops owing frames without a warm-up timeout.
+      return warmupBusy(enabled, settled,
+                        Number.isFinite(offT0),
                         performance.now() - degaussT0);
     },
     // A copy — the live cfg could otherwise be mutated without the

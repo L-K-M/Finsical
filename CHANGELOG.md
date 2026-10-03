@@ -82,6 +82,9 @@
   field gets Mac OS 8.5's lavender ring instead of a black double
   ring that looked like a second default button. Tank Overview dims
   Empty Tank… when there is nothing to empty.
+- After a stall (a tab switch, a system hiccup) the tank resumes with
+  at most 100 ms of catch-up instead of 200 ms; frames slower than
+  that now run the tank a little slow rather than fast-forwarding.
 - Press J for a laser-pointer toy: a red dot follows the pointer over
   the water and the fish chase it, the way they gather at a resting
   pointer. The arrow hides while the dot is out, and the dot stops at
@@ -96,7 +99,10 @@
 - Switching the CRT effect on over a paused tank settles the picture
   at full power. The warm-up could stop one frame short, leaving the
   still picture slightly over-bright and over-zoomed until anything
-  moved.
+  moved. Returning after a long stall still draws the settled frame.
+- Closing an alert over a text-field dialog returns typing to that
+  field without losing its selection. Closing a background alert
+  leaves the active control's focus alone.
 - The Tank Overview's selection spotlight lets go when the window
   that picked the fish is gone, even while the tank is paused. It used
   to stay lit on a still tank until something moved.

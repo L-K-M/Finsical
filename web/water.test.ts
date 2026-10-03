@@ -407,11 +407,12 @@ describe("glass smudges", () => {
       fillStyle: "", globalAlpha: 1,
       beginPath: () => {},
       ellipse: (...a: number[]) => { ellipses.push(a); },
-      fill: () => { alphas.push(1); },
+      fill: () => { alphas.push(ctx.globalAlpha); },
     } as unknown as CanvasRenderingContext2D;
     const marks = smudgePrint({ x: 10, y: 20, n: 9 });
     paintSmudges(ctx, marks);
     expect(ellipses).toHaveLength(2);
+    expect(alphas).toEqual([SMUDGE_ALPHA, SMUDGE_ALPHA]);
     // Resets globalAlpha to 1 when it finishes — the file's draw
     // helpers share that convention; it does not restore a prior value.
     expect(ctx.globalAlpha).toBe(1);

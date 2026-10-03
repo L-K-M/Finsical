@@ -787,14 +787,23 @@ function waterTopAt(x: number): number {
  * the dot itself is the pointer. */
 function setLaser(on: boolean): void {
   laserOn = on;
-  document.body.classList.toggle("laser", on);
   // lastClient, not mouseClient: a touch pointer updates it before the
   // hover-only branch returns, so a keyboard toggle after a finger drag
   // strikes the dot where the finger just was.
   const p = lastClient && tankPoint(lastClient.x, lastClient.y);
   laser = on && p ? laserAim(p, waterTopAt(p.x)) : null;
+  laserCursor();
   seePointer(p);
   requestPaint();
+}
+
+/** The dot is the pointer only while it shines: over the air strip,
+ * off the picture or behind an open overlay there is no dot, so the
+ * arrow must come back or the pointer just vanishes (body.laser hides
+ * it canvas-wide). */
+function laserCursor(): void {
+  document.body.classList.toggle("laser",
+                                 laser !== null && !anyOverlayOpen());
 }
 
 // Hover a fish and its species (and mood) pops up in a little
@@ -870,6 +879,7 @@ function onTankMove(e: PointerEvent): void {
   // finger along the water is the toy's natural gesture.
   if (laserOn) {
     laser = p ? laserAim(p, waterTopAt(p.x)) : null;
+    laserCursor();
     requestPaint();
   }
   if (e.pointerType === "touch") return; // no hover on touch
@@ -896,6 +906,7 @@ function onTankLeave(e: PointerEvent): void {
     seePointer(mp);
     if (laserOn) {
       laser = mp ? laserAim(mp, waterTopAt(mp.x)) : null;
+      laserCursor();
       requestPaint(); // the dot moved or went out — even while paused
     }
     return;
@@ -903,7 +914,8 @@ function onTankLeave(e: PointerEvent): void {
   mouseClient = null;
   lastClient = null;
   lastHover = null;
-  if (laserOn) { laser = null; requestPaint(); } // the dot left with it
+  // The dot left with the pointer — and so must its cursor swap.
+  if (laserOn) { laser = null; laserCursor(); requestPaint(); }
   if (torchLit) requestPaint(); // put the torch out, even while paused
   fishTip.style.display = "none";
   setFeedHover(false); // pointer is definitionally off the tank — clear now
@@ -989,6 +1001,7 @@ function editInfoName(): void {
 function closeInfo(): void {
   infoCard?.root.remove();
   infoCard = null;
+  laserCursor(); // the card no longer hides the dot
   requestPaint(); // the fish's name tag comes back, even while paused
 }
 
@@ -1031,6 +1044,9 @@ function openInfo(f: Fish): void {
   document.body.appendChild(root);
   infoCard = { root, name, kind, health, hunger, mood, fish: f,
               edit: null };
+  // The card gates the dot like the other overlays — the arrow comes
+  // back until the card closes, not just on the next pointer move.
+  laserCursor();
   // Position now, not next frame: unpositioned the card would paint
   // once at its in-flow default (the end of body) before landing.
   layoutInfo();
@@ -2635,11 +2651,24 @@ function layoutMachine(): void {
 // supersedes a pending one (the token proves it).
 let machineSwap = 0;
 
-function applyMachine(m: Machine): void {
+function commitMachine(m: Machine): void {
   // A new case is a new tube: ring the degauss coil like a monitor
-  // waking up. The init call passes the stored machine (same id), so
-  // this only fires on an actual swap.
+  // waking up — inside the commit, so a cancelled case never cues it.
+  // The first paint passes the stored machine (same id), so this only
+  // fires on an actual swap.
   if (m.id !== machine.id && crtOn) degaussTube();
+  machine = m;
+  shellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
+  shellEl.innerHTML = shellMarkup(m);
+  rearShellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
+  rearShellEl.innerHTML = backgroundMarkup(m);
+  layoutMachine();
+  savePreference(MACHINE_KEY, m.id);
+  // native geometry and the picker now describe the committed art
+  postState();
+}
+
+function applyMachine(m: Machine): void {
   const token = ++machineSwap;
   // Images only: a vector shell (none currently) has nothing to decode,
   // so its commit lands a microtask later rather than never.
@@ -2653,18 +2682,15 @@ function applyMachine(m: Machine): void {
     });
   void Promise.all(wait).then(() => {
     if (token !== machineSwap) return; // a newer switch superseded this
-    machine = m;
-    shellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
-    shellEl.innerHTML = shellMarkup(m);
-    rearShellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
-    rearShellEl.innerHTML = backgroundMarkup(m);
-    layoutMachine();
-    savePreference(MACHINE_KEY, m.id);
-    postState(); // native geometry and the picker now describe the committed art
+    commitMachine(m);
   });
 }
 window.addEventListener("resize", layoutMachine);
-applyMachine(machine);
+// The first case commits synchronously: the shell must exist by the
+// page's load event (the native app reads it at didFinish), and the
+// decode staging that keeps a mid-session swap atomic has nothing to
+// protect before any case is on screen.
+commitMachine(machine);
 // The machine art is pointer-events:none — a press anywhere that
 // isn't the tank or real UI means a grab on the case → window drag.
 document.addEventListener("pointerdown", (e) => {
@@ -3937,7 +3963,8 @@ function render(now: Date, target: RenderTarget = "screen"): void {
   // The laser dot rides over the night veil: it is the brightest thing
   // in the tank while the toy is on, exactly as a real dot would be.
   // A saved picture leaves the viewer's pointer out, like the torch.
-  if (laser && target === "screen") drawLaser(ctx, laser.x, laser.y);
+  if (laser && target === "screen" && !anyOverlayOpen())
+    drawLaser(ctx, laser.x, laser.y);
 
   // The cat presses its paw to the outside of the glass — painted after
   // the murk and night tints, which can't dim what's on the viewer's
