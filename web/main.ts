@@ -632,8 +632,9 @@ const pictureEl = (): HTMLElement => crtMapsPointer() ? crtEl : canvas;
 /** That element's client rect, from the cache — per-frame placement
  * (name tags, the Get Info card) would otherwise force a layout read
  * on every rAF, which is what tankRect()/crtClientRect() exist to
- * avoid. Both are dropped on resize, scroll, layoutMachine and a CRT
- * toggle, so the box can never be stale. */
+ * avoid. The caches are dropped by dropRects(): resize, scroll,
+ * layoutMachine, and a CRT toggle. Anything new that moves or resizes
+ * the tank or the glass has to drop them too. */
 const pictureRect = (): DOMRect =>
   pictureEl() === crtEl ? crtClientRect() : tankRect();
 
