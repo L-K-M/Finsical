@@ -887,8 +887,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                    .contains(url.scheme?.lowercased() ?? "") {
                 NSWorkspace.shared.open(url)
             }
-            NSLog("Finsical: blocked main-frame navigation to "
-                  + "\(action.request.url?.absoluteString ?? "nil")")
+            // The URL is untrusted input: as NSLog's argument, not
+            // part of its format string, a % specifier in it stays text.
+            NSLog("Finsical: blocked main-frame navigation to %@",
+                  action.request.url?.absoluteString ?? "nil")
             decisionHandler(.cancel)
             return
         }
