@@ -173,11 +173,14 @@ export function cure(l: FishLife, ctx: LifeCtx): void {
   ctx.events.recovered(idx);
 }
 
-/** Stomach size, 0.2 × weight, truncated (Calc_Stomach_Size), with the
- * original's floor so no fish starts with an empty stomach. */
+/** Stomach size, 0.2 × weight, truncated (Calc_Stomach_Size). Floored at
+ * two units so the capacity never dips as a fish grows: bare truncation
+ * gave weight 4 a stomach of 2 and weight 5 one of 1, so a fish could
+ * lose appetite by growing, and a stomach of one unit is under a
+ * pellet's three (Eat_Until_Full fills to capacity, so such a fish
+ * spoils most of every pellet). */
 export function stomachSize(weight: number): number {
-  const s = trunc(weight * 0.2);
-  return s < 1 ? 2 : s;
+  return Math.max(2, trunc(weight * 0.2));
 }
 
 /** Resize a fish's stomach to `weight`, keeping the share of it the
@@ -193,9 +196,10 @@ export function rescaleStomach(l: FishLife, weight: number): void {
     l.ate = l.stomach > 0 ? Math.round(l.ate / l.stomach * next) : 0;
     l.stomach = next;
   }
-  // Nothing may sit above the stomach it lives in, whatever the path:
-  // an overfull fish reads permanently full and never eats again.
-  if (l.ate > l.stomach) l.ate = l.stomach;
+  // Nothing may sit outside [0, stomach], whatever the path: too much
+  // reads permanently full and never eats again, too little (or a
+  // negative, from a corrupt save) poisons every fullness ratio.
+  l.ate = Math.max(0, Math.min(l.ate, l.stomach));
 }
 
 /** 0 full … 1 empty. */

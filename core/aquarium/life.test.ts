@@ -33,11 +33,13 @@ describe("sanitizeLife", () => {
 });
 
 describe("stomach size", () => {
-  it("is 0.2 × weight, truncated, with the original's floor", () => {
+  it("is 0.2 × weight, truncated, and never dips as a fish grows", () => {
     expect(stomachSize(25)).toBe(5);
     expect(stomachSize(40)).toBe(8);
-    expect(stomachSize(4)).toBe(2);    // 0.8 truncates to 0, floored
-    expect(stomachSize(5)).toBe(1);    // the original's 1, kept as it was
+    expect(stomachSize(4)).toBe(2);     // 0.8 truncates to 0, floored
+    expect(stomachSize(5)).toBe(2);     // and the floor is a real floor
+    for (let w = 1; w < 40; w++)
+      expect(stomachSize(w + 1)).toBeGreaterThanOrEqual(stomachSize(w));
   });
 
   it("keeps the eaten share across a rescale, up and down", () => {
@@ -59,11 +61,14 @@ describe("stomach size", () => {
     expect(life.ate).toBe(0);
   });
 
-  it("nothing survives above its stomach, however it got there", () => {
+  it("nothing survives outside its stomach, however it got there", () => {
     const life = newLife(makeRng(4), DEFAULT_CARE, 0);
     life.stomach = 5; life.ate = 9;      // a corrupt save or a rounding slip
     rescaleStomach(life, 25);             // same stomach size
     expect(life.ate).toBeLessThanOrEqual(life.stomach);
+    life.ate = -3;                        // the mirror case
+    rescaleStomach(life, 25);
+    expect(life.ate).toBe(0);
   });
 
   it("ageing a fish into a bigger sprite keeps its meal", () => {
