@@ -372,6 +372,8 @@ describe("glass smudges", () => {
     const marks = smudgePrint({ x: 10, y: 20, n: 9 });
     paintSmudges(ctx, marks);
     expect(ellipses).toHaveLength(2);
-    expect(ctx.globalAlpha).toBe(1); // leaves the alpha as it found it
+    // Resets globalAlpha to 1 when it finishes — the file's draw
+    // helpers share that convention; it does not restore a prior value.
+    expect(ctx.globalAlpha).toBe(1);
   });
 });
