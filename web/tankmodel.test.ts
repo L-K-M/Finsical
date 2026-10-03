@@ -228,5 +228,9 @@ describe("restoredFish", () => {
     life.dead = { cause: 10, at: 0 };
     const out = at({ life });
     expect(out.corpse).toBe("sink");
+    const sim = new Sim({ width: 320, height: 200 }, 4);
+    sim.addFish(out);
+    sim.advanceLife(3600);
+    expect(sim.events.filter((e) => e.type === "dead")).toHaveLength(0);
   });
 });

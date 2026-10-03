@@ -405,8 +405,8 @@ function tankSnapshot(): SavedTank {
   return {
     v: rosterComplete ? 2 : 1,
     tickCount: sim.tickCount, waterQuality: sim.waterQuality,
-    // Corpses don't get saved — a dead fish stays dead.
-    fish: sim.fish.filter((f) => f.state !== "dead").map(savedFish),
+    // Bodies keep fouling the water until removed, including after a restart.
+    fish: sim.fish.map(savedFish),
     addons: installedAddons,
     scenery: sceneryChoice,
     aquarium: sim.aquarium.toJSON(),

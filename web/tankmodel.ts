@@ -61,10 +61,10 @@ export function entryOfSlot(byEntry: ReadonlyMap<string, number>,
 
 interface LegacyFish { id: number; pack?: string; entry?: string }
 
-/** The fields of a live fish that the save carries, and nothing else.
+/** The fish fields the save carries, including a body's life record.
  *
  * This list is the save's contract with the sim, so it belongs in one
- * place: `sanitizeSavedFish` reads exactly these fields back on the
+ * place: `restoredFish` reads exactly these fields back on the
  * next launch, and a field named here but not saved (or saved but not
  * read) is a fish that quietly loses part of its identity.
  *
@@ -95,8 +95,7 @@ export interface SavedFish {
   life?: FishLife;
 }
 
-/** One live fish, as the save writes it. A corpse is never saved (a
- * dead fish stays dead), so that filter stays at the call site. */
+/** One fish as saved; `life.dead` preserves a body without its runtime state. */
 export function savedFish(f: Fish): SavedFish {
   return {
     id: f.id, species: f.species, x: f.x, y: f.y, facing: f.facing,
@@ -168,7 +167,10 @@ export function restoredFish(f: Partial<SavedFish> & {
     out.life = life;
     // A body is found on the bottom, as the original reloads its
     // dead: it settles straight there rather than floating up again.
-    if (life.dead) out.corpse = "sink";
+    if (life.dead) {
+      out.corpse = "sink";
+      out.state = "dead"; // a restored body must not announce its death again
+    }
   }
   return out;
 }
