@@ -235,6 +235,20 @@ function immutableHost(u: string): boolean {
  * wedged entry. Aborting rejects like a network error, the cache
  * entry drops, and the retry starts a fresh request. */
 const FETCH_TIMEOUT_MS = 30_000;
+/** How a request or body that failed in transit ends its message,
+ * like ": 503" and ": empty" for the other download failures the panel
+ * tells apart by message. Each engine words the failure its own way
+ * ("network error", "Error in body stream", "The network connection
+ * was lost."), and transientFailure knew none of those, so a download
+ * cut off mid-way left Try Again disabled. */
+const CONNECTION_LOST = "connection lost";
+/** `e`, a transport failure on `url`, as the error the panel knows to
+ * offer Try Again for. A stall's abort keeps its own error, which
+ * loadProblem reads as too slow rather than cut off. */
+function inTransit(url: string, e: unknown): unknown {
+  if (e instanceof Error && e.name === "AbortError") return e;
+  return new Error(`${url}: ${CONNECTION_LOST}`, { cause: e });
+}
 /** fetch + consume the body under a stall budget — any phase that
  * makes no progress for the limit aborts the request and rejects like
  * a network error. `kick` resets the clock: callers streaming a body
@@ -250,19 +264,23 @@ async function fetchTimed<T>(url: string,
     clearTimeout(t);
     t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
   };
-  try { return await read(await fetch(url, { signal: ctl.signal }), kick); }
-  finally { clearTimeout(t); }
+  try {
+    const r = await fetch(url, { signal: ctl.signal })
+      .catch((e: unknown) => { throw inTransit(url, e); });
+    return await read(r, kick);
+  } finally { clearTimeout(t); }
 }
 /** Body bytes via a reader so each arrived chunk can kick the stall
  * clock — `r.arrayBuffer()` would give no progress signal. */
-async function readBody(r: Response, kick: () => void):
+async function readBody(url: string, r: Response, kick: () => void):
     Promise<Uint8Array> {
+  const lost = (e: unknown): never => { throw inTransit(url, e); };
   const rd = r.body?.getReader();
-  if (!rd) return new Uint8Array(await r.arrayBuffer());
+  if (!rd) return new Uint8Array(await r.arrayBuffer().catch(lost));
   const chunks: Uint8Array[] = [];
   let len = 0;
   for (;;) {
-    const { done, value } = await rd.read();
+    const { done, value } = await rd.read().catch(lost);
     if (done) break;
     chunks.push(value);
     len += value.length;
@@ -288,7 +306,7 @@ function fetchZip(url: string): Promise<Uint8Array> {
       if (hit) { if (ours()) zipWeigh(url, hit.byteLength); return hit; }
       const d = await fetchTimed(url, async (r, kick) => {
         if (!r.ok) throw new Error(`${url}: ${r.status}`);
-        return readBody(r, kick);
+        return readBody(url, r, kick);
       });
       // archive.org answers a path its archive view can't find with an
       // empty 200. Persisted, that would stand in for the file forever.
@@ -349,7 +367,8 @@ async function listPage(item: string, outer: string): Promise<string> {
       const fresh = await fetchTimed(page, async (r, kick) => {
         if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
         return { t: Date.now(),
-                 html: new TextDecoder().decode(await readBody(r, kick)) };
+                 html: new TextDecoder().decode(
+                   await readBody(page, r, kick)) };
       });
       if (immutableHost(page))
         void metaPut(page, fresh).catch(() => {});
@@ -1012,6 +1031,10 @@ export function loadProblem(e: unknown): string {
     return "archive.org sent an empty file. Try again later.";
   if (msg.endsWith(": entry missing"))
     return "The download is missing the add-on's file.";
+  // Before the abort test: the URL in a cut-off's message may itself
+  // contain "abort".
+  if (msg.endsWith(`: ${CONNECTION_LOST}`))
+    return "Check the connection and try again.";
   if (/abort/i.test(msg))
     return "The download took too long — try again.";
   return "Check the connection and try again.";
@@ -1024,6 +1047,7 @@ export function loadProblem(e: unknown): string {
 export function transientFailure(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e);
   return /: \d{3}$/.test(msg) || /: (empty|entry missing)$/.test(msg) ||
+         msg.endsWith(`: ${CONNECTION_LOST}`) ||
          /abort|failed to fetch|networkerror|load failed|timeout/i.test(msg);
 }
 
