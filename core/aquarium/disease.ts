@@ -29,6 +29,12 @@ export const DISEASES: readonly Disease[] = [
   { id: 407, name: "ARDS", growth: 1, severity: 1, contagion: 50 },
 ];
 
+/** The one disease a shock hands out (Set_*_Rofc: a temperature jump
+ * gives White Spot 40 % of the time). Derived from the table by id, so
+ * reordering DISEASES cannot silently change which disease a shock
+ * hands out. */
+export const WHITE_SPOT = DISEASES.findIndex((d) => d.id === 400);
+
 export function diseaseIndex(id: number): number {
   return DISEASES.findIndex((d) => d.id === id);
 }

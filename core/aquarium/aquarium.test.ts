@@ -5,6 +5,7 @@ import type { SpeciesCare } from "../data/species.js";
 import { Aquarium } from "./aquarium.js";
 import type { Resident } from "./aquarium.js";
 import { Cause, newLife, vitalityAt } from "./life.js";
+import { DISEASES } from "./disease.js";
 import { acidity, hardness, o2Saturation, tapWater } from "./water.js";
 
 const DAY = 24 * 60;
@@ -228,6 +229,24 @@ describe("fish", () => {
     for (const r of [sick, weak, strong]) r.life.ate = 5;
     a.advanceMinutes(10 * DAY, [sick, weak, strong]);
     expect(weak.life.sick?.disease).toBe(0);
+  });
+
+  it("sickness skips a species that never catches it", () => {
+    const rand = makeRng(8);
+    const a = new Aquarium(rand);
+    // The carrier is a Meka-species fish (Red Rust B only); the only
+    // healthy fish in the tank is a stock one that cannot catch it.
+    const rustB = DISEASES.findIndex((d) => d.name === "Red Rust B");
+    const meka: SpeciesCare =
+      { ...DEFAULT_CARE, susceptible: [DISEASES[rustB]!.id] };
+    const sick = resident(1, rand, meka);
+    const stock = resident(2, rand);
+    sick.life.sick = { disease: rustB, amount: 5 };
+    stock.life.health = 40;
+    for (const r of [sick, stock]) r.life.ate = 5;
+    a.advanceMinutes(10 * DAY, [sick, stock]);
+    // The Meka-only disease stays out of a stock fish.
+    expect(stock.life.sick).toBeNull();
   });
 
   it("a dead fish decays into ammonia", () => {

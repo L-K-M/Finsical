@@ -21,6 +21,7 @@ import { dissolveRate, medicineById } from "./disease.js";
 import {
   Cause, eat, lowerHealth, shock, startSickness, stepAge,
   stepHunger, stepSickness, stepWaterHealth, cure, randInt,
+  susceptibleTo,
 } from "./life.js";
 import type { FishLife, LifeCtx, Step } from "./life.js";
 import {
@@ -257,11 +258,15 @@ export class Aquarium {
     addElement(w, "co2", m * ((w.temp * 0.0076 + 0.0496) / 60) * W * 0.096 / 20);
   }
 
-  /** Spread_Disease: the weakest living healthy fish catches it. */
+  /** Spread_Disease: the weakest living healthy fish catches it. A fish
+   * whose species never falls sick with this disease is skipped, so the
+   * Meka-only ailments don't reach a stock tank and nothing spreads when
+   * no one in it is susceptible. */
   private spread(idx: number, all: readonly Resident[]): void {
     let target: Resident | null = null;
     for (const r of all) {
       if (r.life.dead || r.life.sick) continue;
+      if (!susceptibleTo(r.care, idx)) continue;
       if (!target || r.life.health < target.life.health) target = r;
     }
     if (target) startSickness(target.life, idx, this.ctx(target));
