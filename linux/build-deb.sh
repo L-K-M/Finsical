@@ -34,7 +34,7 @@ readonly ICON_SIZES=(16 22 24 32 48 64 128 256 512)
 # What `npm run build` puts in dist/, as macos/Makefile ships it.
 readonly WEB_FILES=(index.html overview.html addons.html prefs.html stats.html
                     bundle.js overview.js addons.js prefs.js stats.js
-                    app.css osmium.css)
+                    app.css osmium.css icon.svg)
 # GTK 4.12 and WebKitGTK's 6.0 API (2.40): app.py MIN_GTK, MIN_WEBKIT.
 readonly DEPENDS="python3 (>= 3.10), python3-gi (>= 3.42), python3-gi-cairo, gir1.2-gtk-4.0 (>= 4.12), gir1.2-webkit-6.0 (>= 2.40)"
 # GStreamer's AIFF and AAC decoders, for importing .aiff and .m4a sounds.
