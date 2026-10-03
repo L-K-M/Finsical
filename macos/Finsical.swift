@@ -863,7 +863,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
            let url = action.request.url,
            url.scheme == "http" || url.scheme == "https" {
             if !NSWorkspace.shared.open(url) {
-                NSLog("Finsical: failed to hand off URL to browser: \(url)")
+                NSLog("Finsical: failed to hand off URL to browser: %@",
+                      url.absoluteString)
             }
             decisionHandler(.cancel)
             return
