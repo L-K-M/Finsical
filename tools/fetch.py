@@ -22,9 +22,11 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 import urllib.parse
 import urllib.request
 import zipfile
+from typing import Callable
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.az.emit import emit, emit_sounds
@@ -114,18 +116,60 @@ def _emit_source(name: str, data: bytes, outdir: str) -> str | None:
 
     try:
         if is_pack(data):
-            shutil.rmtree(out, ignore_errors=True)
-            emit(Pack(data), out)
+            _install_emitted(lambda dst: emit(Pack(data), dst), out)
             return finish()
         if has_sounds(data):
-            shutil.rmtree(out, ignore_errors=True)
-            emit_sounds(data, out)
+            _install_emitted(lambda dst: emit_sounds(data, dst), out)
             return finish()
     except Exception as e:
-        if os.path.isdir(out):
-            shutil.rmtree(out, ignore_errors=True)
         print(f"  {name}: {type(e).__name__}: {e}", file=sys.stderr)
     return None
+
+
+def _install_emitted(emit_into: Callable[[str], object],
+                     out: str) -> None:
+    """Emit into a staging dir beside `out`, then rename into place.
+
+    Publication never costs the bundle already at `out`: it is moved
+    aside before the staged copy lands and put straight back if the
+    publish rename fails — so neither a failed emit nor a failed
+    publish destroys a prior good bundle. Everything under `work` is
+    this call's own temporary artifact, except that after a failed
+    publish the parked old bundle may still be in it: never sweep that.
+    """
+    work = tempfile.mkdtemp(dir=os.path.dirname(out) or ".",
+                            prefix=".emit-")
+    staging = os.path.join(work, "new")
+    backup = os.path.join(work, "old")
+    try:
+        emit_into(staging)
+        if os.path.lexists(out):
+            os.rename(out, backup)
+            try:
+                os.rename(staging, out)
+            except OSError:
+                os.rename(backup, out)  # put the replaced bundle back
+                raise
+        else:
+            os.rename(staging, out)
+    except BaseException:
+        # `backup` existing means a publish or rollback failure left the
+        # old bundle parked in the work dir — user data, not litter, so
+        # say where it is rather than sweep it. BaseException so an
+        # interrupted emit still cleans its partial staging.
+        if os.path.exists(backup):
+            # A failed rollback leaves `out` absent — the parked copy
+            # is the only one, and needs moving back by hand.
+            missing = (
+                "" if os.path.exists(out)
+                else f" ({out} is missing — the parked copy is the"
+                     " only one)")
+            print(f"  prior bundle parked at {backup}{missing}",
+                  file=sys.stderr)
+        else:
+            shutil.rmtree(work, ignore_errors=True)
+        raise
+    shutil.rmtree(work, ignore_errors=True)
 
 
 _ENTRY_CAP = 1 << 30  # per-entry decompressed-byte cap
