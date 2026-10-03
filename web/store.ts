@@ -166,7 +166,10 @@ async function trimPacks(): Promise<void> {
     const tx = await transact(["meta", "packs"], "readwrite");
     if (!tx) return;
     await new Promise<void>((res) => {
-      tx.oncomplete = tx.onerror = tx.onabort = () => res();
+      tx.oncomplete = tx.onabort = () => res();
+      // A request error still aborts the transaction (onabort resolves
+      // the promise above) — it must not also bubble into window.onerror.
+      tx.onerror = (e) => { e.stopPropagation(); };
       const meta = tx.objectStore("meta");
       const packs = tx.objectStore("packs");
       // Range-bound to stat keys — an unscoped getAll would
@@ -223,7 +226,8 @@ export function packPut(url: string, data: Uint8Array): Promise<unknown> {
         tx.objectStore("meta").put(
           { bytes: data.byteLength, at: Date.now() }, STAT_PREFIX + url);
         tx.oncomplete = () => res(true);
-        tx.onerror = tx.onabort = () => res(null);
+        tx.onerror = (e) => { e.stopPropagation(); };
+        tx.onabort = () => res(null);
       } catch { res(null); }
     }));
   void put.then((ok) => {
@@ -241,7 +245,8 @@ export function packDelete(url: string): Promise<unknown> {
         tx.objectStore("packs").delete(url);
         tx.objectStore("meta").delete(STAT_PREFIX + url);
         tx.oncomplete = () => res(true);
-        tx.onerror = tx.onabort = () => res(null);
+        tx.onerror = (e) => { e.stopPropagation(); };
+        tx.onabort = () => res(null);
       } catch { res(null); }
     }));
 }

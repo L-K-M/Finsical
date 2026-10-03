@@ -33,6 +33,7 @@ jobs:
       # The tank page's cross-window contract (deferred machine commits,
       # client state pushes, spectator persistence) in the same Chrome.
       - run: npm run verify:pr-integration
+      - run: npm run verify:spectator
       # The runner's Chrome exercises real Canvas blending and alpha.
       - run: npm run test:caustics
       - run: python3 -m unittest discover -s tools/tests -p 'test_*.py' -t .

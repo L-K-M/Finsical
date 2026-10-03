@@ -72,6 +72,12 @@ function call(side, args) {
     const id = ++serial;
     pending.set(id, { resolve, reject });
     frames[side].contentWindow.postMessage({ ...args, id }, '*');
+    // A frame that crashed or dropped the reply would otherwise pend
+    // forever and surface as the bare 30s "no report" timeout.
+    setTimeout(() => {
+      if (pending.delete(id))
+        reject(new Error('no reply to ' + JSON.stringify(args)));
+    }, 10_000);
   });
 }
 function check(ok, message) { if (!ok) throw new Error(message); }

@@ -3182,8 +3182,11 @@ async function walkEntry(ent: FileSystemEntry, prefix: string,
 // frame and a hint. dragenter/dragleave nest per element, so a depth
 // counter — not the events alone — owns the class. A modal alert or
 // document window stands down: nothing under it may act, so the cue
-// must not promise a drop that will be ignored.
-const dropAllowed = (): boolean => tankOwner && !alertOpen() && !docOpen();
+// must not promise a drop that will be ignored. A view-only tab
+// stands down too — its drops land nowhere a save can record, so the
+// cue must not promise one either.
+const dropAllowed = (): boolean =>
+  !alertOpen() && !docOpen() && tankOwner;
 let dragDepth = 0;
 const setDragging = (on: boolean): void => {
   document.body.classList.toggle("dragging", on);
@@ -3248,13 +3251,11 @@ function dropSay(text: string): void {
 }
 window.addEventListener("drop", (e) => {
   e.preventDefault();
-  // A view-only tab imports nothing: a dropped pack or sound would be
-  // written to the owner tab's origin (IndexedDB, install records) with
-  // no save here to record it, leaving bytes nothing can remove.
-  if (!tankOwner) return;
   // A modal alert or document window owns the page: the scrim stops
   // taps, so a drop must stand down too, or files import behind the
-  // scrim while its feedback paints under it.
+  // scrim while its feedback paints under it. A view-only tab owns
+  // nothing to write to — dropped bytes would land in the owner's
+  // origin with no save here to record them.
   if (!dropAllowed()) return;
   // A drop is a gesture — wake audio now so the install feedback can
   // still answer it once the (async) decode finishes.
