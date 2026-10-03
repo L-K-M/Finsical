@@ -125,6 +125,7 @@ body.crt canvas#tank { opacity: 0; }
   /* Clear the menu bar (28), frame (26) and bottom margin (8).
      Short screens scroll the document rather than lose its OK button. */
   max-height: max(0px, calc(100vh - 62px)); overflow-y: auto;
+  max-height: max(0px, calc(100dvh - 62px));
   box-sizing: border-box;
 }
 /* WebKit's native scrolling keeps keyboard and touch support. Its
@@ -137,7 +138,7 @@ body.crt canvas#tank { opacity: 0; }
   background: #ccc; border: 1px solid #000; border-radius: 0;
   box-shadow: inset 1px 1px #fff, inset -1px -1px #888;
 }
-.dbwin .osm-content::-webkit-scrollbar-button:single-button { height: 16px; }
+.dbwin .osm-content::-webkit-scrollbar-button:single-button { width: 16px; height: 16px; }
 .dbwin .osm-content::-webkit-scrollbar-button:vertical:decrement {
   background: var(--osm-sprite-scroll-up) 0 0 / 16px 16px no-repeat;
 }
