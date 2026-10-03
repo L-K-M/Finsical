@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest";
 import { alertOrigin, alertOriginIn, alertWidth, focusStep }
   from "./alert.js";
 
+// The modal stack's close() wiring needs a real browser to exercise
+// focus; pin its ordering by source instead (the overview.test.ts
+// pattern): a background alert closing must not hand focus anywhere —
+// an in-flight progress window would steal an active dialog's keys.
+const src = import.meta.glob<string>("./alert.ts", {
+  query: "?raw", import: "default", eager: true,
+})["./alert.ts"]!.replace(/\s+/g, " ");
+
 describe("alertWidth", () => {
   it("is the standard width in a roomy window", () => {
     expect(alertWidth(1280)).toBe(340);
@@ -91,5 +99,21 @@ describe("focusStep", () => {
 
   it("keeps focus on the alert when it has no buttons", () => {
     expect(focusStep(0, -1, false)).toBe(-1);
+  });
+});
+
+describe("close() focus ordering", () => {
+  it("captures frontmost before removal and returns before handoff",
+     () => {
+    const close = src.slice(src.indexOf("close() {"));
+    const capture =
+      close.indexOf("const wasFrontmost = frontmost() === alert;");
+    const removal = close.indexOf("stack.splice(at, 1)");
+    const bail = close.indexOf("if (!wasFrontmost) return;");
+    const handoff = close.indexOf("windows.get(below)?.focus(");
+    expect(capture).toBeGreaterThanOrEqual(0);
+    expect(removal).toBeGreaterThan(capture);
+    expect(bail).toBeGreaterThan(removal);
+    expect(handoff).toBeGreaterThan(bail);
   });
 });

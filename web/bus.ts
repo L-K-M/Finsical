@@ -10,14 +10,18 @@ export interface Bus { post(m: BusMsg): void }
  * what "connected" means. */
 export const TANK_QUIET_MS = 6000;
 
-const TANK_MUTATION_OPS = new Set([
+/** The op names, read-only: tests derive their cases from this list
+ * while the guard's membership check stays on the private Set below. */
+export const TANK_MUTATION_OPS = [
   "renameFish", "removeFish", "removeAddon", "useAddon", "emptyTank",
-]);
+] as const;
+
+const mutationOps = new Set<string>(TANK_MUTATION_OPS);
 
 /** Mutations must name the tank state that authorized them. */
 export function acceptsTankIntent(m: BusMsg, boot: string): boolean {
   const op = typeof m.op === "string" ? m.op : "";
-  return !TANK_MUTATION_OPS.has(op) || m.boot === boot;
+  return !mutationOps.has(op) || m.boot === boot;
 }
 
 type WkHandlers = { finsical?: { postMessage(m: unknown): void } };

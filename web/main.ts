@@ -3208,7 +3208,11 @@ window.addEventListener("dragover", (e) => {
   // closed) since the drag began, and the cue must follow it either
   // way rather than promising a drop that will be refused.
   if (dragDepth > 0) setDragging(allowed);
-  if (e.dataTransfer && !allowed) e.dataTransfer.dropEffect = "none";
+  // dropEffect rides the shared DataTransfer for the whole drag, so a
+  // "none" written under a modal outlives it — write both ways or a
+  // drop the cue re-promised stays refused after the modal closes.
+  if (e.dataTransfer)
+    e.dataTransfer.dropEffect = allowed ? "copy" : "none";
 }, true);
 // Capture phase: a drop ends the drag without a leave event, and a
 // descendant handler that stops propagation must not strand the cue —
