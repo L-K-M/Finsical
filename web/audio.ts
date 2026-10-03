@@ -76,6 +76,10 @@ export const FEEDBACK_MAX_S = 4;
 const FEEDBACK_FADE_S = 0.6;
 /** Time constant of a master level change (about 3 tau to settle). */
 const LEVEL_GLIDE_S = 0.01;
+/** How long after silence (mute/volume 0) the device suspends: six
+ * time constants of the level glide, by when the fade's tail is
+ * inaudible — suspending sooner could clip it into a click. */
+export const SLEEP_AFTER_MS = LEVEL_GLIDE_S * 6 * 1000;
 /** Event sounds are short. A recording longer than this can only be an
  * imported song, so find() never picks it for a knock or a splash, no
  * matter what it is named. */
@@ -181,6 +185,9 @@ export class TankAudio {
   private resuming: Promise<void> | null = null;
   // Page hidden: rAF stops and the sim freezes, so the device sleeps too.
   private hidden = false;
+  // Bumped on every level/visibility transition; a deferred suspend
+  // checks it so a quick unmute cancels the pending sleep.
+  private sleepGen = 0;
   // The opening sound plays once per session: due from open() when the
   // set has one, and played as soon as audio runs.
   private openingDue = false;
@@ -270,11 +277,53 @@ export class TankAudio {
     this.ctx = ac;
     // Nothing plays yet, so the first level can be set outright.
     this.master.gain.value = this.level();
-    // Created while hidden (say, a restore decoding sounds in a
-    // background tab): stay asleep until setHidden(false).
-    if (this.hidden)
+    // Nothing has started, so a tank that can't sound anyway (hidden,
+    // or muted at launch) suspends at once — no fade tail to clip.
+    if (!this.shouldRun())
       void ac.suspend().catch(() => { /* closed context */ });
     return ac;
+  }
+
+  /** Whether the device should be awake: a hidden or silent
+   * (muted/volume 0) tank sleeps instead of keeping an audio stream
+   * running all day. */
+  private shouldRun(): boolean {
+    return !this.hidden && this.level() > 0;
+  }
+
+  /** Suspend the device once the level is zero and stays zero, and
+   * resume it when sound comes back. The suspend waits out the level
+   * glide — cutting mid-fade clicks; a level that returns first
+   * cancels it. Hidden owns suspend itself (immediate, on setHidden),
+   * so this stays out of its way. */
+  private syncSleep(): void {
+    const ac = this.ctx;
+    if (!ac || this.hidden) return;
+    ++this.sleepGen;
+    if (this.shouldRun()) {
+      // Already running (the sleep timer was still pending): the wake
+      // work still runs — a muted open latches ambientWanted without
+      // a loop, and this unmute is the first moment it can sound.
+      if (ac.state !== "running")
+        void ac.resume().then(() => this.wake())
+          .catch(() => { /* resume blocked until a user gesture */ });
+      else this.wake();
+      return;
+    }
+    const gen = this.sleepGen;
+    setTimeout(() => {
+      if (this.sleepGen === gen)
+        void ac.suspend().catch(() => { /* closed context */ });
+    }, SLEEP_AFTER_MS);
+  }
+
+  /** The device is awake again: play an opening still owed and start
+   * an ambient loop that was wanted but never got a source. Re-checks
+   * live state — a mute or hide that landed since still wins. */
+  private wake(): void {
+    if (!this.shouldRun()) return;
+    this.playOpening();
+    if (this.ambientWanted) this.startAmbient();
   }
 
   private level(): number {
@@ -293,11 +342,13 @@ export class TankAudio {
   setVolume(v: number): void {
     this.volume = Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
     this.applyLevel();
+    this.syncSleep();
   }
 
   setMuted(muted: boolean): void {
     this.muted = muted;
     this.applyLevel();
+    this.syncSleep();
   }
 
   /** Switch bubble sounds and the ambient loop. Turning ambience off
@@ -324,9 +375,10 @@ export class TankAudio {
    * still needs a prior gesture on some WebKit builds). */
   unlock(): void {
     if (!this.ctx) return;
-    // Hidden, setHidden(false) resumes on return; waking the device
-    // now would undo the suspend for nothing.
-    if (this.hidden) return;
+    // Hidden or muted: setHidden(false) / the next unmute resumes on
+    // its own; waking the device now would undo the suspend for a
+    // tank that cannot sound anyway.
+    if (!this.shouldRun()) return;
     // Menu-driven unlock can resume() without a user activation and
     // reject — expected while suspended, quiet. startAmbient() is
     // already idempotent (ambientSrc guard). Log only failures after
@@ -360,18 +412,19 @@ export class TankAudio {
    * asked for while hidden, or whose gated start was dropped). */
   setHidden(hidden: boolean): void {
     this.hidden = hidden;
+    // Supersede a silent-suspend timer queued just before hiding —
+    // the suspend below owns the sleep now.
+    this.sleepGen++;
     const ac = this.ctx;
     if (!ac) return;
-    if (hidden) {
-      void ac.suspend().catch(() => { /* closed context */ });
+    if (hidden || !this.shouldRun()) {
+      // Muted while hidden stays asleep on return until an unmute.
+      if (hidden || ac.state === "running")
+        void ac.suspend().catch(() => { /* closed context */ });
       return;
     }
     void ac.resume()
-      .then(() => {
-        if (this.hidden) return;
-        this.playOpening();
-        if (this.ambientWanted) this.startAmbient();
-      })
+      .then(() => this.wake())
       .catch(() => { /* resume blocked until a user gesture */ });
   }
 
@@ -406,7 +459,7 @@ export class TankAudio {
     // gesture retry. Without an activation (a remote relay, a drop
     // whose walk outlasted the gesture) resume() rejects quietly and
     // the cue drops rather than firing long after the install.
-    if (!buf || !this.ctx || this.hidden) return;
+    if (!buf || !this.ctx || this.hidden || this.level() === 0) return;
     if (this.ctx.state === "suspended") {
       // A live gesture always starts a fresh resume — a parked one
       // (a gesture-less unlock() can stay pending forever on an
@@ -500,9 +553,10 @@ export class TankAudio {
   private play(buf: AudioBuffer | null, gain = 0.8, loop = false,
                retry = true, fx?: PlayFx): AudioBufferSourceNode | null {
     if (!buf || !this.ctx) return null;
-    // Hidden: drop the sound rather than resume() the device below. A
-    // wanted ambient loop starts from setHidden(false) instead.
-    if (this.hidden) return null;
+    // Hidden or silent (muted/volume 0): drop the sound rather than
+    // resume() the device below for one nobody would hear. A wanted
+    // ambient loop restarts from setHidden(false) / syncSleep.
+    if (this.hidden || this.level() === 0) return null;
     if (this.ctx.state === "suspended" && retry) {
       // Only the ambient loop and a sound answering the gesture in
       // progress wait out the lock. Anything else (bubbles from a
@@ -653,7 +707,8 @@ export class TankAudio {
     const own = this.find(["pop"]);
     if (own) { this.play(own, 0.5, false, true, { pan }); return; }
     const ac = this.ctx;
-    if (!ac || !this.master || this.hidden || ac.state !== "running")
+    if (!ac || !this.master || this.hidden || this.level() === 0 ||
+        ac.state !== "running")
       return;
     const t = ac.currentTime;
     const osc = ac.createOscillator();
@@ -685,7 +740,7 @@ export class TankAudio {
    * degauss the user can't hear shouldn't spend a resume(). */
   degauss(): void {
     if (!this.ctx || !this.master || this.hidden ||
-        this.ctx.state !== "running") return;
+        this.level() === 0 || this.ctx.state !== "running") return;
     const t = this.ctx.currentTime;
     const thump = this.ctx.createOscillator();
     thump.type = "sine";
@@ -715,7 +770,9 @@ export class TankAudio {
    * bubbling, and play the opening sound now if audio may start by
    * itself (the app), else on the first unlock (a browser). */
   open(): void {
-    this.openingDue = this.named(OPENING) !== null;
+    // Silent at launch: skip the opening outright so the first unmute
+    // doesn't play it hours late.
+    this.openingDue = this.level() > 0 && this.named(OPENING) !== null;
     this.startAmbient();
     this.playOpening();
   }
