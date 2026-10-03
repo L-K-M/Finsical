@@ -632,9 +632,10 @@ const pictureEl = (): HTMLElement => crtMapsPointer() ? crtEl : canvas;
 /** That element's client rect, from the cache — per-frame placement
  * (name tags, the Get Info card) would otherwise force a layout read
  * on every rAF, which is what tankRect()/crtClientRect() exist to
- * avoid. */
+ * avoid. Both are dropped on resize, scroll, layoutMachine and a CRT
+ * toggle, so the box can never be stale. */
 const pictureRect = (): DOMRect =>
-  crtMapsPointer() ? crtClientRect() : tankRect();
+  pictureEl() === crtEl ? crtClientRect() : tankRect();
 
 /** Where a tank point shows, in client px; `r` is pictureEl()'s
  * client rect. The inverse of tankPoint. */
@@ -2179,6 +2180,10 @@ crt?.configure(crtCfg);
 function setCrt(on: boolean): void {
   crtOn = crt !== null && on;
   crt?.setEnabled(crtOn);
+  // Toggling the tube swaps which element holds the picture (#crt for
+  // the glass, #tank otherwise) and can change that element's box, so
+  // drop the cached rects the pointer and placement code read.
+  dropRects();
   // Enabling sizes the WebGL buffer, which clears it: redraw now
   // rather than show black until the next tick.
   if (crtOn) requestPaint();
