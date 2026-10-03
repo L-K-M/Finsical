@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { browserGeometry, chooseStartSection, DECOR_COPIES_MAX,
          decorCopyRoom, fragDecode,
-         fragEncode, importAddon, installProblem, listAddons,
+         fragEncode, importAddon, installProblem, isArchiveUrl, listAddons,
          loadProblem, transientFailure, isListed, orphanedSounds,
          qualifySoundItemName, recordAddon, rememberSection, isSavedAddon,
          usablePacks,
@@ -608,5 +608,24 @@ describe("rememberSection", () => {
       get: () => null, set: (s) => { wrote = s; },
     });
     expect(wrote).toBe("sounds");
+  });
+});
+
+describe("isArchiveUrl", () => {
+  it("accepts the site and its node mirrors over https", () => {
+    expect(isArchiveUrl("https://archive.org/download/x/y.zip")).toBe(true);
+    expect(isArchiveUrl("https://ia801504.us.archive.org/download/x/y.zip"))
+      .toBe(true);
+  });
+
+  it("rejects other hosts, schemes, lookalikes and non-strings", () => {
+    for (const bad of [
+      "http://archive.org/x", "https://evilarchive.org/x",
+      "https://archive.org.evil.com/x", "https://example.com/x",
+      "https://notarchive.org/x", null, 7, "", undefined,
+    ])
+      expect(isArchiveUrl(bad),
+             `isArchiveUrl(${JSON.stringify(bad)}) should be rejected`)
+        .toBe(false);
   });
 });

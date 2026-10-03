@@ -71,6 +71,10 @@
 - Import Add-ons reopens on the section you last chose. The streaming
   listing used to overwrite that choice with whichever section arrived
   first, so the window landed on Fish and the preference was lost.
+- Add-ons whose listing links point at an archive.org node mirror
+  install again. The importer listed them but the Add to Tank
+  validator only accepted the archive.org host itself, so those items
+  always failed with "invalid add-on item".
 - Alerts no longer show the browser's rounded focus ring around their
   frame.
 - The Mac app opens its tank when you run it from where you unzipped
