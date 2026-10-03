@@ -60,6 +60,14 @@ export function snailPose(v: SnailVisit, t: number, w: number):
            paused: inPause };
 }
 
+/** The art column drawn at sprite column `x` for a direction. The
+ * source art faces left (eyestalks at its left edge), so a snail
+ * crawling right is mirrored and a left-crawler uses the art as-is;
+ * the head then always leads the way it moves. */
+export function snailArtCol(dir: 1 | -1, x: number): number {
+  return dir === 1 ? SNAIL_W - 1 - x : x;
+}
+
 /** Rasterize the sprite once per direction — paused drops the
  * eyestalks, so two frames per direction. */
 export function snailCanvas(dir: 1 | -1,
@@ -70,8 +78,7 @@ export function snailCanvas(dir: 1 | -1,
   const c = cv.getContext("2d")!;
   for (let y = 0; y < SNAIL_H; y++)
     for (let x = 0; x < SNAIL_W; x++) {
-      // Reading right-to-left mirrors the art for dir -1.
-      const ch = SNAIL_ART[y]![dir === 1 ? x : SNAIL_W - 1 - x]!;
+      const ch = SNAIL_ART[y]![snailArtCol(dir, x)]!;
       const ink = SNAIL_INK[ch];
       if (!ink) continue;
       // Paused: the eyestalks tuck in.

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { gridSlot, BAND_HALF, BEDTIME_MIN, BEDTIME_SPREAD, BOTTOM_PAD, DAY_TICKS,
          FOOD_ROT_TICKS, LIE_IN_MIN, LIE_IN_SPREAD, MARGIN, MAX_UNEATEN,
-         NOTICE_RADIUS, PELLET_UNITS, Sim, SLEEP_LIGHT, SURFACE,
-         TURN_TICKS, WAKE_LIGHT } from "./sim.js";
+         NOTICE_RADIUS, PELLET_UNITS, pushRestPrint, REST_PRINTS_MAX, Sim,
+         SLEEP_LIGHT, SURFACE, TURN_TICKS, WAKE_LIGHT } from "./sim.js";
 import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
   from "./tuning.js";
 import { CLOCK_NIGHT_LIGHT } from "./light.js";
@@ -1936,5 +1936,36 @@ describe("gridSlot", () => {
         expect(gridSlot(i, 6, TANK)).not.toEqual(gridSlot(j, 6, TANK));
     expect(gridSlot(6, 6, TANK)).toEqual(gridSlot(5, 6, TANK));
     expect(gridSlot(-1, 6, TANK)).toEqual(gridSlot(0, 6, TANK));
+  });
+});
+
+describe("rest prints", () => {
+  it("drops the oldest print at the cap", () => {
+    const prints: { x: number; y: number; n: number }[] = [];
+    for (let n = 1; n <= REST_PRINTS_MAX + 44; n++)
+      pushRestPrint(prints, n, 20, n);
+    expect(prints).toHaveLength(REST_PRINTS_MAX);
+    expect(prints[0]!.n).toBe(45); // 1..44 shifted out
+    expect(prints[prints.length - 1]!.n).toBe(REST_PRINTS_MAX + 44);
+  });
+
+  it("records where fish settle, in bounds, and never in a save", () => {
+    // Long enough that every fish has settled more than once.
+    const sim = new Sim({ width: 320, height: 200 }, 11);
+    for (let i = 0; i < 3; i++) sim.addFish({ x: 60 + i * 90, y: 100 });
+    for (let i = 0; i < 24000; i++) sim.tick();
+    expect(sim.restPrints.length).toBeGreaterThan(0);
+    let seq = 0;
+    for (const p of sim.restPrints) {
+      expect(p.n).toBeGreaterThan(seq); // oldest first, ids monotone
+      seq = p.n;
+      expect(p.x).toBeGreaterThanOrEqual(0);
+      expect(p.x).toBeLessThanOrEqual(320);
+      expect(p.y).toBeGreaterThanOrEqual(SURFACE + MARGIN);
+      expect(p.y).toBeLessThanOrEqual(200);
+    }
+    // The prints are runtime-only by construction: they live on the
+    // Sim, and the save whitelist is tankSnapshot's explicit per-fish
+    // field list in web/main.ts, which never mentions them.
   });
 });

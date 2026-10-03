@@ -305,6 +305,29 @@ const FORMATION_SPEED = 2.2;
  * the whole formation and never roll round. This is the cadence that
  * lets maybeTurn() turn it promptly. */
 const FORMATION_DECIDE_TICKS = 24;
+
+/** Prints the glass keeps of where fish settled, oldest first. Runtime
+ *  state only — never saved, so every visit to the tank starts with
+ *  clean glass and accumulates a history while it is open. */
+export interface RestPrint {
+  x: number;
+  y: number;
+  /** Sequence number of the rest: a stable identity, so a print keeps
+   *  its exact shape however the list shifts around it. */
+  n: number;
+}
+/** How many prints the glass holds; beyond it the oldest fade out, so
+ *  a tank left open for days does not build an unbounded list. */
+export const REST_PRINTS_MAX = 256;
+
+/** Record a rest on the glass at (x, y), dropping the oldest print at
+ *  the cap. Pure list handling, so the renderer (web/water.ts) and
+ *  the tests read the same rule. */
+export function pushRestPrint(prints: RestPrint[], x: number, y: number,
+                              n: number, cap = REST_PRINTS_MAX): void {
+  prints.push({ x, y, n });
+  if (prints.length > cap) prints.shift();
+}
 /** Per-tick speed kept while hovering: the fish coasts to a stop. */
 const HOVER_DECAY = 0.9;
 /** How far behind the fish a target may sit and still be reached by
@@ -494,6 +517,10 @@ export class Sim {
    * stays what it was before fish had depth. */
   private zRand: () => number;
   private nextId = 0;
+  /** Where fish have settled, oldest first (runtime only): the prints
+   *  the glass collects while the tank is open. */
+  restPrints: RestPrint[] = [];
+  private restSeq = 0;
   /** Consecutive ticks below SLEEP_LIGHT, and at or above WAKE_LIGHT.
    * Fish bed down and wake by these, each after its own delay, so a sim
    * created or restored in the dark (a timer night, the lamp saved off)
@@ -542,6 +569,12 @@ export class Sim {
   /** The fish as the aquarium model sees them. */
   residents(): Resident[] {
     return this.fish.map((f) => this.resident(f));
+  }
+
+  /** A rest by the glass leaves its print there — the tank's history
+   *  for the smudges layer (Effects pane, off by default). */
+  private noteRest(x: number, y: number): void {
+    pushRestPrint(this.restPrints, x, y, ++this.restSeq);
   }
 
   private resident(f: Fish): Resident {
@@ -1099,6 +1132,7 @@ export class Sim {
           // Clean Up place would otherwise arrive with its budget
           // spent and hold on a lurch for the rest of the call.
           f.strokes = 0;
+          this.noteRest(f.x, f.y);
           dist = 0;
         } else {
           this.decide(f);

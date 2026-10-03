@@ -40,9 +40,12 @@ describe("planFrame", () => {
 
   it("clamps a long stall so the sim doesn't fast-forward", () => {
     const p = planFrame(0, 5000, STEP);
-    // 200 ms is six steps on paper; float subtraction leaves the sixth
-    // just short, so it runs on the next frame instead.
-    expect(p.ticks).toBeGreaterThanOrEqual(5);
+    // The exact-2 below rests on STEP's double layout: the third tick
+    // needs MAX_FRAME_MS - 2*STEP >= STEP, which 1000/30 leaves just short.
+    expect(MAX_FRAME_MS - 2 * STEP).toBeLessThan(STEP);
+    // 100 ms is three steps on paper; float subtraction leaves the
+    // third just short (deterministically), so it runs next frame.
+    expect(p.ticks).toBe(2);
     expect(p.ticks).toBeLessThanOrEqual(Math.round(MAX_FRAME_MS / STEP));
     expect(p.acc + p.ticks * STEP).toBeCloseTo(MAX_FRAME_MS);
     expect(p.acc).toBeLessThan(STEP);

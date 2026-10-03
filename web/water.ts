@@ -279,6 +279,63 @@ export function drawFood(ctx: CanvasRenderingContext2D,
   ctx.globalAlpha = 1;
 }
 
+// ---- glass smudges ---------------------------------------------------------
+// Where a fish settles, it leaves faint prints on the inside of the
+// glass (core/sim.ts's restPrints; the Effects pane switches the layer
+// on and off). Pure geometry and painting here, so the tank page only
+// caches and composites.
+
+/** One print's size in tank px: a fingertip's smear, wider than tall. */
+const SMUDGE_W = 9;
+const SMUDGE_H = 5;
+/** How far a print's pair of marks sit apart. */
+export const SMUDGE_SPREAD = 4;
+/** Each print's faintness. Prints that land on the same corner overlap
+ *  into a bloom; one alone barely reads, the way a clean tank looks. */
+export const SMUDGE_ALPHA = 0.02;
+
+/** One mark on the glass. */
+export interface Smudge {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  alpha: number;
+}
+
+/** The marks one rest leaves: a pair of smears either side of where
+ *  the fish settled, jittered by the print's sequence number so no
+ *  two rests paint the identical shape. Deterministic — the same rest
+ *  paints the same marks every frame, so a cache holds. */
+export function smudgePrint(p: { x: number; y: number; n: number }):
+    Smudge[] {
+  // A cheap integer hash of n picks the pair's angle and tilt.
+  const h = Math.imul(p.n * 0x85eb, 0x27d4eb4f) >>> 0;
+  const ang = (h % 628) / 100;
+  const dx = Math.cos(ang) * SMUDGE_SPREAD;
+  const dy = Math.sin(ang) * SMUDGE_SPREAD * 0.5;
+  return [
+    { x: p.x + dx, y: p.y + dy, w: SMUDGE_W, h: SMUDGE_H,
+      alpha: SMUDGE_ALPHA },
+    { x: p.x - dx, y: p.y - dy, w: SMUDGE_W * 0.8, h: SMUDGE_H * 0.8,
+      alpha: SMUDGE_ALPHA },
+  ];
+}
+
+/** Paint the glass's prints: soft white ellipses, faint enough to sit
+ *  under the fish as a greasy film rather than over them. */
+export function paintSmudges(ctx: CanvasRenderingContext2D,
+                             marks: readonly Smudge[]): void {
+  ctx.fillStyle = "#fff";
+  for (const m of marks) {
+    ctx.globalAlpha = m.alpha;
+    ctx.beginPath();
+    ctx.ellipse(m.x, m.y, m.w / 2, m.h / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
 // ---- caustics, shafts ------------------------------------------------------
 
 export const CAUSTIC_TILE_W = 64;
@@ -664,13 +721,16 @@ const UNDERSIDE = [0.3, 0.14, 0.05] as const;
  * catches the lamp, with a glint travelling along it. Under it the
  * surface's underside mirrors the light as a silvery band, which is
  * what makes a waterline read from the front. `highlight` brightens the
- * whole line while a click would feed.
+ * whole line while a click would feed. `t` null means the waves are
+ * off: the resting line, with no glint at all (a frozen one at t=0
+ * read as an artifact of the disabled effect).
  */
 export function drawSurface(ctx: CanvasRenderingContext2D,
-                            line: Int16Array, sun: number, t: number,
-                            highlight: boolean): void {
-  const gx = W / 2 + (Math.sin(t * 0.011) * 0.6 +
-                      Math.sin(t * 0.027 + 1) * 0.4) * W * 0.42;
+                            line: Int16Array, sun: number,
+                            t: number | null, highlight: boolean): void {
+  const gx = t === null ? null
+    : W / 2 + (Math.sin(t * 0.011) * 0.6 +
+               Math.sin(t * 0.027 + 1) * 0.4) * W * 0.42;
   // Screen-blended, so the band lifts what is under it instead of
   // painting over it.
   ctx.globalCompositeOperation = "screen";
@@ -686,18 +746,33 @@ export function drawSurface(ctx: CanvasRenderingContext2D,
   }
   ctx.globalCompositeOperation = "source-over";
 
-  const base = highlight ? 0.6 : 0.3 + 0.25 * sun;
   ctx.fillStyle = highlight ? "#ffffff" : "#e8f6ff";
   for (let x = 0; x < W; x++) {
     const y = line[x]!;
     const slope = Math.abs(line[Math.min(W - 1, x + 1)]! -
                            line[Math.max(0, x - 1)]!);
-    const d = Math.abs(x - gx);
-    const glint = d < 3 ? 0.35 + 0.5 * sun : d < 9 ? 0.2 + 0.35 * sun : 0;
-    ctx.globalAlpha = Math.min(1, Math.max(base, glint) + slope * 0.18 * sun);
+    ctx.globalAlpha = Math.min(1, surfaceAlpha(x, gx, sun, highlight) +
+                                  slope * 0.18 * sun);
     ctx.fillRect(x, y, 1, 1);
   }
   ctx.globalAlpha = 1;
+}
+
+/** The line's per-column alpha: the daylight base and, when the glint
+ * center `gx` is given (waves on), the brighter travelling core. `sun`
+ * is clamped to [0, 1] here: the old inline formula also evaluated a
+ * wider `d < 9` ring (`0.2 + 0.35·sun`), but that term never exceeds
+ * the base (`0.3 + 0.25·sun`) in that domain, so it is omitted; x = 211
+ * in the tests pins the skirt as plain base and sun = 2 pins the clamp.
+ * The slope term and the fill stay in drawSurface. */
+export function surfaceAlpha(x: number, gx: number | null, sun: number,
+                             highlight: boolean): number {
+  const s = Math.min(1, Math.max(0, sun));
+  const base = highlight ? 0.6 : 0.3 + 0.25 * s;
+  if (gx === null) return base;
+  const d = Math.abs(x - gx);
+  const glint = d < 3 ? 0.35 + 0.5 * s : 0;
+  return Math.max(base, glint);
 }
 
 // ---- murk ------------------------------------------------------------------
@@ -869,4 +944,19 @@ export function drawTorch(ctx: CanvasRenderingContext2D): void {
   ctx.drawImage(torchCv, torchX, torchY);
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
+}
+
+/** The laser toy's dot: a pale core, a red body and a soft halo, in
+ * whole pixels like the rest of the tank and bright enough to read
+ * over the night veil. */
+export function drawLaser(ctx: CanvasRenderingContext2D, x: number,
+                          y: number): void {
+  ctx.fillStyle = "rgba(255, 60, 60, 0.16)";
+  ctx.fillRect(x - 3, y - 3, 7, 7);
+  ctx.fillStyle = "rgba(255, 40, 40, 0.5)";
+  ctx.fillRect(x - 2, y - 2, 5, 5);
+  ctx.fillStyle = "#ff2b2b";
+  ctx.fillRect(x - 1, y - 1, 3, 3);
+  ctx.fillStyle = "#ffe6e6";
+  ctx.fillRect(x, y, 1, 1);
 }

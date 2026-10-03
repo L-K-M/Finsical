@@ -17,6 +17,18 @@ describe("sanitizeEffects", () => {
     expect(c.sunlight).toBe(true); // untouched key = default
   });
 
+  it("has the cat on by default, like every other extra", () => {
+    expect(EFFECTS_DEFAULTS.cat).toBe(true);
+    expect(sanitizeEffects({ cat: false }).cat).toBe(false);
+    expect(sanitizeEffects({ cat: "no" }).cat).toBe(true);
+  });
+
+  it("keeps the thermometer switch through a round trip", () => {
+    expect(EFFECTS_DEFAULTS.thermometer).toBe(true);
+    expect(sanitizeEffects({ thermometer: false }).thermometer).toBe(false);
+    expect(sanitizeEffects({ murk: false }).thermometer).toBe(true);
+  });
+
   it("rejects non-booleans instead of truthiness", () => {
     const c = sanitizeEffects({ torch: 0, snail: "off", sway: 1 });
     expect(c.torch).toBe(EFFECTS_DEFAULTS.torch);
@@ -34,5 +46,15 @@ describe("sanitizeEffects", () => {
     // ...and a wrong-typed key falls back to the base's value, not
     // the default's.
     expect(sanitizeEffects({ murk: "x" }, base).murk).toBe(false);
+  });
+});
+
+describe("smudges default", () => {
+  it("is the one extra off by default — the glass starts clean", () => {
+    // Every other extra keeps the tank's long-standing look; the
+    // prints change the glass itself, so a tank opts in.
+    expect(EFFECTS_DEFAULTS.smudges).toBe(false);
+    expect(sanitizeEffects({}).smudges).toBe(false);
+    expect(sanitizeEffects({ smudges: true }).smudges).toBe(true);
   });
 });

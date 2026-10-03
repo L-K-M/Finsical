@@ -25,6 +25,10 @@ html, body { margin: 0; height: 100%; background: #000; }
    a gesture starting in the letterbox margins must not pan/zoom. */
 #screen { position: absolute; z-index: 1; cursor: default;
           touch-action: none; }
+/* The laser-pointer toy hides the arrow over the water: the dot is
+   the pointer. The feed crosshair (an inline style from setFeedHover)
+   still wins over the air strip, where the dot cannot shine. */
+body.laser #tank, body.laser #crt { cursor: none; }
 /* Drop cue: the classic-Mac border-invert, on the glass, while files
    hover the window. */
 body.dragging #screen::after {
