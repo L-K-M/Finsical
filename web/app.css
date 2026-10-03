@@ -124,7 +124,31 @@ body.crt canvas#tank { opacity: 0; }
 .dbwin { width: 344px; max-width: calc(100vw - 24px); }
 /* Osmium positions window content absolutely inside a sized window; a
    document window sizes to its content instead, so the content flows. */
-.dbwin .osm-content { position: static; margin: 21px 5px 5px; }
+.dbwin .osm-content {
+  position: static; margin: 21px 5px 5px;
+  /* Clear the menu bar (28), frame (26) and bottom margin (8).
+     Short screens scroll the document rather than lose its OK button. */
+  max-height: max(0px, calc(100vh - 62px)); overflow-y: auto;
+  max-height: max(0px, calc(100dvh - 62px));
+  box-sizing: border-box;
+}
+/* WebKit's native scrolling keeps keyboard and touch support. Its
+   default rounded bar would be out of place in a Platinum document. */
+.dbwin .osm-content::-webkit-scrollbar { width: 16px; }
+.dbwin .osm-content::-webkit-scrollbar-track {
+  background: var(--osm-sprite-scroll-track) 0 0 / 16px 1px repeat-y;
+}
+.dbwin .osm-content::-webkit-scrollbar-thumb {
+  background: #ccc; border: 1px solid #000; border-radius: 0;
+  box-shadow: inset 1px 1px #fff, inset -1px -1px #888;
+}
+.dbwin .osm-content::-webkit-scrollbar-button:single-button { width: 16px; height: 16px; }
+.dbwin .osm-content::-webkit-scrollbar-button:vertical:decrement {
+  background: var(--osm-sprite-scroll-up) 0 0 / 16px 16px no-repeat;
+}
+.dbwin .osm-content::-webkit-scrollbar-button:vertical:increment {
+  background: var(--osm-sprite-scroll-down) 0 0 / 16px 16px no-repeat;
+}
 .dbdoc { padding: 4px 14px 12px; font: var(--osm-font-small); }
 .dbabout { text-align: center; }
 .dbabout .dbicon {
@@ -135,52 +159,81 @@ body.crt canvas#tank { opacity: 0; }
 .dbtitle { font: var(--osm-font-system); font-weight: bold; }
 .dbblurb { margin-top: 8px; text-align: left; line-height: 15px; }
 .dbcredit { margin-top: 8px; text-align: left; color: #555; }
+/* The default button's ring is drawn outside its button, so a plain
+   button beside it lines up with the inner one: centre the row. */
 .dbfoot {
-  display: flex; justify-content: center; gap: 12px; margin-top: 12px;
+  display: flex; justify-content: center; align-items: center; gap: 12px;
+  margin-top: 12px;
 }
 .dbkeys .dbkeyrow { display: flex; margin-top: 6px; line-height: 15px; }
 .dbkeys .dbkey {
   flex: none; width: 92px; font: var(--osm-font-system); font-weight: bold;
 }
-.dbkeys .osm-button { margin-top: 14px; }
+/* OK at the bottom right, where Mac OS 8 puts it. */
+.dbkeys .osm-button { display: block; margin: 14px 0 0 auto; }
 /* ---- fish Get-Info card (web/main.ts) ------------------------------------
-   ⌥-click a fish: a tiny Mac window pinned over it — striped title bar
-   with a close box, live hunger and mood underneath. */
+   ⌥-click a fish: a tiny Platinum windoid pinned over it — pinstriped
+   title bar with a close box, live readings underneath. */
 .finfo {
   /* fixed on body: above the machine art (2), under the overlays (10).
-     layoutInfo() feeds it viewport rects, so neither body nor html may
-     gain a transform/filter/perspective/contain — that would re-root
+     layoutInfo() feeds it viewport coordinates, so neither body nor html
+     may gain a transform/filter/perspective/contain — that would re-root
      the fixed containing block and break the math. */
-  position: fixed; z-index: 5; width: 118px;
-  background: #fff; border: 1px solid #000;
-  box-shadow: 1px 1px 0 rgba(0, 0, 0, .3);
+  position: fixed; z-index: 5;
+  /* As wide as its readings need, so "Hunger 100%" stays on one line:
+     a fixed 118px box broke the combined line between the label and
+     its number. min-width keeps the card's box when a fish has only a
+     name. No max-width here: the readings below must not wrap, and a
+     clamp would let them paint past the border. The species line is
+     what can be long, and it carries the cap instead. */
+  width: max-content; min-width: 118px;
+  /* Platinum's face, outline and solid one-pixel drop shadow, as
+     Osmium draws its windows. */
+  background: #ddd; border: 1px solid #000;
+  box-shadow: 1px 1px 0 #000;
   font: var(--osm-font-small); line-height: 12px;
   /* The tank page is color-scheme: dark, whose default text is white. */
   color: #000;
+  /* A window, not a web page: the arrow, no text selection, and the
+     bitmap strikes drawn aliased like Osmium's. */
+  cursor: default; user-select: none; -webkit-user-select: none;
+  -webkit-font-smoothing: none; font-synthesis: none;
 }
 .fintitle {
   position: relative; height: 13px;
   border-bottom: 1px solid #000;
-  /* the OS 8 title-bar pinstripes */
+  background: #ddd;
+}
+/* The pinstripes: 1 px white over 1 px #777, Osmium's pair, from past
+   the close box to the right edge. The title masks them behind its
+   text, as Mac OS 8 parts the stripes around a window's name. */
+.fintitle::before {
+  content: ""; position: absolute; left: 14px; right: 3px;
+  top: 2px; height: 8px;
   background: repeating-linear-gradient(
-    to bottom, #fff 0, #fff 2px, #ddd 2px, #ddd 3px);
+    to bottom, #fff 0, #fff 1px, #777 1px, #777 2px);
 }
 .finclose {
   position: absolute; left: 3px; top: 3px; width: 7px; height: 7px;
-  padding: 0; background: #fff; border: 1px solid #000;
-  cursor: pointer;
+  padding: 0; background: #ddd; border: 1px solid #000;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #999;
+  cursor: default;
 }
 /* The 7px box is authentic but untappable — an invisible halo widens
    its hit area without changing the look. */
 .finclose::before { content: ""; position: absolute; inset: -6px; }
-.finclose:active { background: #000; }
+.finclose:active { background: #000; box-shadow: none; }
 .finname {
-  display: block; width: 100%; height: 13px; box-sizing: border-box;
+  /* Above the stripes, as wide as its text and centred, on the
+     title bar's face so the stripes part around it. */
+  position: relative;
+  display: block; width: max-content; max-width: calc(100% - 32px);
+  height: 13px; box-sizing: border-box;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-  text-align: center; padding: 0 14px;
+  padding: 0 3px;
   /* A button (the rename) that reads as the window's title. */
-  margin: 0; border: 0; background: none; color: #000;
-  font: inherit; line-height: 12px; cursor: text;
+  margin: 0 auto; border: 0; background: #ddd; color: #000;
+  font: inherit; line-height: 12px; cursor: default;
 }
 /* The rename field sits on the title bar between the close box and the
    right edge, a plain Mac text field like .ifilter. */
@@ -191,6 +244,17 @@ body.crt canvas#tank { opacity: 0; }
   font: var(--osm-font-small); line-height: 11px; appearance: none;
 }
 .finedit:focus { outline: none; }
+/* The card's arrow and no-selection are for its chrome; the rename
+   field keeps a text field's I-beam and selection. */
+.finedit { cursor: text; user-select: text; -webkit-user-select: text; }
+/* Health, hunger and mood are one short fact each ("Health 81%",
+   "Swimming, peckish"): keep them on one line. The species line above
+   is the only one that can be long, so it is the one that wraps — at
+   this width, well inside the glass. */
+/* max-width bounds the box, not the text: a single unbreakable name
+   would paint past it, so let it break mid-word if it ever must. */
+.finbody > div:first-child { max-width: 260px; overflow-wrap: anywhere; }
+.finbody > div:not(:first-child) { white-space: nowrap; }
 .finbody { padding: 2px 6px 5px; }
 
 /* ---- client windows --------------------------------------------------
@@ -199,10 +263,11 @@ body.crt canvas#tank { opacity: 0; }
    native window (.osm-page, .osm-page-window). */
 
 /* ---- Preferences (web/prefs.ts) ----------------------------------------
-   A fixed-size control panel, 564 x 517 (native window 565 x 518 with
-   the shadow). Pane buttons down an 80px strip on the left, parted from
-   the pane by a gray/black/white line, as in Desktop Pictures, and
-   sized like its pane buttons: 54 x 40, on a 70px pitch. */
+   A control panel designed at 564 x 517 (native window 565 x 518 with
+   the shadow) that still fills whatever window it gets in a browser
+   tab. Pane buttons down an 80px strip on the left, parted from the
+   pane by a gray/black/white line, as in Desktop Pictures, and sized
+   like its pane buttons: 54 x 40, on a 70px pitch. */
 #pwin:not(.osm-shaded) .osm-content { display: flex; }
 #pfstrip {
   flex: none; width: 80px; padding-top: 12px;
@@ -214,11 +279,23 @@ body.crt canvas#tank { opacity: 0; }
   position: relative; flex: 1; min-width: 0;
   border-left: 1px solid #000; box-shadow: inset 1px 0 #fff;
 }
-.pfpane { position: absolute; left: 14px; right: 14px; top: 12px; }
+/* The pane fills the window between its top margin and the caption
+   area, the way Overview's list and Stats's tabs fill theirs — the
+   machine list and preview well stretch with it, and the group-box
+   panes centre so a taller-than-designed window (a browser tab, a
+   phone) shows no dead gray band above the captions. `safe center`
+   falls back to `flex-start` where it is unsupported — not `center`,
+   which would overflow above the pane's top on a short window. */
+.pfpane {
+  position: absolute; left: 14px; right: 14px; top: 12px; bottom: 74px;
+  display: flex; flex-direction: column;
+  justify-content: flex-start;
+  justify-content: safe center;
+}
 .pfpane[hidden] { display: none; }
 
 /* Machine: the cases in a list box beside a preview well. */
-#pfmachines { position: absolute; left: 0; top: 0; width: 190px; height: 383px; }
+#pfmachines { position: absolute; left: 0; top: 0; bottom: 0; width: 190px; }
 /* Names fit the 190 px list (the Performas drop "Macintosh"); a longer
    one ends in an ellipsis rather than cut through a glyph. */
 #pfmachines .osm-row {
@@ -226,7 +303,7 @@ body.crt canvas#tank { opacity: 0; }
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
 #pfpreview {
-  position: absolute; left: 204px; right: 0; top: 0; height: 383px;
+  position: absolute; left: 204px; right: 0; top: 0; bottom: 0;
   display: flex; align-items: center; justify-content: center;
   background: #fff;
 }
@@ -257,7 +334,9 @@ body.crt canvas#tank { opacity: 0; }
 #pftraits .pfgroup:first-child { margin-top: 12px; }
 #pftraits .pfgroup + .pfgroup { margin-top: 24px; }
 #pfpicture .pfgroup { margin-top: 12px; }
-#pfpicture .pfgroup + .pfgroup { margin-top: 30px; }
+/* 24, as on the Monitor pane: at 30 the third group's bottom ran into
+   the caption's separator once the Vertical skew row joined it. */
+#pfpicture .pfgroup + .pfgroup { margin-top: 24px; }
 .pfrow { display: flex; gap: 20px; }
 .pfrow + .pfrow { margin-top: 6px; }
 .pfslider { flex: none; width: 125px; }
@@ -291,13 +370,16 @@ body.crt canvas#tank { opacity: 0; }
 #pane-effects .osm-checkbox { display: flex; width: max-content; }
 #pane-effects .osm-checkbox + .osm-checkbox { margin-top: 6px; }
 
-/* Lighting: titled pop-ups in a group box. */
+/* Lighting: titled pop-ups in a group box, starting where every other
+   pane's first group does. */
+#pane-lighting .pfgroup { margin-top: 12px; }
 .pflrow { display: flex; gap: 24px; }
 .pflrow + .pflrow { margin-top: 10px; }
 .pflctl { display: flex; align-items: center; gap: 6px; }
 /* Row titles right-aligned on one edge, so the pop-ups line up. */
 .pflrow > .pflctl:first-child .osm-popup-title { width: 82px; text-align: right; }
 #pl-mode { width: 160px; }
+/* The floor; prefs.ts widens both to the longest hour label. */
 .pfhour { width: 76px; }
 
 /* Caption area along the bottom, with Defaults at its right. */
@@ -305,7 +387,11 @@ body.crt canvas#tank { opacity: 0; }
 #pfdesc {
   position: absolute; left: 0; right: 0; top: 8px;
   font: var(--osm-font-small); line-height: 13px;
-  max-height: 39px; overflow: hidden;
+  /* Three lines, ending in an ellipsis like every other truncating
+   * surface — overflow:hidden alone would cut a fourth line's glyph
+   * tops mid-character. */
+  display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3; overflow: hidden;
 }
 #pffoot.pfdefaults #pfdesc { right: 76px; }
 #pfdefaults { position: absolute; right: 0; bottom: 0; }
@@ -328,6 +414,8 @@ body.crt canvas#tank { opacity: 0; }
 /* No CSS size — the canvas renders at its intrinsic 44x14 backing
    store, so a border-box reset can't squeeze the 1-bit columns. */
 .sspark { flex: none; margin-top: 1px; border: 1px solid #000; image-rendering: pixelated; }
+/* A history with nothing in it yet keeps the sparkline's column. */
+.sspark-none { box-sizing: content-box; width: 44px; height: 14px; visibility: hidden; }
 .sval { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #srows { margin-bottom: 6px; }
 #scare { margin-top: 3px; }
@@ -335,6 +423,9 @@ body.crt canvas#tank { opacity: 0; }
 .skrow > .osm-label, .skrow > .osm-popup-title {
   flex: none; width: 66px; text-align: right;
 }
+/* One font down the column: Heater: and Filter: as the pop-ups'
+   titles below them are, not bold Geneva. */
+.skrow > .osm-label { font: var(--osm-font-system); }
 .skright { justify-content: flex-end; }
 .skval { min-width: 48px; text-align: center; }
 .skat { margin: 0 2px; }
@@ -464,12 +555,14 @@ body.zen .nametag {
   font: var(--osm-font-small); appearance: none;
 }
 .ifilter::placeholder { color: #767676; }
-.ifilter:focus { outline: none; border-color: #000; box-shadow: 0 0 0 1px #fff, 0 0 0 2px #000; }
+/* Mac OS 8.5's Appearance Manager rings the focused text field in the
+   highlight colour, as Osmium rings its controls; the black double
+   ring this replaces read as a second default button. */
+.ifilter:focus { outline: 2px solid #6666cc; outline-offset: 1px; border-color: #000; }
 .ifilter:disabled { background: #ddd; }
-/* Forced-colors mode suppresses box-shadow — fall back to a real
-   outline so the focused field stays visible. */
+/* Forced-colors mode repaints the ring's colour: ask for Highlight. */
 @media (forced-colors: active) {
-  .ifilter:focus { outline: 2px solid Highlight; box-shadow: none; }
+  .ifilter:focus { outline: 2px solid Highlight; }
 }
 .icount {
   flex: 0 1 auto; min-width: 0; margin: 3px 0 0 auto;
@@ -506,10 +599,12 @@ body.zen .nametag {
 /* The credit gives way first; Donate and the default button never meet
    (the default button stays clear of the grow box). */
 .icredit {
-  flex: 0 1 auto; min-width: 0; margin-top: 14px;
+  flex: 0 1 auto; min-width: 0; margin-top: 17px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.idonate { flex: none; margin: 9px 12px 0 20px; }
+/* Aligned with the default button's inner button (its ring is drawn
+   outside it), and the credit with both. */
+.idonate { flex: none; margin: 13px 12px 0 20px; }
 .iadd { flex: none; margin: 10px 16px 0 auto; }
 /* A narrow overlay (on a small tank) stacks the details under the list
    and drops the preview, the credit and the count; a sound's Play
@@ -569,10 +664,10 @@ body.zen .nametag {
   font: var(--osm-font-system); appearance: none;
   user-select: text; -webkit-user-select: text;
 }
-.alertfield:focus { outline: none; box-shadow: 0 0 0 1px #fff, 0 0 0 2px #000; }
+.alertfield:focus { outline: 2px solid #6666cc; outline-offset: 1px; }
 .alertfield[hidden] { display: none; }
 @media (forced-colors: active) {
-  .alertfield:focus { outline: 2px solid Highlight; box-shadow: none; }
+  .alertfield:focus { outline: 2px solid Highlight; }
 }
 .alertprogress[hidden] { display: none; }
 .alertbuttons {
