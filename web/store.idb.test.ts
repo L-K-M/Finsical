@@ -20,6 +20,9 @@ function fakeIdb() {
       if (this.closed)
         throw new DOMException("The database connection is closing.",
                                "InvalidStateError");
+      // Real transactions complete once, when the last request settles;
+      // requests issued inside an onsuccess keep the transaction alive.
+      let pending = 0;
       const tx = {
         oncomplete: null as (() => void) | null,
         onerror: null as (() => void) | null,
@@ -27,13 +30,17 @@ function fakeIdb() {
         objectStore(n: string) {
           const s = stores.get(n)!;
           const req = (fn: () => unknown) => {
+            pending++;
             const r = { result: undefined as unknown,
                         onsuccess: null as (() => void) | null,
                         onerror: null as (() => void) | null };
             queueMicrotask(() => {
               r.result = fn();
               r.onsuccess?.();
-              queueMicrotask(() => tx.oncomplete?.());
+              // A request queued by onsuccess bumps pending before
+              // this decrement, so only the last request fires it.
+              if (--pending === 0)
+                queueMicrotask(() => tx.oncomplete?.());
             });
             return r;
           };
@@ -41,8 +48,8 @@ function fakeIdb() {
             get: (k: unknown) => req(() => s.get(k)),
             put: (v: unknown, k: unknown) => req(() => (s.set(k, v), k)),
             delete: (k: unknown) => req(() => { s.delete(k); }),
-            getAll: () => req(() => []),
-            getAllKeys: () => req(() => []),
+            getAll: () => req(() => [...s.values()]),
+            getAllKeys: () => req(() => [...s.keys()]),
           };
         },
       };

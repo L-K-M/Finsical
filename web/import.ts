@@ -231,7 +231,9 @@ export function isArchiveUrl(raw: unknown): boolean {
   if (typeof raw !== "string") return false;
   try {
     const u = new URL(raw);
-    return u.protocol === "https:" && isArchiveHost(u.hostname);
+    // hostname and port, like the host comparison this replaced —
+    // an archive.org URL on a non-default port is not a download host.
+    return u.protocol === "https:" && !u.port && isArchiveHost(u.hostname);
   } catch { return false; }
 }
 
@@ -1095,6 +1097,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   // decoded — dimmed for the session, and their detail gets an honest
   // "can't read" instead of a Try Again that only fails again.
   const unreadable = new Set<string>();
+  // Invariant: `thumbs` holds only the 38x28 row minis. Full previews
+  // live in the detail pane's own `pv` — never put one back here.
   const thumbs = new Map<string, HTMLCanvasElement>();
   const fetchPack = fetchAddon;
   // The add-on on show — remote install acks update its status line.

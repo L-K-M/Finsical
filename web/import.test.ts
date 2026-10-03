@@ -643,6 +643,7 @@ describe("isArchiveUrl", () => {
   it("rejects other hosts, schemes, lookalikes and non-strings", () => {
     for (const bad of [
       "http://archive.org/x", "https://evilarchive.org/x",
+      "https://archive.org@evil.com/x", "https://archive.org:8443/x",
       "https://archive.org.evil.com/x", "https://example.com/x",
       "https://notarchive.org/x", null, 7, "", undefined,
     ])
