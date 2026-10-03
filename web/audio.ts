@@ -138,6 +138,12 @@ export const NOTE_GRACE_GAIN = 0.1;
 /** The octave partial's share of the fundamental. */
 const PARTIAL_MIX = 0.22;
 
+/** The synthesized bloop under a rising bubble: a sine chirping up
+ * through a fifth, gone in 90 ms, quieter than the pop. */
+const BLOOP_HZ = [500, 1300] as const;
+const BLOOP_S = 0.09;
+const BLOOP_GAIN = 0.12;
+
 /** Stereo position of a tank event at x in a w-wide tank: the edges
  * pan to ±0.8 — a clear sense of side without a hard pan. */
 export function panFor(x: number, w: number): number {
@@ -779,7 +785,7 @@ export class TankAudio {
    * can never click.
    */
   note(freq: number, pan = 0, gain = NOTE_GAIN): void {
-    if (!this.musicOn) return;
+    if (!this.musicOn || !this.shouldRun()) return;
     const ac = this.ctx;
     if (!ac || !this.master || this.hidden || ac.state !== "running" ||
         !Number.isFinite(freq) || freq <= 0 ||
@@ -817,13 +823,44 @@ export class TankAudio {
     }
   }
 
-  /** A bubble rising. The original has no sound for one, so this plays
-   * a short bubble sound the user added, never the filter's loop —
-   * panned to the bubble, pitched a touch at random. */
+  /** A bubble rising. A short bubble sound the user added wins —
+   * never the filter's loop — panned to the bubble and pitched a touch
+   * at random. With none, a soft bloop is synthesized, the way pop()
+   * falls back to its plip. */
   bubble(pan = 0): void {
-    if (!this.bubblesOn) return;
-    this.play(this.find(["bubble"], FILTER_BUBBLING), 0.4, false, true,
-              { pan, rate: 0.94 + Math.random() * 0.12 });
+    if (!this.bubblesOn || !this.shouldRun()) return;
+    const own = this.find(["bubble"], FILTER_BUBBLING);
+    if (own) {
+      this.play(own, 0.4, false, true,
+                { pan, rate: 0.94 + Math.random() * 0.12 });
+      return;
+    }
+    const ac = this.ctx;
+    if (!ac || !this.master || this.hidden || ac.state !== "running")
+      return;
+    const t = ac.currentTime;
+    const f0 = BLOOP_HZ[0] + Math.random() * (BLOOP_HZ[1] - BLOOP_HZ[0]);
+    const osc = ac.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(f0, t);
+    // The rising chirp of a real bubble clearing the surface: keep
+    // climbing across the whole pulse rather than flattening early.
+    osc.frequency.exponentialRampToValueAtTime(f0 * 1.5, t + BLOOP_S);
+    const g = ac.createGain();
+    // Exponential ramps can't start from 0: from a whisper to the peak
+    // in 4 ms, then away, so it never clicks on or off.
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(BLOOP_GAIN, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + BLOOP_S);
+    if (pan !== 0 && typeof ac.createStereoPanner === "function") {
+      const p = ac.createStereoPanner();
+      p.pan.value = pan;
+      osc.connect(p).connect(g).connect(this.master);
+    } else {
+      osc.connect(g).connect(this.master);
+    }
+    osc.start(t);
+    osc.stop(t + BLOOP_S + 0.01);
   }
 
   /** A bubble popped by a click, panned to it. A sound the user added

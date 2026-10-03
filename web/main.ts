@@ -3875,9 +3875,12 @@ function tickSim(): void {
   if (effects.splashes)
     for (let i = pops.length - 1; i >= 0; i--)
       if (++pops[i]!.age > 8) pops.splice(i, 1);
-  // Sparse bloops: only some spawns make a sound. Checked per tick so
-  // the odds don't depend on how often the tank is drawn.
-  if (sim.bubbles.length > bubbles && Math.random() < 0.25) {
+  // Sparse bloops: only some spawns make a sound — now that a missing
+  // "bubble" record falls back to a synthesized bloop, the draw stays
+  // low enough for a full tank to read as ambience, not chatter.
+  // Checked per tick so the odds don't depend on how often the tank
+  // is drawn.
+  if (sim.bubbles.length > bubbles && Math.random() < 0.15) {
     const b = sim.bubbles[sim.bubbles.length - 1]!;
     audio.bubble(panFor(b.x, TANK.width));
   }
