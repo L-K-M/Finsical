@@ -363,6 +363,16 @@ export class TankAudio {
     return this.muted ? 0 : gainForVolume(this.volume);
   }
 
+  /** Whether the tank's sounds are waiting on a user gesture: some
+   * have loaded (the context exists only once they have), the page is
+   * visible and audible, and the browser still holds the device
+   * suspended. The tank page offers its Turn On Sound button off this;
+   * muted or hidden, there is nothing a click would let you hear. */
+  get blocked(): boolean {
+    return this.ctx !== null && this.ctx.state === "suspended" &&
+      !this.hidden && this.level() > 0;
+  }
+
   /** Glide the live master to the current level: a hard step in the
    * gain mid-waveform clicks on mute and zippers under a slider drag. */
   private applyLevel(): void {

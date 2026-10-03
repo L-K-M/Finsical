@@ -25,6 +25,11 @@
   the glass, an octave lower at night, with a higher grace note when
   it eats. A gate lets one note at a time through and caps how many
   land in any two seconds, so a full tank stays calm.
+- In a browser that holds sound back until you click, the tank shows
+  a Turn On Sound button, and a click anywhere on the page, the case
+  included, starts the sound. The old "Click for sound" note showed
+  even with no sounds to play and in the apps, and only a click in
+  the water made it go away.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's

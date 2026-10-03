@@ -49,15 +49,11 @@ body.dragging #screen::after {
   font: var(--osm-font-small); color: rgba(255,255,255,.95);
   text-align: center; pointer-events: none;
 }
-#audio-hint {
-  position: fixed; z-index: 6; bottom: 14px; right: 14px;
-  padding: 4px 10px; border-radius: 3px;
-  background: rgba(0, 0, 0, .65); border: 1px solid rgba(255, 255, 255, .35);
-  font: var(--osm-font-small); color: rgba(255, 255, 255, .9);
-  pointer-events: none; opacity: 0; transition: opacity .25s ease;
-}
+/* Turn On Sound (web/main.ts, syncAudioHint): a plain Platinum push
+   button in the page's corner while the browser holds back the tank's
+   sounds. The press is the gesture that lets them start. */
+#audio-hint { position: fixed; z-index: 6; bottom: 12px; right: 12px; }
 #audio-hint[hidden] { display: none; }
-#audio-hint:not([hidden]) { opacity: 1; }
 /* Keep the live region in the accessibility tree when idle — a
    display:none region that pops in already-populated isn't reliably
    announced. dropSay clears the text when the chip hides. */
@@ -426,7 +422,7 @@ body.crt canvas#tank { opacity: 0; }
    the tank and its sounds keep running. !important beats the inline
    display the tip and trigger set on themselves. */
 body.zen #menubar, body.zen #fishtip, body.zen #opentrigger,
-body.zen .nametag {
+body.zen .nametag, body.zen #audio-hint {
   display: none !important;
 }
 /* Name tags on every fish (N, Tank > Fish Names; web/nametags.ts): the

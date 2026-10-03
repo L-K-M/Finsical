@@ -567,6 +567,41 @@ describe("TankAudio ambient restarts", () => {
   });
 });
 
+describe("TankAudio.blocked", () => {
+  it("is false for a tank with no sounds, which has nothing to unlock",
+     () => {
+    // No sound ever loaded: no context, so no click would play anything.
+    expect(new TankAudio().blocked).toBe(false);
+  });
+
+  it("is true only while a loaded tank waits on a gesture", async () => {
+    const { audio, ac } = await tank({ drop: 1 });
+    expect(audio.blocked).toBe(false); // running: nothing to ask for
+    ac.state = "suspended"; // the browser's autoplay lock
+    expect(audio.blocked).toBe(true);
+    audio.unlock();
+    await flush();
+    expect(ac.state).toBe("running");
+    expect(audio.blocked).toBe(false);
+  });
+
+  it("is false while muted, at volume 0 or hidden", async () => {
+    const { audio, ac } = await tank({ drop: 1 });
+    ac.state = "suspended";
+    audio.setMuted(true);
+    expect(audio.blocked).toBe(false);
+    audio.setMuted(false);
+    audio.setVolume(0);
+    expect(audio.blocked).toBe(false);
+    audio.setVolume(0.5);
+    expect(audio.blocked).toBe(true);
+    // Hidden suspends the device on purpose; it isn't a lock to lift.
+    audio.setHidden(true);
+    await flush();
+    expect(audio.blocked).toBe(false);
+  });
+});
+
 describe("TankAudio.setHidden", () => {
   it("keeps the device asleep when a gesture unlocks while hidden", async () => {
     const { audio, ac } = await tank({ [LOOP]: 30, bubble: 1 });
