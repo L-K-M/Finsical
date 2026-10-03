@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BAND_HALF, BEDTIME_MIN, BEDTIME_SPREAD, BOTTOM_PAD, DAY_TICKS,
+import { gridSlot, BAND_HALF, BEDTIME_MIN, BEDTIME_SPREAD, BOTTOM_PAD, DAY_TICKS,
          FOOD_ROT_TICKS, LIE_IN_MIN, LIE_IN_SPREAD, MARGIN, MAX_UNEATEN,
          NOTICE_RADIUS, PELLET_UNITS, Sim, SLEEP_LIGHT, SURFACE,
          TURN_TICKS, WAKE_LIGHT } from "./sim.js";
@@ -1671,5 +1671,209 @@ describe("depth among the decor", () => {
     sim.tap(95, 120);
     expect(f.state).toBe("startle");
     expect(f.hideTicks).toBe(0);
+  });
+});
+
+// ---- Clean Up (Tank > Clean Up) -----------------------------------------
+// The Finder's joke with living icons: the fish line up in a grid.
+describe("Clean Up", () => {
+  const TANK = { width: 320, height: 200 };
+  /** n fish spread over the tank, then lined up. */
+  function lined(n: number, seed = 7): Sim {
+    const sim = new Sim(TANK, seed);
+    for (let i = 0; i < n; i++)
+      sim.addFish({ x: 10 + (i * 37) % 300, y: 40 + (i * 53) % 140 });
+    sim.cleanUp();
+    return sim;
+  }
+  /** Every fish's distance from its own place, worst first. */
+  const gaps = (sim: Sim): number[] =>
+    sim.fish.map((f) => {
+      const p = sim.slotFor(f)!;
+      return Math.hypot(f.x - p.x, f.y - p.y);
+    });
+
+  it("lays out a grid with a place for every living fish", () => {
+    for (const n of [1, 5, 6, 7, 24]) {
+      const sim = lined(n);
+      const slots = sim.fish.map((f) => sim.slotFor(f)!);
+      expect(slots).toHaveLength(n);
+      // No two fish share a place, however many there are.
+      const keys = new Set(slots.map((p) => `${p.x},${p.y}`));
+      expect(keys.size).toBe(n);
+    }
+  });
+
+  it("has every fish at its place by the end of the roll call", () => {
+    for (const n of [3, 6, 14, 24]) {
+      const sim = lined(n);
+      for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) sim.tick();
+      const g = gaps(sim);
+      // A fish body or two is "in place"; the worst is a straggler
+      // still crossing, which must not happen in a grid that reads.
+      expect(Math.max(...g)).toBeLessThanOrEqual(TANK.width / 3);
+      // Most fish are genuinely standing in their places.
+      const sorted = [...g].sort((a, b) => a - b);
+      expect(sorted[Math.floor(n / 2)]!).toBeLessThan(20);
+    }
+  });
+
+  it("lifts a hovering fish out of its hover to line it up", () => {
+    // A fish parked on a hover re-arms the arrival branch every
+    // decision and would never reach the decide() that hands it its
+    // place, so it would hold its old spot for the whole call. An
+    // idle tank — exactly when somebody reaches for Clean Up — is
+    // mostly hovering fish. Before the fix this run ends at 104 px.
+    const sim = new Sim(TANK, 7);
+    for (let i = 0; i < 6; i++)
+      sim.addFish({ x: 10 + (i * 37) % 300, y: 40 + (i * 53) % 140 });
+    for (const f of sim.fish) {
+      f.hover = 4_000;
+      f.tx = f.x;
+      f.ty = f.y;
+      f.phase = 0;
+      f.latch = -1;
+    }
+    sim.cleanUp();
+    for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) sim.tick();
+    expect(Math.max(...gaps(sim))).toBeLessThanOrEqual(24);
+  });
+
+  it("refunds the stroke budget on arrival", () => {
+    // A fish that crossed the tank on the formation's extra speed must
+    // not arrive with its budget spent, or it holds on a lurch for the
+    // rest of the call.
+    const sim = new Sim(TANK, 7);
+    sim.addFish({ x: 20, y: 100 });
+    sim.addFish({ x: 300, y: 100 });
+    sim.cleanUp();
+    for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) sim.tick();
+    for (const f of sim.fish) {
+      const p = sim.slotFor(f)!;
+      expect(Math.abs(f.x - p.x)).toBeLessThanOrEqual(24);
+      expect(f.strokes).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("keeps the fish inside the glass while they line up", () => {
+    const sim = lined(24);
+    for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) {
+      sim.tick();
+      for (const f of sim.fish) {
+        expect(Number.isFinite(f.x)).toBe(true);
+        expect(Number.isFinite(f.y)).toBe(true);
+        expect(f.x).toBeGreaterThanOrEqual(0);
+        expect(f.x).toBeLessThanOrEqual(TANK.width);
+      }
+    }
+  });
+
+  it("stands every fish down, sleepers included", () => {
+    const sim = lined(6);
+    sim.setLight(0.2);              // dark: they would otherwise bed down
+    for (let t = 0; t < 1500; t++) sim.tick();
+    expect(sim.fish.every((f) => f.state === "sleep")).toBe(true);
+    sim.cleanUp();
+    for (let t = 0; t < 5; t++) sim.tick();
+    expect(sim.fish.every((f) => f.state !== "sleep")).toBe(true);
+  });
+
+  it("breaks up at a knock on the glass", () => {
+    const sim = lined(6);
+    sim.tap(160, 100);
+    expect(sim.forming).toBe(false);
+    expect(sim.slotFor(sim.fish[0]!)).toBeNull();
+  });
+
+  it("breaks up for dinner", () => {
+    const sim = lined(6);
+    expect(sim.dropFood(160)).not.toBeNull();
+    expect(sim.forming).toBe(false);
+  });
+
+  it("ends on its own and forgets its places", () => {
+    const sim = lined(6);
+    for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) sim.tick();
+    expect(sim.forming).toBe(true);
+    sim.tick();
+    expect(sim.forming).toBe(false);
+    expect(sim.slotFor(sim.fish[0]!)).toBeNull();
+    // And the fish are wandering again, not pinned to a ghost grid.
+    sim.fish[0]!.x = 30;
+    sim.fish[0]!.y = 150;
+    for (let t = 0; t < 60; t++) sim.tick();
+    expect(sim.fish[0]!.tx).not.toBe(30);
+  });
+
+  it("lines up nobody in an empty tank, and no corpse", () => {
+    const sim = new Sim(TANK, 3);
+    expect(sim.cleanUp()).toBe(0);
+    sim.addFish({ x: 40, y: 60 });
+    sim.fish[0]!.state = "dead";
+    expect(sim.cleanUp()).toBe(0);
+  });
+
+  it("drops the place of a fish that leaves", () => {
+    const sim = lined(6);
+    const id = sim.fish[2]!.id;
+    expect(sim.removeFish(id)).toBe(true);
+    sim.tick();
+    expect(sim.slotFor(sim.fish[0]!)).not.toBeNull();
+  });
+
+  it("is deterministic for a seed", () => {
+    const run = (): string => {
+      const sim = lined(6);
+      for (let t = 0; t < 120; t++) sim.tick();
+      return sim.fish.map((f) => `${f.x.toFixed(2)},${f.y.toFixed(2)}`).join(" ");
+    };
+    expect(run()).toBe(run());
+  });
+});
+
+describe("gridSlot", () => {
+  const TANK = { width: 320, height: 200 };
+
+  it("puts no two places on top of each other", () => {
+    const keys = new Set<string>();
+    for (const n of [1, 2, 6, 7, 13, 24]) {
+      keys.clear();
+      for (let i = 0; i < n; i++) {
+        const p = gridSlot(i, n, TANK);
+        expect(p.x).toBeGreaterThan(0);
+        expect(p.x).toBeLessThan(TANK.width);
+        expect(p.y).toBeGreaterThan(SURFACE);
+        expect(p.y).toBeLessThan(TANK.height - BOTTOM_PAD);
+        keys.add(`${p.x.toFixed(3)},${p.y.toFixed(3)}`);
+      }
+      expect(keys.size).toBe(n);
+    }
+  });
+
+  it("centres a part-full last row", () => {
+    // Seven fish: a full row of six and one under it, in the middle.
+    const lone = gridSlot(6, 7, TANK);
+    expect(lone.x).toBeCloseTo(TANK.width / 2, 6);
+    // Six fish fill one row end to end.
+    expect(gridSlot(0, 6, TANK).x).toBeLessThan(gridSlot(5, 6, TANK).x);
+  });
+
+  it("survives a count or an index that is not a number", () => {
+    expect(Number.isFinite(gridSlot(0, NaN, TANK).x)).toBe(true);
+    expect(Number.isFinite(gridSlot(0, 0, TANK).x)).toBe(true);
+    // One past the roster would otherwise find an empty row and put
+    // the place at Infinity.
+    for (const i of [6, 7, 999, -1, NaN]) {
+      const p = gridSlot(i, 6, TANK);
+      expect(Number.isFinite(p.x), `x at i=${i}`).toBe(true);
+      expect(Number.isFinite(p.y), `y at i=${i}`).toBe(true);
+      expect(p.x).toBeGreaterThan(0);
+      expect(p.x).toBeLessThan(TANK.width);
+    }
+    for (let i = 0; i < 6; i++)
+      for (let j = i + 1; j < 6; j++)
+        expect(gridSlot(i, 6, TANK)).not.toEqual(gridSlot(j, 6, TANK));
+    expect(gridSlot(6, 6, TANK)).toEqual(gridSlot(5, 6, TANK));
+    expect(gridSlot(-1, 6, TANK)).toEqual(gridSlot(0, 6, TANK));
   });
 });
