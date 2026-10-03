@@ -2711,6 +2711,10 @@ const finsicalBridge = {
   // Returns the new flag, so the native menu retitles at once.
   togglePause: () => setPaused(!paused),
   toggleNames: () => setNames(!namesOn),
+  // The native shell calls this from applicationShouldTerminate —
+  // WKWebView teardown never fires pagehide, so a quit would drop
+  // the tank's state since the last interval save.
+  save: saveTank,
 };
 type FinsicalBridge = typeof finsicalBridge;
 declare global {
