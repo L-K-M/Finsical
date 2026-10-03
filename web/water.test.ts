@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { SURFACE } from "../core/sim.js";
+import { MAX_UNEATEN, SURFACE } from "../core/sim.js";
 import { CLOCK_NIGHT_LIGHT, DEMO_NIGHT_LIGHT, lightAt, nightFloor }
   from "../core/light.js";
 import type { Lighting } from "../core/light.js";
 import { makeRng } from "../core/rng.js";
 import {
   bubbleOffset, bubblePops, bubbleSize, CAUSTIC_TILE_H, CAUSTIC_TILE_W, drawAir,
-  causticShimmer, causticTile, causticValue, feedPinch, murkParams,
+  causticShimmer, causticTile, causticValue, feedPinch, feedRoom, murkParams,
   MURK_BOTTOM, MURK_TOP, pelletDrift, PINCH_CENTER_SPREAD, PINCH_MAX,
   PINCH_SPREAD, REFRACT_ROWS,
   refractShift, sunFactor, torchRadius, torchShows,
@@ -39,6 +39,19 @@ describe("bubbles", () => {
     expect(bubblePops(SURFACE + 0.8)).toBe(true);
     expect(bubblePops(SURFACE + 0.3)).toBe(true);
     expect(bubblePops(SURFACE + 0.81)).toBe(false);
+  });
+});
+
+describe("feedRoom", () => {
+  it("counts headroom to the sim's drop cap, not past it", () => {
+    // The sim refuses a pellet at MAX_UNEATEN (6); room must hit zero
+    // there, or the page schedules pellets that can only be refused.
+    expect(feedRoom(0)).toBe(MAX_UNEATEN);
+    expect(feedRoom(MAX_UNEATEN - 1)).toBe(1);
+    expect(feedRoom(MAX_UNEATEN)).toBe(0);
+    expect(feedRoom(99)).toBe(0);
+    // A corrupt negative count is no worse than an empty tank.
+    expect(feedRoom(-3)).toBe(MAX_UNEATEN);
   });
 });
 
