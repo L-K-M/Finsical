@@ -1,9 +1,10 @@
 # Finsical: Verified implementation backlog
 
-Updated 2026-10-03 against `origin/main` **57f9ae3**, version 0.8.0.
+Updated 2026-10-03 against `origin/main` **57f9ae3**, version 0.8.0, plus this
+pass's independent review and its nine PRs (#406–#414) against the same base.
 Entries below are remaining work, with evidence, scope and acceptance conditions.
 S/M/L describe effort. Historical IDs are retained when they describe the same
-behavior; C24 IDs identify this review's additions.
+behavior; C24 IDs identify the previous review's additions, C25 this pass's.
 
 ## Evidence and preservation
 
@@ -15,8 +16,12 @@ behavior; C24 IDs identify this review's additions.
 - [Original simulation reference](docs/ORIGINAL-SIM.md): reconstructed rules
   and deliberate differences from AquaZone.
 
-The queue consolidates overlapping entries from those documents. Older proposals
-not reverified here remain in the historical backlog; their old status or line
+This pass ran its own review (core sim, web UI, native shells, performance, and
+a Chromium pass over the running tank with real archive.org add-ons), reproduced
+its findings against the code, and shipped the fixes below as PRs #406–#414.
+Its method and full evidence: see the C25 entries and the PR bodies. The queue
+consolidates overlapping entries from those documents. Older proposals not
+reverified here remain in the historical backlog; their old status or line
 numbers are not proof against current code. Reproduce before implementing them.
 No other agents' PRs were inspected in this task.
 
@@ -55,6 +60,24 @@ unmerged, restore its task from the complete review rather than lose the finding
 | [#404](https://github.com/L-K-M/Finsical/pull/404) | `fix/frozen-tank-speed` / `be75834` | RT-03, F-10/F-26 UI slice: saved 0× and custom speeds display correctly, latest custom value remains selectable | Green / 2, steady |
 | [#405](https://github.com/L-K-M/Finsical/pull/405) | `fix/short-help-windows` / `db7030d` | RT-04, U-27/A-05 help slice: bounded scrolling, visible-viewport fallback and mouse-gesture help | Green / 2, steady |
 
+### This pass: independent review pass (PRs #406–#414)
+
+Reviewed the core engine, the web UI, the three native shells and the frame
+path (static + measured in Chromium against a tank stocked with real
+archive.org add-ons). All nine are open for the maintainer, CI green.
+
+| PR | Branch / head | Implemented scope | CI / completed GLM rounds |
+| --- | --- | --- | --- |
+| [#406](https://github.com/L-K-M/Finsical/pull/406) | `fix/view-only-tab-writes` / `8e2d917` | C25-01: the view-only (spectator) tank tab writes nothing — welcome, starter-sound backfill and drops are gated on `tankOwner` | Green / steady |
+| [#407](https://github.com/L-K-M/Finsical/pull/407) | `fix/plant-chemistry` / `dc74251` | C25-02: plant chemistry restored — `Sim_Plant` runs again (`plantSize` was never assigned) | Green / steady |
+| [#408](https://github.com/L-K-M/Finsical/pull/408) | `fix/disease-susceptibility` / `7dc77ac` | C25-03: contagion and shock respect a species' diseases (no incurable ARDS by spread) | Green / steady |
+| [#409](https://github.com/L-K-M/Finsical/pull/409) | `fix/stomach-fill` / `8d50891` | C25-04: stomach resize keeps the eaten share; monotonic floor; clamp both ends | Green / steady |
+| [#410](https://github.com/L-K-M/Finsical/pull/410) | `fix/export-anchor` / `c4494e5` | C25-05: Export Tank appends its download anchor (worked in Chromium; Firefox/Safari unverified) | Green / steady |
+| [#411](https://github.com/L-K-M/Finsical/pull/411) | `fix/modal-discipline` / `9b342b1` | C25-06: the frontmost alert owns Return/Escape; drops and the drop cue stand down behind a modal | Green / steady |
+| [#412](https://github.com/L-K-M/Finsical/pull/412) | `perf/frame-path-trim` / `b780038` | C25-07: name tags and the Get Info card place from the cached rect (no per-frame layout read) | Green / steady |
+| [#413](https://github.com/L-K-M/Finsical/pull/413) | `fix/overview-delete-guard` / `1e2790b` | C25-08: Overview's Delete takes the same `tankGone`/modal guard as Rename (no false "Removed") | Green / steady |
+| [#414](https://github.com/L-K-M/Finsical/pull/414) | `fix/getinfo-card-wrap` / `6f46bfb` | C25-09: Get Info card sized to its readings (no mid-label wrap) | Green / steady |
+
 Proof: #402's regression first kept only 10 of 20 successful concurrent writes;
 all 20 now survive, with replacement, removal/addition and abort recovery covered
 in CI. #403's two initial regressions failed on the healthy verdict/priority and
@@ -81,6 +104,29 @@ without changing life, water or doses. #405 originally ended at y=310 in a
 - #405: added `dvh` with old-WebKit fallback. Firefox scrollbar pixel fidelity,
   physical mobile URL-bar behavior and deliberately dragged partly-offscreen
   windows remain follow-ups; flow-only document content scrolls correctly.
+- #409: review twice pushed toward a monotonic `stomachSize` floor and a
+  two-sided clamp. Applied: bare `trunc(0.2×weight)` gave weight 5 a stomach of
+  1 (under a pellet's 3, and capacity that dipped as a fish grew), so the floor
+  is a real `max(2, …)`; the docstring states the trade-off. The clamp is
+  `[0, stomach]` on both ends — a negative `ate` from a corrupt save poisons
+  every fullness ratio. NaN is not clamped by `Math.min/max`; that threat model
+  was considered and left to `sanitizeLife` on load rather than added here.
+- #410: review asked for the object URL to be a named const (done) and for a
+  Firefox/Safari download check. The refactor also fixed a latent bug: the old
+  detached-anchor click is ignored by those engines, so Export Tank was
+  previously a no-op there. Only Chromium was verified locally.
+- #411: review's ordering and drop-guard points were applied (frontmost alert,
+  drop stands down behind a modal). Follow-ups applied too: `alertOpen()` now
+  reads the stack (one source of truth), a stacked close hands focus to the
+  alert beneath via a WeakMap rather than DOM order, and the drop cue
+  re-evaluates on every dragover so a mid-drag modal can't leave a stale cue.
+- #412/#414: review flagged that `pictureRect` caches depend on convention and
+  that `max-width` bounds the box not the text. Addressed by dropping the rects
+  on a CRT toggle, stating the invalidation contract in the comment, and
+  bounding the species line (with `overflow-wrap`) rather than the card.
+- macOS navigation policy (every non-http(s) scheme and all subframes allowed)
+  is a real cross-shell divergence, but open PR #310 already fixes it. Recorded,
+  not duplicated.
 
 ## Priority queue: correctness and responsive behavior
 
@@ -303,6 +349,8 @@ the action it actually performs. Preserve separate western/Japanese resources.
   and grabbable native frame restore. Quota failure must never say saved;
   monitor removal and repeated renderer failure must leave usable controls.
   Native claims are code-only locally; reproduce on the specified platform.
+  (PR #406 closes the spectator-tab half of owner gating; the native drop and
+  status work remains.)
 - **P-06/P-18/P-28/P-04 (RT-12), M:** compare 0/1/4-window traces, coalesce
   unchanged state, preserve focused nodes and stop unnecessary muted audio work.
   Bound decoded PCM, retain unlock/unmute behavior and report skipped records.
@@ -340,6 +388,114 @@ the action it actually performs. Preserve separate western/Japanese resources.
 The paw, snail, torch, golden food, startup parade, names and degauss already add
 novelty. Prefer care, ownership and observation to more default animated visitors.
 
+## C25 verified-but-unshipped findings (this pass; all reproduced or code-confirmed)
+
+These came out of the same review that produced #406–#414, are verified, and
+remain open. They are the natural next pickups.
+
+### C25-10 Plant chemistry gates are still unreachable (murk, gasping, food refusal)
+
+Medium impact, S. Adjacent to the shipped #407 (which restored the plant term).
+`syncLife` (`core/sim.ts:520`) computes `waterQuality` from O2 deficit and
+organics. O2 is pinned near saturation because the filter's `power` is a fixed
+constant nothing can change, and measured organics equilibrium is ~1.2 mg/L
+under sustained max feeding, while `MURK_ORGANICS` (`sim.ts:164`) needs ~3.5
+mg/L for quality to fall under `QUALITY_SEEK` (`tuning.ts:9`). So quality lives
+in ~[0.75, 1] and the murk render, gasping and `QUALITY_SEEK` food refusal are
+unreachable in practice.
+**Slice:** rescale `MURK_ORGANICS` to the reachable range and/or give the filter
+an on/off power state; decide which gates are meant to be live.
+**Acceptance:** a fouled tank visibly clouds and fish refuse/gasp per the
+documented rule; a clean planted tank does not.
+
+### C25-11 Filter ammonia efficiency is discontinuous at dirt 10 and 50
+
+Medium-low, S. `core/aquarium/aquarium.ts:173` changes coefficient at both
+joins: eff(9.99)=0.50% jumps to eff(10)=0.75%, and eff(50) falls to 2.50% from
+3.75%. `ORIGINAL-SIM.md` says efficiency "rises to a peak just under 50%, then
+declining" — the shape, but the cliff breaks it.
+**Slice:** make the descending limb continuous (same coefficient as the rise).
+**Acceptance:** the curve peaks smoothly near the documented dirt level and
+falls to zero when clogged.
+
+### C25-12 The sickness vitality knockdown is erased by the next age step
+
+Medium, S. `startSickness` (`core/aquarium/life.ts`) lowers `vitality` by the
+disease severity, but `stepAge` recomputes `l.vitality = vitalityAt(...)` every
+age step, wiping it within one grow step (~11–60 min) while the disease runs for
+weeks. Verified: vitality 50 → 41 on infection → back to the curve value after
+one `stepAge`.
+**Slice:** re-apply the active disease's severity factor after the curve while
+sick (or store the knockdown rather than mutating once).
+**Acceptance:** a sick fish's vitality reflects its disease until it recovers,
+matching `ORIGINAL-SIM.md`.
+
+### C25-13 `dead.at` is stamped at the catch-up chunk's end
+
+Low, S. `visit` adds `m` to `this.minutes` before fish routines
+(`aquarium.ts:134`) and a death stamps `dead.at = this.minutes` (`:335`), so a
+death anywhere inside a catch-up chunk gets the chunk's end. `syncLife`
+(`sim.ts:505`) picks "rise" vs "sunk" by `minutes - dead.at > 60`, making the
+corpse's look depend on the size of the absence rather than how long ago the
+fish died.
+**Slice:** stamp the chunk start (or the sub-step) instead.
+**Acceptance:** a fish that starves in a single-chunk gap still sinks like one
+that died weeks earlier.
+
+### C25-14 Mineral reading wraps to int16 (hard water reads negative)
+
+Low, S. `waterReadings` (`life.ts:218`) reproduces an original 16-bit truncation,
+`((trunc(ca+mg) << 16) >> 16) / L`: Ca+Mg = 500 mg/L reads as **−155 mg/L**, and
+totals between ~32 768 and 60 000 mg (reachable under the element ceilings) flip
+the sign, with a blind spot at exactly 655.36 mg/L. `changeWater`'s shock table
+(`aquarium.ts:385`) uses the un-wrapped value for the same quantity.
+**Slice:** clamp instead of wrap (or document the reachable range); use one
+value in both paths.
+**Acceptance:** extreme hardness does not read as far-below-minimum; the shock
+table and the reading agree.
+
+### C25-15 CO2 production constant looks like a digit slip of the O2 line
+
+Low, S. `breathe` (`aquarium.ts:256`): O2 use `∝ (T·0.0076 + 0.00496)/60 · W·0.096/L`;
+CO2 out `∝ (T·0.0076 + **0.0496**)/60 · W·0.096/20`. `0.0496` is exactly 10× the
+O2 line's `0.00496` and the `/20` vs `/L` divisor differs; at 26.5 °C a fish emits
+~6× more CO2 than O2 it consumes (physiologically ~1.4). Gameplay effect small;
+likely wrong against the original's Sim_Fish_In_Out.
+**Slice:** recheck the original constants; fix the slip and the divisor.
+**Acceptance:** CO2/O2 production ratio matches the reconstructed original.
+
+### C25-16 `resilience` is a write-only stat
+
+Low, S. `FishLife.resilience` is rolled, knocked down by disease severity,
+restored on cure and sanitized on load — no read site feeds damage, healing,
+contagion or recovery. Either a consumer was never ported (the original's
+resistance likely modulated sickness damage/recovery) or it is vestigial.
+**Slice:** wire it into `stepSickness` damage or cure odds per the original's
+semantics, or drop the field.
+**Acceptance:** the trait has a documented effect or is gone.
+
+### C25-17 The starter set's default backdrop reads as murky green
+
+Nit/idea, S. The starter set installs the JPN `Back03.bmp`
+(`web/starter.ts`), a dark saturated plant photo; in a live tank the foreground
+plant nearly dissolves into it and a new tank opens murkier than Finsical's own
+built-in gradient. The built-in default read noticeably better.
+**Slice:** reconsider the starter backdrop choice (or none) for first-run
+impression.
+**Acceptance:** a freshly stocked starter tank reads clearly. (Product/content
+call; the user can pick another background in Overview.)
+
+### C25-18 Browser menu bar lacks Mac OS 8 checkmarks and a shortcut column
+
+Nit/idea, M (upstream). `web/menubar.ts` titles toggles by the action they take
+("Turn Lamp Off") and shows no shortcut glyphs or checkmarks, because Osmium
+0.2's `MenuItem` has only `title`/`action` (`node_modules/osmium-ui/src/menubar.ts:20`).
+Mac OS 8 would show "Lamp On ✓" with a right-aligned ⌘-glyph column.
+**Slice:** extend `osmium-ui`'s `MenuItem` with optional `checked` and
+`shortcut` fields, then use them; the alternative is to accept the compromise.
+**Acceptance:** toggles show a checkmark and a shortcut glyph without breaking
+older Osmium consumers.
+
 ## Source boundaries and corrected historical claims
 
 Classic Mac AquaZone/Deluxe defines fidelity. Macworld's 2005 Seven Seas article,
@@ -356,7 +512,8 @@ features from a product title or Windows screenshot.
   and cap paths exist. Removed these from the current queue, preserving evidence
   in the historical document.
 - B-13 is partial: raw-file identities work, .azpack folders still need work.
-  B-34's lease works but owner-gating leftovers remain. B-30 cache bounds do not
-  prove installed archives can never be evicted.
+  B-34's lease works; its owner-gating leftovers (the spectator tab's welcome,
+  starter-sound backfill and drop writes) are fixed by PR #406. B-30 cache
+  bounds do not prove installed archives can never be evicted.
 - Earlier “Completed” records naming open PRs are historical work states, not
   assertions that their code shipped. Re-check current code before taking them on.
