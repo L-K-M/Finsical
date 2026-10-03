@@ -884,6 +884,7 @@ TANK_FUNCTIONS = frozenset(
         "toggleMute",
         "togglePause",
         "takePicture",
+        "save",
     }
 )
 

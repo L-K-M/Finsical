@@ -32,6 +32,9 @@
   field gets Mac OS 8.5's lavender ring instead of a black double
   ring that looked like a second default button. Tank Overview dims
   Empty Tank… when there is nothing to empty.
+- On Linux, quitting waits until the tank has saved. It could quit
+  before the save ran and lose up to a minute of the tank's life, the
+  fish's positions and hunger included.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's
@@ -74,6 +77,11 @@
   Debian 13, Ubuntu 24.04 or later; on older releases, use the Flatpak.
 - The Linux tarball's icons come in every size instead of one
   oversized image.
+- The favicon ships with the Linux and macOS builds too. Their web
+  roots were missing icon.svg, so every window asked for a file that
+  wasn't there.
+- On Android, changing the system font size no longer reloads the tank
+  and closes its panels.
 - Releases now publish themselves once every platform's download is
   attached and verified against its checksums — no manual step. Linux
   also ships as a portable tarball next to the .deb.

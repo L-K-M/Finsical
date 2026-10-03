@@ -2786,6 +2786,15 @@ const finsicalBridge = {
   // Returns the new flag, so the native menu retitles at once.
   togglePause: () => setPaused(!paused),
   toggleNames: () => setNames(!namesOn),
+  // Save now, on quit. Both native shells call this: the macOS shell
+  // from applicationShouldTerminate (WKWebView teardown never fires
+  // pagehide, so a quit would drop the tank's state since the last
+  // interval save) and the Linux shell's quit, whose wait on this
+  // call's reply is the only sure ordering — a hidden window's
+  // visibilitychange save is a queued task that a bare script's reply
+  // can beat. saveTank writes synchronous localStorage, so this
+  // call returning means the save already landed.
+  save: saveTank,
 };
 type FinsicalBridge = typeof finsicalBridge;
 declare global {
