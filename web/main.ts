@@ -384,8 +384,7 @@ function applyLighting(raw: unknown): void {
   if (lighting.lamp !== lampWas) audio.lampSwitch();
   syncLight(new Date());
   requestPaint(); // shows at once, even while no tick runs
-  try { localStorage.setItem(LIGHTING_KEY, JSON.stringify(lighting)); }
-  catch { /* storage unavailable */ }
+  savePreference(LIGHTING_KEY, JSON.stringify(lighting));
   postState();
 }
 const DEFAULT_FISH: (Partial<Fish> & { x: number; y: number })[] =
@@ -453,6 +452,12 @@ function runLife(): void {
 const claim = claimTank(() => location.reload()); // lease stolen
                                                   // mid-session
 const tankOwner = claim.owned;
+/** Local view controls may change; only the owner persists shared preferences. */
+function savePreference(key: string, value: string): void {
+  if (!tankOwner) return;
+  try { localStorage.setItem(key, value); }
+  catch { /* storage unavailable */ }
+}
 if (!tankOwner) {
   setInterval(() => { if (claim.ownerGone()) location.reload(); },
               1_500);
@@ -535,7 +540,7 @@ document.body.appendChild(tankFile);
 tankFile.addEventListener("change", () => {
   const f = tankFile.files?.[0];
   tankFile.value = ""; // picking the same file twice must re-fire
-  if (!f) return;
+  if (!f || !tankOwner) return;
   // A saved tank is a few KB of JSON; anything bigger isn't one, and
   // a huge file would freeze the tab in JSON.parse before parseTank
   // ever saw it.
@@ -1633,8 +1638,9 @@ async function handleSounds(
   await audio.addWavs(recs)
     .catch((e) => console.warn("sound decode skipped:", e));
   // Persist best-effort — a quota failure logs, never breaks import.
-  void sndsMerge(recs).catch((e) =>
-    console.warn("snd persist failed:", e));
+  if (tankOwner)
+    void sndsMerge(recs).catch((e) =>
+      console.warn("snd persist failed:", e));
   // The Add-to-Tank click and the file drop are gestures; a context
   // still locked at decode time must resume before the feedback plays.
   if (live) { audio.unlock(); audio.playImported(recs[0]!.name); }
@@ -1655,7 +1661,8 @@ const importPanel = mountImportPanel({
     if (bootT0 !== null) { paradeIcons.push(paradeIcon(it.section)); }
   },
   refuse: (it, fish) =>
-    fishRefusal(it.section, fish) ?? decorRefusal(decors, it),
+    !tankOwner ? "This copy of the tank is view only."
+      : fishRefusal(it.section, fish) ?? decorRefusal(decors, it),
   preview: previewOf,
 });
 
@@ -1962,7 +1969,8 @@ function onBusMessage(m: BusMsg): void {
     applyEffects(m.cfg);
   } else if (m.op === "machine" && typeof m.id === "string") {
     const nm = machineById(m.id);
-    if (nm && nm.id !== machine.id) { applyMachine(nm); postState(); }
+    // Selecting the displayed case must also cancel a pending replacement.
+    if (nm) applyMachine(nm);
   } else if (m.op === "soundsLoaded") {
     // The panel page dropped sound files into the shared IndexedDB
     // store — re-read it and decode just the records it names
@@ -2233,8 +2241,7 @@ function setPaused(on: boolean): boolean {
     // affordance would lag the state until the mouse next moved.
     syncFeedHover();
     requestPaint(); // the banner comes and goes without a tick
-    try { localStorage.setItem(PAUSE_KEY, on ? "1" : "0"); }
-    catch { /* storage unavailable — pause is session-only */ }
+    savePreference(PAUSE_KEY, on ? "1" : "0");
     postState();
   }
   return paused;
@@ -2258,8 +2265,7 @@ function setNames(on: boolean): boolean {
     if (!on) nameTags.clear();
     else fishTip.style.display = "none"; // the tags replace the tip
     requestPaint(); // tags follow the next render
-    try { localStorage.setItem(NAMES_KEY, on ? "1" : "0"); }
-    catch { /* storage unavailable — session-only */ }
+    savePreference(NAMES_KEY, on ? "1" : "0");
     postState();
   }
   return namesOn;
@@ -2289,8 +2295,7 @@ function setCrt(on: boolean): void {
   // rather than show black until the next tick.
   if (crtOn) requestPaint();
   if (crt !== null) {
-    try { localStorage.setItem(CRT_KEY, crtOn ? "1" : "0"); }
-    catch { /* storage unavailable */ }
+    savePreference(CRT_KEY, crtOn ? "1" : "0");
   }
   // Report even when GL is missing — the prefs checkbox needs the
   // "can't enable" answer either way.
@@ -2319,8 +2324,7 @@ function applyCrtConfig(raw: unknown): void {
   crtCfg = sanitizeCrtConfig(merged);
   crt?.configure(crtCfg);
   requestPaint(); // slider drags show up at once
-  try { localStorage.setItem(CRT_CFG_KEY, JSON.stringify(crtCfg)); }
-  catch { /* storage unavailable */ }
+  savePreference(CRT_CFG_KEY, JSON.stringify(crtCfg));
   postState();
 }
 // Machine selection is declared up here, not in the machine-case
@@ -2363,8 +2367,7 @@ function applySoundConfig(raw: unknown): void {
       if (v !== undefined) merged[k] = v;
   soundCfg = sanitizeSoundConfig(merged);
   configureAudio();
-  try { localStorage.setItem(SOUND_KEY, JSON.stringify(soundCfg)); }
-  catch { /* storage unavailable */ }
+  savePreference(SOUND_KEY, JSON.stringify(soundCfg));
   postState();
 }
 const toggleMute = (): void => {
@@ -2437,8 +2440,7 @@ function applyEffects(raw: unknown): void {
     pawNextAt = pawRevisitAt(sim.tickCount);
   }
   requestPaint(); // the change shows at once, even while paused
-  try { localStorage.setItem(EFFECTS_KEY, JSON.stringify(effects)); }
-  catch { /* storage unavailable */ }
+  savePreference(EFFECTS_KEY, JSON.stringify(effects));
   postState();
 }
 
@@ -2657,8 +2659,8 @@ function applyMachine(m: Machine): void {
     rearShellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
     rearShellEl.innerHTML = backgroundMarkup(m);
     layoutMachine();
-    try { localStorage.setItem(MACHINE_KEY, m.id); }
-    catch { /* storage unavailable */ }
+    savePreference(MACHINE_KEY, m.id);
+    postState(); // native geometry and the picker now describe the committed art
   });
 }
 window.addEventListener("resize", layoutMachine);
@@ -2754,8 +2756,7 @@ function feedFish(): void {
 function toggleAutoFeed(): void {
   audio.unlock(); // Tank ▸ Auto-Feed can be the first gesture
   autoFeed = !autoFeed;
-  try { localStorage.setItem(AUTOFEED_KEY, autoFeed ? "1" : "0"); }
-  catch { /* storage unavailable */ }
+  savePreference(AUTOFEED_KEY, autoFeed ? "1" : "0");
   postState();
 }
 function feederDrop(): void {
@@ -2843,8 +2844,7 @@ function changeWater(cfg: Partial<WaterChange> = {}): void {
   const t = typeof cfg.temp === "number" && Number.isFinite(cfg.temp)
     ? Math.min(36, Math.max(16, cfg.temp)) : waterChangeCfg.temp;
   waterChangeCfg = { fraction: f, temp: t };
-  try { localStorage.setItem(CHANGE_KEY, JSON.stringify(waterChangeCfg)); }
-  catch { /* storage unavailable */ }
+  savePreference(CHANGE_KEY, JSON.stringify(waterChangeCfg));
   sim.changeWater(f, t);
   collectEvents();
   audio.changeWater();
@@ -3037,18 +3037,15 @@ mountTankMenuBar({
     // taps counted before "off" would otherwise complete the moment
     // the sign comes back on inside the 8 s window.
     if (!scoldOn) glassTaps = [];
-    try { localStorage.setItem(SCOLD_KEY, scoldOn ? "on" : "off"); }
-    catch { /* storage unavailable */ }
+    savePreference(SCOLD_KEY, scoldOn ? "on" : "off");
   },
   toggleHints: () => {
     hintsOn = !hintsOn;
-    try { localStorage.setItem(HINTS_KEY, hintsOn ? "on" : "off"); }
-    catch { /* storage unavailable */ }
+    savePreference(HINTS_KEY, hintsOn ? "on" : "off");
   },
   toggleBoot: () => {
     bootEnabled = !bootEnabled;
-    try { localStorage.setItem(BOOT_KEY, bootEnabled ? "on" : "off"); }
-    catch { /* storage unavailable */ }
+    savePreference(BOOT_KEY, bootEnabled ? "on" : "off");
   },
   state: () => ({ autoFeed, crtUsable: crt?.usable ?? false, crtOn,
                   lampOn: lighting.lamp, muted: soundCfg.muted, paused,
@@ -3186,7 +3183,7 @@ async function walkEntry(ent: FileSystemEntry, prefix: string,
 // counter — not the events alone — owns the class. A modal alert or
 // document window stands down: nothing under it may act, so the cue
 // must not promise a drop that will be ignored.
-const dropAllowed = (): boolean => !alertOpen() && !docOpen();
+const dropAllowed = (): boolean => tankOwner && !alertOpen() && !docOpen();
 let dragDepth = 0;
 const setDragging = (on: boolean): void => {
   document.body.classList.toggle("dragging", on);
