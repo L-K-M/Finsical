@@ -1,5 +1,7 @@
 import { openBus, TANK_QUIET_MS } from "./bus.js";
-import { COLUMNS, itemsOf, sortItems, summary } from "./overviewmodel.js";
+import type { BusMsg } from "./bus.js";
+import { COLUMNS, isCurrentTankAction, itemsOf, sortItems,
+         summary } from "./overviewmodel.js";
 import type { Column, Item, TankState } from "./overviewmodel.js";
 import { centerText, hostWindow, mountList, pushButton } from "osmium-ui";
 import { alertOpen, showAlert } from "./alert.js";
@@ -83,6 +85,7 @@ const bus = openBus((m) => {
       tankBoot = m.boot;
       thumbRequested.clear();
       lastStructure = "";
+      disarmEmpty();
     }
     tankState = m;
     // Emptied some other way (Remove, another window): nothing is left
@@ -97,6 +100,12 @@ const bus = openBus((m) => {
     paintThumbs();
   }
 });
+
+function postTankMutation(intent: BusMsg,
+                          actionBoot: string | undefined): void {
+  if (typeof actionBoot === "string")
+    bus.post({ ...intent, boot: actionBoot });
+}
 
 hostWindow(document.getElementById("owin")!, {
   title: "Tank Overview",
@@ -172,6 +181,8 @@ function syncRemove(): void {
   useBtn.hidden = fishRow;
   renameBtn.disabled = tankGone || it?.fishId === undefined;
   useBtn.disabled = tankGone || !it?.use;
+  // Dimmed with nothing to empty, as the Finder dims Empty Trash….
+  emptyBtn.disabled = tankGone || !tankItems();
 }
 // A double-click's second press lands before the tank's state push
 // moves the selection, so without a floor one gesture could remove
@@ -181,6 +192,10 @@ const REMOVE_FLOOR_MS = 500;
 let lastRemovedAt = -Infinity;
 let statusTimer = 0;
 const removeSelected = (): void => {
+  // The same guard Rename takes: on a tank that is gone (or behind a
+  // modal) the post goes nowhere and the row stays, so announcing
+  // "Removed" would be a lie the live region reads out loud.
+  if (tankGone || alertOpen()) return;
   const it = items[list.selected];
   if (!it) return;
 
@@ -196,7 +211,7 @@ const removeSelected = (): void => {
   statusTimer = window.setTimeout(() => {
     removeStatus.textContent = `Removed ${it.name}.`;
   }, 0);
-  bus.post(it.remove);
+  postTankMutation(it.remove, tankBoot);
 };
 pushButton(removeBtn, removeSelected);
 
@@ -207,6 +222,7 @@ const renameSelected = (): void => {
   const id = items[list.selected]?.fishId;
   const f = tankState?.fish?.find((x) => x.id === id);
   if (!f || tankGone || alertOpen()) return;
+  const renameBoot = tankBoot;
   const species = f.species || "Fish";
   showAlert({
     icon: "note",
@@ -217,7 +233,12 @@ const renameSelected = (): void => {
     buttons: [
       { title: "Cancel", cancel: true },
       { title: "Rename", default: true, action: (a) => {
-        bus.post({ op: "renameFish", id: f.id, name: a.value });
+        if (!isCurrentTankAction(tankGone, renameBoot, tankBoot)) {
+          a.close();
+          return;
+        }
+        postTankMutation({ op: "renameFish", id: f.id, name: a.value },
+                         renameBoot);
         a.close();
       } },
     ],
@@ -228,7 +249,7 @@ pushButton(renameBtn, renameSelected);
 // the next state push re-tags the rows "Showing"/"In tank".
 pushButton(useBtn, () => {
   const it = items[list.selected];
-  if (it?.use) bus.post(it.use);
+  if (!tankGone && it?.use) postTankMutation(it.use, tankBoot);
 });
 // The danger action: every fish and add-on leaves the tank. Kept
 // stateless — the next state push just lists an empty tank. Confirm
@@ -237,18 +258,22 @@ pushButton(useBtn, () => {
 // shell included) — a two-click arm works everywhere.
 let emptyArmTimer = 0;
 let emptyArmedAt = 0;
-const disarmEmpty = (): void => {
+let emptyArmBoot: string | undefined;
+function disarmEmpty(): void {
   window.clearTimeout(emptyArmTimer);
+  emptyArmBoot = undefined;
   delete emptyBtn.dataset.armed;
   emptyBtn.textContent = "Empty Tank…";
-};
+}
 const tankItems = (): number =>
   (tankState?.fish ?? []).length + (tankState?.addons ?? []).length;
 pushButton(emptyBtn, () => {
+  if (tankGone) { disarmEmpty(); return; }
   if (!tankItems()) { disarmEmpty(); return; }
   if (emptyBtn.dataset.armed !== "1") {
     emptyBtn.dataset.armed = "1";
     emptyBtn.textContent = "Really empty?";
+    emptyArmBoot = tankBoot;
     emptyArmedAt = performance.now();
     emptyArmTimer = window.setTimeout(disarmEmpty, 4000);
     return;
@@ -256,8 +281,13 @@ pushButton(emptyBtn, () => {
   // A double-click would confirm within milliseconds of arming —
   // that's an accident, not a decision. Require a beat between.
   if (performance.now() - emptyArmedAt < 350) return;
+  const armedBoot = emptyArmBoot;
+  if (!isCurrentTankAction(tankGone, armedBoot, tankBoot)) {
+    disarmEmpty();
+    return;
+  }
   disarmEmpty();
-  bus.post({ op: "emptyTank" });
+  postTankMutation({ op: "emptyTank" }, armedBoot);
 });
 // Delete (or Command-Delete, the Finder's Move to Trash) removes the
 // selected line, like the button. Auto-repeat is ignored so a held key
@@ -402,6 +432,7 @@ setInterval(() => {
   if (!greeted || tankGone ||
       Date.now() - lastStateAt <= TANK_QUIET_MS) return;
   tankGone = true;
+  disarmEmpty();
   summaryEl.textContent = "Waiting for the tank…";
   centerText(summaryEl);
   listEl.classList.add("osm-dimmed");

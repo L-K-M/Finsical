@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { alertOrigin, alertWidth, focusStep } from "./alert.js";
+import { alertOrigin, alertOriginIn, alertWidth, focusStep }
+  from "./alert.js";
 
 describe("alertWidth", () => {
   it("is the standard width in a roomy window", () => {
@@ -27,6 +28,40 @@ describe("alertOrigin", () => {
 
   it("keeps the top edge on screen when the alert is taller", () => {
     expect(alertOrigin(330, 100, 314, 200).top).toBe(8);
+  });
+});
+
+describe("alertOriginIn", () => {
+  // The tank page places alerts inside the machine case's screen, so
+  // an alert narrower than the case's tank still centers on it and a
+  // standard-width alert narrows instead of overhanging the monitor.
+  it("centers on the box, not the viewport", () => {
+    // A 320-wide screen at x 352 in a 1024 viewport: a 304-wide alert
+    // centers on the screen, 8 px in from its edge after the width
+    // clamp narrowed it (alertWidth(320) = 304 keeps EDGE=8).
+    expect(alertOriginIn({ left: 352, top: 148, width: 320, height: 200 },
+                         304, 120))
+      .toEqual({ left: 360, top: 148 + Math.max(8, Math.floor(80 / 3)) });
+  });
+
+  it("keeps the top edge EDGE inside the box when the alert is taller",
+     () => {
+    expect(alertOriginIn({ left: 100, top: 50, width: 300, height: 90 },
+                         280, 200).top).toBe(58);
+  });
+
+  it("never slides left of the box", () => {
+    expect(alertOriginIn({ left: 352, top: 148, width: 300, height: 200 },
+                         340, 100).left).toBe(352);
+  });
+
+  it("floors a fractional box origin, keeping the text on whole pixels",
+     () => {
+    const p = alertOriginIn(
+      { left: 352.5, top: 148.25, width: 320, height: 200 }, 304, 100);
+    expect(Number.isInteger(p.left)).toBe(true);
+    expect(Number.isInteger(p.top)).toBe(true);
+    expect(p.left).toBe(360);
   });
 });
 

@@ -10,6 +10,16 @@ export interface Bus { post(m: BusMsg): void }
  * what "connected" means. */
 export const TANK_QUIET_MS = 6000;
 
+const TANK_MUTATION_OPS = new Set([
+  "renameFish", "removeFish", "removeAddon", "useAddon", "emptyTank",
+]);
+
+/** Mutations must name the tank state that authorized them. */
+export function acceptsTankIntent(m: BusMsg, boot: string): boolean {
+  const op = typeof m.op === "string" ? m.op : "";
+  return !TANK_MUTATION_OPS.has(op) || m.boot === boot;
+}
+
 type WkHandlers = { finsical?: { postMessage(m: unknown): void } };
 declare global {
   interface Window { __bus?: (m: BusMsg) => void }
