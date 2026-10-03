@@ -160,7 +160,10 @@ def _install_emitted(emit_into: Callable[[str], object],
         if os.path.exists(backup):
             # A failed rollback leaves `out` absent — the parked copy
             # is the only one, and needs moving back by hand.
-            missing = "" if os.path.exists(out) else f" ({out} is missing)"
+            missing = (
+                "" if os.path.exists(out)
+                else f" ({out} is missing — the parked copy is the"
+                     " only one)")
             print(f"  prior bundle parked at {backup}{missing}",
                   file=sys.stderr)
         else:

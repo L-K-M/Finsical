@@ -378,7 +378,7 @@ class TestHarvest(unittest.TestCase):
         self.assertTrue(os.path.isfile(
             os.path.join(self.out, parked[0], "old", "manifest.json")))
         self.assertIn(parked[0], err.getvalue())
-        self.assertIn("missing", err.getvalue())
+        self.assertIn("is missing", err.getvalue())
 
     def test_failed_sounds_emit_keeps_the_earlier_bundle(self):
         # The sounds emitter gets the same staged publish: a corrupt
