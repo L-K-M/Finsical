@@ -7,6 +7,13 @@ class IsoError(ValueError):
     """An ISO image that is malformed, truncated or extends past its file."""
 
 
+# Directory depth a walk() will descend before calling the image
+# malformed. ISO9660 proper caps nesting at 8, but loose mastering and
+# extension schemes go deeper; the cap exists to turn a hostile chain
+# of nested records into IsoError, not a raw RecursionError.
+_MAX_WALK_DEPTH = 128
+
+
 class Iso:
     def __init__(self, path):
         self.f = open(path, 'rb')
@@ -96,7 +103,7 @@ class Iso:
     def read_file(self, rec):
         return self._read(rec['extent'], rec['size'])
 
-    def walk(self, rec=None, prefix='', seen=None):
+    def walk(self, rec=None, prefix='', seen=None, depth=0):
         seen = set() if seen is None else seen
         for r in self.listdir(rec):
             if r['dir']:
@@ -106,7 +113,9 @@ class Iso:
             p = prefix + '/' + r['name']
             yield p, r
             if r['dir']:
-                yield from self.walk(r, p, seen)
+                if depth >= _MAX_WALK_DEPTH:
+                    raise IsoError('directory tree nested too deeply')
+                yield from self.walk(r, p, seen, depth + 1)
 
     def close(self):
         self.f.close()

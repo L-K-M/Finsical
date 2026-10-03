@@ -151,6 +151,33 @@ class TestIsoGuards(unittest.TestCase):
                         iso._dir_record(
                             rec + b"\x22" + bytes(padlen - 1), len(rec))
 
+    def test_rejects_a_directory_tree_past_the_walk_cap(self):
+        # A hostile image can chain directory records arbitrarily deep;
+        # the walk must end it in IsoError, not a raw RecursionError.
+        depth = 140
+        img = bytearray(SECTOR * (17 + depth))
+        pvd = bytearray(SECTOR)
+        pvd[0] = 1
+        pvd[1:6] = b'CD001'
+        pvd[156:156 + 34] = _dir_record(17, SECTOR, b'\x00', True)
+        img[16 * SECTOR:17 * SECTOR] = pvd
+        for level in range(depth):
+            ext = 17 + level
+            sector = bytearray(SECTOR)
+            off = 0
+            recs = [_dir_record(ext, SECTOR, b'\x00', True),
+                    _dir_record(17, SECTOR, b'\x01', True)]
+            if level < depth - 1:
+                recs.append(_dir_record(ext + 1, SECTOR, b'SUB;1', True))
+            for rec in recs:
+                sector[off:off + len(rec)] = rec
+                off += len(rec)
+            img[ext * SECTOR:(ext + 1) * SECTOR] = sector
+        path = self.write(bytes(img))
+        with Iso(path) as iso:
+            with self.assertRaises(IsoError):
+                list(iso.walk())
+
 
 class TestOFlags(unittest.TestCase):
     def test_iso_guard_survives_python_dash_O(self):
