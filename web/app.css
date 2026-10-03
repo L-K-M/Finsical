@@ -151,8 +151,10 @@ body.crt canvas#tank { opacity: 0; }
   /* As wide as its readings need, so "Health 81%  Hunger 100%" stays on
      one line: a fixed 118px box broke the line between the label and
      its number. min-width keeps the card's box when a fish has only a
-     name, max-width stops a long species name running off the glass. */
-  width: max-content; min-width: 118px; max-width: 220px;
+     name. No max-width here: the readings below must not wrap, and a
+     clamp would let them paint past the border. The species line is
+     what can be long, and it carries the cap instead. */
+  width: max-content; min-width: 118px;
   background: #fff; border: 1px solid #000;
   box-shadow: 1px 1px 0 rgba(0, 0, 0, .3);
   font: var(--osm-font-small); line-height: 12px;
@@ -193,8 +195,10 @@ body.crt canvas#tank { opacity: 0; }
 }
 .finedit:focus { outline: none; }
 /* Health and mood are one short fact each ("Health 81%  Hunger 100%",
-   "Swimming, peckish"): keep them on one line. The kind line above is
-   a species name and may wrap, so it is left alone. */
+   "Swimming, peckish"): keep them on one line. The species line above
+   is the only one that can be long, so it is the one that wraps — at
+   this width, well inside the glass. */
+.finbody > div:first-child { max-width: 260px; }
 .finbody > div:not(:first-child) { white-space: nowrap; }
 .finbody { padding: 2px 6px 5px; }
 
