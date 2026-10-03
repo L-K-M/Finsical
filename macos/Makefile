@@ -37,6 +37,7 @@ $(APP): bundle $(SOURCES) Info.plist Finsical.icns \
 	cp ../core/data/mace.ts $(APP).staging/Contents/Resources/core/data/
 	cp ../web/index.html ../web/overview.html ../web/addons.html \
 	   ../web/prefs.html ../web/stats.html ../web/app.css \
+	   ../web/icon.svg \
 	   $(OSMIUM)/osmium.css \
 	   ../dist/bundle.js ../dist/overview.js ../dist/addons.js \
 	   ../dist/prefs.js ../dist/stats.js \
