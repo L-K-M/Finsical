@@ -2958,14 +2958,17 @@ async function walkEntry(ent: FileSystemEntry, prefix: string,
 }
 // Drop cue: while files hover the window, the glass shows a dashed
 // frame and a hint. dragenter/dragleave nest per element, so a depth
-// counter — not the events alone — owns the class.
+// counter — not the events alone — owns the class. A modal alert or
+// document window stands down: nothing under it may act, so the cue
+// must not promise a drop that will be ignored.
+const dropAllowed = (): boolean => !alertOpen() && !docOpen();
 let dragDepth = 0;
 const setDragging = (on: boolean): void => {
   document.body.classList.toggle("dragging", on);
 };
 window.addEventListener("dragenter", (e) => {
   if (!e.dataTransfer?.types.includes("Files")) return;
-  if (++dragDepth === 1) setDragging(true);
+  if (++dragDepth === 1) setDragging(dropAllowed());
 });
 window.addEventListener("dragleave", (e) => {
   if (!e.dataTransfer?.types.includes("Files")) return;
@@ -2973,7 +2976,13 @@ window.addEventListener("dragleave", (e) => {
 });
 // Capture phase here too: a descendant that swallows dragover would
 // keep dropEffect at "none" and the drop event would never fire.
-window.addEventListener("dragover", (e) => e.preventDefault(), true);
+// preventDefault() must stay so the drop still arrives (and is then
+// ignored by the guarded handler); dropEffect says "none" under a
+// modal so the cursor greys out.
+window.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  if (e.dataTransfer && !dropAllowed()) e.dataTransfer.dropEffect = "none";
+}, true);
 // Capture phase: a drop ends the drag without a leave event, and a
 // descendant handler that stops propagation must not strand the cue —
 // nor let the browser navigate away to the dropped file.
@@ -3011,7 +3020,7 @@ window.addEventListener("drop", (e) => {
   // A modal alert or document window owns the page: the scrim stops
   // taps, so a drop must stand down too, or files import behind the
   // scrim while its feedback paints under it.
-  if (alertOpen() || docOpen()) return;
+  if (!dropAllowed()) return;
   // A drop is a gesture — wake audio now so the install feedback can
   // still answer it once the (async) decode finishes.
   audio.unlock();

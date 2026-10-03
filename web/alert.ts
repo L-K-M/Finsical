@@ -76,18 +76,18 @@ export function alertOrigin(vw: number, vh: number, w: number,
 }
 
 let registered = false;
-let openCount = 0;
 /** The open alerts, oldest first. `bindDialogKeys` adds one window
  * keydown listener per button set and the first to match eats the key
  * (`preventDefault`), so a stacked pair would answer whichever was
  * raised first. Only the frontmost alert may claim Return and Escape —
- * the one the Dialog Manager would act on. */
+ * the one the Dialog Manager would act on. The stack doubles as the
+ * open count, so the two can't drift. */
 const stack: Alert[] = [];
-const frontmost = (a: Alert): boolean => stack[stack.length - 1] === a;
+const frontmost = (): Alert | undefined => stack[stack.length - 1];
 
 /** True while any alert is up: the tank ignores taps meanwhile. */
 export function alertOpen(): boolean {
-  return openCount > 0;
+  return stack.length > 0;
 }
 
 /** Where Tab moves focus among `n` buttons from index `i` (-1: none of
@@ -250,7 +250,7 @@ export function showAlert(spec: AlertSpec): Alert {
         bindDialogKeys(ok, cancel, {
           ok: () => ok?.click(),
           cancel: () => cancel?.click(),
-          active: () => open && frontmost(alert),
+          active: () => open && frontmost() === alert,
         });
       }
       if (open) place();
@@ -262,19 +262,29 @@ export function showAlert(spec: AlertSpec): Alert {
     close() {
       if (!open) return;
       open = false;
-      openCount--;
       const at = stack.indexOf(alert);
       if (at >= 0) stack.splice(at, 1);
       ro.disconnect();
       window.removeEventListener("resize", place);
       scrim.remove();
-      if (opener?.isConnected) opener.focus({ preventScroll: true });
+      // Closing a stacked alert leaves the one beneath on screen, so
+      // hand the keyboard to it rather than dropping focus behind the
+      // scrim; with nothing left, restore whatever had it before.
+      const below = frontmost();
+      if (below) {
+        // The remaining alert took focus when it opened; hand it back
+        // rather than dropping the keyboard behind the scrim.
+        const win2 = [...document.querySelectorAll<HTMLElement>(".alertwin")]
+          .pop();
+        win2?.focus({ preventScroll: true });
+      } else if (opener?.isConnected) {
+        opener.focus({ preventScroll: true });
+      }
     },
     get isOpen() { return open; },
     get value() { return field.hidden ? "" : field.value; },
   };
 
-  openCount++;
   stack.push(alert);
   document.body.append(scrim);
   alert.update(spec);
