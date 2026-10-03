@@ -240,6 +240,45 @@ class TestHarvest(unittest.TestCase):
         _harvest("one.zip", buf.getvalue(), self.out)
         self.assertFalse(os.path.exists(stale))
 
+    def test_unimportable_source_keeps_earlier_bundles(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("a/fish.fsh", fake_pack(bmp_8bit()))
+            z.writestr("b/fish.fsh", fake_pack(bmp_8bit()))
+        _harvest("two.zip", buf.getvalue(), self.out)
+        base = os.path.join(self.out, "fish.azpack")
+        stale = os.path.join(self.out, "fish-2.azpack")
+        self.assertTrue(os.path.isdir(base))
+        self.assertTrue(os.path.isdir(stale))
+        tools.fetch._EMITTED.clear()  # simulate a second process run
+        # A later run meets a same-named source it cannot import: the
+        # earlier bundles must survive. Cleaning numbered siblings before
+        # the data proves importable destroyed the previous good result.
+        self.assertIsNone(
+            _emit_source("fish.bin", b"not importable", self.out))
+        self.assertTrue(os.path.isdir(base))
+        self.assertTrue(os.path.isdir(stale))
+
+    def test_stale_sweep_reaches_past_a_gap(self):
+        base = _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out)
+        gap = os.path.join(self.out, "fish-3.azpack")
+        os.makedirs(gap)  # a leftover -3 with no -2 beside it
+        tools.fetch._EMITTED.clear()
+        again = _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out)
+        self.assertEqual(again, base)
+        self.assertFalse(os.path.exists(gap))
+        # Emit once more without clearing _EMITTED: this run lands on
+        # fish-2.azpack, so the sweep must spare the numbered bundle it
+        # just wrote (finish() registers before sweeping) while still
+        # cleaning the orphan behind it.
+        os.makedirs(gap)
+        numbered = _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out)
+        self.assertEqual(numbered,
+                         os.path.join(self.out, "fish-2.azpack"))
+        self.assertTrue(os.path.isdir(numbered))
+        self.assertTrue(os.path.isdir(base))
+        self.assertFalse(os.path.exists(gap))
+
     def test_cached_get_reuse_and_part_cleanup(self):
         path = os.path.join(self.out, "a.zip")
 

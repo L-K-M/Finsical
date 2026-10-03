@@ -863,8 +863,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
            let url = action.request.url,
            url.scheme == "http" || url.scheme == "https" {
             if !NSWorkspace.shared.open(url) {
-                NSLog("Finsical: failed to hand off URL to browser: \(url)")
+                NSLog("Finsical: failed to hand off URL to browser: %@",
+                      url.absoluteString)
             }
+            decisionHandler(.cancel)
+            return
+        }
+        // A dropped file or a stray blob:/data: anchor targets the main
+        // frame: WebKit's default is to load it, and the borderless Mac
+        // OS 8 window has no drawn way back — the webview stays broken
+        // until relaunch. Only the app's own pages may replace the frame.
+        // A real click is different: external links (the bundled pages
+        // use _blank, but a same-frame target or a mailto: would land
+        // here) belong in the default browser, not a dead click — the
+        // scheme allowlist keeps a file:/data: click just as dead.
+        // Drops and programmatic loads arrive as .other and stay
+        // blocked.
+        if action.targetFrame?.isMainFrame == true,
+           action.request.url?.scheme?.lowercased()
+               != WebHandler.scheme {
+            if action.navigationType == .linkActivated,
+               let url = action.request.url,
+               ["http", "https", "mailto"]
+                   .contains(url.scheme?.lowercased() ?? "") {
+                NSWorkspace.shared.open(url)
+            }
+            // The URL is untrusted input: as NSLog's argument, not
+            // part of its format string, a % specifier in it stays text.
+            NSLog("Finsical: blocked main-frame navigation to %@",
+                  action.request.url?.absoluteString ?? "nil")
             decisionHandler(.cancel)
             return
         }
@@ -1038,6 +1065,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         window.contentAspectRatio = NSSize(width: 320, height: 200)
         window.contentView = webView
         window.delegate = self
+        // Termination outlives the close now: applicationShouldTerminate
+        // still needs the webview alive long enough to run the page's
+        // last save.
+        window.isReleasedWhenClosed = false
         window.initialFirstResponder = webView // bare keys (F/C) hit the page
         // No traffic lights on the tank — the buttons are pointless for a
         // floating window, and everything lives in the menu. The behaviors
@@ -1074,6 +1105,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
                 smokeExit(["smoke": "timed out"], 3)
             }
         }
+    }
+
+    /// Cmd-Q or a window close used to tear the webview's content
+    /// process down mid-flight — and WKWebView teardown never fires
+    /// pagehide or visibilitychange, so everything since the tank's
+    /// last interval save was lost. Buy the page a beat: run its save
+    /// by hand, then allow the quit; a wedged page gets at most a
+    /// grace period rather than holding the quit hostage.
+    func applicationShouldTerminate(_ app: NSApplication)
+        -> NSApplication.TerminateReply {
+        // No webview yet (quit before the tank loaded) — nothing to
+        // save, so don't make the quit wait on a timer.
+        guard let webView else { return .terminateNow }
+        guard !quitStarted else { return .terminateLater }
+        quitStarted = true
+        webView.evaluateJavaScript("window.finsical?.save?.()") {
+            [weak self] _, _ in self?.replyToQuit()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            [weak self] in self?.replyToQuit()
+        }
+        return .terminateLater
+    }
+
+    private var quitStarted = false
+    private var quitReplied = false
+    /// reply(toApplicationShouldTerminate:) may only be sent once —
+    /// the JS completion and the grace timer race, so first wins.
+    private func replyToQuit() {
+        guard !quitReplied else { return }
+        quitReplied = true
+        NSApp.reply(toApplicationShouldTerminate: true)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }

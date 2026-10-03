@@ -53,6 +53,43 @@ describe("standalone web build", () => {
     }
   });
 
+  it("ships the favicon in every native package's web payload", () => {
+    // The packagers hand-maintain their file lists next to the build
+    // script's copy list; icon.svg went missing from all three when the
+    // favicon landed, so every Linux and macOS page asked for a file
+    // their web root did not have. Read the lists, not the file names.
+    const lists = ["linux/build-deb.sh", "linux/build-tarball.sh"]
+      .map((file) => {
+        const src = readFileSync(join(root, file), "utf8");
+        const list = /readonly WEB_FILES=\(([\s\S]*?)\)/.exec(src)?.[1];
+        expect(list, `${file} WEB_FILES`).toBeTruthy();
+        const names = list.trim().split(/\s+/);
+        expect(names, file).toContain("icon.svg");
+        return names;
+      });
+    // build-tarball.sh ships "the same web payload" as build-deb.sh;
+    // hold the two hand-maintained lists to that promise.
+    expect(lists[1], "tarball WEB_FILES").toEqual(lists[0]);
+    const makefile = readFileSync(join(root, "macos/Makefile"), "utf8");
+    // Take the whole logical cp command: its continuation lines end in
+    // a backslash, the last does not. Extracting only up to a marker
+    // inside the command would hide files listed after it and could be
+    // satisfied by an unrelated mention elsewhere in the file.
+    const lines = makefile.split("\n");
+    const start = lines.findIndex((l) => l.includes("cp ../web/index.html"));
+    expect(start, "macOS staging cp").toBeGreaterThanOrEqual(0);
+    let cp = "";
+    for (let i = start; i < lines.length; i++) {
+      cp += lines[i] + "\n";
+      if (!lines[i].endsWith("\\")) break;
+    }
+    // Keep the Makefile's hand-maintained list in sync with WEB_FILES:
+    // every basename must appear in the staging cp (osmium.css arrives
+    // as $(OSMIUM)/osmium.css, so basename containment still holds).
+    for (const f of lists[0])
+      expect(cp, `macOS cp ships ${f}`).toContain(f);
+  });
+
   it("keeps the MACE LGPL notice in every bundle that ships the decoder", () => {
     // The /*! legal comment in core/data/mace.ts is the shipped LGPL
     // notice; esbuild drops /* comments, so one character or a
