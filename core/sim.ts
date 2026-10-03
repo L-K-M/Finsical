@@ -439,9 +439,23 @@ export class Sim {
 
   constructor(tank: Tank, seed = 1) {
     this.tank = tank;
+    this.seed = seed;
     this.rand = makeRng(seed);
     this.zRand = makeRng(seed ^ 0x2de9);
     this.aquarium = new Aquarium(makeRng(seed ^ 0x5eed));
+  }
+
+  /** The seed the streams derive from, so a restore can rebuild the
+   * aquarium's stream the way the constructor did (see restoreAquarium). */
+  private readonly seed: number;
+
+  /** Install a saved aquarium on the sim's own seeded stream — the
+   * same derivation the constructor uses — so a restored tank keeps
+   * the ?seed= replay pin. Restoring on Math.random here broke it:
+   * the life model's rolls (shock sickness, contagion, cures, birth
+   * mutations) diverged between identical seeded launches. */
+  restoreAquarium(raw: unknown): void {
+    this.aquarium = Aquarium.fromJSON(raw, makeRng(this.seed ^ 0x5eed));
   }
 
   /** Advance the aquarium's clock by real seconds (at its speed) and
