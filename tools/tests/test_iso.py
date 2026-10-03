@@ -1,6 +1,8 @@
 """Tests for the minimal ISO9660 reader and its untrusted-input guards."""
 import os
 import struct
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -101,6 +103,73 @@ class TestIsoGuards(unittest.TestCase):
                 with self.subTest(name=name):
                     with self.assertRaises(IsoError):
                         iso._dir_record(_dir_record(18, 4, name), 0)
+
+    def test_rejects_dot_names_hiding_behind_a_version(self):
+        # walk() uses the identifier after the ;version split, so the
+        # unsafe-name check must judge that form: raw '.;1' is not all
+        # dots, yet decodes to '.' and would land a bare '..' in the
+        # accumulated paths.
+        path = self.write(build_iso())
+        with Iso(path) as iso:
+            for name in (b".;1", b"..;1", b";1"):
+                with self.subTest(name=name):
+                    with self.assertRaises(IsoError):
+                        iso._dir_record(_dir_record(18, 4, name), 0)
+
+    def test_keeps_the_single_byte_self_and_parent_names(self):
+        # The real '.'/'..' records are the single bytes \x00/\x01 —
+        # the identifier check must not read them as bare dot names.
+        path = self.write(build_iso())
+        with Iso(path) as iso:
+            self.assertEqual(
+                iso._dir_record(
+                    _dir_record(17, SECTOR, b"\x00", True), 0)["name"],
+                ".")
+            self.assertEqual(
+                iso._dir_record(
+                    _dir_record(17, SECTOR, b"\x01", True), 0)["name"],
+                "..")
+
+    def test_zero_padding_short_of_a_record_is_still_padding(self):
+        # ISO pads a directory sector's tail with zeros; a zero length
+        # byte ends the records however few bytes remain. Reading the
+        # 34-byte minimum first would misread 1-33 bytes of real
+        # padding as a truncated record.
+        path = self.write(build_iso())
+        rec = _dir_record(18, 4, b"FILE.BIN;1")
+        with Iso(path) as iso:
+            for padlen in (1, 20, 33):
+                with self.subTest(padlen=padlen):
+                    self.assertIsNone(
+                        iso._dir_record(rec + bytes(padlen), len(rec)))
+                    # A nonzero byte in the same tail is still no
+                    # record at all — the size guard must keep biting.
+                    with self.assertRaises(IsoError):
+                        iso._dir_record(
+                            rec + b"\x22" + bytes(padlen - 1), len(rec))
+
+
+class TestOFlags(unittest.TestCase):
+    def test_iso_guard_survives_python_dash_O(self):
+        # The constructor's CD001 check must be a raise, not an
+        # assert, or -O builds an Iso on a garbage volume descriptor.
+        code = (
+            "import os, tempfile\n"
+            "from tools.az.iso9660 import Iso\n"
+            "fd, path = tempfile.mkstemp()\n"
+            "os.write(fd, b'not a disc' * 4096)\n"
+            "os.close(fd)\n"
+            "try:\n"
+            "    Iso(path)\n"
+            "except Exception as e:\n"
+            "    print(type(e).__name__)\n"
+            "os.unlink(path)\n")
+        out = subprocess.run(
+            [sys.executable, "-O", "-c", code],
+            cwd=os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))),
+            capture_output=True, text=True, check=True, timeout=30)
+        self.assertIn("IsoError", out.stdout)
 
 
 if __name__ == "__main__":

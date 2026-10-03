@@ -29,11 +29,17 @@ class Iso:
             raise
 
     def _dir_record(self, buf, off):
-        if off + 34 > len(buf):
+        if off >= len(buf):
             raise IsoError('directory record overruns its buffer')
         ln = buf[off]
+        # A zero length byte ends a sector's records — the bytes left
+        # are zero padding (ISO pads each directory sector's tail), not
+        # a truncated record. It must be honored before the record-size
+        # guards or a padding run shorter than a header would raise.
         if ln == 0:
             return None
+        if off + 34 > len(buf):
+            raise IsoError('directory record overruns its buffer')
         if ln < 34 or off + ln > len(buf):
             raise IsoError('directory record overruns its buffer')
         ext = struct.unpack_from('<I', buf, off + 2)[0]
@@ -45,10 +51,14 @@ class Iso:
         name = buf[off + 33:off + 33 + nlen]
         # A crafted name must not smuggle path separators, a bare dot
         # name, or an embedded NUL (which open() rejects mid-extraction)
-        # into walk()'s accumulated paths. The real '.'/'..' records are
-        # the single bytes \x00/\x01 normalized just below.
-        if (not name or b'/' in name or b'\\' in name
-                or name.strip(b'.') == b''
+        # into walk()'s accumulated paths. Judge the identifier as
+        # walk() uses it — ';version' stripped — or '.;1'/'..;1' would
+        # pass the raw check and decode to a dot name. The real
+        # '.'/'..' records are the single bytes \x00/\x01 normalized
+        # just below.
+        ident = name.split(b';')[0]
+        if (not ident or b'/' in name or b'\\' in name
+                or ident.strip(b'.') == b''
                 or (b'\x00' in name and name != b'\x00')):
             raise IsoError('unsafe directory record name')
         if name == b'\x00':
