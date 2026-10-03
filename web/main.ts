@@ -2901,13 +2901,16 @@ void (async () => {
     // to restore leaves whatever the chain picked, until a retry.
     applySceneryChoice();
     remapSheetIdx(); reconcileFish();
-    // An offer still due brings the sounds with the rest.
-    backfillStarterSounds({
-      welcomePending: offer !== null,
-      hasSounds: storedSounds > 0 ||
-        installedAddons.some((a) => a.section === "sounds"),
-      install: (it) => installAddon(it, false),
-    }).catch((e) => console.warn("starter sounds skipped:", e));
+    // An offer still due brings the sounds with the rest. A view-only
+    // tab installs nothing: its writes (welcome state, starter sounds)
+    // would land in the owner tab's origin without ever being saved here.
+    if (tankOwner)
+      backfillStarterSounds({
+        welcomePending: offer !== null,
+        hasSounds: storedSounds > 0 ||
+          installedAddons.some((a) => a.section === "sounds"),
+        install: (it) => installAddon(it, false),
+      }).catch((e) => console.warn("starter sounds skipped:", e));
   })
   // A step above throwing used to end the chain silently: the tank
   // came up missing art or fish, and the retry below — the whole
@@ -2925,7 +2928,9 @@ void (async () => {
 // First launch: offer to stock the tank (web/welcome.ts). Accepting
 // installs through the same path as the Import Add-ons window, and the
 // stand-ins leave once a real fish is in; declining keeps them.
-if (offer) {
+// Only the owning tab may offer: the welcome writes shared state
+// (web/welcome.ts), and an answer here would stand in for the owner.
+if (offer && tankOwner) {
   showWelcome(offer, {
     install: (it) => installAddon(it, false),
     installed: stillListed,
@@ -3008,6 +3013,10 @@ function dropSay(text: string): void {
 }
 window.addEventListener("drop", (e) => {
   e.preventDefault();
+  // A view-only tab imports nothing: a dropped pack or sound would be
+  // written to the owner tab's origin (IndexedDB, install records) with
+  // no save here to record it, leaving bytes nothing can remove.
+  if (!tankOwner) return;
   // A drop is a gesture — wake audio now so the install feedback can
   // still answer it once the (async) decode finishes.
   audio.unlock();
