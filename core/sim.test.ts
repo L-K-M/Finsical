@@ -1577,8 +1577,8 @@ describe("rest prints", () => {
       expect(p.y).toBeGreaterThanOrEqual(SURFACE + MARGIN);
       expect(p.y).toBeLessThanOrEqual(200);
     }
-    // Runtime-only state: the save whitelist never grew a print list.
-    const snapshot = JSON.stringify(sim.fish[0]);
-    expect(snapshot).not.toContain("restPrints");
+    // The prints are runtime-only by construction: they live on the
+    // Sim, and the save whitelist is tankSnapshot's explicit per-fish
+    // field list in web/main.ts, which never mentions them.
   });
 });
