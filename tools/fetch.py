@@ -92,23 +92,35 @@ def _emit_source(name: str, data: bytes, outdir: str) -> str | None:
     while out in _EMITTED:
         out = os.path.join(outdir, f"{base}-{n}.azpack")
         n += 1
-    n = 2  # drop numbered siblings orphaned by earlier runs
-    stale = os.path.join(outdir, f"{base}-{n}.azpack")
-    while os.path.isdir(stale) and stale not in _EMITTED:
-        shutil.rmtree(stale, ignore_errors=True)
-        n += 1
-        stale = os.path.join(outdir, f"{base}-{n}.azpack")
+
+    def drop_stale_siblings() -> None:
+        # Numbered siblings orphaned by earlier runs go only after this
+        # run proved the base name importable: cleaning them first
+        # destroyed a previous good bundle when the new source decoded
+        # to nothing. Scan a bounded range rather than stopping at the
+        # first gap, or a leftover fish-3 behind a missing fish-2 would
+        # survive forever.
+        for k in range(2, _STALE_SIBLING_SCAN_CAP):
+            stale = os.path.join(outdir, f"{base}-{k}.azpack")
+            if stale not in _EMITTED and os.path.isdir(stale):
+                shutil.rmtree(stale, ignore_errors=True)
+
+    def finish() -> str:
+        # Register before cleaning: drop_stale_siblings must not rmtree
+        # the bundle just emitted when `out` is itself a numbered name.
+        _EMITTED.add(out)
+        drop_stale_siblings()
+        return out
+
     try:
         if is_pack(data):
             shutil.rmtree(out, ignore_errors=True)
             emit(Pack(data), out)
-            _EMITTED.add(out)
-            return out
+            return finish()
         if has_sounds(data):
             shutil.rmtree(out, ignore_errors=True)
             emit_sounds(data, out)
-            _EMITTED.add(out)
-            return out
+            return finish()
     except Exception as e:
         if os.path.isdir(out):
             shutil.rmtree(out, ignore_errors=True)
@@ -117,6 +129,10 @@ def _emit_source(name: str, data: bytes, outdir: str) -> str | None:
 
 
 _ENTRY_CAP = 1 << 30  # per-entry decompressed-byte cap
+# How far the stale-sibling sweep looks past a gap (a missing -2 must
+# not stop it from reaching a leftover -3). Far above any real run's
+# per-name count while keeping the scan bounded.
+_STALE_SIBLING_SCAN_CAP = 1000
 
 
 def _read_capped(zf: zipfile.ZipFile, zi: zipfile.ZipInfo,
