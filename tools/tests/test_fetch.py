@@ -12,6 +12,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(
 import tools.fetch  # noqa: E402
 from tools.fetch import (_MAX_ZIP_DEPTH, _emit_source,  # noqa: E402
                          _harvest)
+from tools.tests.fixtures import build_rsrc  # noqa: E402
+
+
+def _fails_midway(_payload, dst):
+    """Emitter stub: lands partial output, then dies — the
+    recognizable-but-corrupt case."""
+    os.makedirs(dst, exist_ok=True)
+    with open(os.path.join(dst, "manifest.json"), "w") as f:
+        f.write("{ not a manifest")
+    raise ValueError("corrupt source")
 
 
 def fake_pack(bmp_payload: bytes) -> bytes:
@@ -278,6 +288,83 @@ class TestHarvest(unittest.TestCase):
         self.assertTrue(os.path.isdir(numbered))
         self.assertTrue(os.path.isdir(base))
         self.assertFalse(os.path.exists(gap))
+
+    def test_failed_emit_keeps_the_earlier_bundles(self):
+        # A recognizable source whose emit dies partway used to cost
+        # the base bundle: _emit_source rmtree'd it before emit ran.
+        base = _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out)
+        sibling = _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out)
+        with open(os.path.join(base, "old.marker"), "w") as f:
+            f.write("1")
+        tools.fetch._EMITTED.clear()  # a second run replaces in place
+        real_emit = tools.fetch.emit
+        tools.fetch.emit = _fails_midway
+        try:
+            self.assertIsNone(
+                _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out))
+        finally:
+            tools.fetch.emit = real_emit
+        # Base (sentinel and manifest intact) and the numbered sibling
+        # both survive, with no staging leftovers beside them.
+        self.assertTrue(os.path.isfile(os.path.join(base, "old.marker")))
+        self.assertTrue(os.path.isfile(
+            os.path.join(base, "manifest.json")))
+        self.assertTrue(os.path.isdir(sibling))
+        self.assertEqual(sorted(os.listdir(self.out)),
+                         ["fish-2.azpack", "fish.azpack"])
+
+    def test_failed_publish_restores_the_earlier_bundle(self):
+        base = _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out)
+        with open(os.path.join(base, "old.marker"), "w") as f:
+            f.write("1")
+        tools.fetch._EMITTED.clear()
+
+        real_rename = os.rename
+        fired = []
+
+        def fail_first_publish(src, dst):
+            # The staged publish into `out` fails once; the move-aside
+            # before it and the rollback after it go through.
+            if dst == base and not fired:
+                fired.append(1)
+                raise OSError("simulated publish failure")
+            return real_rename(src, dst)
+
+        os.rename = fail_first_publish
+        try:
+            self.assertIsNone(
+                _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out))
+        finally:
+            os.rename = real_rename
+        # The swapped-out bundle went back; nothing staged or parked
+        # is left beside it.
+        self.assertTrue(os.path.isfile(os.path.join(base, "old.marker")))
+        self.assertEqual(os.listdir(self.out), ["fish.azpack"])
+
+        # The failure is retry-safe: a following emit publishes.
+        self.assertEqual(
+            _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out),
+            base)
+        self.assertFalse(os.path.exists(
+            os.path.join(base, "old.marker")))
+
+    def test_failed_sounds_emit_keeps_the_earlier_bundle(self):
+        # The sounds emitter gets the same staged publish: a corrupt
+        # .rsrc re-emit must not cost the previous bank.
+        base = os.path.join(self.out, "bank.azpack")
+        os.makedirs(os.path.join(base, "sounds"))
+        with open(os.path.join(base, "manifest.json"), "w") as f:
+            f.write('{"format": "azpack/1"}')
+        fork = build_rsrc({b"snd ": [(1, "x", 0, b"\x00" * 4)]})
+        real = tools.fetch.emit_sounds
+        tools.fetch.emit_sounds = _fails_midway
+        try:
+            self.assertIsNone(_emit_source("bank.rsrc", fork, self.out))
+        finally:
+            tools.fetch.emit_sounds = real
+        self.assertTrue(os.path.isfile(
+            os.path.join(base, "manifest.json")))
+        self.assertEqual(os.listdir(self.out), ["bank.azpack"])
 
     def test_cached_get_reuse_and_part_cleanup(self):
         path = os.path.join(self.out, "a.zip")
