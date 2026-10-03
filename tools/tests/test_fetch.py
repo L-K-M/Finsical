@@ -348,6 +348,37 @@ class TestHarvest(unittest.TestCase):
         self.assertFalse(os.path.exists(
             os.path.join(base, "old.marker")))
 
+    def test_rollback_failure_parks_the_bundle_and_says_where(self):
+        base = _emit_source("fish.fsh", fake_pack(bmp_8bit()), self.out)
+        tools.fetch._EMITTED.clear()
+
+        real_rename = os.rename
+
+        def fail_everything_into_base(src, dst):
+            # Publish and rollback both target `out`: both fail.
+            if dst == base:
+                raise OSError("simulated publish failure")
+            return real_rename(src, dst)
+
+        err = io.StringIO()
+        os.rename = fail_everything_into_base
+        try:
+            with contextlib.redirect_stderr(err):
+                self.assertIsNone(
+                    _emit_source("fish.fsh", fake_pack(bmp_8bit()),
+                                 self.out))
+        finally:
+            os.rename = real_rename
+        # The old bundle is not swept — it stays parked and intact, and
+        # the error output names where to find it.
+        self.assertFalse(os.path.exists(base))
+        parked = [d for d in os.listdir(self.out)
+                  if d.startswith(".emit-")]
+        self.assertEqual(len(parked), 1)
+        self.assertTrue(os.path.isfile(
+            os.path.join(self.out, parked[0], "old", "manifest.json")))
+        self.assertIn(parked[0], err.getvalue())
+
     def test_failed_sounds_emit_keeps_the_earlier_bundle(self):
         # The sounds emitter gets the same staged publish: a corrupt
         # .rsrc re-emit must not cost the previous bank.

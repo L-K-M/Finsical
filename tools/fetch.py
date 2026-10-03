@@ -137,7 +137,8 @@ def _install_emitted(emit_into: Callable[[str], object],
     this call's own temporary artifact, except that after a failed
     publish the parked old bundle may still be in it: never sweep that.
     """
-    work = tempfile.mkdtemp(dir=os.path.dirname(out), prefix=".emit-")
+    work = tempfile.mkdtemp(dir=os.path.dirname(out) or ".",
+                            prefix=".emit-")
     staging = os.path.join(work, "new")
     backup = os.path.join(work, "old")
     try:
@@ -151,10 +152,14 @@ def _install_emitted(emit_into: Callable[[str], object],
                 raise
         else:
             os.rename(staging, out)
-    except Exception:
+    except BaseException:
         # `backup` existing means a publish or rollback failure left the
-        # old bundle parked in the work dir — user data, not litter.
-        if not os.path.exists(backup):
+        # old bundle parked in the work dir — user data, not litter, so
+        # say where it is rather than sweep it. BaseException so an
+        # interrupted emit still cleans its partial staging.
+        if os.path.exists(backup):
+            print(f"  prior bundle parked at {backup}", file=sys.stderr)
+        else:
             shutil.rmtree(work, ignore_errors=True)
         raise
     shutil.rmtree(work, ignore_errors=True)
