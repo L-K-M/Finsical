@@ -14,6 +14,10 @@ export interface SoundConfig {
   muted: boolean;
   bubbles: boolean;
   ambient: boolean;
+  /** Fish music: each fish that turns plays one soft note (the Fish
+   * music switch, Preferences' Sound pane). Off by default — the
+   * tank's sounds come from the original's bank. */
+  music: boolean;
   /** Schema marker: 2 since the gain curve turned quadratic. Absent
    * on older saves; only sanitizeSoundConfig reads it. Required, so a
    * hand-built config can't silently opt back into the migration. */
@@ -22,7 +26,8 @@ export interface SoundConfig {
 
 export const SOUND_DEFAULTS: Readonly<SoundConfig> =
   Object.freeze<SoundConfig>({
-    volume: 0.84, muted: false, bubbles: true, ambient: true, v: 2,
+    volume: 0.84, muted: false, bubbles: true, ambient: true,
+    music: false, v: 2,
   });
 
 /** Slider position → master gain. Quadratic: the ear hears roughly
@@ -45,7 +50,7 @@ export function sanitizeSoundConfig(raw: unknown): SoundConfig {
   const mark = r.v;
   if (typeof mark === "number" && Number.isInteger(mark) &&
       mark > SOUND_DEFAULTS.v) c.v = mark;
-  for (const k of ["muted", "bubbles", "ambient"] as const) {
+  for (const k of ["muted", "bubbles", "ambient", "music"] as const) {
     const v = r[k];
     if (typeof v === "boolean") c[k] = v;
   }
@@ -121,6 +126,18 @@ const BEEP_HZ = 223;
 const BEEP_S = 0.13;
 const BEEP_GAIN = 0.5;
 
+/** A fish's note: a plucked string, not a chime. Long enough for the
+ * tail to carry, quiet enough to sit under the water ambience, and
+ * soft to strike so notes can overlap into a chord. */
+const NOTE_S = 1.2;
+const NOTE_ATTACK_S = 0.005;
+export const NOTE_GAIN = 0.16;
+/** The grace note a fish plays when it eats: an octave up, quieter,
+ * so a feeding moment reads as a spark on top of the turn notes. */
+export const NOTE_GRACE_GAIN = 0.1;
+/** The octave partial's share of the fundamental. */
+const PARTIAL_MIX = 0.22;
+
 /** Stereo position of a tank event at x in a w-wide tank: the edges
  * pan to ±0.8 — a clear sense of side without a hard pan. */
 export function panFor(x: number, w: number): number {
@@ -170,6 +187,7 @@ export class TankAudio {
   private muted = SOUND_DEFAULTS.muted;
   private bubblesOn = SOUND_DEFAULTS.bubbles;
   private ambientOn = SOUND_DEFAULTS.ambient;
+  private musicOn = SOUND_DEFAULTS.music;
   // The one install-feedback source still playing, so a newer install
   // (or Add Again) replaces it instead of stacking copies.
   private feedbackSrc: AudioBufferSourceNode | null = null;
@@ -360,10 +378,14 @@ export class TankAudio {
     this.syncSleep();
   }
 
-  /** Switch bubble sounds and the ambient loop. Turning ambience off
-   * stops a live loop; turning it back on restarts it. */
-  setOptions(o: { bubbles?: boolean; ambient?: boolean }): void {
+  /** Switch bubble sounds, the ambient loop and fish music. Turning
+   * ambience off stops a live loop; turning it back on restarts it.
+   * Fish music is synthesized on demand, so its switch only gates
+   * note(). */
+  setOptions(o: { bubbles?: boolean; ambient?: boolean;
+                  music?: boolean }): void {
     if (o.bubbles !== undefined) this.bubblesOn = o.bubbles;
+    if (o.music !== undefined) this.musicOn = o.music;
     if (o.ambient === undefined || o.ambient === this.ambientOn) return;
     this.ambientOn = o.ambient;
     if (o.ambient) {
@@ -743,6 +765,56 @@ export class TankAudio {
    * chime, decoded but unused until now. */
   feederChime(): void {
     this.play(this.named("timeronoff"), 0.45);
+  }
+
+  /** One fish's note (Fish music, off unless the user asks for it):
+   * a soft kalimba struck at `freq`, panned to the fish. Synthesized
+   * rather than sampled — there is no record of a fish turning — and
+   * built the same way pop() is: nothing without a running context,
+   * so a note never spends a resume() the user has to make.
+   *
+   * The voice is a triangle with a quiet sine an octave up, the
+   * struck-string partial that makes a kalimba read as plucked. Both
+   * share one envelope that starts and ends at a whisper, so a note
+   * can never click.
+   */
+  note(freq: number, pan = 0, gain = NOTE_GAIN): void {
+    if (!this.musicOn) return;
+    const ac = this.ctx;
+    if (!ac || !this.master || this.hidden || ac.state !== "running" ||
+        !Number.isFinite(freq) || freq <= 0 ||
+        // An exponential ramp throws on a zero or negative target, so
+        // the level needs the same guard as the pitch.
+        !Number.isFinite(gain) || gain <= 0) return;
+    const t = ac.currentTime;
+    const env = ac.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(gain, t + NOTE_ATTACK_S);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + NOTE_S);
+    const body = ac.createOscillator();
+    body.type = "triangle";
+    body.frequency.value = freq;
+    const partial = ac.createOscillator();
+    partial.type = "sine";
+    partial.frequency.value = freq * 2;
+    const partialGain = ac.createGain();
+    partialGain.gain.value = PARTIAL_MIX;
+    partial.connect(partialGain).connect(env);
+    body.connect(env);
+    // Pan only off-centre and only where the WebView has a panner, the
+    // way pop() and play() do.
+    let out: AudioNode = env;
+    if (pan !== 0 && typeof ac.createStereoPanner === "function") {
+      const p = ac.createStereoPanner();
+      p.pan.value = pan;
+      env.connect(p);
+      out = p;
+    }
+    out.connect(this.master);
+    for (const osc of [body, partial]) {
+      osc.start(t);
+      osc.stop(t + NOTE_S + 0.01);
+    }
   }
 
   /** A bubble rising. The original has no sound for one, so this plays

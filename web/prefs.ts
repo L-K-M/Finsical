@@ -854,6 +854,7 @@ const volUnit = document.getElementById("pfvol")!;
 const muteBox = document.getElementById("snd-mute") as HTMLInputElement;
 const bubblesBox = document.getElementById("snd-bubbles") as HTMLInputElement;
 const ambientBox = document.getElementById("snd-ambient") as HTMLInputElement;
+const musicBox = document.getElementById("snd-music") as HTMLInputElement;
 
 function postSound(patch: Partial<SoundConfig>): void {
   sound = { ...sound, ...patch };
@@ -893,6 +894,7 @@ function syncSound(): void {
   muteBox.checked = sound.muted;
   bubblesBox.checked = sound.bubbles;
   ambientBox.checked = sound.ambient;
+  musicBox.checked = sound.music;
   // Mute keeps the volume, so the slider dims instead of dropping to
   // Off, the way Mac OS 8 dims controls that depend on an off switch.
   setEnabled(volInput, !sound.muted);
@@ -934,6 +936,11 @@ captioned({ label: "Water ambience", input: ambientBox,
             blurb: "The filter's steady bubbling, looped under " +
               "everything else as in the original game." },
           document.getElementById("pfambient")!);
+captioned({ label: "Fish music", input: musicBox,
+            blurb: "Each fish plays a soft note when it turns, higher " +
+              "near the surface, an octave down at night. Off by " +
+              "default: the tank's own sounds come from the original." },
+          document.getElementById("pfmusic")!);
 
 volInput.addEventListener("input", () =>
   postSound({ volume: Number(volInput.value) / 100 }));
@@ -951,7 +958,9 @@ bubblesBox.addEventListener("change", () =>
   postSound({ bubbles: bubblesBox.checked }));
 ambientBox.addEventListener("change", () =>
   postSound({ ambient: ambientBox.checked }));
-for (const id of ["pfmute", "pfbubbles", "pfambient"])
+musicBox.addEventListener("change", () =>
+  postSound({ music: musicBox.checked }));
+for (const id of ["pfmute", "pfbubbles", "pfambient", "pfmusic"])
   trackHighlight(document.getElementById(id)!);
 syncSound();
 

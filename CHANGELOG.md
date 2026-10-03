@@ -19,6 +19,12 @@
 - A sick fish sneezes now and then: it puffs a small bubble and jerks
   back a little, so you can spot an ailing fish without opening Tank
   Stats.
+- Preferences' Sound pane gains **Fish music**, off by default: each
+  fish plays one soft plucked note as it turns, from a pentatonic
+  scale picked by how deep it swims, panned to where it sits across
+  the glass, an octave lower at night, with a higher grace note when
+  it eats. A gate lets one note at a time through and caps how many
+  land in any two seconds, so a full tank stays calm.
 - The Bare tank's water fills its window edge to edge at every size.
   It used to keep to whole zoom steps with a see-through border
   around it, and in the Linux Flatpak that border held the tank's
