@@ -1931,7 +1931,8 @@ function onBusMessage(m: BusMsg): void {
     applyEffects(m.cfg);
   } else if (m.op === "machine" && typeof m.id === "string") {
     const nm = machineById(m.id);
-    if (nm && nm.id !== machine.id) { applyMachine(nm); postState(); }
+    // Selecting the displayed case must also cancel a pending replacement.
+    if (nm) applyMachine(nm);
   } else if (m.op === "soundsLoaded") {
     // The panel page dropped sound files into the shared IndexedDB
     // store — re-read it (merges under the same name) and optionally
@@ -2516,10 +2517,6 @@ function layoutMachine(): void {
 let machineSwap = 0;
 
 function applyMachine(m: Machine): void {
-  // A new case is a new tube: ring the degauss coil like a monitor
-  // waking up. The init call passes the stored machine (same id), so
-  // this only fires on an actual swap.
-  if (m.id !== machine.id && crtOn) degaussTube();
   const token = ++machineSwap;
   // Images only: a vector shell (none currently) has nothing to decode,
   // so its commit lands a microtask later rather than never.
@@ -2533,6 +2530,11 @@ function applyMachine(m: Machine): void {
     });
   void Promise.all(wait).then(() => {
     if (token !== machineSwap) return; // a newer switch superseded this
+    // A new case is a new tube: ring the degauss coil like a monitor
+    // waking up — inside the commit, so a cancelled case never cues
+    // it. The init call passes the stored machine (same id), so this
+    // only fires on an actual swap.
+    if (m.id !== machine.id && crtOn) degaussTube();
     machine = m;
     shellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
     shellEl.innerHTML = shellMarkup(m);
@@ -2541,6 +2543,8 @@ function applyMachine(m: Machine): void {
     layoutMachine();
     try { localStorage.setItem(MACHINE_KEY, m.id); }
     catch { /* storage unavailable */ }
+    // native geometry and the picker now describe the committed art
+    postState();
   });
 }
 window.addEventListener("resize", layoutMachine);
