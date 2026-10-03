@@ -108,6 +108,30 @@ describe("deriveStats", () => {
     expect(deriveStats(base).advice[0]).toMatch(/healthy/);
   });
 
+  it("warns about depleted oxygen even while fish can still eat", () => {
+    const s = deriveStats({ ...base, waterQuality: 0.4,
+                           aquarium: { oxygenSat: 0.4 } });
+    expect(s.advice[0]).toMatch(/Oxygen.*filter/);
+    expect(s.advice.join(" ")).not.toMatch(/healthy/);
+  });
+
+  it("keeps chlorine and oxygen ahead of routine feeding advice", () => {
+    const s = deriveStats({ ...base, waterQuality: 0.4,
+      fish: [{ hunger: 0.9, state: "drift" }],
+      aquarium: { oxygenSat: 0.2, chlorine: 0.5, filterDirt: 95 },
+    });
+    expect(s.advice).toHaveLength(2);
+    expect(s.advice[0]).toMatch(/chlorine/);
+    expect(s.advice[1]).toMatch(/Oxygen/);
+  });
+
+  it("does not report low oxygen at half saturation or without fish", () => {
+    expect(deriveStats({ ...base, aquarium: { oxygenSat: 0.5 } })
+      .advice.join(" ")).not.toMatch(/Oxygen/);
+    expect(deriveStats({ ...base, fish: [], aquarium: { oxygenSat: 0.1 } })
+      .advice.join(" ")).not.toMatch(/Oxygen/);
+  });
+
   it("caps advice at two lines, most urgent first", () => {
     const s = deriveStats({ ...base, waterQuality: 0.2, foodSettled: 3 });
     expect(s.advice[0]).toMatch(/foul/); // most urgent first
