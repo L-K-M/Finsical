@@ -30,9 +30,10 @@ export const DISEASES: readonly Disease[] = [
 ];
 
 /** The one disease a shock hands out (Set_*_Rofc: a temperature jump
- * gives White Spot 40 % of the time). Named so callers need not know
- * it is table entry 0. */
-export const WHITE_SPOT = 0;
+ * gives White Spot 40 % of the time). Derived from the table by id, so
+ * reordering DISEASES cannot silently change which disease a shock
+ * hands out. */
+export const WHITE_SPOT = DISEASES.findIndex((d) => d.id === 400);
 
 export function diseaseIndex(id: number): number {
   return DISEASES.findIndex((d) => d.id === id);

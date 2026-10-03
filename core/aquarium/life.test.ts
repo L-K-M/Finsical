@@ -62,4 +62,15 @@ describe("shock", () => {
     expect(susceptibleTo(plain, 0)).toBe(true);
     expect(susceptibleTo(plain, 7)).toBe(false);
   });
+
+  it("a species immune to White Spot takes the shock as health loss", () => {
+    // Deliberate trade-off, and now pinned: an immune species cannot be
+    // sickened by the shock, so the same 40% roll falls through to the
+    // damage branch every time. Immunity is not armour.
+    const meka: SpeciesCare = { ...DEFAULT_CARE, susceptible: [405, 406, 407] };
+    const { life, step } = shockTemp(meka, 3);
+    expect(step).toBe("applied");       // the shock lands either way
+    expect(life.sick).toBeNull();       // as damage, not as sickness
+    expect(life.health).toBeLessThan(100);
+  });
 });
