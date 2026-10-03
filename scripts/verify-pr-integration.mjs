@@ -237,11 +237,15 @@ try {
   // module-level matchMedia reads, then navigate.
   const openPage = async (reduceMotion) => {
     const { targetId } = await call("Target.createTarget", {
-      url: "about:blank", width: 1000, height: 760,
+      url: "about:blank",
     });
     const { sessionId } = await call("Target.attachToTarget",
       { targetId, flatten: true });
     await call("Runtime.enable", {}, sessionId);
+    // Tab creation has no window-position options in full Chrome.
+    await call("Emulation.setDeviceMetricsOverride", {
+      width: 1000, height: 760, deviceScaleFactor: 1, mobile: false,
+    }, sessionId);
     if (reduceMotion)
       await call("Emulation.setEmulatedMedia", {
         features: [{ name: "prefers-reduced-motion", value: "reduce" }],
