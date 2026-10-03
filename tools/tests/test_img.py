@@ -1,9 +1,11 @@
 import os
 import struct
+import subprocess
+import sys
 import tempfile
 import unittest
 
-from tools.az.img import read_bmp, write_png
+from tools.az.img import ImgError, read_bmp, write_png
 from tools.tests.fixtures import build_bmp8, build_bmp8_rle
 
 PAL = [(0, 0, 0), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
@@ -92,6 +94,32 @@ class TestPng(unittest.TestCase):
         self.assertEqual(data[16:24], b"\x00\x00\x00\x02\x00\x00\x00\x02")
         self.assertIn(b"IHDR", data)
         self.assertIn(b"IEND", data)
+
+
+class TestTruncated(unittest.TestCase):
+    def test_rejects_truncated_headers_as_img_error(self):
+        # A truncated download is the common malformed case; the named
+        # error must reach callers instead of struct.error.
+        for blob in (b"", b"BM", b"BM" + bytes(8), b"BM" + bytes(40)):
+            with self.subTest(blob=blob):
+                with self.assertRaises(ImgError):
+                    read_bmp(blob)
+
+
+class TestOFlags(unittest.TestCase):
+    def test_img_guard_survives_python_dash_O(self):
+        # The guard must be a raise, not an assert, or -O decodes garbage.
+        code = ("from tools.az.img import read_bmp\n"
+                "try:\n"
+                "    read_bmp(b'XX' + bytes(60))\n"
+                "except Exception as e:\n"
+                "    print(type(e).__name__)\n")
+        out = subprocess.run(
+            [sys.executable, "-O", "-c", code],
+            cwd=os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))),
+            capture_output=True, text=True, check=True, timeout=30)
+        self.assertIn("ImgError", out.stdout)
 
 
 if __name__ == "__main__":

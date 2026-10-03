@@ -264,7 +264,8 @@ def fetch(ident: str, outdir: str, include: re.Pattern,
                 failed += 1
                 continue
             if is_iso:
-                made += _harvest_disc(Iso(path), outdir)
+                with Iso(path) as iso:
+                    made += _harvest_disc(iso, outdir)
             else:
                 with open(path, "rb") as fh:
                     blob = fh.read(_MAX_ARCHIVE_BYTES + 1)
