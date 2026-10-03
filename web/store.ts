@@ -19,7 +19,7 @@ const DB_VER = 1;
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 function openDb(): Promise<IDBDatabase | null> {
   if (!dbPromise) {
-    dbPromise = new Promise((res) => {
+    const p: Promise<IDBDatabase | null> = new Promise((res) => {
       if (typeof indexedDB === "undefined") { res(null); return; }
       let req: IDBOpenDBRequest;
       try { req = indexedDB.open(DB_NAME, DB_VER); }
@@ -28,12 +28,37 @@ function openDb(): Promise<IDBDatabase | null> {
         req.result.createObjectStore("packs");
         req.result.createObjectStore("meta");
       };
-      req.onsuccess = () => res(req.result);
-      req.onerror = () => res(null);
+      req.onsuccess = () => {
+        const db = req.result;
+        // The browser can close a connection itself (site data
+        // cleared, WebKit's storage process lost). Forget it, so the
+        // next call opens a fresh one: kept, every transaction would
+        // throw for the rest of the session, and the tank and the
+        // Import window run for days.
+        db.onclose = () => { if (dbPromise === p) dbPromise = null; };
+        // A newer version opening elsewhere waits on this connection:
+        // step aside rather than block its upgrade forever.
+        db.onversionchange = () => {
+          db.close();
+          if (dbPromise === p) dbPromise = null;
+        };
+        res(db);
+      };
+      // A failed open can be passing (WebKit's storage process still
+      // coming back after it was lost), so the next call tries again
+      // rather than keep the cache off for the session. Where it
+      // fails for good, each call costs one failed open request, and
+      // handled here, it shouldn't also log as an unhandled error.
+      req.onerror = (e) => {
+        e.preventDefault();
+        if (dbPromise === p) dbPromise = null;
+        res(null);
+      };
       // A blocking tab's older version can clear any moment — don't
       // memoize this null or the cache stays off for the session.
       req.onblocked = () => {
-        dbPromise = null; res(null);
+        if (dbPromise === p) dbPromise = null;
+        res(null);
         // The promise already settled; if the blocker clears and this
         // superseded request still succeeds, close — don't leak — it.
         req.onsuccess = () => {
@@ -41,8 +66,29 @@ function openDb(): Promise<IDBDatabase | null> {
         };
       };
     });
+    dbPromise = p;
   }
   return dbPromise;
+}
+
+/** A transaction on the open database, or null where there is none. A
+ * connection closed under us without a close event (InvalidStateError
+ * from transaction()) is dropped and reopened once; anything else
+ * throws, for the caller to treat as a failed operation. */
+async function transact(stores: string | string[],
+                        mode: IDBTransactionMode):
+    Promise<IDBTransaction | null> {
+  const p = openDb();
+  const d = await p;
+  if (!d) return null;
+  try { return d.transaction(stores, mode); }
+  catch (e) {
+    if (!(e instanceof DOMException && e.name === "InvalidStateError"))
+      throw e;
+    if (dbPromise === p) dbPromise = null;
+    const again = await openDb();
+    return again ? again.transaction(stores, mode) : null;
+  }
 }
 
 // Best-effort: an unpersisted origin can be evicted wholesale under
@@ -61,11 +107,10 @@ function rw<T>(store: string, mode: IDBTransactionMode,
                run: (s: IDBObjectStore) => IDBRequest<T>
 ): Promise<T | null> {
   if (mode === "readwrite") askPersist();
-  return openDb().then((d) => {
-    if (!d) return null;
+  return transact(store, mode).catch(() => null).then((tx) => {
+    if (!tx) return null;
     return new Promise<T | null>((res) => {
       try {
-        const tx = d.transaction(store, mode);
         const rq = run(tx.objectStore(store));
         // Settle on commit — a request "success" can still abort at
         // commit time (quota), which must not read as a stored value.
@@ -84,37 +129,6 @@ function rw<T>(store: string, mode: IDBTransactionMode,
         rq.onerror = () => res(null);
         tx.onerror = tx.onabort = () => res(null);
       } catch { res(null); }
-    });
-  });
-}
-
-/** Strict rw for the snds path only: resolves null on a real miss but
- * REJECTS on a backend failure. There a failed read must not look like
- * "no record" — merging over an unknown baseline would overwrite the
- * store with only the incoming records. Cache paths (listings, packs)
- * keep the lenient rw(): a failed read there just falls back to
- * fetching. */
-function rwStrict<T>(store: string, mode: IDBTransactionMode,
-                     run: (s: IDBObjectStore) => IDBRequest<T>
-): Promise<T | null> {
-  return openDb().then((d) => {
-    if (!d) throw new Error("IndexedDB unavailable");
-    return new Promise<T | null>((res, rej) => {
-      try {
-        const tx = d.transaction(store, mode);
-        const rq = run(tx.objectStore(store));
-        tx.oncomplete = () => res(rq.result ?? null);
-        const fail = (ev?: Event) => {
-          // stopPropagation, not preventDefault — a request error's
-          // default action aborts the transaction, and we want the
-          // abort; the rejection is already handled by callers, so the
-          // event must not also bubble to window.onerror.
-          ev?.stopPropagation();
-          rej(rq.error ?? tx.error ?? new Error("IndexedDB error"));
-        };
-        rq.onerror = fail;
-        tx.onerror = tx.onabort = () => fail();
-      } catch (e) { rej(e); }
     });
   });
 }
@@ -148,11 +162,10 @@ const PACK_BUDGET = 150 * 1024 * 1024;
 const STAT_PREFIX = "packstat:";
 
 async function trimPacks(): Promise<void> {
-  const d = await openDb();
-  if (!d) return;
   try {
+    const tx = await transact(["meta", "packs"], "readwrite");
+    if (!tx) return;
     await new Promise<void>((res) => {
-      const tx = d.transaction(["meta", "packs"], "readwrite");
       tx.oncomplete = tx.onerror = tx.onabort = () => res();
       const meta = tx.objectStore("meta");
       const packs = tx.objectStore("packs");
@@ -201,21 +214,18 @@ export function packPut(url: string, data: Uint8Array): Promise<unknown> {
   // orphaned by mid-write teardown would leave the pack invisible to
   // the budget and unevictable. Still fire-and-forget for callers:
   // caching must never block or fail a fetch path.
-  // openDb resolves null on every failure path today — catch anyway so
-  // a future rejection can't break the never-fail contract.
-  const put = openDb().catch(() => null).then((d) => {
-    if (!d) return null;
-    return new Promise<unknown>((res) => {
+  // transact throws on a backend failure — catch, so it can't break
+  // the never-fail contract.
+  const put = transact(["packs", "meta"], "readwrite").catch(() => null)
+    .then((tx) => tx && new Promise<unknown>((res) => {
       try {
-        const tx = d.transaction(["packs", "meta"], "readwrite");
         tx.objectStore("packs").put(data, url);
         tx.objectStore("meta").put(
           { bytes: data.byteLength, at: Date.now() }, STAT_PREFIX + url);
         tx.oncomplete = () => res(true);
         tx.onerror = tx.onabort = () => res(null);
       } catch { res(null); }
-    });
-  });
+    }));
   void put.then((ok) => {
     if (ok == null) return; // put failed — nothing to trim
     void trimPacks().catch(() => {});
@@ -225,18 +235,15 @@ export function packPut(url: string, data: Uint8Array): Promise<unknown> {
 export function packDelete(url: string): Promise<unknown> {
   // Drop the bytes and their trim stat together — a lone stat would
   // make trimPacks() count bytes that no longer exist.
-  return openDb().catch(() => null).then((d) => {
-    if (!d) return null;
-    return new Promise<unknown>((res) => {
+  return transact(["packs", "meta"], "readwrite").catch(() => null)
+    .then((tx) => tx && new Promise<unknown>((res) => {
       try {
-        const tx = d.transaction(["packs", "meta"], "readwrite");
         tx.objectStore("packs").delete(url);
         tx.objectStore("meta").delete(STAT_PREFIX + url);
         tx.oncomplete = () => res(true);
         tx.onerror = tx.onabort = () => res(null);
       } catch { res(null); }
-    });
-  });
+    }));
 }
 export function metaGet<T>(key: string): Promise<T | null> {
   return rw<T>("meta", "readonly", (s) => s.get(key));
@@ -276,16 +283,61 @@ export function capSnds(cur: StoredSnd[] | null, records: StoredSnd[],
   return { out, dropped: m.size - out.length };
 }
 
-// Strict get/put for the merge chain: a failed read rejects instead
-// of reporting an empty baseline, and a failed write rejects instead
-// of silently reporting success. Launch-time restore keeps the lenient
-// sndsGet() — a miss there just means nothing to play this session.
-function sndsGetStrict(): Promise<StoredSnd[] | null> {
-  return rwStrict<StoredSnd[]>("meta", "readonly", (s) => s.get(SNDS_KEY));
+/** One transaction owns the read and edit: IndexedDB serializes it
+ * against edits from other windows too. Keep the put inside onsuccess,
+ * without an await that could let the transaction become inactive.
+ * The transaction comes from transact(), so a connection the browser
+ * closed under the store reopens here the same as everywhere else.
+ * Unlike cache misses, failures reject; success means the edit committed. */
+function mutateSnds(update: (cur: StoredSnd[] | null) => StoredSnd[] | null):
+    Promise<boolean | null> {
+  return transact("meta", "readwrite").then((tx) => {
+    if (!tx) throw new Error("IndexedDB unavailable");
+    return new Promise<boolean | null>((resolve, reject) => {
+      try {
+        const store = tx.objectStore("meta");
+        const read = store.get(SNDS_KEY);
+        let changed: true | null = null;
+        let failure: unknown;
+        tx.oncomplete = () => resolve(changed);
+        tx.onabort = () => reject(failure ?? tx.error ??
+                                  new Error("snd store transaction aborted"));
+        // Let request errors abort the transaction, but not bubble into
+        // window.onerror: callers handle the rejection after the abort.
+        tx.onerror = (e) => e.stopPropagation();
+        read.onerror = (e) => {
+          e.stopPropagation();
+          failure = read.error;
+        };
+        read.onsuccess = () => {
+          try {
+            const out = update(read.result ?? null);
+            if (out === null) return;
+
+            const write = store.put(out, SNDS_KEY);
+            changed = true;
+            askPersist();
+            write.onerror = (e) => {
+              e.stopPropagation();
+              failure = write.error;
+            };
+          } catch (e) {
+            failure = e;
+            tx.abort();
+          }
+        };
+      } catch (e) { reject(e); }
+    });
+  });
 }
-function sndsPut(out: StoredSnd[]): Promise<boolean> {
-  return rwStrict("meta", "readwrite", (s) => s.put(out, SNDS_KEY))
-    .then(() => true); // rq.result is the key — resolve an explicit boolean
+
+/** The capped merge policy shared by the transaction and its unit tests. */
+function mergeSnds(cur: StoredSnd[] | null, records: StoredSnd[]): StoredSnd[] {
+  const { out, dropped } = capSnds(cur, records);
+  if (dropped)
+    console.warn(`snd store over ${SNDS_CAP >> 20}MB cap; dropped`,
+                 dropped, "records");
+  return out;
 }
 
 /** Read-modify-write of the snds record, factored for tests. `get`
@@ -298,11 +350,7 @@ export async function sndsMergeInto(
     put: (out: StoredSnd[]) => Promise<unknown>,
     records: StoredSnd[]): Promise<unknown> {
   const cur = await get();
-  const { out, dropped } = capSnds(cur, records);
-  if (dropped)
-    console.warn(`snd store over ${SNDS_CAP >> 20}MB cap; dropped`,
-                 dropped, "records");
-  const ok = await put(out);
+  const ok = await put(mergeSnds(cur, records));
   if (!ok) throw new Error("snd store write failed");
   return ok;
 }
@@ -312,7 +360,7 @@ export async function sndsMergeInto(
 let sndsChain: Promise<unknown> = Promise.resolve();
 export function sndsMerge(records: StoredSnd[]): Promise<unknown> {
   const run = sndsChain.then(() =>
-    sndsMergeInto(sndsGetStrict, sndsPut, records));
+    mutateSnds((cur) => mergeSnds(cur, records)));
   sndsChain = run.catch(() => {}); // a failed merge mustn't poison the chain
   return run;
 }
@@ -322,10 +370,10 @@ export function sndsMerge(records: StoredSnd[]): Promise<unknown> {
 export function sndsRemove(names: Iterable<string>): Promise<unknown> {
   const drop = new Set(names);
   if (!drop.size) return Promise.resolve(null);
-  const run = sndsChain.then(() => sndsGetStrict().then((cur) => {
+  const run = sndsChain.then(() => mutateSnds((cur) => {
     if (!cur?.length) return null;
     const out = cur.filter((r) => !drop.has(r.name));
-    return out.length === cur.length ? null : sndsPut(out);
+    return out.length === cur.length ? null : out;
   }));
   sndsChain = run.catch(() => {});
   return run;

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { listAddons } from "./import.js";
+import { isArchiveUrl, listAddons } from "./import.js";
 
 const PAGE = "https://archive.org/download/aquazonewithguppiesandaddons/" +
   "addon%20and%20modded%20fish.zip/";
@@ -39,5 +39,45 @@ describe("listing pages", () => {
     const listed = listAddons((c) => c.outer === "addon and modded fish.zip");
     await vi.advanceTimersByTimeAsync(120_000);
     expect((await listed).map((it) => it.inner)).toEqual(["banggai"]);
+  });
+});
+
+describe("node-mirror listing links", () => {
+  it("produce items the install validator accepts", async () => {
+    // Listing pages may switch to mirror-host hrefs; the producer must
+    // not emit a URL the tank's remote install refuses.
+    const html = '<a href="//ia801504.us.archive.org/download/' +
+      'aquazonewithguppiesandaddons/addon%20and%20modded%20fish.zip/' +
+      'banggai.zip">banggai.zip</a>';
+    vi.stubGlobal("fetch", async (u: string) =>
+      String(u) === PAGE
+        ? new Response(html, { status: 200 })
+        : new Response(null, { status: 404 }));
+    const listed = await listAddons(
+      (c) => c.outer === "addon and modded fish.zip");
+    expect(listed.map((it) => it.inner)).toEqual(["banggai"]);
+    expect(listed.every((it) => isArchiveUrl(it.url))).toBe(true);
+  });
+
+  it("drop a plain-http link the installer would refuse", async () => {
+    // The parser and the validator must agree on scheme: an http href
+    // listed here would always fail with 'invalid add-on item'. Use the
+    // gravel collection — the rename path rewrites URLs to https, so it
+    // could not show the raw href this test is about.
+    const page = "https://archive.org/download/aquazonewithguppiesandaddons/" +
+      "gravel.zip/";
+    const html = '<a href="http://archive.org/download/' +
+      'aquazonewithguppiesandaddons/gravel.zip/brownsand.grv">' +
+      'brownsand.grv</a>';
+    const fetchMock = vi.fn(async (u: string) =>
+      String(u) === page
+        ? new Response(html, { status: 200 })
+        : new Response(null, { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const listed = await listAddons((c) => c.outer === "gravel.zip");
+    // Without this the test passes vacuously if pageUrl ever stops
+    // matching the stub: every request 404s and `listed` is empty too.
+    expect(fetchMock.mock.calls.flat().map(String)).toContain(page);
+    expect(listed).toEqual([]);
   });
 });

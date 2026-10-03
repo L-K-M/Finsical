@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { COLLECTIONS } from "./import.js";
-import type { Importable, PackSection } from "./import.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { COLLECTIONS, listAddons } from "./import.js";
+import type { Collection, Importable, PackSection } from "./import.js";
 import { resolveStarter, runStarter, STARTER_SET, starterCollection,
-         wantsStarterSounds, welcomeOffer } from "./starter.js";
+         unreachedStarter, wantsStarterSounds, welcomeOffer }
+  from "./starter.js";
 
 const item = (section: PackSection, inner: string): Importable =>
   ({ section, inner,
@@ -36,6 +37,77 @@ describe("resolveStarter", () => {
 
   it("comes back empty for an empty listing (offline)", () => {
     expect(resolveStarter([])).toEqual([]);
+  });
+});
+
+describe("unreachedStarter", () => {
+  const all = STARTER_SET.map((s) => item(s.section, s.inner));
+  const col = (section: PackSection): Collection =>
+    COLLECTIONS.find((c) => c.section === section)!;
+
+  it("is empty when every listing answered, whatever is missing", () => {
+    // An item absent from a complete listing is gone from the archive:
+    // the set skips it for good.
+    expect(unreachedStarter(all.slice(1), [])).toEqual([]);
+  });
+
+  it("names what a failed listing kept out of reach", () => {
+    const got = unreachedStarter(all.filter((i) =>
+      i.section !== "plants" && i.section !== "backgrounds"),
+      [col("plants"), col("backgrounds")]);
+    expect(got.map((g) => g.inner)).toEqual(["Amazon_L", "Back03"]);
+  });
+
+  it("leaves out an item whose own section listed fine", () => {
+    // banggai is missing, but only the backgrounds' listing failed: the
+    // fish collections answered, so banggai is gone, not out of reach.
+    const got = unreachedStarter(all.filter((i) =>
+      i.inner !== "banggai" && i.section !== "backgrounds"),
+      [col("backgrounds")]);
+    expect(got.map((g) => g.inner)).toEqual(["Back03"]);
+  });
+
+  it("is empty when the listing failed but the whole set came back",
+     () => {
+    expect(unreachedStarter(all, [col("plants")])).toEqual([]);
+  });
+});
+
+describe("the starter set behind a failed listing", () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+  const A = "aquazonewithguppiesandaddons";
+  const link = (outer: string, rel: string): string =>
+    `<a href="/download/${A}/${encodeURIComponent(outer)}/` +
+    `${encodeURIComponent(rel)}">x</a>`;
+
+  it("reports the JPN page's failure, and its items as unreached",
+     async () => {
+    // The JPN set alone holds the starter plant and backdrop; its one
+    // listing page answers 503 while the rest list fine.
+    vi.stubGlobal("fetch", async (u: string) => {
+      const url = decodeURIComponent(String(u));
+      if (url.includes("aquazone-jpn-set"))
+        return new Response("busy", { status: 503 });
+      if (url.endsWith("addon and modded fish.zip/"))
+        return new Response(["banggai", "clownfish", "neon"].map((n) =>
+          link("addon and modded fish.zip", `${n}.zip`)).join(""));
+      if (url.endsWith("gravel.zip/"))
+        return new Response(link("gravel.zip", "brownsand.zip"));
+      if (url.endsWith("Missing addons Aquazone.7z/"))
+        return new Response(link("Missing addons Aquazone.7z",
+          "addons Aquazone/System/AZ_WAVES.REZ"));
+      return new Response(null, { status: 404 });
+    });
+    const failed: Collection[] = [];
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const listing = await listAddons(starterCollection, undefined,
+                                     (col) => { failed.push(col); });
+    expect(failed.length).toBeGreaterThan(0);
+    expect(failed.every((c) => c.outer.includes("JPN"))).toBe(true);
+    // Five of the seven list; the other two are out of reach, not gone.
+    expect(resolveStarter(listing)).toHaveLength(STARTER_SET.length - 2);
+    expect(unreachedStarter(listing, failed)
+      .map((s) => s.inner)).toEqual(["Amazon_L", "Back03"]);
   });
 });
 

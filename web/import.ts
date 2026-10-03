@@ -156,6 +156,19 @@ export function decorCopyRoom(decors: ReadonlyArray<{ pack: string }>,
     decors.filter((d) => d.pack === src).length);
 }
 
+/** Why another copy of a plant or accessory can't go in (null: it
+ * can): the tank already holds as many as a save restores. Asked before
+ * an install, so the click says so instead of playing the scenery
+ * sound and reporting an add that placed nothing. */
+export function decorRefusal(decors: ReadonlyArray<{ pack: string }>,
+                             it: { section: string; url: string }):
+    string | null {
+  if (it.section !== "plants" && it.section !== "accessories") return null;
+  if (decorCopyRoom(decors, it.url) > 0) return null;
+  const what = it.section === "plants" ? "plant" : "accessory";
+  return `This ${what} is already in the tank ${DECOR_COPIES_MAX} times.`;
+}
+
 /** The persisted copy count, clamped to sanity (storage is untrusted). */
 function decorCopies(it: Importable): number {
   return clampDecorCopies(it.copies);
@@ -201,11 +214,32 @@ function zipWeigh(url: string, bytes: number): void {
     zipEvict(k);
   }
 }
+/** The hosts archive.org serves content from: the site and its
+ * subdomains — the download hosts and node mirrors (iaNNNN…), and the
+ * listing pages that hand them out. Deliberately broad: the listing
+ * parser always accepted any subdomain, and the downloader follows
+ * redirects across them, so the parser, the install validator and the
+ * cache share this one definition. */
+export function isArchiveHost(hostname: string): boolean {
+  return hostname === "archive.org" || hostname.endsWith(".archive.org");
+}
+
+/** Whether `raw` is an https URL on archive.org or one of its
+ * subdomains — the shape the add-on import pipeline accepts end to
+ * end. */
+export function isArchiveUrl(raw: unknown): boolean {
+  if (typeof raw !== "string") return false;
+  try {
+    const u = new URL(raw);
+    return u.protocol === "https:" && isArchiveHost(u.hostname);
+  } catch { return false; }
+}
+
 /** Per-URL bytes on archive.org never change — safe to persist
  * forever. Other hosts (a dev server, a mutable mirror) keep only
  * their in-session memo so stale bytes can't wedge a dev loop. */
 function immutableHost(u: string): boolean {
-  try { return /(^|\.)archive\.org$/.test(new URL(u).hostname); }
+  try { return isArchiveHost(new URL(u).hostname); }
   catch { return false; }
 }
 /** archive.org occasionally stalls mid-response. Without a timeout a
@@ -214,6 +248,20 @@ function immutableHost(u: string): boolean {
  * wedged entry. Aborting rejects like a network error, the cache
  * entry drops, and the retry starts a fresh request. */
 const FETCH_TIMEOUT_MS = 30_000;
+/** How a request or body that failed in transit ends its message,
+ * like ": 503" and ": empty" for the other download failures the panel
+ * tells apart by message. Each engine words the failure its own way
+ * ("network error", "Error in body stream", "The network connection
+ * was lost."), and transientFailure knew none of those, so a download
+ * cut off mid-way left Try Again disabled. */
+const CONNECTION_LOST = "connection lost";
+/** `e`, a transport failure on `url`, as the error the panel knows to
+ * offer Try Again for. A stall's abort keeps its own error, which
+ * loadProblem reads as too slow rather than cut off. */
+function inTransit(url: string, e: unknown): unknown {
+  if (e instanceof Error && e.name === "AbortError") return e;
+  return new Error(`${url}: ${CONNECTION_LOST}`, { cause: e });
+}
 /** fetch + consume the body under a stall budget — any phase that
  * makes no progress for the limit aborts the request and rejects like
  * a network error. `kick` resets the clock: callers streaming a body
@@ -229,19 +277,23 @@ async function fetchTimed<T>(url: string,
     clearTimeout(t);
     t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
   };
-  try { return await read(await fetch(url, { signal: ctl.signal }), kick); }
-  finally { clearTimeout(t); }
+  try {
+    const r = await fetch(url, { signal: ctl.signal })
+      .catch((e: unknown) => { throw inTransit(url, e); });
+    return await read(r, kick);
+  } finally { clearTimeout(t); }
 }
 /** Body bytes via a reader so each arrived chunk can kick the stall
  * clock — `r.arrayBuffer()` would give no progress signal. */
-async function readBody(r: Response, kick: () => void):
+async function readBody(url: string, r: Response, kick: () => void):
     Promise<Uint8Array> {
+  const lost = (e: unknown): never => { throw inTransit(url, e); };
   const rd = r.body?.getReader();
-  if (!rd) return new Uint8Array(await r.arrayBuffer());
+  if (!rd) return new Uint8Array(await r.arrayBuffer().catch(lost));
   const chunks: Uint8Array[] = [];
   let len = 0;
   for (;;) {
-    const { done, value } = await rd.read();
+    const { done, value } = await rd.read().catch(lost);
     if (done) break;
     chunks.push(value);
     len += value.length;
@@ -267,7 +319,7 @@ function fetchZip(url: string): Promise<Uint8Array> {
       if (hit) { if (ours()) zipWeigh(url, hit.byteLength); return hit; }
       const d = await fetchTimed(url, async (r, kick) => {
         if (!r.ok) throw new Error(`${url}: ${r.status}`);
-        return readBody(r, kick);
+        return readBody(url, r, kick);
       });
       // archive.org answers a path its archive view can't find with an
       // empty 200. Persisted, that would stand in for the file forever.
@@ -328,7 +380,8 @@ async function listPage(item: string, outer: string): Promise<string> {
       const fresh = await fetchTimed(page, async (r, kick) => {
         if (!r.ok) throw new Error(`${outer}: listing ${r.status}`);
         return { t: Date.now(),
-                 html: new TextDecoder().decode(await readBody(r, kick)) };
+                 html: new TextDecoder().decode(
+                   await readBody(page, r, kick)) };
       });
       if (immutableHost(page))
         void metaPut(page, fresh).catch(() => {});
@@ -416,8 +469,10 @@ async function listCollection(col: Collection): Promise<Importable[]> {
     let u: URL;
     try { u = new URL(m[1]!, pageUrl(item, outer)); }
     catch { continue; } // malformed href — not an entry link
-    // Entry links live on archive.org or its node mirrors (iaNNNN…).
-    if (u.host !== "archive.org" && !u.host.endsWith(".archive.org"))
+    // Entry links must be exactly what remoteInstall accepts: https on
+    // archive.org or its node mirrors (iaNNNN…), so an http:// link
+    // can't be listed yet always fail to install.
+    if (!isArchiveUrl(u.href))
       continue;
     let path: string;
     try { path = decodeURIComponent(u.pathname); }
@@ -684,7 +739,7 @@ export async function importAddon(url: string): Promise<PackResult[]> {
     if (!isPack(d)) throw new Error(`${url}: stored data is not a pack`);
     // Same shape as the remote isPack branch: a pack blob yields no
     // sound records — dropped loose audio already persisted via
-    // handleSounds/sndsPut at drop time.
+    // handleSounds/sndsMerge at drop time.
     return [{ entry: url, sheets: fshToSheets(d), images: packImages(d),
               sounds: [], care: packSpeciesCare(d) }];
   }
@@ -728,12 +783,14 @@ COLLECTIONS.forEach((c, i) => {
 
 /** Fetch the listing pages of all collections (or those `only`
  * accepts), grouped by section in COLLECTIONS order. Never rejects: a
- * failed section just comes back empty. `onItems` fires per resolved
- * collection so a caller can show rows without waiting on the slowest
- * one. */
+ * failed section just comes back empty, and `onFailed` hears which one
+ * and why, since an empty section and an unreachable one look the
+ * same in the result. `onItems` fires per resolved collection so a
+ * caller can show rows without waiting on the slowest one. */
 export async function listAddons(
     only: (c: Collection) => boolean = () => true,
     onItems?: (items: Importable[]) => void,
+    onFailed?: (col: Collection, e: unknown) => void,
 ): Promise<Importable[]> {
   const cols = COLLECTIONS.filter(only);
   const lists = await Promise.all(cols.map(async (col) => {
@@ -744,6 +801,12 @@ export async function listAddons(
     } catch (e) {
       console.warn(`archive.org listing failed for ${col.outer}:`, e);
       items = [];
+      // Guarded like onItems below: a throwing callback mustn't reject
+      // Promise.all and void every other collection's results.
+      try { onFailed?.(col, e); }
+      catch (cbErr) {
+        console.warn(`onFailed callback failed for ${col.outer}:`, cbErr);
+      }
     }
     // Outside the fetch try: a throwing UI callback must not
     // masquerade as a fetch failure or drop the collection's items.
@@ -895,6 +958,41 @@ const KIND_NAMES: Record<string, string> = {
   sounds: "Sound",
 };
 const SECTION_KEY = "finsical:addonSection";
+
+/** Storage for the Show pop-up's remembered section, injectable for
+ * tests. Only a user's own pick goes through `rememberSection`: the
+ * streaming listing auto-selects whichever section arrived first, and
+ * persisting that used to clobber the saved preference before the saved
+ * section could even arrive, so the window reopened on the wrong
+ * section from then on. */
+export interface SectionPrefs {
+  get(): string | null;
+  set(sec: string): void;
+}
+const SECTION_PREFS: SectionPrefs = {
+  get: () => {
+    try { return localStorage.getItem(SECTION_KEY); }
+    catch { return null; } // storage unavailable
+  },
+  set: (sec) => {
+    try { localStorage.setItem(SECTION_KEY, sec); }
+    catch { /* storage unavailable */ }
+  },
+};
+
+/** Remember a section the user chose in the Show pop-up. */
+export function rememberSection(sec: string,
+                                prefs: SectionPrefs = SECTION_PREFS): void {
+  prefs.set(sec);
+}
+
+/** The section to show now: the saved one as soon as it has arrived,
+ * the first one that did until then. Never a reason to write storage —
+ * auto-landing is not a choice. */
+export function chooseStartSection(saved: string | null,
+                                   sections: readonly string[]): string {
+  return saved !== null && sections.includes(saved) ? saved : sections[0]!;
+}
 /** List rows: 31px for a 38 x 28 thumbnail, and a white rule. */
 const ROW_H = 32;
 const MINI_W = 38, MINI_H = 28;
@@ -954,6 +1052,10 @@ export function loadProblem(e: unknown): string {
     return "archive.org sent an empty file. Try again later.";
   if (msg.endsWith(": entry missing"))
     return "The download is missing the add-on's file.";
+  // Before the abort test: the URL in a cut-off's message may itself
+  // contain "abort".
+  if (msg.endsWith(`: ${CONNECTION_LOST}`))
+    return "Check the connection and try again.";
   if (/abort/i.test(msg))
     return "The download took too long — try again.";
   return "Check the connection and try again.";
@@ -966,6 +1068,7 @@ export function loadProblem(e: unknown): string {
 export function transientFailure(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e);
   return /: \d{3}$/.test(msg) || /: (empty|entry missing)$/.test(msg) ||
+         msg.endsWith(`: ${CONNECTION_LOST}`) ||
          /abort|failed to fetch|networkerror|load failed|timeout/i.test(msg);
 }
 
@@ -1135,7 +1238,12 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
   const byUrl = new Map<string, Importable>();
   const popup = mountPopup(popBtn, {
     items: ["Fish"], selected: 0, label: "Show",
-    onChange: (i) => { picked = true; showSection(sections[i]!); },
+    onChange: (i) => {
+      picked = true;
+      const sec = sections[i]!;
+      showSection(sec);
+      rememberSection(sec);
+    },
   });
   function setShowEnabled(on: boolean): void {
     popBtn.disabled = !on;
@@ -1182,7 +1290,6 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
 
   function showSection(sec: string): void {
     section = sec;
-    try { localStorage.setItem(SECTION_KEY, sec); } catch { /* unavailable */ }
     applyFilter();
   }
 
@@ -1313,9 +1420,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       const pv = h.preview(usable);
       // Cache the thumb even if the selection moved on while the fetch
       // was in flight; only the pane waits on it being current.
-      if (pv) { thumbs.set(it.url, pv); storeThumb(it, pv); }
+      const mini = pv && keepThumb(it, pv);
       const r = rowOf(it.url);
-      if (r && pv) paintThumb(r, pv);
+      if (r && mini) paintThumb(r, mini);
       // A stale resolve must not create a Blob URL (it would orphan on
       // the next assignment) or touch the pane: the ref object
       // identifies this showing.
@@ -1454,7 +1561,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     const box = row.querySelector(".ithumb");
     if (!box) return;
     // Replace, don't skip: a pack that reinstalls under the same url
-    // earns a fresh preview, and a re-paint of the same thumb is cheap.
+    // earns a fresh preview. Each row needs its own canvas, a copy of
+    // the kept 38 x 28 mini: cheap, even on every filter keystroke.
     const cv = miniThumb(th);
     cv.style.left = `${Math.floor((MINI_W - cv.width) / 2)}px`;
     cv.style.top = `${Math.floor((MINI_H - cv.height) / 2)}px`;
@@ -1514,6 +1622,22 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         .catch(() => { /* cache skipped */ });
     }, "image/png");
   }
+  // Row thumbs only ever fill the list's 38 x 28 box, so that is all
+  // `thumbs` keeps: a full preview (a 640 x 480 background is 1.2 MB of
+  // canvas) per browsed add-on stayed for the window's life, and the
+  // app hides the Import window rather than closing it. The PNG cache
+  // is written once per add-on and session, not on every selection.
+  const thumbStored = new Set<string>();
+  function keepThumb(it: Importable, pv: HTMLCanvasElement):
+      HTMLCanvasElement {
+    const mini = miniThumb(pv);
+    thumbs.set(it.url, mini);
+    if (!thumbStored.has(it.url)) {
+      thumbStored.add(it.url);
+      storeThumb(it, pv);
+    }
+    return mini;
+  }
   function storedThumbPainted(it: Importable): void {
     const t = rowOf(it.url);
     const th = thumbs.get(it.url);
@@ -1536,7 +1660,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         const cv = document.createElement("canvas");
         cv.width = w; cv.height = h;
         cv.getContext("2d")!.drawImage(bmp, 0, 0);
-        thumbs.set(it.url, cv);
+        thumbs.set(it.url, miniThumb(cv));
+        thumbStored.add(it.url); // already in the cache
         thumbQueued.delete(it.url);
         storedThumbPainted(it);
       };
@@ -1580,10 +1705,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         const usable = usablePacks(rs, it.section);
         const pv = usable.length ? h.preview(usable) : null;
         if (!pv) return;
-        thumbs.set(it.url, pv);
-        storeThumb(it, pv);
+        const mini = keepThumb(it, pv);
         const t = rowOf(it.url);
-        if (t) paintThumb(t, pv);
+        if (t) paintThumb(t, mini);
       }).catch((e) => {
         console.warn(`add-on thumb failed for ${it.inner}:`, e);
       })
@@ -1643,7 +1767,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     }
     markInstalled(it.url, true);
     const pv = h.preview(usable);
-    if (pv) { thumbs.set(it.url, pv); storeThumb(it, pv); }
+    if (pv) keepThumb(it, pv);
     return soundNames;
   }
 
@@ -1681,11 +1805,6 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     h.onInstall?.(it, soundNames);
   }
 
-  function savedSection(): string | null {
-    try { return localStorage.getItem(SECTION_KEY); }
-    catch { return null; } // storage unavailable
-  }
-
   // Invalidates a previous loadListing attempt still in flight — its
   // late collections must not merge into the retried listing.
   let listingGen = 0;
@@ -1707,10 +1826,10 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
     }
     setShowEnabled(true);
     if (!picked) {
-      const sv = savedSection();
       // Land on the saved section once it arrives; until then the
-      // first available section has something to show.
-      showSection(sv && sections.includes(sv) ? sv : sections[0]!);
+      // first available section has something to show. Never persisted
+      // here — auto-landing is not the user's choice.
+      showSection(chooseStartSection(SECTION_PREFS.get(), sections));
     } else if (sections.includes(section)) {
       applyFilter(); // new rows may join the viewed section
     }
@@ -1744,8 +1863,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       all = items;
       // A user's own pick outranks the saved section.
       if (!picked) {
-        const sv = savedSection();
-        const start = sv && sections.includes(sv) ? sv : sections[0]!;
+        const start = chooseStartSection(SECTION_PREFS.get(), sections);
         popup.setItems(sections.map((s) => SECTION_TITLES[s] ?? s),
                        sections.indexOf(start));
         showSection(start);
