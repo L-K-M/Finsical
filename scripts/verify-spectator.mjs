@@ -41,7 +41,7 @@ assert.ok(browser, "Install Chrome/Chromium or set FINSICAL_CHROMIUM");
 const probe = `
 window.__probe = {
   tankOwner, setNames, applySoundConfig, applyLighting, applyEffects,
-  toggleAutoFeed, setPaused,
+  toggleAutoFeed, setPaused, showAlert, dropAllowed,
   configKeys: [LIGHTING_KEY, CRT_KEY, CRT_CFG_KEY, SOUND_KEY, EFFECTS_KEY,
     NAMES_KEY, AUTOFEED_KEY, CHANGE_KEY, MACHINE_KEY, SCOLD_KEY, HINTS_KEY,
     BOOT_KEY],
@@ -243,13 +243,49 @@ try {
 
   await test("the owning tab shows the drop cue for dragged files",
     async () => {
-      assert.equal(await evalJs(dragWithFile, owner.sessionId), true);
+      const [allowed, cue] = await evalJs(`(() => {
+        const d = __probe.dropAllowed();
+        const dt = new DataTransfer();
+        dt.items.add(new File([1], 'x.fsh'));
+        window.dispatchEvent(new DragEvent('dragenter',
+          { dataTransfer: dt }));
+        return [d, document.body.classList.contains('dragging')];
+      })()`, owner.sessionId);
+      assert.equal(allowed, true);
+      assert.equal(cue, true);
       await evalJs(`(() => {
         const dt = new DataTransfer();
         dt.items.add(new File([1], 'x.fsh'));
         window.dispatchEvent(new DragEvent('dragleave',
           { dataTransfer: dt }));
       })()`, owner.sessionId);
+    });
+
+  await test("a modal stands the owner's cue down and lets it back up",
+    async () => {
+      const [underModal, afterClose] = await evalJs(`(() => {
+        const alert = __probe.showAlert({
+          icon: 'note', text: 'checking', buttons: [{ label: 'OK' }],
+        });
+        const dt = new DataTransfer();
+        dt.items.add(new File([1], 'x.fsh'));
+        window.dispatchEvent(new DragEvent('dragenter',
+          { dataTransfer: dt }));
+        const under = [__probe.dropAllowed(),
+          document.body.classList.contains('dragging')];
+        alert.close();
+        // dragover re-evaluates: the cue must follow a modal that
+        // closed mid-drag rather than staying stood down.
+        window.dispatchEvent(new DragEvent('dragover',
+          { dataTransfer: dt }));
+        const after = [__probe.dropAllowed(),
+          document.body.classList.contains('dragging')];
+        window.dispatchEvent(new DragEvent('dragleave',
+          { dataTransfer: dt }));
+        return [under, after];
+      })()`, owner.sessionId);
+      assert.deepEqual(underModal, [false, false]);
+      assert.deepEqual(afterClose, [true, true]);
     });
 
   const spectator = await openPage();
@@ -282,6 +318,9 @@ try {
 
     await test("the spectator shows no drop cue for dragged files",
       async () => {
+        assert.equal(
+          await evalJs("__probe.dropAllowed()", spectator.sessionId),
+          false);
         assert.equal(await evalJs(dragWithFile, spectator.sessionId),
                      false);
       });
@@ -292,7 +331,7 @@ try {
 
   assert.deepEqual(errors, [], "page errors");
   assert.deepEqual(failures, [], failures.join("\n"));
-  assert.equal(passed.length, 4, "Missing checks");
+  assert.equal(passed.length, 5, "Missing checks");
   console.log(`${passed.length} live spectator scenarios passed`);
 } finally {
   if (child && child.exitCode === null) {
