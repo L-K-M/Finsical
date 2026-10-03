@@ -1,0 +1,370 @@
+# Finsical: Chromium review, 2026-10-03
+
+Baseline: `origin/main` **57f9ae3**, version 0.8.0. Review first, implementation
+second. Other agents' PRs were not inspected. Existing ANALYSIS.md supplies
+historical IDs, not proof that a fix reached main.
+
+## Verdict
+
+The life-support model now covers much of classic AquaZone: real-time hunger,
+water chemistry, filtration, heating, medicine, disease, death and catch-up.
+The larger remaining fidelity gaps are individual fish provenance, reproductive
+stages, selectable foods, positioned tank layouts and configurable equipment.
+
+The interface uses period bitmap typography and Platinum controls consistently.
+The main shortcomings are discoverability, clipping on small screens, misleading
+care advice and mismatched display behavior between the hardware cases.
+Pixel-perfect Mac OS 8/9 matching has not been established against an original
+system screenshot. A recognizable style is not proof of pixel identity.
+
+The most consequential newly reproduced bug is sound-store data loss across
+windows: **20 successful concurrent additions left only 11 records**.
+
+## What was actually verified
+
+- `npm run typecheck`, `npm test`: 63 files, **892 tests**, green at 57f9ae3.
+- `npm run build`: all five pages and their assets produced.
+- At d5e5410, asset-tool tests: **94**, Linux-shell tests: **100**, green.
+  Python tests emit unclosed-file ResourceWarnings; these are not test failures.
+- Playwright 1.63.0, local **Chromium 153.0.8010.12**, ANGLE/SwiftShader.
+  Browser libraries were unpacked locally; no system installation was needed.
+- Real archive.org starter installation completed: banggai, clownfish, neon,
+  brownsand, Amazon_L, Back03 and AZ_WAVES. No page exceptions during this flow.
+- Inspected all five pages, all six Preferences panes, all three Stats tabs,
+  full and minimum window sizes, 375px phone width and 320x240 help windows.
+- Compared seven hardware-case layouts, Bare and Glass aquarium geometry;
+  reviewed screenshots of the default tank, full tank and companion windows.
+- Pause froze ticks and rejected feeding; Alt-click opened Get Info; Escape
+  closed it; N produced 24 name tags. Offline reload retained the 24-fish roster
+  without an alert. The latter proves cached launch, not every eviction scenario.
+- Devin SWE-2 Max completed a read-only core/import audit and a backlog mapping.
+  Muse and MiMo returned no usable audit. Space-bunny's continuation selected
+  the wrong session; its resulting claims are excluded.
+
+Native AppKit, GTK/WebKit, Android on a device, hardware-GPU frame times, sound
+quality through speakers, VoiceOver and physical touch remain unverified.
+
+### Runtime measurements
+
+Measured six-second warmed-up samples at 1280x900. Companion pages stayed open.
+CPU time wraps the app's `frame` callback; it excludes asynchronous GPU execution.
+
+| Scenario | rAF gap p95 / max | callback p95 / max | >50ms long tasks |
+| --- | --- | --- | --- |
+| Three fish, CRT off | 16.7 / 16.8 ms | 7.3 / 11.1 ms | 0 |
+| Three fish, CRT on | 16.8 / 33.4 ms | 3.8 / 5.5 ms | 0 |
+| 24 fish, CRT on | 33.3 / 33.4 ms | 5.4 / 7.3 ms | 0 |
+| Install angels, two fish resources | max 50 ms | max 8.5 ms | three 51ms tasks |
+
+These are bounded samples on software rendering, not a claim of universal
+smoothness. The CPU difference between CRT settings is not a reliable comparison
+because lighting and animation phases differ. The simulation intentionally paints
+at 30Hz; a 60Hz rAF trace does not mean the fish have 60fps movement.
+
+## AquaZone reference evidence and edition boundaries
+
+Use classic Mac AquaZone/Deluxe as the behavior reference. Later screensavers and
+the DS game can inspire optional features but do not define 1990s Mac fidelity.
+
+| Source | Evidence / limitation |
+| --- | --- |
+| https://aquazone.me/ | Community history: breeding, hatching, birth/death, decoration, time controls and modding tools; includes Mac files. Its primary setup discussion uses Windows. |
+| https://macintoshgarden.org/games/aquazone | Classic 68k Mac listing; system compatibility, not a detailed feature specification. |
+| https://macintoshgarden.org/games/aquazone-deluxe | Six species; Accessory Maker; foods/medicine; four gravels, seven accessories, 15 backdrops, five plants and 12 prepared tanks. Describes real time continuing while closed. |
+| https://macintoshgarden.org/search/node/aquazone | Discovery link, not independent feature evidence. |
+| https://macintoshgarden.org/games/aquazone-desktop-pure-goldfish-aquazone-desktop-life-pure | Direct fetch failed. No claims inferred from the title. |
+| https://aquazone-bass-edition.en.softonic.com/mac | HTTP 406. No feature claims verified. |
+| https://archive.org/details/aquazone-deluxe | ISO and packaging image. Metadata confirms title; packaging alone does not establish controls. |
+| https://archive.org/details/aquazone-jt-m_202107 | Metadata identifies an Allume 2005 Windows screensaver, not the classic Mac application. |
+| https://archive.org/details/aquazone_1997_9003inc | 1997 Win/Mac packaging and ISO; earlier fetch reviewed metadata. |
+| https://archive.org/details/aquazoneds_cm | Metadata: GungHo, Nintendo DS, 2008, 15-second commercial. Different platform/edition. |
+| https://archive.org/details/aquazoner-virtual-aquarium | Metadata describes an XP/Vista/7 screensaver. Not evidence for Mac OS 8 widgets. |
+| https://www.amazon.com/Aquazone-Deluxe-Guppy-Pack-PC-Mac/dp/B000021YUC | Shopping interstitial; product description not accessible. |
+| https://www.macworld.com/article/177208/aquazone.html | 2005 Seven Seas Deluxe: 40 fish kinds, 20 environments, schooling, tap/feed, light/sound and zoom-follow. Later-edition inspiration only. |
+| https://www.myabandonware.com/game/aquazone-deluxe-ii-with-guppies-your-virtual-aquarium-f1f | 1999 Win/Mac hybrid and separate Mac add-ons; descriptions of genetics and art-editing tools. Displayed screenshots are explicitly Windows. |
+
+Additional community references:
+
+- [Don's tips](https://web.archive.org/web/20120407192043id_/http://members.fortunecity.co.uk/coxdon/azdeluxe2/tips.htm):
+  0x storage/vacation workflow, tank copies, variable tank dimensions, feeding
+  intervals and spoonfuls. This is community practice, not exact Mac UI proof.
+- [Don's beginner tutorial](https://web.archive.org/web/20120407192043id_/http://members.fortunecity.co.uk/coxdon/Donsaquaticattic1/newbie_tutorial_1.htm):
+  toolbar, 12-hour light schedule, food types/containers, named individuals and
+  time-warp/event workflows. FisherMan volume editing is a third-party tool.
+- `docs/ORIGINAL-SIM.md`: repository's reverse-engineering account. Its explicit
+  differences are more trustworthy than assumptions based on screen appearance;
+  the decompilation itself was not independently repeated in this pass.
+
+## Confirmed defects and focused improvements
+
+Each entry gives a narrow next step and an observable acceptance condition.
+Effort S/M/L is relative, not a time estimate. Existing IDs consolidate duplicates.
+
+### RT-01 Sound updates lose records between windows
+
+**High; M; browser-reproduced.** `web/store.ts:283-331` reads and writes in
+separate transactions. `sndsChain` is module-local, so tank and Add-ons serialize
+independently (`web/addons.ts:64`). Two same-origin Chromium pages, each loading
+the real bundled store module, made ten pairs of concurrent uniquely named merges.
+Every promise succeeded; only 11 of the expected 20 records remained.
+
+**Change:** perform read, merge/remove and write inside one IndexedDB readwrite
+transaction on `meta`. Resolve only after commit; aborts must reject. This works
+on old WebKit without Web Locks and covers both merges and removals.
+**Acceptance:** run the two-window case before/after, require all 20 records;
+also check same-name replacement, removal racing an addition and transaction
+failure. Consolidate under B-39/B-18, distinguishing cross-page isolation from
+the historical failed-read bug. Selected for implementation.
+
+### RT-02 Stats reports depleted oxygen as healthy
+
+**Medium; S; browser-reproduced.** A state with oxygen saturation 40%, water
+quality 0.4, fed fish and otherwise normal chemistry displays “The tank is
+healthy — nothing needed.” `web/statsmodel.ts:174-230` never checks oxygen;
+`core/aquarium/aquarium.ts:242-256` models suffocation at zero.
+
+**Change:** add an explicit low-oxygen care hint before routine food/filter
+advice. Do not advise indiscriminate medicine or chlorinated water changes.
+Explain reducing crowding and letting the filter aerate. Keep the two-hint limit.
+**Acceptance:** below a documented UI warning threshold, no healthy verdict;
+chlorine and oxygen remain visible together; empty tanks and healthy oxygen do
+not acquire a spurious warning. Selected for implementation.
+
+### RT-03 A saved zero speed displays “Real time”
+
+**Medium; S; browser-reproduced.** Set speed 0 through the existing bus; the
+saved aquarium reports 0 but the Keeping pop-up still reads “Real time”.
+`web/stats.ts:193,209-214,258-260` only recognizes seven nonzero presets.
+`Aquarium.setSpeed` accepts 0..100 in tenths and saves it (`aquarium.ts:409,431,448`).
+
+**Change:** include “Frozen (0×)” and faithfully display valid non-preset speeds
+from imported tanks. Keep default Real time; selecting zero uses the existing
+biology clock. Pause remains the separate whole-animation freeze.
+**Acceptance:** 0, 1 and an imported fractional speed show their true values;
+zero survives export/reload, advances no biology, and swimming continues. No
+need to invent a continuous slider without original Mac control evidence.
+Related F-10/F-26. Selected for implementation.
+
+### RT-04 Help windows run below short viewports
+
+**Low; S; browser-reproduced.** At 320x240, Shortcuts is 296x282 at y=28; its
+OK button ends at y=292 and the page cannot scroll. `web/app.css:111-115` and
+`web/menubar.ts:215-220` constrain width/position but not content height.
+
+**Change:** bound the document's content by available viewport height and allow
+vertical scrolling. Keep the normal desktop frame and bitmap controls.
+**Acceptance:** Shortcuts/About fit at 320x240 and 568x320, OK can be reached by
+scroll/keyboard, normal 1280x900 appearance is preserved. Add mouse gestures to
+Shortcuts, which currently lists only keys despite the feed/tap/Get Info workflow.
+Consolidate with U-27/A-05. Selected for implementation.
+
+### RT-05 A removed add-on can return after an install finishes
+
+**Medium; M; code-confirmed, race not driven end-to-end.** `removeAddon`
+(`main.ts:1905-1975`) does not invalidate `installsInFlight`. `downloadAddon`
+(`:2075-2113`) only checks the Empty Tank epoch. Removing a URL during Add Again
+can therefore re-add fish/scenery and persist the URL. Applying images before
+awaiting sounds also leaves partial contributions if a wipe occurs in that await.
+
+**Change:** per-URL generation shared by fetch, queued installs, apply and commit;
+prepare asynchronous sounds before publishing resources or roll them back.
+**Acceptance:** defer fetch/decode, remove or empty, resolve; no fish, decor,
+scenery, sound provenance, success acknowledgement or saved URL returns.
+Extend the B-38/B-72/B-18 family; restore's existing wanted check is insufficient.
+
+### RT-06 Food limits disagree, and fry lose their entry identity
+
+**Medium; S; code-confirmed.** `FOOD_CAP=12` and `MAX_UNEATEN=6` disagree;
+`feedFish` still pours sound/schedules pellets at the authoritative cap. Birth
+copies `pack`/`sheetIdx`, not `entry`; `tankSnapshot` also omits `entry`, so a
+multi-species pack can rebind fry or adults to other art on launch.
+**Acceptance:** one authoritative food ceiling; refused feed is silent except its
+defined refusal cue; entry survives birth, save, export and reload.
+Already canonical B-80 and B-77/B-79; do not create more backlog duplicates.
+
+### RT-07 Dropped .azpack scenery cannot complete the tool-to-app round trip
+
+**Medium; M; code-confirmed.** `tools/az/img.py:117` emits RGBA PNG, while
+`decodeIndexedPng` accepts indexed PNG. Scenery decode failures are swallowed
+in `main.ts:2866-2867,3061-3062`. Folder imports also lack the raw-drop path's
+durable `local:` pack identity (`:3064`, default scenery source is empty).
+**Change:** accept the emitted scenery representation at the image boundary or
+emit compatible indexed files; retain a removable, durable folder identity.
+**Acceptance:** emit a plant/backdrop bundle, drop it, reload offline, remove it;
+art remains correct until removal. B-54 plus B-13 remainder.
+
+### RT-08 Preferences remains a desktop-only fixed composition
+
+**Medium; M; browser-reproduced.** At 375px, Monitor sliders extend to x=528;
+controls and captions disappear. `app.css:188-298` fixes 125px units in three
+columns; Android's `PanelSizes.fit` clamps the viewport, not this layout.
+**Change:** narrow-only two/one-column layout, scrollable pane and reserved
+footer; preserve exact desktop metrics. Check Machine, Lighting and Sound too.
+**Acceptance:** every pane/control is reachable at 320/375px portrait and short
+landscape, without scaling bitmap fonts; standard-size desktop screenshots match.
+U-27 is canonical. Physical Android scrolling remains a separate check.
+
+## Performance work worth doing
+
+### RT-09 Decode budgets must precede allocation
+
+**High for hostile/large imports; M; code-confirmed.** `fsh.ts:154` decodes each
+frame before the aggregate size guard at `:162`; `import.ts:237-253` accumulates
+download bodies without a byte ceiling. Input size can amplify to many times
+its compressed size before rejection. The historical S-02 repro is stronger than
+this pass's ordinary-pack trace; do not turn that trace into an OOM claim.
+**Change:** two-pass header/budget validation, streamed body limit and abort.
+**Acceptance:** reject declared oversized packs before RLE allocation; bounded
+live memory, useful error, no cache write for rejected bodies. S-02/S-04.
+
+### RT-10 Main-thread decoding and synchronous rasterization stall imports
+
+**Medium; M/L; trace plus code.** The angels install produced three 51ms long
+tasks. Fetch/decode/apply has no Worker boundary. Attribution of each task to
+one decoder requires a CPU trace before optimization.
+**Change:** first decode only selected sheets (P-02), then move bounded decoding
+to a Worker (P-08). Transfer typed buffers; keep DOM/canvas application on the UI
+thread. Preserve pack validity and preview choices.
+**Acceptance:** warmed and cold representative large-pack traces, task duration
+and peak bytes reported; failed imports remain cancellable.
+
+### RT-11 Keep classic motion and offer smooth motion deliberately
+
+**Idea; L.** 30Hz whole-pixel steps are a nostalgia choice, not automatically a
+bug. `planFrame` permits up to roughly six ticks after a stall; catch-up jumps and
+lazy sprite rasterization can add perceptual stutter. Current small samples do
+not establish a recurring severe stall.
+**Change:** opt-in interpolation/render pacing only after P-02; keep Classic
+default, and profile paused/idle/hidden CPU. Preserve sprite-grid behavior.
+**Acceptance:** compare 60/120Hz recordings, turn/pitch readability and energy;
+hardware GPU plus low-power device. P-09/P-16/P-29/P-30.
+
+### RT-12 Reduce multi-window and audio background work
+
+**Idea; M.** Stats rebuilds DOM on every push (`stats.ts:118-155`); companions
+poll hello independently; muted ambience can continue using the audio device.
+Long imported tracks remain PCM allocations. Existing P-06/P-18/P-28/P-04 cover
+these. Measure before changing lifecycle behavior.
+**Acceptance:** unchanged state preserves nodes/focus; rapid controls coalesce;
+mute stops unnecessary processing without preventing later unlock/unmute; bound
+PCM bytes and report skipped records. Include 0/1/4-window trace comparisons.
+
+## Visual fidelity, convenience and original features
+
+### RT-13 Match the display, not only the case
+
+The Plus shows color fish; TAM, laptops and G4 get a curved RGB CRT if enabled.
+Cases without CRT also leave large integer-scale mattes: at 1280x900 the Plus
+glass is about 500x312 but the raster is only 320x200. This is a crispness/fill
+tradeoff, not an accidental aspect stretch.
+**Next:** a Monitor choice “Match machine / CRT / LCD”, plus an explicit integer
+zoom versus fill choice. Preserve manual settings. LCD skips curvature/grille;
+optional 1-bit Plus mode is user-selected. A-02/V-05; compare hardware references.
+
+### RT-14 Establish a Mac OS 8/9 visual golden set
+
+Desktop screenshots show bitmap labels, beveled buttons, default rings, title
+stripes, list headers and grow boxes. Exact heights, baselines, selection color,
+inactive states and menu behavior need original-system golden screenshots at 1x.
+Custom `.finfo`/balloons and red Empty Tank deserve the same review.
+**Next:** capture an original OS 8/9 control panel/dialog/list at integer scale;
+compare matching Osmium states. Fix shared widget pixels upstream, not through
+per-page CSS patches. Test keyboard, disabled and inactive states. A-05/T-06.
+
+### RT-15 Put fish information within reach
+
+Get Info requires Alt/Option-click; touch has no equivalent. Its following card
+can be hard to edit on a moving fish. A-05/U-30.
+**Next:** long-press with movement tolerance/cancel, Overview Get Info, optional
+pinned card. A quick tap must still knock exactly once; a long press must not.
+Include gestures in help and use common/scientific names from FsTH (F-02/F-32).
+
+### RT-16 Restore the original management workflows
+
+Prioritize these independent slices, rather than one giant compatibility layer:
+
+| Canonical | Shovel-ready slice | Acceptance |
+| --- | --- | --- |
+| F-04/B-23 | Persist x/top/depth for each decor copy; later read PlPI/AccI tank placements | Three manually placed copies reload at the same positions; fish occlusion stays stable. |
+| F-06 | Read food names/types, PrF# preferences and particle art; offer one selected food | Matching fish accepts it, incompatible fish does not; amount is visible. |
+| F-07 | Feeder quantity/interval, driven by biology time and catch-up | Speed changes and closure do not silently change its feeding rate; finite supply is honored. |
+| F-17 | Sex, coupling, gestation/eggs, fry stages and parent IDs | Same-sex pair does not breed; timed eggs/fry retain species and ancestry across save. |
+| F-02/F-32 | Individual/species cards, hatch dates, memo and provenance | Real pack metadata replaces cryptic stems without changing pack keys. |
+| F-26 | Named tank slots with duplicate/restore and local-pack portability | Clone a tank safely; restore doesn't drop locally imported art or sounds. |
+| F-14/F-15 | Equipment visuals, tank volume and species-aware care ranges | Changing volume affects concentration/stomach/equipment rules correctly; presets retain settings. |
+| F-18 | Import accessory maker output after identifying format variants | One small authored animation loops and persists; unsupported formats report honestly. |
+| U-39 | Compact floating Tool Bar using existing app commands | Feed, info, lamp, names, sound and stats are keyboard/touch reachable without duplicate action logic. |
+
+### RT-17 Make add-ons more useful than archive filenames
+
+Lists contain raw stems, duplicates and program-update bundles. Some previews
+show catalog art rather than the actual placed object; small Japanese metadata
+falls back outside the bitmap font. U-08/U-21/V-09/B-11/B-52.
+**Next:** stable qualified identity, user-facing species/item name, useful sort,
+format capability badge and honest disabled state. Install previews must show
+the tank result; do not call an image-only fish add-on a success.
+
+### RT-18 Make persistence, restoration and recovery visible
+
+`saveTank` catches storage errors silently; failed cached restoration leaves a
+generic fish without a clear repair action. A spectator tab still has some drop
+paths. Native crash exhaustion can leave a blank window (Mac code reviewed,
+not launched); Linux client frames use weak intersection tests; Android panels
+can fit too small for their contents. B-28/B-34/B-46/B-96/B-98/U-28.
+**Next:** small nonmodal status with retry/export, owner gating at every mutation
+entry, recoverable native error screen, and grabbable-frame restore checks.
+**Acceptance:** quota failure never says saved; offline recovery names the missing
+pack; repeated crashes do not loop; monitor removal leaves usable windows.
+
+## Delight ideas with bounded scope
+
+- **Tank postcards (D-09):** PNG with optional case, fish names/date and a tiny
+  Platinum caption. Same clean-picture renderer; no cursor/paused scrim. Test
+  output geometry at 1x/2x and night. Later 2005 zoom-follow can inspire a fish
+  portrait, explicitly a modern feature.
+- **Aquarium scrapbook (F-13/D-22):** persistent, capped feed/birth/recovery log;
+  original-style paper card and Copy. Record events once across catch-up/reload.
+  Existing transient alerts and age milestones are not a persistent diary.
+- **Keeper's card (D-15/U-39):** one-click compact care palette with food/fullness,
+  thermometer and next feeder time. Use the same Stats model and commands.
+- **Specimen cabinet (F-32):** unlocked species cards and family tree based on
+  imported metadata, not invented achievements. No network needed after import.
+- **Fish personal notes (F-02/D-24):** editable two-line note in a pinned Get Info
+  card; optional funny keeper observations derived from actual behavior.
+- **Gentle vacation mode (F-10/F-26):** 0× biology, animated aquarium, clear label
+  and portable tank setting. Restore previous speed explicitly, never by surprise.
+- **Period feedback (U-03/A-13):** original-inspired hand/knock cursor and Finder
+  zoom rectangles. Own pixel art; no frame-loop canvas reallocation; reduced
+  motion uses a static cue.
+
+Avoid stacking new animated visitors by default. The paw, snail, golden food,
+torch, startup parade, names and degauss already supply considerable novelty.
+Add delight where it reinforces care, ownership or observation.
+
+## Backlog corrections to preserve
+
+- Pause is persisted locally and suppresses catch-up. Earlier claims that it is
+  transient were wrong. Its lack of per-file portability is the narrower issue.
+- No evidence here establishes the original Mac speed widget as a continuous
+  slider. Do not turn that earlier assertion into a fidelity requirement.
+- B-15's stand-in round-robin claim is obsolete: `sheetOf` returns no sheet for
+  unbound fish. B-21 copy counts are implemented and tested.
+- P-12 already uses a palette LUT; P-17 has dirty/fixed-size resize handling;
+  B-56 spawn hunger/cap paths are implemented. Retain any genuine remainders.
+- B-13 is only partially closed: raw-file identities work, folder imports remain.
+- B-34's owner lease works; owner-gating remainders are real. B-30 cache bounding
+  is not proof that installed archives are protected from all eviction.
+- B-77/B-79/B-80 and older Completed entries naming open PRs are proposals, not
+  landed fixes. No other agents' PR status was checked in this task.
+
+## Implementation choices and stop condition
+
+Implement RT-01, RT-02, RT-03 and RT-04 on independent branches. Reproduce each
+failure before editing, re-run appropriate checks after the final edit, open PRs
+against main, and work on the next while GLM runs. Leave every PR open.
+
+Record actual review findings and completed rounds; two rounds without important
+agreed findings are steady state. A GLM timeout/failure is a disclosed review gap.
+Consolidate remaining findings with canonical IDs in ANALYSIS.md; keep historical
+evidence recoverable, remove completed tasks from the active list, and retain
+unmerged work as pending maintainer review rather than claiming it shipped.
