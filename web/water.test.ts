@@ -7,9 +7,10 @@ import { makeRng } from "../core/rng.js";
 import {
   bubbleOffset, bubblePops, bubbleSize, CAUSTIC_TILE_H, CAUSTIC_TILE_W, drawAir,
   causticShimmer, causticTile, causticValue, feedPinch, murkParams,
-  MURK_BOTTOM, MURK_TOP, pelletDrift, PINCH_CENTER_SPREAD, PINCH_MAX,
-  PINCH_SPREAD, REFRACT_ROWS,
-  refractShift, sunFactor, torchRadius, torchShows,
+  MURK_BOTTOM, MURK_TOP, paintSmudges, pelletDrift, PINCH_CENTER_SPREAD,
+  PINCH_MAX, PINCH_SPREAD, REFRACT_ROWS,
+  refractShift, SMUDGE_ALPHA, SMUDGE_SPREAD, smudgePrint, sunFactor,
+  surfaceAlpha, torchRadius, torchShows,
 } from "./water.js";
 import { SURFACE_MAX, SURFACE_W } from "./surface.js";
 
@@ -327,5 +328,79 @@ describe("torch", () => {
     }
     expect(torchRadius(0.35)).toBe(24);
     expect(torchRadius(1)).toBe(40);
+  });
+});
+
+describe("surfaceAlpha", () => {
+  it("shows no glint when the waves are off (null center)", () => {
+    // With the effect off the line is the original's flat one: no
+    // frozen bright segment from the glint's t=0 position. 160 is the
+    // midline and 205 is where that frozen glint sat (gx(0) ≈ 0.64·W),
+    // so pinning both proves the artifact is gone.
+    expect(surfaceAlpha(205, null, 1, false)).toBeCloseTo(0.55, 10);
+    expect(surfaceAlpha(0, null, 1, false)).toBeCloseTo(0.55, 10);
+    expect(surfaceAlpha(160, null, 1, true)).toBeCloseTo(0.6, 10);
+  });
+
+  it("brightens a travelling band when a center is given", () => {
+    expect(surfaceAlpha(205, 205, 1, false)).toBeGreaterThan(0.55);
+    expect(surfaceAlpha(0, 205, 1, false)).toBeCloseTo(0.55, 10);
+    // The old formula's d<9 outer ring never beat the daylight base,
+    // so the skirt past the 6-px core is plain base line.
+    expect(surfaceAlpha(211, 205, 1, false)).toBeCloseTo(0.55, 10);
+    // Out-of-domain sun clamps to 1, so the skirt stays base there too
+    // (the old ring would have won at sun=2).
+    expect(surfaceAlpha(211, 205, 2, false)).toBeCloseTo(0.55, 10);
+    // Negative sun clamps to 0, so the skirt keeps the 0.3 base floor.
+    expect(surfaceAlpha(211, 205, -1, false)).toBeCloseTo(0.3, 10);
+    // Night dims both the base and the glint.
+    expect(surfaceAlpha(205, 205, 0, false)).toBeCloseTo(0.35, 10);
+  });
+});
+
+describe("glass smudges", () => {
+  it("paints each rest as a pair of faint marks around it", () => {
+    const marks = smudgePrint({ x: 100, y: 120, n: 7 });
+    expect(marks).toHaveLength(2);
+    for (const m of marks) {
+      expect(m.alpha).toBe(SMUDGE_ALPHA);
+      // A print sits on the glass where the fish settled, not pages
+      // away from it.
+      expect(Math.abs(m.x - 100)).toBeLessThanOrEqual(SMUDGE_SPREAD + 1);
+      expect(Math.abs(m.y - 120)).toBeLessThanOrEqual(SMUDGE_SPREAD + 1);
+    }
+    // The pair straddles the rest point rather than stacking on it.
+    expect(marks[0]!.x).not.toBe(marks[1]!.x);
+  });
+
+  it("is deterministic per print, and distinct between prints", () => {
+    expect(smudgePrint({ x: 50, y: 60, n: 3 }))
+      .toEqual(smudgePrint({ x: 50, y: 60, n: 3 }));
+    const a = smudgePrint({ x: 50, y: 60, n: 1 });
+    const b = smudgePrint({ x: 50, y: 60, n: 2 });
+    expect(a).not.toEqual(b);
+  });
+
+  it("stacks marks where fish share a corner rather than replacing", () => {
+    const marks = [{ x: 80, y: 90, n: 1 }, { x: 82, y: 91, n: 5 }]
+      .flatMap(smudgePrint);
+    expect(marks).toHaveLength(4);
+  });
+
+  it("paints every mark through the passed context, faintly", () => {
+    const ellipses: number[][] = [];
+    const alphas: number[] = [];
+    const ctx = {
+      fillStyle: "", globalAlpha: 1,
+      beginPath: () => {},
+      ellipse: (...a: number[]) => { ellipses.push(a); },
+      fill: () => { alphas.push(1); },
+    } as unknown as CanvasRenderingContext2D;
+    const marks = smudgePrint({ x: 10, y: 20, n: 9 });
+    paintSmudges(ctx, marks);
+    expect(ellipses).toHaveLength(2);
+    // Resets globalAlpha to 1 when it finishes — the file's draw
+    // helpers share that convention; it does not restore a prior value.
+    expect(ctx.globalAlpha).toBe(1);
   });
 });

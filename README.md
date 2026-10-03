@@ -193,6 +193,11 @@ A fish nearby comes over to look at the pointer while you hover over
 the tank, unless it is hungry or startled. At night the pointer also
 works as a torch, lighting a warm circle of the dark tank.
 
+A liquid-crystal thermometer strip on the front glass shows how warm
+the water is: the cell at its temperature lights up green, and the
+one just above lights tan while the water is a little colder. Point
+at it for the reading. Preferences > Effects can take it off.
+
 ### Keeping the tank
 
 The tank lives like the original AquaZone's, in real time: a fed fish
@@ -280,6 +285,7 @@ Keys on the tank page, in the app and the browser build (see
 | P | Pause or resume the tank |
 | C | Toggle the CRT effect |
 | N | Show or hide name tags on every fish |
+| J | Shine a laser dot on the water; nearby fish chase it |
 | S | Open Tank Stats in a window of its own (browser only) |
 | Ctrl-I or Cmd-I | Open the add-on browser over the tank (browser only; the app's Cmd-I opens the Import Add-ons window) |
 | Esc | Close the Get Info card or the front window |

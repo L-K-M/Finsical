@@ -1,7 +1,9 @@
 /**
- * AquaZone's cat — the original's best-remembered gag: every so often a
- * paw descends from the top of the screen, bats at the glass a couple
- * of times, and withdraws. This module is the pure choreography: when
+ * The cat, one of Finsical's own extras (an Effects checkbox, like the
+ * snail): every so often a paw descends from the top of the screen,
+ * bats at the glass a couple of times, and withdraws. AquaZone had no
+ * cat that anyone has found: its User's Guide covers every menu and
+ * event and never mentions one. This module is the pure choreography: when
  * visits happen, where the paw hangs, and when each swat lands. The
  * impulses (fish startle, water push, tap sound) and the drawing live
  * in main.ts, driven by pawPose/pawSwatAt each tick.

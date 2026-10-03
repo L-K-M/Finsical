@@ -722,6 +722,9 @@ export function crtRasterRect(bufW: number, bufH: number,
     srcW: number, srcH: number, box: RasterBox): [number, number, number, number] {
   const bx = box.x * bufW, bw = box.w * bufW, bh = box.h * bufH;
   const by = bufH - (box.y + box.h) * bufH; // flip to y-up
+  if (!Number.isFinite(srcW) || !Number.isFinite(srcH) ||
+      srcW <= 0 || srcH <= 0)
+    return [bx, by, 0, 0];
   const s = Math.min(bw / srcW, bh / srcH);
   const w = srcW * s, h = srcH * s;
   return [bx + (bw - w) / 2, by + (bh - h) / 2, w, h];
@@ -888,6 +891,21 @@ export function crtRowColumns(rasterW: number,
     max: number): number {
   const w = rasterW * overscanScale(cfg.zoom) * sizeScale(cfg.hsize);
   return Math.min(max, Math.max(tankW, Math.round(w)));
+}
+
+/** Whether the tube's own clock owes it one more frame. A fresh enable
+ * must be drawn at least once at full power before the frame loop may
+ * idle again: a time-only gate could stop on the last warm-up frame
+ * (power < 1) and freeze an over-bright, over-zoomed picture on a
+ * paused tank. `settled` flips once render() has drawn a full frame;
+ * a collapse in flight and a degauss keep animating as before. */
+export function warmupBusy(enabled: boolean, settled: boolean,
+                           collapseInFlight: boolean,
+                           degaussAgeMs: number): boolean {
+  if (collapseInFlight && enabled) return true;
+  if (!enabled) return false;
+  if (!settled) return true;
+  return degaussAgeMs < DEGAUSS_MS;
 }
 
 /** The degauss wobble's total length — after this degaussAmp() is 0. */
@@ -1147,6 +1165,10 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
   // 0 would mean page-load time and could play a stray warm-up if a
   // frame draws before setEnabled(true) is ever called.
   let powerT0 = -Infinity;
+  // Whether render() has drawn the current warm-up at full power. The
+  // frame loop idles on `animating`; without this, a paused tank could
+  // stop on the last warm-up frame still short of settled.
+  let settled = true;
   // Power-off collapse: offT0 stays -Infinity unless a disable is
   // playing out — enabled stays true so render() keeps drawing until
   // the raster dies, then the body class and the flag drop together.
@@ -1157,13 +1179,8 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
     get enabled() { return enabled; },
     get usable() { return !lost; },
     get animating() {
-      // A collapse in flight must finish even if reduced-motion flips
-      // on mid-flight — render() is the only place its state cleans up.
-      if (Number.isFinite(offT0) && enabled) return true;
-      if (reducedMotion.matches) return false;
-      const now = performance.now();
-      return enabled &&
-        (now - powerT0 < POWERON_MS || now - degaussT0 < DEGAUSS_MS);
+      return warmupBusy(enabled, settled, Number.isFinite(offT0),
+                        performance.now() - degaussT0);
     },
     // A copy — the live cfg could otherwise be mutated without the
     // shader ever seeing it, and goes stale once configure() swaps it.
@@ -1188,7 +1205,7 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       enabled = on;
       offT0 = -Infinity; // a re-enable mid-collapse just warms back up
       document.body.classList.toggle("crt", on);
-      if (on) { powerT0 = performance.now(); resize(); }
+      if (on) { powerT0 = performance.now(); settled = false; resize(); }
     },
     degauss(): void {
       if (!enabled || reducedMotion.matches) return;
@@ -1223,6 +1240,15 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
         }
       } else if (!reducedMotion.matches) {
         power = Math.min(1, (now - powerT0) / POWERON_MS);
+        // Full power drawn: the frame loop may idle again (a paused
+        // tank would otherwise stop one frame short of settled).
+        if (power >= 1) settled = true;
+      } else {
+        // Reduced motion: one full-power frame. power is still set
+        // because reduced motion can flip on mid-warm-up, leaving the
+        // ramp's last value in place.
+        power = 1;
+        settled = true;
       }
       const rect = crtRasterRect(
         out.width, out.height, src.width, src.height, rasterBox);

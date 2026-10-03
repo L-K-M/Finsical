@@ -108,6 +108,10 @@ const swimCache =
 export function coverCrop(srcW: number, srcH: number,
                           dstW: number, dstH: number):
     { sx: number; sy: number; sw: number; sh: number } {
+  if (!Number.isFinite(srcW) || !Number.isFinite(srcH) ||
+      !Number.isFinite(dstW) || !Number.isFinite(dstH) ||
+      srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0)
+    return { sx: 0, sy: 0, sw: 0, sh: 0 };
   const scale = Math.max(dstW / srcW, dstH / srcH);
   const sw = dstW / scale, sh = dstH / scale;
   return { sx: (srcW - sw) / 2, sy: (srcH - sh) / 2, sw, sh };
@@ -176,9 +180,13 @@ export function previewOf(rs: PackResult[]): HTMLCanvasElement | null {
 
 /** Decor art is drawn at the fish's ART_SCALE so a small plant stays
  * smaller than a large one; only art taller than the tank (less 8 px
- * of headroom) shrinks further, to fit. */
+ * of headroom) shrinks further, to fit. Corrupt zero-height art keeps
+ * ART_SCALE instead of dividing by zero. */
 export function decorScale(h: number, tankH: number): number {
-  return Math.min(ART_SCALE, (tankH - 8) / h);
+  if (!Number.isFinite(h) || !Number.isFinite(tankH) || h <= 0)
+    return ART_SCALE;
+  const fit = tankH > 8 ? (tankH - 8) / h : Infinity;
+  return Math.min(ART_SCALE, fit);
 }
 
 /** A decor pack's in-tank art: one canvas per animation frame, all

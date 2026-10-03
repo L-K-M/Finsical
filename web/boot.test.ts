@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { BOOT_CAP_MS, BOOT_FADE_MS, BOOT_HOLD_MS, BOWL_ART, bootPhase,
-         fadeProgress, PALETTE, paradeSlot, SECTION_ART } from "./boot.js";
+import { BOOT_CAP_MS, BOOT_FADE_MS, BOOT_HOLD_MS, BOWL_ART, bootActive,
+         bootPhase, fadeProgress, PALETTE, paradeSlot, SECTION_ART }
+  from "./boot.js";
 
 describe("pixel art", () => {
   it("gives every glyph a palette color", () => {
@@ -79,5 +80,13 @@ describe("paradeSlot", () => {
     expect(paradeSlot(9)).toEqual({ x: 8, y: 130 });
     // The ninth icon's right edge stays inside a 320 px tank.
     expect(paradeSlot(8).x + 32).toBeLessThanOrEqual(320);
+  });
+});
+
+describe("bootActive", () => {
+  it("is true only while a parade clock runs", () => {
+    expect(bootActive(null)).toBe(false);
+    expect(bootActive(0)).toBe(true); // performance.now() can be 0
+    expect(bootActive(1234)).toBe(true);
   });
 });
