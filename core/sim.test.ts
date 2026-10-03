@@ -291,11 +291,21 @@ describe("Sim", () => {
         expect(green.aquarium.water.nitrate)
           .toBeLessThan(bare.aquarium.water.nitrate);
         // In the dark the same foliage respires: oxygen falls, CO2 rises.
+        // Compare swings against the plantless tank, dark on the same
+        // clock, so the fish's own metabolism cancels out and only the
+        // plants' night-time respiration can widen the gap.
         const lit = { o2: green.aquarium.water.o2, co2: green.aquarium.water.co2 };
+        const bareLit = { o2: bare.aquarium.water.o2, co2: bare.aquarium.water.co2 };
         green.setLight(0);
-        for (let d = 0; d < 3; d++) green.advanceLife(24 * 3600);
-        expect(green.aquarium.water.o2).toBeLessThan(lit.o2);
-        expect(green.aquarium.water.co2).toBeGreaterThan(lit.co2);
+        bare.setLight(0);
+        for (let d = 0; d < 3; d++) {
+          green.advanceLife(24 * 3600);
+          bare.advanceLife(24 * 3600);
+        }
+        expect(lit.o2 - green.aquarium.water.o2)
+          .toBeGreaterThan(bareLit.o2 - bare.aquarium.water.o2);
+        expect(green.aquarium.water.co2 - lit.co2)
+          .toBeGreaterThan(bare.aquarium.water.co2 - bareLit.co2);
       });
 
   it("a plantless tank does no photosynthesis at all", () => {
