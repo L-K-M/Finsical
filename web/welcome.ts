@@ -115,9 +115,9 @@ export function showWelcome(offer: StarterOffer, hooks: StarterHooks): void {
 }
 
 /** "a", "a and b", "a, b and c". */
-function listNames(names: readonly string[]): string {
+export function listNames(names: readonly string[]): string {
   if (names.length < 2) return names.join("");
-  return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]!}`;
 }
 
 /** Install the starter set's missing items (or `retry`, the items that
