@@ -25,7 +25,7 @@ readonly PYTHON="${PYTHON:-/usr/bin/python3}"
 # The same web payload build-deb.sh installs under /usr/share/finsical.
 readonly WEB_FILES=(index.html overview.html addons.html prefs.html stats.html
                     bundle.js overview.js addons.js prefs.js stats.js
-                    app.css osmium.css)
+                    app.css osmium.css icon.svg)
 readonly MACE_SOURCE=core/data/mace.ts
 
 die() {
