@@ -88,37 +88,6 @@ function rw<T>(store: string, mode: IDBTransactionMode,
   });
 }
 
-/** Strict rw for the snds path only: resolves null on a real miss but
- * REJECTS on a backend failure. There a failed read must not look like
- * "no record" — merging over an unknown baseline would overwrite the
- * store with only the incoming records. Cache paths (listings, packs)
- * keep the lenient rw(): a failed read there just falls back to
- * fetching. */
-function rwStrict<T>(store: string, mode: IDBTransactionMode,
-                     run: (s: IDBObjectStore) => IDBRequest<T>
-): Promise<T | null> {
-  return openDb().then((d) => {
-    if (!d) throw new Error("IndexedDB unavailable");
-    return new Promise<T | null>((res, rej) => {
-      try {
-        const tx = d.transaction(store, mode);
-        const rq = run(tx.objectStore(store));
-        tx.oncomplete = () => res(rq.result ?? null);
-        const fail = (ev?: Event) => {
-          // stopPropagation, not preventDefault — a request error's
-          // default action aborts the transaction, and we want the
-          // abort; the rejection is already handled by callers, so the
-          // event must not also bubble to window.onerror.
-          ev?.stopPropagation();
-          rej(rq.error ?? tx.error ?? new Error("IndexedDB error"));
-        };
-        rq.onerror = fail;
-        tx.onerror = tx.onabort = () => fail();
-      } catch (e) { rej(e); }
-    });
-  });
-}
-
 /** Dropped packs and pictures persist under a `local:` key — the
  * scheme is shared by the store (trim exemption), the importer (decode
  * path) and the tank (mint/delete), so it lives here, defined once. */
@@ -276,16 +245,51 @@ export function capSnds(cur: StoredSnd[] | null, records: StoredSnd[],
   return { out, dropped: m.size - out.length };
 }
 
-// Strict get/put for the merge chain: a failed read rejects instead
-// of reporting an empty baseline, and a failed write rejects instead
-// of silently reporting success. Launch-time restore keeps the lenient
-// sndsGet() — a miss there just means nothing to play this session.
-function sndsGetStrict(): Promise<StoredSnd[] | null> {
-  return rwStrict<StoredSnd[]>("meta", "readonly", (s) => s.get(SNDS_KEY));
-}
-function sndsPut(out: StoredSnd[]): Promise<boolean> {
-  return rwStrict("meta", "readwrite", (s) => s.put(out, SNDS_KEY))
-    .then(() => true); // rq.result is the key — resolve an explicit boolean
+/** One transaction owns the read and edit: IndexedDB serializes it
+ * against edits from other windows too. Keep the put inside onsuccess,
+ * without an await that could let the transaction become inactive.
+ * Unlike cache misses, failures reject; success means the edit committed. */
+function mutateSnds(update: (cur: StoredSnd[] | null) => StoredSnd[] | null):
+    Promise<boolean | null> {
+  return openDb().then((d) => {
+    if (!d) throw new Error("IndexedDB unavailable");
+    return new Promise<boolean | null>((resolve, reject) => {
+      try {
+        const tx = d.transaction("meta", "readwrite");
+        const store = tx.objectStore("meta");
+        const read = store.get(SNDS_KEY);
+        let changed: true | null = null;
+        let failure: unknown;
+        tx.oncomplete = () => resolve(changed);
+        tx.onabort = () => reject(failure ?? tx.error ??
+                                  new Error("snd store transaction aborted"));
+        // Let request errors abort the transaction, but not bubble into
+        // window.onerror: callers handle the rejection after the abort.
+        tx.onerror = (e) => e.stopPropagation();
+        read.onerror = (e) => {
+          e.stopPropagation();
+          failure = read.error;
+        };
+        read.onsuccess = () => {
+          try {
+            const out = update(read.result ?? null);
+            if (out === null) return;
+
+            const write = store.put(out, SNDS_KEY);
+            changed = true;
+            askPersist();
+            write.onerror = (e) => {
+              e.stopPropagation();
+              failure = write.error;
+            };
+          } catch (e) {
+            failure = e;
+            tx.abort();
+          }
+        };
+      } catch (e) { reject(e); }
+    });
+  });
 }
 
 /** Read-modify-write of the snds record, factored for tests. `get`
@@ -312,7 +316,13 @@ export async function sndsMergeInto(
 let sndsChain: Promise<unknown> = Promise.resolve();
 export function sndsMerge(records: StoredSnd[]): Promise<unknown> {
   const run = sndsChain.then(() =>
-    sndsMergeInto(sndsGetStrict, sndsPut, records));
+    mutateSnds((cur) => {
+      const { out, dropped } = capSnds(cur, records);
+      if (dropped)
+        console.warn(`snd store over ${SNDS_CAP >> 20}MB cap; dropped`,
+                     dropped, "records");
+      return out;
+    }));
   sndsChain = run.catch(() => {}); // a failed merge mustn't poison the chain
   return run;
 }
@@ -322,10 +332,10 @@ export function sndsMerge(records: StoredSnd[]): Promise<unknown> {
 export function sndsRemove(names: Iterable<string>): Promise<unknown> {
   const drop = new Set(names);
   if (!drop.size) return Promise.resolve(null);
-  const run = sndsChain.then(() => sndsGetStrict().then((cur) => {
+  const run = sndsChain.then(() => mutateSnds((cur) => {
     if (!cur?.length) return null;
     const out = cur.filter((r) => !drop.has(r.name));
-    return out.length === cur.length ? null : sndsPut(out);
+    return out.length === cur.length ? null : out;
   }));
   sndsChain = run.catch(() => {});
   return run;
