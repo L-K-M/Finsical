@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { browserGeometry, chooseStartSection, DECOR_COPIES_MAX,
-         decorCopyRoom, fragDecode,
+         decorCopyRoom, decorRefusal, fragDecode,
          fragEncode, importAddon, installProblem, isArchiveUrl, listAddons,
          loadProblem, transientFailure, isListed, orphanedSounds,
          qualifySoundItemName, recordAddon, rememberSection, isSavedAddon,
@@ -359,6 +359,28 @@ describe("decorCopyRoom", () => {
     // More placed than the cap can't go negative.
     expect(decorCopyRoom([...decors, { pack: "p.plt" }], "p.plt"))
       .toBe(0);
+  });
+});
+
+describe("decorRefusal", () => {
+  const full = Array.from({ length: DECOR_COPIES_MAX },
+                          () => ({ pack: "p.plt" }));
+  it("refuses another copy once the pack fills its cap", () => {
+    expect(decorRefusal(full, { section: "plants", url: "p.plt" }))
+      .toBe(`This plant is already in the tank ${DECOR_COPIES_MAX} times.`);
+    expect(decorRefusal(full, { section: "accessories", url: "p.plt" }))
+      .toBe(`This accessory is already in the tank ${DECOR_COPIES_MAX} times.`);
+  });
+  it("lets a copy in while there is room, or for another pack", () => {
+    expect(decorRefusal(full.slice(1), { section: "plants", url: "p.plt" }))
+      .toBeNull();
+    expect(decorRefusal(full, { section: "plants", url: "other.plt" }))
+      .toBeNull();
+  });
+  it("leaves the other sections alone", () => {
+    // A backdrop or gravel replaces the last one; nothing piles up.
+    for (const section of ["fish", "gravel", "backgrounds", "sounds"])
+      expect(decorRefusal(full, { section, url: "p.plt" })).toBeNull();
   });
 });
 

@@ -33,7 +33,8 @@ import { alertOpen, showAlert } from "./alert.js";
 import { recentTaps, shouldScold } from "./scold.js";
 import { backfillStarterSounds, launchOffer, showWelcome }
   from "./welcome.js";
-import { clampDecorCopies, decorCopyRoom, fetchAddon, installProblem,
+import { clampDecorCopies, decorCopyRoom, decorRefusal, fetchAddon,
+         installProblem,
          mountImportPanel, orphanedSounds, recordAddon,
          qualifySoundItemName, isListed, isSavedAddon, sceneryFix,
          usablePacks,
@@ -1564,7 +1565,8 @@ const importPanel = mountImportPanel({
     // A boot in progress marches each restored add-on in as an icon.
     if (bootT0 !== null) { paradeIcons.push(paradeIcon(it.section)); }
   },
-  refuse: (it, fish) => fishRefusal(it.section, fish),
+  refuse: (it, fish) =>
+    fishRefusal(it.section, fish) ?? decorRefusal(decors, it),
   preview: previewOf,
 });
 
@@ -2058,9 +2060,10 @@ function installAddon(it: Importable, again: boolean): Promise<void> {
     bus.post({ op: "installed", url: it.url });
     return Promise.resolve();
   }
-  // A fish pack can't be added past the population cap — refuse up
-  // front so the panel explains it instead of fetching for nothing.
-  const refusal = fishRefusal(it.section);
+  // A fish pack can't be added past the population cap, nor a plant
+  // past its copy cap — refuse up front so the panel explains it
+  // instead of fetching for nothing.
+  const refusal = fishRefusal(it.section) ?? decorRefusal(decors, it);
   if (refusal) {
     bus.post({ op: "installFailed", url: it.url, error: refusal });
     return Promise.reject(new Error(refusal));
@@ -3166,19 +3169,21 @@ window.addEventListener("drop", (e) => {
         }
         continue;
       }
-      // A full tank takes no new fish: say so rather than store and
-      // record a pack whose fish never spawns.
-      const refusal = p.sheets.size ? fishRefusal("fish") : null;
-      if (refusal) {
-        console.warn(`drop: ${name}: ${refusal}`);
-        if (!notes.includes(refusal)) notes.push(refusal);
-        continue;
-      }
       // A dropped pack has no home URL — mint a local: identity so the
       // bytes persist (the only copy lives in IndexedDB) and the pack
       // restores next launch like an installed add-on. Same-named
       // drops reuse the record and overwrite the stored bytes.
       const url = `${LOCAL_PREFIX}${name}`;
+      // A full tank takes no new fish, and a plant dropped again takes
+      // no copy past its cap: say so rather than store and record a
+      // pack that adds nothing.
+      const refusal = p.sheets.size ? fishRefusal("fish")
+        : decorRefusal(decors, { section: p.section, url });
+      if (refusal) {
+        console.warn(`drop: ${name}: ${refusal}`);
+        if (!notes.includes(refusal)) notes.push(refusal);
+        continue;
+      }
       // Await the write: a quota/private-mode failure should be logged
       // now, not discovered as a missing pack on next launch. The
       // catch is belt-and-braces: packPut's contract is never-fail,
