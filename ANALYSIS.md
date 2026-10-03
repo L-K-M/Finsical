@@ -12,6 +12,9 @@ behavior; C24 IDs identify the previous review's additions, C25 this pass's.
 
 - [Chromium review](REVIEW-2026-10-03.md): complete findings, measurements,
   reference URLs, edition distinctions and limitations. This was `tmp.md`.
+- [W-pass review](REVIEW-2026-10-03-W.md): the next session's complete
+  `tmp.md` (Devin/muse-spark/space-bunny helper reports folded in),
+  condensed above into "W-pass findings".
 - [Earlier analysis and backlog](ANALYSIS-HISTORY.md): the previous ANALYSIS.md
   body, preserved unchanged. No earlier ideas, format research, reviews,
   refutations or completed-work records were discarded.
