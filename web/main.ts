@@ -2526,6 +2526,24 @@ function layoutMachine(): void {
 // supersedes a pending one (the token proves it).
 let machineSwap = 0;
 
+function commitMachine(m: Machine): void {
+  // A new case is a new tube: ring the degauss coil like a monitor
+  // waking up — inside the commit, so a cancelled case never cues it.
+  // The first paint passes the stored machine (same id), so this only
+  // fires on an actual swap.
+  if (m.id !== machine.id && crtOn) degaussTube();
+  machine = m;
+  shellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
+  shellEl.innerHTML = shellMarkup(m);
+  rearShellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
+  rearShellEl.innerHTML = backgroundMarkup(m);
+  layoutMachine();
+  try { localStorage.setItem(MACHINE_KEY, m.id); }
+  catch { /* storage unavailable */ }
+  // native geometry and the picker now describe the committed art
+  postState();
+}
+
 function applyMachine(m: Machine): void {
   const token = ++machineSwap;
   // Images only: a vector shell (none currently) has nothing to decode,
@@ -2540,25 +2558,15 @@ function applyMachine(m: Machine): void {
     });
   void Promise.all(wait).then(() => {
     if (token !== machineSwap) return; // a newer switch superseded this
-    // A new case is a new tube: ring the degauss coil like a monitor
-    // waking up — inside the commit, so a cancelled case never cues
-    // it. The init call passes the stored machine (same id), so this
-    // only fires on an actual swap.
-    if (m.id !== machine.id && crtOn) degaussTube();
-    machine = m;
-    shellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
-    shellEl.innerHTML = shellMarkup(m);
-    rearShellEl.setAttribute("viewBox", `0 0 ${m.vbW} ${m.vbH}`);
-    rearShellEl.innerHTML = backgroundMarkup(m);
-    layoutMachine();
-    try { localStorage.setItem(MACHINE_KEY, m.id); }
-    catch { /* storage unavailable */ }
-    // native geometry and the picker now describe the committed art
-    postState();
+    commitMachine(m);
   });
 }
 window.addEventListener("resize", layoutMachine);
-applyMachine(machine);
+// The first case commits synchronously: the shell must exist by the
+// page's load event (the native app reads it at didFinish), and the
+// decode staging that keeps a mid-session swap atomic has nothing to
+// protect before any case is on screen.
+commitMachine(machine);
 // The machine art is pointer-events:none — a press anywhere that
 // isn't the tank or real UI means a grab on the case → window drag.
 document.addEventListener("pointerdown", (e) => {

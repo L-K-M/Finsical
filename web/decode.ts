@@ -45,8 +45,11 @@ export function decodeImage(img: HTMLImageElement): Promise<void> {
     };
     // Already settled before the handlers went on — a cached asset (or
     // a caller that set src first) never fires onload/onerror again,
-    // so without this branch the promise would wedge forever.
-    if (img.complete) {
+    // so without this branch the promise would wedge forever. A fresh
+    // Image with no src reports complete too, so check src as well:
+    // settling on "no pending work" would resolve before the caller's
+    // src assignment even lands.
+    if (img.complete && img.src !== "") {
       if (img.naturalWidth > 0) prove();
       else commit(); // load already failed — broken asset commits
       return;
