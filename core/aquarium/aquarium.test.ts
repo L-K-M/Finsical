@@ -339,6 +339,20 @@ describe("time", () => {
     expect(b.speed).toBe(2.5);
   });
 
+  it("keeps a restored frozen tank safe during a long absence", () => {
+    const a = new Aquarium(makeRng(14));
+    a.setSpeed(0);
+    a.addMedicine(1100, 40);
+    const b = Aquarium.fromJSON(JSON.parse(JSON.stringify(a)), makeRng(1));
+    const r = resident(1, makeRng(14));
+    const before = JSON.stringify({ tank: b.toJSON(), life: r.life });
+
+    b.advance(30 * DAY * 60, [r]);
+
+    expect(b.speed).toBe(0);
+    expect(JSON.stringify({ tank: b.toJSON(), life: r.life })).toBe(before);
+  });
+
   it("rejects garbage in a save", () => {
     const b = Aquarium.fromJSON({ water: { temp: "hot", litres: -4 },
                                   speed: 1e9, doses: [{ medicine: 1 }] },

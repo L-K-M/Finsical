@@ -212,7 +212,10 @@ and has the controls to keep it on its Keeping tab:
 - **Medicine:** Green Remedy and Methylene Blue cure the common fish
   diseases; the water treatments soften the water, raise or lower the
   pH, and remove chlorine. A dose dissolves over a few hours.
-- **Time:** real time, or up to 100 times faster.
+- **Time:** real time, up to 100 times faster, or **Frozen (0×)** to
+  stop aging, hunger and water simulation while the fish keep swimming. Frozen
+  time stays with an exported tank. **Pause Simulation** also stops
+  swimming and feeding.
 
 Fish fall sick when poor water, hunger or shocks wear their health
 down, and a sick fish can pass its disease to the weakest fish in the
