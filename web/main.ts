@@ -498,14 +498,30 @@ function saveTank(): void {
 // A .fins file is the saved-tank JSON — how an aquarium moves between
 // Macs or survives a cleared profile. Add-ons are stored by URL, so an
 // imported tank re-downloads its packs on the next launch.
+/** What to do with the anchor's href after the click: "keep" leaves it
+ * alone (a data: URL or one that stays useful); "revoke" schedules the
+ * object URL's release — revoking in the same tick can abort a download
+ * where saving starts asynchronously. */
+type HrefCleanup = "keep" | "revoke";
+/** Click a download anchor. A detached anchor's click() is ignored by
+ * some browsers (Firefox, Safari), so append it for the click, then
+ * remove. */
+function downloadAnchor(href: string, name: string,
+                        cleanup: HrefCleanup, revokeMs = 5000): void {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  if (cleanup === "revoke")
+    setTimeout(() => URL.revokeObjectURL(href), revokeMs);
+}
 function exportTank(): void {
   const blob = new Blob([JSON.stringify(tankSnapshot(), null, 2)],
                         { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "finsical-tank.fins";
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+  const href = URL.createObjectURL(blob);
+  downloadAnchor(href, "finsical-tank.fins", "revoke", 10_000);
 }
 
 const tankFile = document.createElement("input");
@@ -2601,17 +2617,8 @@ function takePicture(): void {
     `${pad(d.getSeconds())}.png`;
   // A detached anchor's click() is ignored by some browsers — append
   // it for the click, then remove.
-  const save = (href: string, revoke = false): void => {
-    const a = document.createElement("a");
-    a.href = href;
-    a.download = name;
-    document.body.append(a);
-    a.click();
-    a.remove();
-    // Revoking in the same tick can abort the download where blob
-    // saves start asynchronously (Safari, Firefox).
-    if (revoke) setTimeout(() => URL.revokeObjectURL(href), 5000);
-  };
+  const save = (href: string, cleanup: HrefCleanup = "keep"): void =>
+    downloadAnchor(href, name, cleanup);
   const saveBlob = (blob: Blob | null): void => {
     if (!blob) { save(out.toDataURL("image/png")); return; }
     // WKWebView ignores <a download> entirely — hand the PNG bytes to
@@ -2627,12 +2634,12 @@ function takePicture(): void {
       // last resort (ignored by WKWebView, harmless elsewhere).
       r.onerror = () => {
         console.warn("takePicture: FileReader failed:", r.error);
-        save(URL.createObjectURL(blob), true);
+        save(URL.createObjectURL(blob), "revoke");
       };
       r.readAsDataURL(blob);
       return;
     }
-    save(URL.createObjectURL(blob), true);
+    save(URL.createObjectURL(blob), "revoke");
   };
   // toBlob encodes off the critical path where supported; toDataURL
   // (synchronous on the main thread) is the fallback.
