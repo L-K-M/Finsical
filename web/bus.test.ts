@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { acceptsTankIntent, TANK_MUTATION_OPS } from "./bus.js";
 
-// Derived from the set it tests so a new mutation op can't leave the
+// Derived from the list it tests so a new mutation op can't leave the
 // coverage quietly behind.
 const MUTATIONS = [...TANK_MUTATION_OPS];
 
