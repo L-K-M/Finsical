@@ -158,7 +158,11 @@ def _install_emitted(emit_into: Callable[[str], object],
         # say where it is rather than sweep it. BaseException so an
         # interrupted emit still cleans its partial staging.
         if os.path.exists(backup):
-            print(f"  prior bundle parked at {backup}", file=sys.stderr)
+            # A failed rollback leaves `out` absent — the parked copy
+            # is the only one, and needs moving back by hand.
+            missing = "" if os.path.exists(out) else f" ({out} is missing)"
+            print(f"  prior bundle parked at {backup}{missing}",
+                  file=sys.stderr)
         else:
             shutil.rmtree(work, ignore_errors=True)
         raise
