@@ -1324,10 +1324,11 @@ describe("lifecycle", () => {
   });
 
   /** Two guppies of breeding age and full health. */
-  function breedingPair(sim: Sim): void {
+  function breedingPair(sim: Sim, entry?: string): void {
     for (const x of [100, 120]) {
       const f = sim.addFish({ x, y: 100, species: "guppy", hunger: 0.1,
-                              scale: 1, pack: "p" });
+                              scale: 1, pack: "p",
+                              ...(entry !== undefined ? { entry } : {}) });
       sim.residents(); // creates the fish's life
       f.life!.age = DEFAULT_CARE.breedAge * 1440;
       f.life!.health = 100;
@@ -1353,6 +1354,24 @@ describe("lifecycle", () => {
     expect(baby.scale).toBeLessThan(1); // visibly a juvenile
     expect(baby.pack).toBe("p");
     expect(baby.life!.age).toBe(0);
+  });
+
+  it("a fry keeps its parent's pack entry", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 42);
+    breedingPair(sim, "guppy-b.fsh");
+    let fry = 0;
+    for (let days = 0; days < 200 && !fry; days++) {
+      for (const f of sim.fish) f.life!.ate = f.life!.stomach;
+      sim.advanceLife(24 * 3600);
+      for (const f of sim.fish.slice(0, 2)) f.life!.health = 100;
+      fry = sim.events.filter((e) => e.type === "birth").length;
+      sim.events.length = 0;
+    }
+    expect(fry).toBe(1);
+    // The fry renders from its own blob after a relaunch; without the
+    // parent's entry it would rebind to the add-on's last entry's art.
+    expect(sim.fish.length).toBe(3);
+    expect(sim.fish[2]!.entry).toBe("guppy-b.fsh");
   });
 
   it("never breeds on the swim clock, however long the tank is watched",
