@@ -1,5 +1,9 @@
 # Finsical: Verified implementation backlog
 
+Parallel PR reconciliation is tracked in [PR-REVIEW-2026-10-03.md](PR-REVIEW-2026-10-03.md)
+and [PR #423](https://github.com/L-K-M/Finsical/pull/423). Its per-PR decisions
+supersede the historical awaiting-merge statuses below once the consolidation lands.
+
 Updated 2026-10-03 against `origin/main` **57f9ae3**, version 0.8.0, plus this
 pass's independent review and its nine PRs (#406–#414) against the same base,
 then the W pass (four PRs #415–#418) against **c2d1c69** — see "W-pass

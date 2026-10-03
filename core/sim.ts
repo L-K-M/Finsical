@@ -431,6 +431,8 @@ export const WAKE_LIGHT = 0.6;
  * FRY_SCALE is the juvenile minimum addFish clamps to, so a newborn
  * reads visibly smaller than its parents and grows up on its meals. */
 const MINUTES_PER_DAY = 24 * 60;
+const AQUARIUM_STREAM_SALT = 0x5eed;
+const PLANT_UNIT_AREA = 1000;
 const BREED_ODDS = 15;
 const CONCEIVE_ODDS = 50;
 const BREED_HEALTH = 75;
@@ -534,7 +536,7 @@ export class Sim {
     this.seed = seed;
     this.rand = makeRng(seed);
     this.zRand = makeRng(seed ^ 0x2de9);
-    this.aquarium = new Aquarium(makeRng(seed ^ 0x5eed));
+    this.aquarium = new Aquarium(makeRng(seed ^ AQUARIUM_STREAM_SALT));
   }
 
   /** The seed the streams derive from, so a restore can rebuild the
@@ -547,7 +549,8 @@ export class Sim {
    * the life model's rolls (shock sickness, contagion, cures, birth
    * mutations) diverged between identical seeded launches. */
   restoreAquarium(raw: unknown): void {
-    this.aquarium = Aquarium.fromJSON(raw, makeRng(this.seed ^ 0x5eed));
+    this.aquarium = Aquarium.fromJSON(raw,
+                                     makeRng(this.seed ^ AQUARIUM_STREAM_SALT));
   }
 
   /** Advance the aquarium's clock by real seconds (at its speed) and
@@ -557,7 +560,7 @@ export class Sim {
     a.lightOn = this.light > SLEEP_LIGHT;
     // Plant chemistry works in units of 1000 px² (Sim_Plant); the view
     // hands over raw px², so scale it here rather than at every caller.
-    a.plantSize = this.plantArea / 1000;
+    a.plantSize = this.plantArea / PLANT_UNIT_AREA;
     const day = Math.floor(a.minutes / MINUTES_PER_DAY);
     a.advance(realSeconds, this.residents());
     this.syncLife();

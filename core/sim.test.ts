@@ -216,6 +216,8 @@ describe("Sim", () => {
     }
     expect(exited).toBeGreaterThanOrEqual(0); // the roll ran its course
     expect(f.facing).toBe((-from) as 1 | -1); // and flipped the profile
+    expect(sim.events.filter((e) => e.type === "golden"))
+      .toEqual([{ type: "golden", fish: f }]);
     // The fresh destination sits ahead of the new facing, not a
     // target the roll left behind it.
     expect((f.x - f.tx) * f.facing).toBeLessThanOrEqual(12);
