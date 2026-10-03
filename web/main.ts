@@ -629,6 +629,12 @@ function tankPoint(clientX: number, clientY: number):
 /** The element whose box holds the picture: #crt while the tube
  * draws, else #tank. */
 const pictureEl = (): HTMLElement => crtMapsPointer() ? crtEl : canvas;
+/** That element's client rect, from the cache — per-frame placement
+ * (name tags, the Get Info card) would otherwise force a layout read
+ * on every rAF, which is what tankRect()/crtClientRect() exist to
+ * avoid. */
+const pictureRect = (): DOMRect =>
+  crtMapsPointer() ? crtClientRect() : tankRect();
 
 /** Where a tank point shows, in client px; `r` is pictureEl()'s
  * client rect. The inverse of tankPoint. */
@@ -965,7 +971,7 @@ function layoutInfo(): void {
   const f = card.fish;
   if (!sim.fish.includes(f)) { closeInfo(); return; }
   // Fixed on body, so card space is viewport coordinates.
-  const r = pictureEl().getBoundingClientRect();
+  const r = pictureRect();
   const at = tankToClient(f.x, f.y, r);
   const cw = card.root.offsetWidth, ch = card.root.offsetHeight;
   let px = at.x - cw / 2;
@@ -2333,7 +2339,7 @@ const CLIENT_MAP = { s: 1, ox: 0, oy: 0 };
  * tankToClient like the card, so the tags follow the CRT's warp. */
 function syncNameTags(): void {
   if (!namesOn) return;
-  const r = pictureEl().getBoundingClientRect();
+  const r = pictureRect();
   const carded = infoCard?.fish;
   const surface = tankToClient(TANK.width / 2, SURFACE + 1, r).y;
   nameTags.sync(sim.fish.filter((f) => f !== carded).map((f) => {
