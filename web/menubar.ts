@@ -184,7 +184,9 @@ function showDocWindow(title: string,
     docWin = null;
   }
   docWin = win;
-  content.querySelector<HTMLElement>(".osm-default")?.focus();
+  // A short window scrolls; begin at the document's heading while
+  // leaving Return on its default button.
+  content.querySelector<HTMLElement>(".osm-default")?.focus({ preventScroll: true });
 }
 
 /** Drag a document window by its title bar, whole pixels, kept on
@@ -272,6 +274,10 @@ function shortcutsContent(c: HTMLElement): void {
     ["S", "Open Tank Stats"],
     ["⌘I / Ctrl-I", "Import add-ons"],
     ["Esc", "Close the front window"],
+    ["Feed", "Click above the waterline"],
+    ["Tap", "Click in the water"],
+    ["Get Info", "Alt/Option-click a fish"],
+    ["Import", "Drop fish, scenery or sounds"],
   ];
   for (const [key, what] of rows) {
     const row = document.createElement("div");

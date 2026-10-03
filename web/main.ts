@@ -29,7 +29,7 @@ import { drawRipples, drawSplashes, newSplash, tickRipples,
 import type { Ripple, Splash } from "./fx.js";
 import { sanitizeEffects } from "./effects.js";
 import { pushButton } from "osmium-ui";
-import { alertOpen, showAlert } from "./alert.js";
+import { alertOpen, setAlertBounds, showAlert } from "./alert.js";
 import { recentTaps, shouldScold } from "./scold.js";
 import { backfillStarterSounds, launchOffer, showWelcome }
   from "./welcome.js";
@@ -62,7 +62,8 @@ import type { PawVisit } from "./catpaw.js";
 import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
 import { bootPhase, drawBoot, fadeProgress, paradeIcon }
   from "./boot.js";
-import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
+import { acceptsTankIntent, fishThumbKey, inNativeShell, openBus }
+  from "./bus.js";
 import { claimTank } from "./tankclaim.js";
 import { docOpen, menuOpen, mountTankMenuBar, openClientWindow }
   from "./menubar.js";
@@ -98,6 +99,20 @@ const STEP_MS = 1000 / TICKS_PER_SECOND;
 const canvas = document.getElementById("tank") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 ctx.imageSmoothingEnabled = false;
+
+// Alerts sit on the machine's desktop — the screen rect inside the
+// case — the way a Mac's alerts sat on its screen, instead of
+// overhanging the monitor the tank lives in (a 340 px standard alert
+// over a 320 px Plus-case tank at browser sizes).
+const alertScreenEl = document.getElementById("screen");
+if (alertScreenEl)
+  setAlertBounds(() => {
+    // Before the first layout (or in markup without a sized screen) a
+    // zero rect would squeeze the alert to nothing — fall back to the
+    // whole viewport instead.
+    const r = alertScreenEl.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 ? r : null;
+  });
 
 // The loop only draws after a sim tick; requestPaint() asks for one draw
 // without a tick, for changes the sim doesn't make (feeding, taps,
@@ -651,6 +666,14 @@ function tankPoint(clientX: number, clientY: number):
 /** The element whose box holds the picture: #crt while the tube
  * draws, else #tank. */
 const pictureEl = (): HTMLElement => crtMapsPointer() ? crtEl : canvas;
+/** That element's client rect, from the cache — per-frame placement
+ * (name tags, the Get Info card) would otherwise force a layout read
+ * on every rAF, which is what tankRect()/crtClientRect() exist to
+ * avoid. The caches are dropped by dropRects(): resize, scroll,
+ * layoutMachine, and a CRT toggle. Anything new that moves or resizes
+ * the tank or the glass has to drop them too. */
+const pictureRect = (): DOMRect =>
+  pictureEl() === crtEl ? crtClientRect() : tankRect();
 
 /** Where a tank point shows, in client px; `r` is pictureEl()'s
  * client rect. The inverse of tankPoint. */
@@ -870,7 +893,7 @@ for (const el of tankSurfaces) {
 // or the fish leaving the tank. Clicking the name renames the fish.
 let infoCard: {
   root: HTMLElement; name: HTMLElement; kind: HTMLElement;
-  hunger: HTMLElement; mood: HTMLElement; fish: Fish;
+  health: HTMLElement; hunger: HTMLElement; mood: HTMLElement; fish: Fish;
   /** The rename field, while the name is being edited. */
   edit: HTMLInputElement | null;
 } | null = null;
@@ -963,22 +986,26 @@ function openInfo(f: Fish): void {
   body.className = "finbody";
   // The species, once a name has taken its place in the title.
   const kind = document.createElement("div");
+  // Health and hunger get a line each: together they wrapped in the
+  // narrow card and left the hunger figure on a line of its own.
+  const health = document.createElement("div");
   const hunger = document.createElement("div");
   const mood = document.createElement("div");
-  body.append(kind, hunger, mood);
+  body.append(kind, health, hunger, mood);
   root.append(title, body);
   // A press on the card is on the card — never feed or tap through it.
   root.addEventListener("pointerdown", (e) => e.stopPropagation());
   // On body, not #screen: #screen's stacking context paints under
   // #machine, so a card inside it slid under the glass reflections.
   document.body.appendChild(root);
-  infoCard = { root, name, kind, hunger, mood, fish: f, edit: null };
+  infoCard = { root, name, kind, health, hunger, mood, fish: f,
+              edit: null };
   // Position now, not next frame: unpositioned the card would paint
   // once at its in-flow default (the end of body) before landing.
   layoutInfo();
 }
 
-/** Reposition the card over its fish and refresh the two live lines.
+/** Reposition the card over its fish and refresh its live lines.
  * Runs every frame from frame() while a card is open; the fish's
  * removal closes it. */
 function layoutInfo(): void {
@@ -987,7 +1014,7 @@ function layoutInfo(): void {
   const f = card.fish;
   if (!sim.fish.includes(f)) { closeInfo(); return; }
   // Fixed on body, so card space is viewport coordinates.
-  const r = pictureEl().getBoundingClientRect();
+  const r = pictureRect();
   const at = tankToClient(f.x, f.y, r);
   const cw = card.root.offsetWidth, ch = card.root.offsetHeight;
   let px = at.x - cw / 2;
@@ -996,12 +1023,15 @@ function layoutInfo(): void {
   // Clamp inside the picture's rect (the tank, or the glass with the
   // CRT on): the card can't slide under the case's bezel edge or off
   // the window.
+  // Whole pixels: on a fractional origin the bitmap text smears.
   card.root.style.left =
-    `${Math.max(r.left, Math.min(px, r.right - cw))}px`;
+    `${Math.round(Math.max(r.left, Math.min(px, r.right - cw)))}px`;
   card.root.style.top =
-    `${Math.max(r.top, Math.min(py, r.bottom - ch))}px`;
-  const hunger = f.life?.dead ? conditionLabel(conditionOf(f))
-    : `Health  ${f.life?.health ?? 100}%  Hunger  ${Math.round(f.hunger * 100)}%`;
+    `${Math.round(Math.max(r.top, Math.min(py, r.bottom - ch)))}px`;
+  // A body has a cause of death instead of health and hunger.
+  const health = f.life?.dead ? conditionLabel(conditionOf(f))
+    : `Health ${f.life?.health ?? 100}%`;
+  const hunger = f.life?.dead ? "" : `Hunger ${Math.round(f.hunger * 100)}%`;
   const mood = f.life?.sick && !f.life.dead
     ? conditionLabel(conditionOf(f)) : stateLabel(f.state);
   // A rename from Overview lands here too. The title waits while the
@@ -1012,8 +1042,11 @@ function layoutInfo(): void {
   const kind = f.name ? f.species || "Fish" : "";
   if (card.kind.textContent !== kind) card.kind.textContent = kind;
   card.kind.hidden = !kind;
+  if (card.health.textContent !== health)
+    card.health.textContent = health;
   if (card.hunger.textContent !== hunger)
     card.hunger.textContent = hunger;
+  card.hunger.hidden = !hunger;
   if (card.mood.textContent !== mood) card.mood.textContent = mood;
 }
 
@@ -1601,11 +1634,10 @@ const importPanel = mountImportPanel({
 // browser keeps the dark backdrop.
 if (inNativeShell()) document.documentElement.classList.add("native");
 
-const bus = openBus(onBusMessage);
-
 // Random per page-load — lets clients detect a tank restart (their
 // in-flight wants died with the old page) and re-ask once.
 const boot = Math.random().toString(36).slice(2);
+const bus = openBus(onBusMessage);
 
 /** The tank's water and equipment for Tank Stats: readings per litre,
  * as the original's water window showed them. */
@@ -1825,6 +1857,8 @@ function fishOutAfter(remove: () => void): void {
 
 function onBusMessage(m: BusMsg): void {
   if (!tankOwner) return; // view-only: the owner answers everything
+  // A client can outlive this page load, so it cannot mutate its successor.
+  if (!acceptsTankIntent(m, boot)) return;
   if (m.op === "hello") postState(HELLO_MIN_MS);
   else if (m.op === "focusFish") {
     // The Overview's selection spotlights a fish — null lifts it.
@@ -2211,6 +2245,10 @@ crt?.configure(crtCfg);
 function setCrt(on: boolean): void {
   crtOn = crt !== null && on;
   crt?.setEnabled(crtOn);
+  // Toggling the tube swaps which element holds the picture (#crt for
+  // the glass, #tank otherwise) and can change that element's box, so
+  // drop the cached rects the pointer and placement code read.
+  dropRects();
   // Enabling sizes the WebGL buffer, which clears it: redraw now
   // rather than show black until the next tick.
   if (crtOn) requestPaint();
@@ -2362,21 +2400,58 @@ const nameTags = mountNameTags(document.body);
 const PLACEHOLDER_HALF_H = 6;
 /** Tags are placed in viewport pixels already, so their map is 1:1. */
 const CLIENT_MAP = { s: 1, ox: 0, oy: 0 };
+/** Tag slots reused frame to frame: syncNameTags runs every frame
+ * while Fish Names is on, so fresh objects per fish per frame churned
+ * the GC for nothing. */
+const tagSlots: { id: number; label: string; x: number;
+                  top: number; bottom: number }[] = [];
 /** Put a tag on every fish but the one whose Get Info card is open
  * (the card names it, right where its tag would go). Placed through
- * tankToClient like the card, so the tags follow the CRT's warp. */
+ * the same mapping as the card, so the tags follow the CRT's warp. */
 function syncNameTags(): void {
   if (!namesOn) return;
-  const r = pictureEl().getBoundingClientRect();
+  // The cached rect (dropped by resize, scroll and layoutMachine),
+  // not a fresh layout read: the previous frame's tag style writes
+  // already invalidated layout, so a getBoundingClientRect here would
+  // force a synchronous layout pass on every frame. Same elements as
+  // pictureEl(): the glass while the tube draws, the tank otherwise.
+  // The decision is made once so the rect and the per-fish mapping
+  // cannot disagree if the tube flips mid-frame.
+  const throughCrt = crtMapsPointer();
+  const r = throughCrt ? crtClientRect() : tankRect();
   const carded = infoCard?.fish;
   const surface = tankToClient(TANK.width / 2, SURFACE + 1, r).y;
-  nameTags.sync(sim.fish.filter((f) => f !== carded).map((f) => {
+  let n = 0;
+  // Without the tube the mapping is one affine — tankToClient's
+  // contain math, computed once here instead of twice per fish. (Keep
+  // the formula in step with tankToClient.)
+  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
+  const ox = r.left + (r.width - TANK.width * s) / 2;
+  const oy = r.top + (r.height - TANK.height * s) / 2;
+  for (const f of sim.fish) {
+    if (f === carded) continue;
     const hh = (f.halfH ?? PLACEHOLDER_HALF_H) * f.scale;
-    const top = tankToClient(f.x, f.y - hh, r);
-    const bottom = tankToClient(f.x, f.y + hh, r);
-    return { id: f.id, label: fishLabel(f), x: top.x,
-             top: top.y, bottom: bottom.y };
-  }), CLIENT_MAP, r, surface);
+    // The tag pins just above the fish's back and may ride down to
+    // its belly (nametags.ts clamps by the two y values).
+    let px: number, top: number, bottom: number;
+    if (throughCrt) {
+      const up = tankToClient(f.x, f.y - hh, r);
+      px = up.x;
+      top = up.y;
+      bottom = tankToClient(f.x, f.y + hh, r).y;
+    } else {
+      px = ox + f.x * s;
+      top = oy + (f.y - hh) * s;
+      bottom = oy + (f.y + hh) * s;
+    }
+    const t = tagSlots[n] ??
+      (tagSlots[n] = { id: 0, label: "", x: 0, top: 0, bottom: 0 });
+    t.id = f.id; t.label = fishLabel(f); t.x = px;
+    t.top = top; t.bottom = bottom;
+    n++;
+  }
+  tagSlots.length = n;
+  nameTags.sync(tagSlots, CLIENT_MAP, r, surface);
 }
 // Cosmetic layer — recreate #screenback and enforce sibling order when
 // stale markup is detected (#machine/#shell/#screen must still exist).
@@ -2991,15 +3066,20 @@ async function walkEntry(ent: FileSystemEntry, prefix: string,
 }
 // Drop cue: while files hover the window, the glass shows a dashed
 // frame and a hint. dragenter/dragleave nest per element, so a depth
-// counter — not the events alone — owns the class.
+// counter — not the events alone — owns the class. A modal alert or
+// document window stands down: nothing under it may act, so the cue
+// must not promise a drop that will be ignored. A view-only tab
+// stands down too — its drops land nowhere a save can record, so the
+// cue must not promise one either.
+const dropAllowed = (): boolean =>
+  !alertOpen() && !docOpen() && tankOwner;
 let dragDepth = 0;
 const setDragging = (on: boolean): void => {
   document.body.classList.toggle("dragging", on);
 };
 window.addEventListener("dragenter", (e) => {
   if (!e.dataTransfer?.types.includes("Files")) return;
-  // A spectator's drop lands nowhere — don't promise one with the cue.
-  if (++dragDepth === 1) setDragging(tankOwner);
+  if (++dragDepth === 1) setDragging(dropAllowed());
 });
 window.addEventListener("dragleave", (e) => {
   if (!e.dataTransfer?.types.includes("Files")) return;
@@ -3007,7 +3087,22 @@ window.addEventListener("dragleave", (e) => {
 });
 // Capture phase here too: a descendant that swallows dragover would
 // keep dropEffect at "none" and the drop event would never fire.
-window.addEventListener("dragover", (e) => e.preventDefault(), true);
+// preventDefault() must stay so the drop still arrives (and is then
+// ignored by the guarded handler); dropEffect says "none" under a
+// modal so the cursor greys out.
+window.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  const allowed = dropAllowed();
+  // Re-evaluate on every dragover: a modal may have opened (or
+  // closed) since the drag began, and the cue must follow it either
+  // way rather than promising a drop that will be refused.
+  if (dragDepth > 0) setDragging(allowed);
+  // dropEffect rides the shared DataTransfer for the whole drag, so a
+  // "none" written under a modal outlives it — write both ways or a
+  // drop the cue re-promised stays refused after the modal closes.
+  if (e.dataTransfer)
+    e.dataTransfer.dropEffect = allowed ? "copy" : "none";
+}, true);
 // Capture phase: a drop ends the drag without a leave event, and a
 // descendant handler that stops propagation must not strand the cue —
 // nor let the browser navigate away to the dropped file.
@@ -3042,10 +3137,12 @@ function dropSay(text: string): void {
 }
 window.addEventListener("drop", (e) => {
   e.preventDefault();
-  // A view-only tab imports nothing: a dropped pack or sound would be
-  // written to the owner tab's origin (IndexedDB, install records) with
-  // no save here to record it, leaving bytes nothing can remove.
-  if (!tankOwner) return;
+  // A modal alert or document window owns the page: the scrim stops
+  // taps, so a drop must stand down too, or files import behind the
+  // scrim while its feedback paints under it. A view-only tab owns
+  // nothing to write to — dropped bytes would land in the owner's
+  // origin with no save here to record them.
+  if (!dropAllowed()) return;
   // A drop is a gesture — wake audio now so the install feedback can
   // still answer it once the (async) decode finishes.
   audio.unlock();

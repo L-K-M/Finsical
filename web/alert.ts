@@ -60,6 +60,13 @@ const MAX_W = 340;
 /** Room kept between the alert and the page edges. */
 const EDGE = 8;
 
+/** The rectangle an alert is placed inside: the whole viewport, or —
+ * where the host provides one — the tank's "desktop", the screen rect
+ * inside the machine case. */
+export interface AlertBox {
+  left: number; top: number; width: number; height: number;
+}
+
 /** Alert width for a viewport `vw` wide: the standard width, narrowed
  * to fit small windows (the Mac Plus tank window is 330 wide). */
 export function alertWidth(vw: number): number {
@@ -71,16 +78,48 @@ export function alertWidth(vw: number): number {
  * alert position), on whole pixels so the bitmap text stays crisp. */
 export function alertOrigin(vw: number, vh: number, w: number,
                             h: number): { left: number; top: number } {
-  return { left: Math.max(0, Math.floor((vw - w) / 2)),
-           top: Math.max(EDGE, Math.floor((vh - h) / 3)) };
+  return alertOriginIn({ left: 0, top: 0, width: vw, height: vh }, w, h);
+}
+
+/** The same Dialog Manager position inside an arbitrary box: centered
+ * across, a third of the leftover height above, never nearer than
+ * EDGE to the box's top, never left of it, and on whole pixels (a
+ * fractional box origin is floored) so the bitmap text stays crisp. */
+export function alertOriginIn(b: AlertBox, w: number, h: number):
+    { left: number; top: number } {
+  return {
+    left: Math.floor(b.left) + Math.max(0, Math.floor((b.width - w) / 2)),
+    top: Math.floor(b.top) +
+      Math.max(EDGE, Math.floor((b.height - h) / 3)),
+  };
+}
+
+/** The rectangle alerts place themselves inside, wired by the host
+ * page: the tank page gives its machine case's screen, so an alert
+ * sits on the "desktop" the tank lives in instead of overhanging the
+ * monitor. Null (the default, and what the client windows use)
+ * restores the whole viewport. */
+let alertBounds: (() => AlertBox | null) | null = null;
+export function setAlertBounds(fn: (() => AlertBox | null) | null): void {
+  alertBounds = fn;
 }
 
 let registered = false;
-let openCount = 0;
+/** The open alerts, oldest first. `bindDialogKeys` adds one window
+ * keydown listener per button set and the first to match eats the key
+ * (`preventDefault`), so a stacked pair would answer whichever was
+ * raised first. Only the frontmost alert may claim Return and Escape —
+ * the one the Dialog Manager would act on. The stack doubles as the
+ * open count, so the two can't drift. */
+const stack: Alert[] = [];
+const frontmost = (): Alert | undefined => stack[stack.length - 1];
+/** Each open alert's own window, so handing focus to the one a stack
+ * uncovers does not depend on DOM order matching stack order. */
+const windows = new WeakMap<Alert, HTMLElement>();
 
 /** True while any alert is up: the tank ignores taps meanwhile. */
 export function alertOpen(): boolean {
-  return openCount > 0;
+  return stack.length > 0;
 }
 
 /** Where Tab moves focus among `n` buttons from index `i` (-1: none of
@@ -190,9 +229,14 @@ export function showAlert(spec: AlertSpec): Alert {
     bar.setAttribute("aria-valuenow", String(Math.round((value ?? 0) * 100)));
   };
   const place = () => {
-    win.style.width = `${alertWidth(window.innerWidth)}px`;
-    const o = alertOrigin(window.innerWidth, window.innerHeight,
-                          win.offsetWidth, win.offsetHeight);
+    // Inside the host's desktop when it provides one (the machine's
+    // screen rect), else the whole viewport: the modal's scrim still
+    // covers the page either way.
+    const b = alertBounds?.() ??
+      { left: 0, top: 0, width: window.innerWidth,
+        height: window.innerHeight };
+    win.style.width = `${alertWidth(b.width)}px`;
+    const o = alertOriginIn(b, win.offsetWidth, win.offsetHeight);
     win.style.left = `${o.left}px`;
     win.style.top = `${o.top}px`;
   };
@@ -243,7 +287,7 @@ export function showAlert(spec: AlertSpec): Alert {
         bindDialogKeys(ok, cancel, {
           ok: () => ok?.click(),
           cancel: () => cancel?.click(),
-          active: () => open,
+          active: () => open && frontmost() === alert,
         });
       }
       if (open) place();
@@ -254,18 +298,31 @@ export function showAlert(spec: AlertSpec): Alert {
     },
     close() {
       if (!open) return;
+      const wasFrontmost = frontmost() === alert;
       open = false;
-      openCount--;
+      const at = stack.indexOf(alert);
+      if (at >= 0) stack.splice(at, 1);
       ro.disconnect();
       window.removeEventListener("resize", place);
       scrim.remove();
-      if (opener?.isConnected) opener.focus({ preventScroll: true });
+      // A background progress window must not steal an active control's focus.
+      if (!wasFrontmost) return;
+      // Closing a stacked alert leaves the one beneath on screen, so
+      // hand the keyboard to it rather than dropping focus behind the
+      // scrim; with nothing left, restore whatever had it before.
+      const below = frontmost();
+      if (below) {
+        windows.get(below)?.focus({ preventScroll: true });
+      } else if (opener?.isConnected) {
+        opener.focus({ preventScroll: true });
+      }
     },
     get isOpen() { return open; },
     get value() { return field.hidden ? "" : field.value; },
   };
 
-  openCount++;
+  stack.push(alert);
+  windows.set(alert, win);
   document.body.append(scrim);
   alert.update(spec);
   if (field.hidden) win.focus({ preventScroll: true });

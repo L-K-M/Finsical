@@ -58,14 +58,19 @@ function meter(frac: number | null, pct: string, arrow: string,
   bar.setAttribute("aria-hidden", "true");
   bar.style.setProperty("--osm-value",
                         String(Math.min(1, Math.max(0, frac ?? 0))));
+  // No reading ("—"): no bar either, rather than an empty track that
+  // reads as 0%.
+  if (frac === null) bar.style.visibility = "hidden";
   const track = el("div", "osm-progress-track");
   track.appendChild(el("div", "osm-progress-fill"));
   bar.appendChild(track);
   cell.append(bar, el("span", "spct", pct), el("span", "strend", arrow));
   // No framed blank: an all-gap history (null/NaN/Infinity — the
-  // same definition spark() can't draw) is "no data yet".
+  // same definition spark() can't draw) is "no data yet". Its column
+  // stays reserved, so every bar in the window is the same length.
   if (series && series.some((s) => Number.isFinite(s.v)))
     cell.appendChild(spark(series));
+  else if (series) cell.appendChild(el("span", "sspark sspark-none"));
   return cell;
 }
 
@@ -123,7 +128,7 @@ function render(st: TankStats): void {
                                trend(old?.water ?? null, water),
                                history.map((s) => ({ t: s.t, v: s.water }))));
   field("Avg. hunger", st.avgHunger === null
-    ? meter(null, "—", "")
+    ? meter(null, "—", "", []) // [] keeps the sparkline's column
     : meter(st.avgHunger, `${Math.round(st.avgHunger * 100)}%`,
             trend(old?.avgHunger ?? null, st.avgHunger),
             history.map((s) => ({ t: s.t, v: s.avgHunger }))));
@@ -206,8 +211,10 @@ mountPopup($("smed"), {
   items: MEDICINES.map((m) => m.name), selected: doseMed, label: "Medicine",
   onChange: (i) => { doseMed = i; refreshKeeping(); },
 });
+// "x", not "×": Mac Roman had no multiplication sign, and Osmium's
+// Charcoal has none either, so it fell back to a thin system glyph.
 const speedLabel = (v: number): string =>
-  v === 1 ? "Real time" : `${v}× faster`;
+  v === 1 ? "Real time" : `${v}x faster`;
 const speedPop = mountPopup($("sspeed"), {
   items: SPEEDS.map(speedLabel), selected: 0, label: "Time",
   onChange: (i) => bus.post({ op: "simSpeed", value: SPEEDS[i] }),
@@ -355,21 +362,22 @@ bus.post({ op: "hello" });
 
 
 // Copy Summary — the window's rows as plain text on the clipboard, so
-// a tank's state can leave the app (the tank diary's quick share).
+// a tank's state can leave the app (the tank diary's quick share). The
+// outcome shows beside the button, which keeps its title as Mac OS 8
+// buttons do.
 const copyBtn = document.getElementById("scopy") as HTMLButtonElement;
+const copyMsg = document.getElementById("scopymsg")!;
+// Window-wide, so a re-click restarts the feedback: a reset left from
+// an earlier click must not erase the newer message early.
+let copyTimer: ReturnType<typeof setTimeout> | undefined;
 pushButton(copyBtn, () => {
   const st = lastStats;
-  let copyTimer: ReturnType<typeof setTimeout> | undefined;
-  const done = (label: string): void => {
-    copyBtn.textContent = label;
-    // A re-click inside the window restarts the feedback, not just
-    // the label — a stale reset must not erase the newer one early.
+  const done = (message: string): void => {
+    copyMsg.textContent = message;
     clearTimeout(copyTimer);
-    copyTimer = setTimeout(() => {
-      copyBtn.textContent = "Copy Summary";
-    }, 1500);
+    copyTimer = setTimeout(() => { copyMsg.textContent = ""; }, 2500);
   };
-  if (!st) { done("No data yet"); return; }
+  if (!st) { done("Nothing to copy yet."); return; }
   const text = summaryText(st);
   // Older WebKit and non-secure (plain-http) contexts have no async
   // clipboard API at all — the textarea + execCommand fallback covers
@@ -384,15 +392,16 @@ pushButton(copyBtn, () => {
       ta.focus();
       ta.select();
       ta.setSelectionRange(0, ta.value.length); // older iOS
-      done(document.execCommand("copy") ? "Copied!" : "Copy failed");
-    } catch { done("Copy failed"); }
+      done(document.execCommand("copy") ? "Summary copied."
+                                        : "Couldn't copy the summary.");
+    } catch { done("Couldn't copy the summary."); }
     // focus() moved it to the textarea — give it back so keyboard
     // users don't land on <body> when this path runs.
     finally { ta.remove(); copyBtn.focus(); }
   };
   if (typeof navigator.clipboard?.writeText === "function")
     navigator.clipboard.writeText(text)
-      .then(() => done("Copied!"))
+      .then(() => done("Summary copied."))
       .catch(fallback);
   else fallback();
 });
