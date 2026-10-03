@@ -47,6 +47,30 @@ describe("Sim", () => {
     expect(a.food).toEqual(b.food);
   });
 
+  it("restores the aquarium on its own seeded stream", () => {
+    // A cold changeWater rolls sickness from the aquarium's stream, so
+    // two sims restored from one save under one seed must agree — the
+    // ?seed= replay pin. main.ts used to hand fromJSON a Math.random
+    // closure, and identical seeded launches diverged.
+    const save = JSON.parse(
+      JSON.stringify(new Sim({ width: 320, height: 200 }, 7)
+        .aquarium.toJSON()));
+    const shockOutcomes = () => {
+      const sim = new Sim({ width: 320, height: 200 }, 7);
+      sim.restoreAquarium(save);
+      for (let i = 0; i < 20; i++) sim.addFish({ x: 40 + i * 12, y: 100 });
+      sim.aquarium.water.temp = 34;
+      sim.aquarium.changeWater(0.9, 16, sim.residents());
+      return sim.fish.map((f) => [
+        f.life!.sick === null ? 0 : 1,
+        Math.round(f.life!.health),
+      ]);
+    };
+    // Several independent pairs: any divergence anywhere breaks replay.
+    for (let trial = 0; trial < 3; trial++)
+      expect(shockOutcomes()).toEqual(shockOutcomes());
+  });
+
   it("defaults each missing or non-finite target field on its own", () => {
     const sim = new Sim({ width: 320, height: 200 });
     const plain = sim.addFish({ x: 50, y: 60 });

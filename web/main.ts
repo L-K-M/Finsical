@@ -6,7 +6,6 @@ import { fishPose, pitch, restPose } from "../core/pose.js";
 import { FISH_CAP, FOOD_CAP, HUNGER_SEEK, TANK_SIZE }
   from "../core/tuning.js";
 import { planFrame } from "../core/loop.js";
-import { Aquarium } from "../core/aquarium/aquarium.js";
 import type { SavedAquarium } from "../core/aquarium/aquarium.js";
 import { sanitizeLife } from "../core/aquarium/life.js";
 import { DEFAULT_CARE, sanitizeCare } from "../core/data/species.js";
@@ -264,9 +263,7 @@ if (saved) {
   // re-persist and skew the day cycle.
   if (Number.isFinite(saved.tickCount))
     sim.tickCount = Math.max(0, Math.trunc(saved.tickCount));
-  if (saved.aquarium)
-    sim.aquarium = Aquarium.fromJSON(saved.aquarium,
-                                     () => Math.random());
+  if (saved.aquarium) sim.restoreAquarium(saved.aquarium);
 }
 // Species care by pack url: from the save now, from each pack as it
 // (re)installs. Fish without a known pack get the stand-in's needs.
