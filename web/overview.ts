@@ -183,6 +183,10 @@ let statusTimer = 0;
 const removeSelected = (): void => {
   const it = items[list.selected];
   if (!it) return;
+  // The same guard Rename takes: on a tank that is gone (or behind a
+  // modal) the post goes nowhere and the row stays, so announcing
+  // "Removed" would be a lie the live region reads out loud.
+  if (tankGone || alertOpen()) return;
 
   const now = performance.now();
   if (now - lastRemovedAt < REMOVE_FLOOR_MS) return;
