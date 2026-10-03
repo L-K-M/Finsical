@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { Cause, newLife, rescaleStomach, sanitizeLife, stomachSize } from "./life.js";
+import { Cause, newLife, rescaleStomach, sanitizeLife, stepAge,
+         stomachSize } from "./life.js";
 import { makeRng } from "../rng.js";
 import { DEFAULT_CARE } from "../data/species.js";
 
@@ -32,17 +33,11 @@ describe("sanitizeLife", () => {
 });
 
 describe("stomach size", () => {
-  it("never dips below a pellet below the first step", () => {
-    // 0.2 × weight, floored at 2. A weight-5 fish used to read 1 —
-    // under PELLET_UNITS (3), so it could never finish a pellet.
-    expect(stomachSize(4)).toBe(2);
-    expect(stomachSize(5)).toBe(2);
-    expect(stomachSize(9)).toBe(2);
-    expect(stomachSize(10)).toBe(2);
+  it("is 0.2 × weight, truncated, with the original's floor", () => {
     expect(stomachSize(25)).toBe(5);
-    // Monotonic in weight across the small band.
-    for (let w = 1; w < 12; w++)
-      expect(stomachSize(w + 1)).toBeGreaterThanOrEqual(stomachSize(w));
+    expect(stomachSize(40)).toBe(8);
+    expect(stomachSize(4)).toBe(2);    // 0.8 truncates to 0, floored
+    expect(stomachSize(5)).toBe(1);    // the original's 1, kept as it was
   });
 
   it("keeps the eaten share across a rescale, up and down", () => {
@@ -62,5 +57,24 @@ describe("stomach size", () => {
     rescaleStomach(life, 30);
     expect(life.stomach).toBe(6);
     expect(life.ate).toBe(0);
+  });
+
+  it("nothing survives above its stomach, however it got there", () => {
+    const life = newLife(makeRng(4), DEFAULT_CARE, 0);
+    life.stomach = 5; life.ate = 9;      // a corrupt save or a rounding slip
+    rescaleStomach(life, 25);             // same stomach size
+    expect(life.ate).toBeLessThanOrEqual(life.stomach);
+  });
+
+  it("ageing a fish into a bigger sprite keeps its meal", () => {
+    const rand = makeRng(6);
+    const life = newLife(rand, DEFAULT_CARE, 0);
+    const ctx = { rand, care: DEFAULT_CARE, weight: 10,          // stomach 2
+                  events: { died: () => {}, sick: () => {}, recovered: () => {} } };
+    life.stomach = 2; life.ate = 1;
+    stepAge(life, 11, false, { ...ctx, weight: 50 });             // stomach 10
+    expect(life.stomach).toBe(10);
+    // The share it held survived the resize rather than reading empty.
+    expect(life.ate / life.stomach).toBeCloseTo(0.5, 1);
   });
 });

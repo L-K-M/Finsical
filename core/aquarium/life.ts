@@ -173,10 +173,11 @@ export function cure(l: FishLife, ctx: LifeCtx): void {
   ctx.events.recovered(idx);
 }
 
-/** Stomach size, 0.2 × weight (Calc_Stomach_Size), never below a whole
- * pellet's worth so a small species can still finish what it eats. */
+/** Stomach size, 0.2 × weight, truncated (Calc_Stomach_Size), with the
+ * original's floor so no fish starts with an empty stomach. */
 export function stomachSize(weight: number): number {
-  return Math.max(2, trunc(weight * 0.2));
+  const s = trunc(weight * 0.2);
+  return s < 1 ? 2 : s;
 }
 
 /** Resize a fish's stomach to `weight`, keeping the share of it the
@@ -187,9 +188,14 @@ export function stomachSize(weight: number): number {
  * a meal the fish already ate. */
 export function rescaleStomach(l: FishLife, weight: number): void {
   const next = stomachSize(weight);
-  if (next === l.stomach) return;
-  l.ate = l.stomach > 0 ? Math.round(l.ate / l.stomach * next) : 0;
-  l.stomach = next;
+  if (next !== l.stomach) {
+    // A share of nothing is nothing; guard the divide.
+    l.ate = l.stomach > 0 ? Math.round(l.ate / l.stomach * next) : 0;
+    l.stomach = next;
+  }
+  // Nothing may sit above the stomach it lives in, whatever the path:
+  // an overfull fish reads permanently full and never eats again.
+  if (l.ate > l.stomach) l.ate = l.stomach;
 }
 
 /** 0 full … 1 empty. */
