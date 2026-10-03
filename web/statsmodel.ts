@@ -88,6 +88,9 @@ export interface TankStats {
 export const HUNGER_STARVING = 0.85;
 /** Avg hunger that warrants a feeding hint. */
 const HUNGER_FEED = 0.55;
+/** A care warning before saturation reaches the no-oxygen damage state.
+ * This is a UI threshold, not a change to the aquarium's life rules. */
+const OXYGEN_WARN_PCT = 50;
 
 /** Number.isFinite, not ??: a NaN payload mustn't render "NaN%" and
  * silently pass the advice checks below. */
@@ -194,6 +197,10 @@ function advice(st: TankStats, water: number): string[] {
   if (w && w.chlorine > 0.1)
     out.push("There is chlorine in the water — add Chlorine Remover, " +
              "or let it gas off over a few days.");
+  // Some medicines consume oxygen, so aeration precedes treatment advice.
+  if (w && w.oxygenPct < OXYGEN_WARN_PCT)
+    out.push("Oxygen is low: reduce crowding in Tank Overview and " +
+             "let the filter aerate the water.");
   for (const f of st.sick.slice(0, 1)) {
     const cures = curesFor(f.disease);
     out.push(`${f.name} has ${diseaseName(f.disease)} — ` +
