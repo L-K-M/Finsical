@@ -191,7 +191,9 @@ function days(d: number): string {
 // and medicine being prepared, which are this window's own).
 const HEAT_STEP = 0.5;
 const AMOUNTS = [0.05, 0.1, 0.2, 0.25, 0.33, 0.5, 0.75, 0.9];
-const SPEEDS = [1, 2, 5, 10, 30, 60, 100];
+const SPEEDS = [0, 1, 2, 5, 10, 30, 60, 100];
+// Keep the latest custom speed available after selecting a preset.
+let speedChoices = [...SPEEDS];
 let water: WaterStats | null = null;
 let changeTemp: number | null = null;
 let doseMed = MEDICINES.findIndex((m) => m.name === "Green Remedy");
@@ -207,11 +209,15 @@ mountPopup($("smed"), {
   items: MEDICINES.map((m) => m.name), selected: doseMed, label: "Medicine",
   onChange: (i) => { doseMed = i; refreshKeeping(); },
 });
-const speedLabel = (v: number): string =>
-  v === 1 ? "Real time" : `${v}× faster`;
+function speedLabel(v: number): string {
+  if (v === 0) return "Frozen (0×)";
+  if (v === 1) return "Real time";
+  return v < 1 ? `${v}× speed` : `${v}× faster`;
+}
 const speedPop = mountPopup($("sspeed"), {
-  items: SPEEDS.map(speedLabel), selected: 0, label: "Time",
-  onChange: (i) => bus.post({ op: "simSpeed", value: SPEEDS[i] }),
+  items: speedChoices.map(speedLabel), selected: speedChoices.indexOf(1),
+  label: "Time",
+  onChange: (i) => bus.post({ op: "simSpeed", value: speedChoices[i] }),
 });
 /** A dose sized for the tank: the label's amount per 10 litres. */
 function doseMl(): number {
@@ -257,8 +263,13 @@ function syncKeeping(w: WaterStats | null): void {
     if (i >= 0) amountPop.setSelected(i);
   }
   if (w) {
-    const i = SPEEDS.indexOf(w.speed);
-    if (i >= 0 && i !== speedPop.selected) speedPop.setSelected(i);
+    const i = speedChoices.indexOf(w.speed);
+    if (i < 0) {
+      // Imported tanks can carry speeds between the presets. Show the
+      // actual setting rather than silently calling it "Real time".
+      speedChoices = [...SPEEDS, w.speed].sort((a, b) => a - b);
+      speedPop.setItems(speedChoices.map(speedLabel), speedChoices.indexOf(w.speed));
+    } else if (i !== speedPop.selected) speedPop.setSelected(i);
   }
   refreshKeeping();
 }
