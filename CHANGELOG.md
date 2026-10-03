@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+- Tank Stats tidies up: Copy Summary keeps its title and says
+  "Summary copied." beside it, a second click no longer cuts that
+  message short, the Heater and water steppers' minus signs and the
+  Time pop-up's "2x faster" are drawn in the window's own font, the
+  Keeping labels share one font, and with no fish the hunger row
+  shows just a dash, lined up with the water quality reading.
+- With Fish Names on, name tags no longer pile on top of each other
+  when fish crowd together at the surface or round the food. A tag
+  moves to the other side of its fish to make room, or steps aside
+  for a moment until there is room again.
+- The Get Info card is drawn like a Mac OS 8 floating window: a
+  platinum face, pinstripes that part around the fish's name, and a
+  solid shadow. Health and hunger each get their own line; together
+  they used to wrap and leave the hunger figure alone on a line. The
+  card sizes itself to its readings, and a long species name wraps
+  instead of pushing the card past the glass. The card's chrome no
+  longer selects its text or shows the I-beam and hand pointers;
+  renaming a fish still gives you a normal text field.
+- In Preferences, the Lighting pane's hour pop-ups show the whole
+  time, AM or PM included, instead of "8:00 …", and its group lines
+  up with the other panes'. The Picture pane's Color group no longer
+  runs into the caption's separator line, a long caption ends in an
+  ellipsis rather than a clipped glyph, and the panes fill the window
+  instead of leaving a gray band above the captions.
+- Dialogs line up the Mac OS 8 way: a button beside the default
+  button sits level with it in About and Import Add-ons, the
+  Shortcuts window's OK sits at the bottom right, and a focused text
+  field gets Mac OS 8.5's lavender ring instead of a black double
+  ring that looked like a second default button. Tank Overview dims
+  Empty Tank… when there is nothing to empty.
 - On Linux, quitting waits until the tank has saved. It could quit
   before the save ran and lose up to a minute of the tank's life, the
   fish's positions and hunger included.
