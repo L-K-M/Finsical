@@ -18,6 +18,8 @@ describe("decorScale", () => {
   it("keeps a finite scale for corrupt heights", () => {
     for (const h of [0, -10, NaN, Infinity])
       expect(decorScale(h, 200)).toBe(ART_SCALE);
-    expect(decorScale(100, 200)).toBeGreaterThan(0);
+    expect(decorScale(100, 200)).toBe(ART_SCALE);
+    expect(decorScale(1e6, 200) * 1e6).toBeCloseTo(192, 9);
+    expect(decorScale(200, 5)).toBe(ART_SCALE);
   });
 });

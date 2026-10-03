@@ -184,6 +184,10 @@ describe("crtRasterRect", () => {
   it("returns an empty rect for zero-size sources", () => {
     expect(crtRasterRect(100, 200, 0, 200, { x: 0, y: 0, w: 1, h: 1 }))
       .toEqual([0, 0, 0, 0]);
+    expect(crtRasterRect(100, 200, NaN, 200, { x: 0, y: 0, w: 1, h: 1 }))
+      .toEqual([0, 0, 0, 0]);
+    expect(crtRasterRect(100, 200, 320, Infinity, { x: 0, y: 0, w: 1, h: 1 }))
+      .toEqual([0, 0, 0, 0]);
   });
 });
 

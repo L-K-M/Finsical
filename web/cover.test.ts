@@ -22,12 +22,14 @@ describe("coverCrop", () => {
       .toEqual({ sx: 0, sy: 18.75, sw: 100, sh: 62.5 });
   });
 
-  it("returns an empty rect for zero-size sources", () => {
-    expect(coverCrop(0, 200, 320, 200).sw *
-           coverCrop(0, 200, 320, 200).sh).toBe(0);
-    expect(coverCrop(320, 0, 320, 200).sw *
-           coverCrop(320, 0, 320, 200).sh).toBe(0);
-    expect(coverCrop(320, 200, 0, 200).sw *
-           coverCrop(320, 200, 0, 200).sh).toBe(0);
+  it("returns an empty rect for zero-size sources/dests", () => {
+    expect(coverCrop(0, 200, 320, 200))
+      .toEqual({ sx: 0, sy: 0, sw: 0, sh: 0 });
+    expect(coverCrop(320, 0, 320, 200))
+      .toEqual({ sx: 0, sy: 0, sw: 0, sh: 0 });
+    expect(coverCrop(320, 200, 0, 200))
+      .toEqual({ sx: 0, sy: 0, sw: 0, sh: 0 });
+    expect(coverCrop(320, 200, 320, 0))
+      .toEqual({ sx: 0, sy: 0, sw: 0, sh: 0 });
   });
 });

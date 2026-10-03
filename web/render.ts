@@ -185,7 +185,8 @@ export function previewOf(rs: PackResult[]): HTMLCanvasElement | null {
 export function decorScale(h: number, tankH: number): number {
   if (!Number.isFinite(h) || !Number.isFinite(tankH) || h <= 0)
     return ART_SCALE;
-  return Math.min(ART_SCALE, Math.max(1 / 32, (tankH - 8) / h));
+  const fit = tankH > 8 ? (tankH - 8) / h : Infinity;
+  return Math.min(ART_SCALE, fit);
 }
 
 /** A decor pack's in-tank art: one canvas per animation frame, all
