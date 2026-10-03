@@ -298,6 +298,50 @@ describe("Sim", () => {
     expect(sim.waterQuality).toBeGreaterThanOrEqual(0);
   });
 
+  // Sim_Plant: the view hands over the plant decor's area and the
+  // aquarium turns it into oxygen, nitrate uptake and CO2 scrubbing.
+  it("plants oxygenate the water in light and breathe it back at night",
+      () => {
+        const bare = new Sim({ width: 320, height: 200 }, 4);
+        const green = new Sim({ width: 320, height: 200 }, 4);
+        green.plantArea = 24_000;         // 24 plants' worth of 1000 px²
+        green.setLight(1);
+        bare.setLight(1);
+        green.aquarium.water.nitrate = bare.aquarium.water.nitrate = 40;
+        for (let d = 0; d < 3; d++) {
+          green.advanceLife(24 * 3600);
+          bare.advanceLife(24 * 3600);
+        }
+        expect(green.aquarium.water.nitrate)
+          .toBeLessThan(bare.aquarium.water.nitrate);
+        // In the dark the same foliage respires: oxygen falls, CO2 rises.
+        // Compare swings against the plantless tank, dark on the same
+        // clock, so the fish's own metabolism cancels out and only the
+        // plants' night-time respiration can widen the gap.
+        const lit = { o2: green.aquarium.water.o2, co2: green.aquarium.water.co2 };
+        const bareLit = { o2: bare.aquarium.water.o2, co2: bare.aquarium.water.co2 };
+        green.setLight(0);
+        bare.setLight(0);
+        for (let d = 0; d < 3; d++) {
+          green.advanceLife(24 * 3600);
+          bare.advanceLife(24 * 3600);
+        }
+        expect(lit.o2 - green.aquarium.water.o2)
+          .toBeGreaterThan(bareLit.o2 - bare.aquarium.water.o2);
+        expect(green.aquarium.water.co2 - lit.co2)
+          .toBeGreaterThan(bare.aquarium.water.co2 - bareLit.co2);
+      });
+
+  it("a plantless tank does no photosynthesis at all", () => {
+    const sim = new Sim({ width: 320, height: 200 }, 4);
+    sim.aquarium.water.nitrate = 40;
+    for (let d = 0; d < 2; d++) sim.advanceLife(24 * 3600);
+    expect(sim.aquarium.plantSize).toBe(0);
+    // Nothing took the nitrate up (the filter may add a little back, so
+    // this only pins that the plant term stayed out of the water).
+    expect(sim.aquarium.water.nitrate).toBeGreaterThan(39);
+  });
+
   it("refuses pellets past the uneaten cap, and eating frees a slot",
       () => {
     const sim = new Sim({ width: 320, height: 200 }, 1);

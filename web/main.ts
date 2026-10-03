@@ -57,7 +57,7 @@ import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
   from "./catpaw.js";
 import type { PawVisit } from "./catpaw.js";
 import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
-import { plantSizeOf } from "./plants.js";
+import { plantAreaOf } from "./plants.js";
 import { bootPhase, drawBoot, fadeProgress, paradeIcon }
   from "./boot.js";
 import { fishThumbKey, inNativeShell, openBus } from "./bus.js";
@@ -1187,10 +1187,7 @@ function decorX(i: number, dn: number, w: number): number {
   return Math.min(Math.max(Math.round(decorAnchor(i, dn) - w / 2), 0),
                   Math.max(0, TANK.width - w));
 }
-/** Tell the fish where the decor stands and the water how much plant
- * mass it holds, after any add or removal. The two travel together:
- * both read the decor set the renderer draws, so the life-support model
- * can never disagree with the glass. */
+/** Sync decor geometry and plant area; the Sim owns its chemistry units. */
 function syncCover(): void {
   const dn = decors.length;
   sim.cover = decors.map((d, i) => {
@@ -1199,7 +1196,7 @@ function syncCover(): void {
     return { x0, x1: x0 + f.width,
              top: TANK.height - DECOR_FLOOR - f.height, depth: d.depth };
   });
-  sim.aquarium.plantSize = plantSizeOf(decors.map((d) => {
+  sim.plantArea = plantAreaOf(decors.map((d) => {
     const f = d.frames[0]!;
     return { plant: d.plant, width: f.width, height: f.height };
   }));
