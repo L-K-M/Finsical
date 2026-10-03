@@ -1013,6 +1013,7 @@ function editInfoName(): void {
 function closeInfo(): void {
   infoCard?.root.remove();
   infoCard = null;
+  laserCursor(); // the card no longer hides the dot
   requestPaint(); // the fish's name tag comes back, even while paused
 }
 
@@ -1055,6 +1056,9 @@ function openInfo(f: Fish): void {
   document.body.appendChild(root);
   infoCard = { root, name, kind, health, hunger, mood, fish: f,
               edit: null };
+  // The card gates the dot like the other overlays — the arrow comes
+  // back until the card closes, not just on the next pointer move.
+  laserCursor();
   // Position now, not next frame: unpositioned the card would paint
   // once at its in-flow default (the end of body) before landing.
   layoutInfo();
