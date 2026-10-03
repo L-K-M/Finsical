@@ -1,7 +1,9 @@
 # Finsical: Verified implementation backlog
 
 Updated 2026-10-03 against `origin/main` **57f9ae3**, version 0.8.0, plus this
-pass's independent review and its nine PRs (#406–#414) against the same base.
+pass's independent review and its nine PRs (#406–#414) against the same base,
+then the W pass (four PRs #415–#418) against **c2d1c69** — see "W-pass
+findings" near the end.
 Entries below are remaining work, with evidence, scope and acceptance conditions.
 S/M/L describe effort. Historical IDs are retained when they describe the same
 behavior; C24 IDs identify the previous review's additions, C25 this pass's.
@@ -87,6 +89,34 @@ with custom 7, and reload. A restored frozen aquarium also survives a month away
 without changing life, water or doses. #405 originally ended at y=310 in a
 240px-high viewport; About/Shortcuts now fit, scroll and close at 320x240,
 568x320 and desktop sizes, with extra checks at 240px and 375px widths.
+
+### W pass: review plus four PRs (#415–#418)
+
+A separate review pass (helpers: Devin SWE-2 Max correctness,
+muse-spark Mac OS 8 widget fidelity, space-bunny AquaZone research;
+its `tmp.md` was folded into "W-pass findings" below and discarded).
+Baseline at `57f9ae3`/`c2d1c69`: typecheck clean, 892 tests green,
+Python 94 green, build clean, Chromium-driven.
+
+| PR | Branch / head | Implemented scope | CI / completed GLM rounds |
+| --- | --- | --- | --- |
+| [#415](https://github.com/L-K-M/Finsical/pull/415) | `fix/seeded-aquarium-restore` / `1786dc0` | W-01: `Sim.restoreAquarium` rebuilds a saved aquarium on the constructor's seeded stream — a restored tank kept the `?seed=` replay pin broken because main.ts handed `fromJSON` a `Math.random` closure | Green / 1, clean |
+| [#416](https://github.com/L-K-M/Finsical/pull/416) | `fix/prefs-fill-window` / `45fc407` | W-07: the Preferences panes fill the window between their top margin and the caption area, the way Overview/Stats/Add-ons do — 414 px of dead gray at 1440×900, 358 px on a phone, 235–321 px even at the designed 565×518 | Green / 1, clean |
+| [#417](https://github.com/L-K-M/Finsical/pull/417) | `feat/flyback-whine` / `45654b7` | W-15: Preferences ▸ Monitor grows **Flyback whine (15.7 kHz)** — the CRT's transformer (15734 Hz fundamental + 120 Hz mains hum, ≈−44 dBFS) sings into the master while the tube runs; off by default | Green / round 2 in flight (round 1: two naming findings, applied) |
+| [#418](https://github.com/L-K-M/Finsical/pull/418) | `feat/glass-fingerprints` / `b9a8ca2` | W-16: Preferences ▸ Effects grows **Prints on the glass** — every hover-start records a runtime-only rest print; overlapping prints build a greasy bloom under the fish; off by default, one cached blit per frame | Green / round 1 in flight |
+
+Proof: #415's regression test fails against a `Math.random` restore
+(sick-bit collision odds ~10⁻⁶) and passes seeded. #416 was measured with
+`getBoundingClientRect` across all six panes at four viewport sizes, including
+that the Picture pane's −4 px footer overlap (V-30) and the small-window
+overflows (U-27) are unchanged. #417 was driven live with an
+`AudioContext` probe (pair live at 15734/120 Hz, stopped on switch-off,
+fresh pair on re-enable, checkbox disabled while the CRT is off, setting
+persists). #418's unit tests cover the ring cap, in-bounds recording from
+real ticks, save-whitelist purity, print geometry and shared-corner
+stacking; an earlier per-fish "favourite corner" model was killed by
+measurement (8 rests in 24,000 ticks, 45–271 px apart — nothing
+accumulates) and replaced with the glass-remembers model.
 
 ### Review decisions and deferred feedback
 
@@ -495,6 +525,129 @@ Mac OS 8 would show "Lamp On ✓" with a right-aligned ⌘-glyph column.
 `shortcut` fields, then use them; the alternative is to accept the compromise.
 **Acceptance:** toggles show a checkmark and a shortcut glyph without breaking
 older Osmium consumers.
+
+## W-pass findings (2026-10-03, base `c2d1c69`; PRs #415–#418 above)
+
+W-01, W-07, W-15 and W-16 shipped as #415–#418. Everything below was
+grepped against this document, `ANALYSIS-HISTORY.md` and
+`REVIEW-2026-10-03.md` before filing; `Revert to`, `flyback`,
+`fingerprint` and `Math.random` had no hits anywhere.
+
+### Confirmed by this pass, already covered
+
+- **W-08** menu checkmarks/shortcut column = **C25-18**, found
+  independently; no action duplicated.
+- **W-04** feed-cap ceiling = **B-80**, now PR #401/#366 territory.
+- **W-05/W-06** fry/save `entry` loss = **B-77/B-79** (PRs #359/#365,
+  R-05).
+- **W-02** the auto-feeder runs on open-tank ticks, ignoring Aquarium
+  Speed = **F-07**'s twenty-second-pass update (PR #228 adjacent).
+- **W-03** `.azpack` folder drops leave no durable identity = **B-13**
+  remainder (see the Source boundaries note below).
+- Fidelity discrepancies G-01…G-15 from the research helper all map to
+  existing entries: F-02/F-17/F-33/F-04/F-52/F-51/F-06/F-05/F-28/F-26/
+  B-34; G-14/G-15 are the two doc-staleness items filed as W-11/W-12
+  here.
+
+### W-11 `docs/ORIGINAL-SIM.md` still lists shipped features as missing
+
+Low, S. "Where Finsical differs" lists breeding, fighting, the auto
+feeder, sickness pictures and Mekasia mail as not reimplemented; the
+auto feeder and the sick-fish state exist (`SimEvent "sick"`,
+`core/aquarium/life.ts`). `PLAN.md:44-46` says water chemistry is out
+of scope v1 while water chemistry, diseases and medicines shipped.
+Partly T-11. **Slice:** rewrite both "not yet" lists from the code.
+**Acceptance:** every removed item names its implementing file.
+
+### W-12 README's Water/Sounds/Windows tables understate the sim
+
+Low, S. The README says sickness, medicine, the filter, timers and the
+original's dialogs "have no matching feature yet" while sickness,
+medicine dosing and the filter exist in Tank Stats and
+`core/aquarium/`. **Slice:** rewrite the three tables from the code.
+**Acceptance:** every row names its file or is marked absent.
+
+### W-09 The five window footers share no rhythm
+
+Nit, S. Prefs groups 12/24/30 px with `#pffoot` at `bottom:10px;
+height:52px`; Stats `padding:10px 12px 0`, `#sfoot` 10/10; Overview
+`#obar` 31 px, gap 10, padding 0 22; Add-ons `.ifoot` bottom 10 height
+30; dialogs `.dbfoot` gap 12 vs `.alertbuttons` gap 8/12, margin-top
+12 vs 15; default-button widths 59/65/`min-width:0` twice. Side-by-side
+windows do not line up. Overlaps A-15 (PR #394) — land after it.
+**Slice:** one footer and one button-width rule across the five
+surfaces; nothing moves by more than a couple of px without
+justification. **Acceptance:** screenshots at 1440×900: footer
+baselines and button widths agree within 1 px; no content overlaps.
+
+### W-10 Overview's Status header and cells disagree by 15 px
+
+Nit, S. `.ohead-status` is `flex: 0 1 151px`, `.ocell-status` `0 1
+136px` (`web/app.css:349-366`; the header intentionally runs over the
+scrollbar). **Slice:** one basis for both, reserving scrollbar width
+once. **Acceptance:** header and cell right edges within 1 px with and
+without a scrollbar. Bundle with W-09 if both land.
+
+### W-14 Revert to… — dated autosaves behind a Mac OS 8 File-menu item
+
+Idea, Value 5/5, M. The tank is written to `localStorage` every ten
+seconds and every previous copy is thrown away, so a bad Remove, an
+Empty Tank or a mis-poured water change is unrecoverable (U-04 records
+Remove has no undo). Mac OS 8's File menu had `Revert to…`: a sheet of
+dated autosaves, picking one throws away everything after it.
+**Slice:** keep the last 20 `tankSnapshot()` ring entries; a
+`Revert to…` item lists them as "Tuesday, 4:12 PM — 14 fish, water
+78%" in an Osmium alert; picking one validates through `parseTank`
+before installing — the buffer is as untrusted as `localStorage`.
+Snapshot only while the tank is owned (B-34's lease governs writes).
+Distinct from F-26 (user-named tank files) and from an undo stack.
+**Acceptance:** ring keeps 20, drops oldest; a corrupt entry is refused
+and leaves the tank untouched; a revert restores tickCount, roster and
+water. Browser check: snapshot → Empty Tank → Revert → fish are back.
+
+### W-17…W-23 Delight ideas, grepped clean, not scheduled
+
+- **W-17 Windowed tanks** (L): a real Platinum window with zoom/size
+  boxes and several tanks side by side. Blocked on B-34/T-18 (tank id
+  in the bus envelope); the size box alone needs only `TANK_SIZE` and
+  lands half of F-51.
+- **W-18 Away / Sit Report** (M): `Go Away…` locks the menus behind a
+  Platinum note, runs the feeder and water changes on tank time, and
+  prints a per-fish report on return. Builds on F-09 catch-up and
+  F-13's event log; `SavedTank.awaySince/awayUntil` beside `savedAt`.
+- **W-19 AquaZone Fish Cards** (M): printable 3×5 card per fish —
+  portrait, `FsTH` names, hatch date, the five life-sign bars — Avery
+  5388 layout through the Print panel. Blocked on F-02 phases 1–2;
+  share plumbing with D-58.
+- **W-20 Get Info on the tank, with a live icon** (M): 32×32 animated
+  thumbnail of the real tank, Kind/Size/Where/Contents, a Finder label
+  tinting Overview rows and name tags. Distinct from F-02 (per-fish)
+  and D-51 (labels on fish).
+- **W-21 Say something to the fish** (M): record 10 s into a corked
+  bottle with the waveform on its side; fish near a playing bottle
+  turn to face it — `curiosity.ts`'s shape, one `sim.interest` field.
+  Opt-in per bottle, stored beside the tank, nothing leaves the device.
+- **W-22 Grab a fish — animated picture on the Scrapboard** (M): the
+  fish's sprite ring as an animated PICT on `NSPasteboard`, browser
+  fallback `ClipboardItem`. Needs D-09's PICT writer; reduced scope
+  before that.
+- **W-23 Rewind** (M/L): run the seeded sim backwards from a brass
+  slider, confirmed by an alert quoting the original's own "time
+  cannot be turned back" / "not really being true to the AQUAZONE
+  concept. Do it anyway?!". Cheap because `core/rng.ts` is seeded. Not
+  F-09 (forward catch-up), not F-10 (speed).
+- Dropped by the research helper, kept so they are not re-proposed:
+  genie/WindowShade (D-52), seasonal gravel (scope creep), Get Info
+  star ratings (D-51), a second print path (D-58), installer splash
+  (U-24+D-47), screensaver module (F-28).
+
+### W-25 Performance: no new findings this pass
+
+The performance helper (`mimo-v2.6-flash`) stalled in its tooling for
+nine hours and produced no report; P-01…P-35 and the C25 Chromium
+measurements stand as the perf record. The pass's own reading noted
+only the known P-09 (whole-pixel 30 tps rendering) and R-10 (double
+`foodFor` scan), both already filed.
 
 ## Source boundaries and corrected historical claims
 
