@@ -181,6 +181,14 @@ class TestRsrc(unittest.TestCase):
         with self.assertRaises(RsrcError):
             ResFile.from_bytes(deep)
 
+    def test_a_plain_data_fork_is_not_peeled(self):
+        # Only a data fork that is a wrapping in turn: an ordinary file
+        # in one leaves the wrapping as it was.
+        for plain in (wrap_macbinary(b"", data=b"an ordinary data file"),
+                      wrap_applesingle(b"", data=b"an ordinary data file"),
+                      wrap_binhex(b"", data=b"an ordinary data file")):
+            self.assertIs(unwrap_container(plain), plain)
+
     def test_binhex_rejects_garbage(self):
         raw = b"\x00\x01\x02\x03binary"
         self.assertIs(unwrap_binhex(raw), raw)

@@ -52,6 +52,12 @@ describe("openFork", () => {
     let deep = wrapMacbinary(fork);
     for (let i = 0; i < 4; i++) deep = wrapMacbinary(none, deep);
     expect(read(deep, "BAPC") ?? []).toEqual([]);
+    // Only a data fork that is a wrapping in turn: an ordinary file in
+    // one leaves the wrapping as it was.
+    const data = bytes(1, 2, 3);
+    for (const plain of [wrapMacbinary(none, data),
+                         wrapApplesingle(none, data), wrapBinhex(none, data)])
+      expect(unwrapContainer(plain)).toBe(plain);
   });
 
   it("keeps names, ids and map order", () => {
