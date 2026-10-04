@@ -981,12 +981,9 @@ export class Sim {
     if (f.state === "sleep") {
       // A fish already in bed gets up for the roll call; the place it
       // has to be is set below, where the formation is consulted.
-      if (this.forming) {
-        this.setState(f, "drift");
-        this.decide(f);
-        this.maybeTurn(f);
-      } else if (this.brightTicks > LIE_IN_MIN + (h >>> 16) % LIE_IN_SPREAD ||
-                 peckish) {
+      if (this.forming ||
+          this.brightTicks > LIE_IN_MIN + (h >>> 16) % LIE_IN_SPREAD ||
+          peckish) {
         this.setState(f, "drift");
         this.decide(f);
         this.maybeTurn(f); // like the startle exit: roll, don't pitch over
