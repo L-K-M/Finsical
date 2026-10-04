@@ -75,6 +75,10 @@ describe("machine silhouettes", () => {
     ]);
   });
 
+  it("bare: the shell is empty", () => {
+    expect(shellMarkup(machineById("bare")!)).toBe("");
+  });
+
   it("silhouette bounds cover every svg rect", () => {
     // The other direction: an svg rect that grows past the shape union
     // would be clipped by the window mask. Bounding boxes must match.
