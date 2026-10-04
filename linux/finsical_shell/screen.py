@@ -9,10 +9,8 @@ from typing import Optional
 
 from gi.repository import Gdk, Graphene, Gtk
 
-from . import logic, x11
+from . import x11
 from .logic import Rect
-
-log = logic.log
 
 # Frameless windows whose page draws every visible pixel. On Wayland
 # they are client-decorated (see make_frameless): no shadow, corner
