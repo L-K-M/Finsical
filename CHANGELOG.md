@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Import Add-ons lists the US AquaZone library from the Deluxe II disc:
+  15 backdrops, 12 tanks, 14 plants, 10 accessories and 5 gravels,
+  read from the InstallShield cabinet the disc keeps its Windows items
+  in. Eleven of its tanks and the Anchor rock accessory weren't listed
+  before.
 - `tools/fetch.py` reads the InstallShield cabinets (`data.z`) the US
   AquaZone discs keep their Windows items in, which brings the US
   retail tanks and the Anchor rock accessory. For Deluxe II's:
