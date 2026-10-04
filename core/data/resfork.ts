@@ -51,7 +51,7 @@ function appleForks(d: Uint8Array): Forks | null {
     const id = u32be(v, o), off = u32be(v, o + 4), len = u32be(v, o + 8);
     if (off + len > d.length) continue;
     if (id === 1 && len && !forks.data) forks.data = d.subarray(off, off + len);
-    if (id === 2 && !forks.rsrc) forks.rsrc = d.subarray(off, off + len);
+    if (id === 2 && len && !forks.rsrc) forks.rsrc = d.subarray(off, off + len);
   }
   return forks;
 }
@@ -179,15 +179,28 @@ const unwrapMacbinary = (d: Uint8Array): Uint8Array =>
 const unwrapBinhex = (d: Uint8Array): Uint8Array =>
   binhexForks(d)?.rsrc ?? d;
 
+/** Peels before giving up: no file travels in more wrappings. */
+export const MAX_WRAPPINGS = 4;
+
 /** Peel transfer encodings down to the resource fork; loops until
- * stable (a .bin can hold an AppleDouble file). */
+ * stable (a .bin can hold an AppleDouble file). A wrapping with no
+ * resource fork may carry another in its data fork, as a MacBinary
+ * file sent on as BinHex does: that one is peeled too. */
 export function unwrapContainer(d: Uint8Array): Uint8Array {
-  for (let i = 0; i < 4; i++) {
-    const out = unwrapBinhex(unwrapMacbinary(unwrapAppledouble(d)));
+  for (let i = 0; i < MAX_WRAPPINGS; i++) {
+    let out = unwrapBinhex(unwrapMacbinary(unwrapAppledouble(d)));
+    if (out === d) out = wrappedDataFork(d) ?? d;
     if (out === d) return out;
     d = out;
   }
   return d;
+}
+
+/** `d`'s data fork when that is a wrapping in turn, else null. */
+function wrappedDataFork(d: Uint8Array): Uint8Array | null {
+  const data = dataFork(d);
+  return data && (appleForks(data) ?? macbinaryForks(data) ??
+                  binhexForks(data)) ? data : null;
 }
 
 /** The data fork a MacBinary, BinHex or AppleSingle file carries, or

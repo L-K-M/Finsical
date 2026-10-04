@@ -7,6 +7,9 @@ import struct
 # Most resources of one type read from a file: MAX_FILE_SOUNDS in
 # core/data/sndbank.ts. Real forks hold a few dozen.
 MAX_RESOURCES = 1024
+# Peels before giving up, MAX_WRAPPINGS in core/data/resfork.ts: no
+# file travels in more wrappings.
+MAX_WRAPPINGS = 4
 # Most bytes a BinHex stream may decode to, as in core/data/resfork.ts:
 # its run-length code repeats a byte up to 254 more times for every two
 # bytes in, so a crafted half megabyte of text could ask for gigabytes.
@@ -45,7 +48,7 @@ def _apple_forks(d):
             continue
         if eid == 1 and ln and data is None:
             data = d[off:off + ln]
-        if eid == 2 and rsrc is None:
+        if eid == 2 and ln and rsrc is None:
             rsrc = d[off:off + ln]
     return data, rsrc
 
@@ -175,14 +178,28 @@ def unwrap_container(d):
     Peels can expose another container (a .bin holding an AppleDouble
     file), so loop until a full pass changes nothing — each function
     returns its input object unchanged when it can't peel, which makes
-    `is` identity the stable-point test.
+    `is` identity the stable-point test. A wrapping with no resource
+    fork may carry another in its data fork, as a MacBinary file sent
+    on as BinHex does: that one is peeled too.
     """
-    for _ in range(4):  # no legit nesting is deeper than this
+    for _ in range(MAX_WRAPPINGS):
         out = unwrap_binhex(unwrap_macbinary(unwrap_appledouble(d)))
+        if out is d:
+            out = _wrapped_data_fork(d) or d
         if out is d:
             return out
         d = out
     return d
+
+
+def _wrapped_data_fork(d):
+    """d's data fork when that is a wrapping in turn, else None."""
+    data = data_fork(d)
+    if data is None:
+        return None
+    forks = _apple_forks(data) or _macbinary_forks(data) or \
+        _binhex_forks(data)
+    return data if forks else None
 
 
 class ResFile:

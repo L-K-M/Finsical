@@ -92,6 +92,10 @@ describe("macPictures", () => {
       expect(sizes(macPictures(d))).toEqual([["PICT", 320, 200]]);
       expect(hasMacPictures(d) && isPictFile(d)).toBe(true);
     }
+    // Wrapped twice: a MacBinary file sent on as BinHex.
+    const twice = wrapBinhex(empty, wrapMacbinary(empty, pict(320, 200, true)));
+    expect(sizes(macPictures(twice))).toEqual([["PICT", 320, 200]]);
+    expect(isPictFile(twice)).toBe(true);
     // A fork's own pictures still come first.
     expect(sizes(macPictures(wrapMacbinary(gravelFork(), pict(320, 200, true))))
       ?.map((x) => x[0])).toEqual(["BAPC 4020", "BADP 4020"]);

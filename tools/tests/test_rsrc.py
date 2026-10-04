@@ -165,6 +165,30 @@ class TestRsrc(unittest.TestCase):
         res = list(ResFile.from_bytes(nested).resources(b"snd "))
         self.assertEqual(res[0][3], b"deep")
 
+    def test_a_wrapping_in_another_wrapping_s_data_fork(self):
+        # A MacBinary file sent on as BinHex from a machine that kept it
+        # as one plain file: the outer wrapping's data fork is the inner.
+        fork = build_rsrc({b"snd ": [(2, None, 0, b"deep")]})
+        for wrapped in (wrap_binhex(b"", data=wrap_macbinary(fork)),
+                        wrap_applesingle(b"", data=wrap_binhex(fork)),
+                        wrap_macbinary(b"", data=wrap_applesingle(fork))):
+            res = list(ResFile.from_bytes(wrapped).resources(b"snd "))
+            self.assertEqual(res[0][3], b"deep")
+        # Peeling stops after four wrappings, as for resource forks.
+        deep = wrap_macbinary(fork)
+        for _ in range(4):
+            deep = wrap_macbinary(b"", data=deep)
+        with self.assertRaises(RsrcError):
+            ResFile.from_bytes(deep)
+
+    def test_a_plain_data_fork_is_not_peeled(self):
+        # Only a data fork that is a wrapping in turn: an ordinary file
+        # in one leaves the wrapping as it was.
+        for plain in (wrap_macbinary(b"", data=b"an ordinary data file"),
+                      wrap_applesingle(b"", data=b"an ordinary data file"),
+                      wrap_binhex(b"", data=b"an ordinary data file")):
+            self.assertIs(unwrap_container(plain), plain)
+
     def test_binhex_rejects_garbage(self):
         raw = b"\x00\x01\x02\x03binary"
         self.assertIs(unwrap_binhex(raw), raw)
