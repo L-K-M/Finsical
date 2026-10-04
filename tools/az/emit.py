@@ -8,7 +8,6 @@ A bundle is:
 """
 import json
 import os
-import struct
 
 from .fsh import is_sprite_stream, iter_frames
 from .img import bmp_palette, read_bmp, save_indexed_png, write_png
@@ -162,30 +161,3 @@ def emit_sounds(data: bytes, outdir: str) -> dict:
               encoding="utf-8") as f:
         json.dump(manifest, f, indent=1)
     return manifest
-
-
-def main(argv):
-    if len(argv) != 3:
-        raise SystemExit(f"usage: {argv[0]} <pack-file> <outdir>")
-    src, outdir = argv[1], argv[2]
-    from .pack import is_pack
-    with open(src, "rb") as f:
-        data = f.read()
-    if not is_pack(data):
-        from .snd import has_sounds
-        if not has_sounds(data):
-            raise SystemExit(f"{src}: not a pack and no snd resources found")
-        try:
-            m = emit_sounds(data, outdir)
-        except Exception as e:
-            raise SystemExit(f"{src}: {type(e).__name__}: {e}")
-        print(f"{src}: {len(m['sounds'])} sounds -> {outdir}")
-        return
-    m = emit(Pack(data), outdir)
-    n_img = sum(1 for c in m["chunks"] if "image" in c)
-    print(f"{src}: {len(m['chunks'])} chunks, {n_img} images -> {outdir}")
-
-
-if __name__ == "__main__":
-    import sys
-    main(sys.argv)
