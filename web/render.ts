@@ -128,6 +128,17 @@ export function isGravelImage(img: { w: number; h: number },
   return img.w >= img.h * 4 && img.w >= tankW / 2;
 }
 
+/** The palette index a gravel strip keys out: its white, the sky
+ * above the stones, wherever its palette puts it. Most strips put
+ * white at index 0, as a Mac color table does; Jewelstone, moss2 and
+ * whitesand put black there and white at 255. A strip without white
+ * keys index 0. */
+export function gravelKey(img: IndexedImage): number {
+  const white = img.palette.findIndex(([r, g, b]) =>
+    r === 255 && g === 255 && b === 255);
+  return white < 0 ? 0 : white;
+}
+
 /** The backdrop rule: a gravel strip never serves as one, and a scene
  * must have each dim at least half the tank's (which also bounds the
  * area to a quarter) — anything smaller is an icon or decor art.

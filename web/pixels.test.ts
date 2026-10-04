@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { indexedPixels, isBackdropImage, isGravelImage }
+import { gravelKey, indexedPixels, isBackdropImage, isGravelImage }
   from "./render.js";
 import type { IndexedImage } from "../core/data/azpack.js";
+import { keyToZero } from "../core/data/decor.js";
 
 const img = (idx: number[],
              palette: [number, number, number][]): IndexedImage =>
@@ -49,6 +50,23 @@ describe("isGravelImage", () => {
   it("rejects narrow strips and near-square art", () => {
     expect(isGravelImage({ w: 150, h: 30 }, 320)).toBe(false); // < w/2
     expect(isGravelImage({ w: 200, h: 80 }, 320)).toBe(false); // 2.5:1
+  });
+});
+
+describe("gravelKey", () => {
+  const WHITE: [number, number, number] = [255, 255, 255];
+  const BLACK: [number, number, number] = [0, 0, 0];
+  it("keys a strip's white sky wherever its palette puts it", () => {
+    // Jewelstone, moss2 and whitesand: black first, white last.
+    const strip = img([2, 2, 0, 1], [BLACK, [90, 60, 30], WHITE]);
+    expect(gravelKey(strip)).toBe(2);
+    const alpha = [...indexedPixels(keyToZero(strip, gravelKey(strip)),
+                                    false)].filter((_, i) => i % 4 === 3);
+    expect(alpha).toEqual([0, 0, 255, 255]); // sky out, black stones in
+    expect(gravelKey(img([0, 1], [WHITE, BLACK]))).toBe(0);
+  });
+  it("keys index 0 when a strip has no white", () => {
+    expect(gravelKey(img([0, 1], [BLACK, [90, 60, 30]]))).toBe(0);
   });
 });
 
