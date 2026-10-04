@@ -57,7 +57,9 @@ class TestWebRoot(TempDirTest):
         self.assertEqual(self.root.resolve_request("/"), self.index)
         self.assertEqual(
             self.root.resolve_request("/assets/"),
-            os.path.join(self.root.path, "assets", "index.html"),
+            os.path.join(
+                os.path.realpath(self.root_dir), "assets", "index.html"
+            ),
         )
 
     def test_plain_file(self):
@@ -119,7 +121,9 @@ class TestWebRoot(TempDirTest):
     def test_asset_paths(self):
         self.assertEqual(
             self.root.resolve_asset("assets/case.png"),
-            os.path.join(self.root.path, "assets", "case.png"),
+            os.path.join(
+                os.path.realpath(self.root_dir), "assets", "case.png"
+            ),
         )
         for rel in (
             "",

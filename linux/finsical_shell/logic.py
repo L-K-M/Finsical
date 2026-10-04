@@ -187,10 +187,6 @@ class WebRoot:
     def __init__(self, path: str) -> None:
         self._root = os.path.realpath(path)
 
-    @property
-    def path(self) -> str:
-        return self._root
-
     def resolve_request(self, request_path: str) -> Optional[str]:
         """The file a finsical:// request path (as WebKit hands it
         over: percent-encoded, query stripped) names, or None when the
