@@ -1,13 +1,9 @@
 /**
  * Tank-stats derivations for the optional stats window — pure functions
  * so vitest can pin the guidance rules without a DOM. Input is the
- * tank page's `state` bus payload (web/main.ts postState); feeding
- * thresholds come from core/tuning.ts, which the sim uses too, so the
- * advice tracks what the sim actually does.
+ * tank page's `state` bus payload (web/main.ts postState); thresholds
+ * mirror core/sim.ts so the advice tracks what the sim actually does.
  */
-import { DUSK_LIGHT, hourLabel, sanitizeLighting } from "../core/light.js";
-import { HUNGER_SEEK, QUALITY_SEEK } from "../core/tuning.js";
-
 export interface StatsFish {
   species?: string;
   hunger?: number; // 0 full .. 1 starving
@@ -20,7 +16,6 @@ export interface StatsInput {
   foodSettled?: number;  // pellets rotting on the gravel
   bubbles?: number;
   light?: number;        // 0.3 night .. 1 day
-  lighting?: unknown;    // core/light.ts Lighting, validated here
   tickCount?: number;    // 30 ticks per second
 }
 
@@ -37,13 +32,15 @@ export interface TankStats {
   foodSettled: number;
   bubbles: number;
   phase: "day" | "night";
-  /** "Night (lights on at 08:00)" under the timer, else the phase. */
-  lightLabel: string;
   uptimeMin: number;
   /** Ordered care hints — the most urgent first, capped at two. */
   advice: string[];
 }
 
+// Mirrored from core/sim.ts — kept local so the stats page can stay a
+// dumb renderer of the bus payload without importing the sim.
+/** Below this water quality fish lose their appetite (QUALITY_SEEK). */
+const QUALITY_SEEK = 0.3;
 /** Hunger where "hungry" becomes "starving" for the worst-off fish. */
 const HUNGER_STARVING = 0.85;
 /** Avg hunger that warrants a feeding hint. */
@@ -68,7 +65,6 @@ export function deriveStats(s: StatsInput): TankStats {
     : null;
   const water = Math.min(1, Math.max(0, fin(s.waterQuality, 1)));
   const light = fin(s.light, 1);
-  const phase = light > DUSK_LIGHT ? "day" : "night";
   const stats: TankStats = {
     fishCount: fish.length,
     avgHunger,
@@ -79,23 +75,12 @@ export function deriveStats(s: StatsInput): TankStats {
     food: fin(s.food, 0),
     foodSettled: fin(s.foodSettled, 0),
     bubbles: fin(s.bubbles, 0),
-    phase,
-    lightLabel: lightLabel(phase, s.lighting),
+    phase: light > 0.5 ? "day" : "night",
     uptimeMin: Math.floor(fin(s.tickCount, 0) / 30 / 60),
     advice: [],
   };
   stats.advice = advice(stats, water);
   return stats;
-}
-
-function lightLabel(phase: "day" | "night", raw: unknown): string {
-  const name = phase === "day" ? "Day" : "Night";
-  const l = sanitizeLighting(raw);
-  if (!l.lamp) return `${name} (lamp off)`;
-  // Equal hours keep the lights on, so there's no switch to announce.
-  if (l.mode !== "timer" || l.on === l.off) return name;
-  return phase === "day" ? `${name} (lights off at ${hourLabel(l.off)})`
-    : `${name} (lights on at ${hourLabel(l.on)})`;
 }
 
 function advice(st: TankStats, water: number): string[] {
@@ -106,8 +91,7 @@ function advice(st: TankStats, water: number): string[] {
   }
   if (water < QUALITY_SEEK) {
     out.push("Water is foul — fish won't eat until it clears. " +
-             "Stop feeding and change some water, or let the filter " +
-             "catch up.");
+             "Stop feeding and let the filter catch up.");
   }
   // Foul water already says "stop feeding" — the portion-size hint
   // would contradict it, so it only runs once water is recovering.
@@ -117,38 +101,14 @@ function advice(st: TankStats, water: number): string[] {
   }
   if (water >= QUALITY_SEEK) {
     if (st.avgHunger !== null && st.avgHunger >= HUNGER_FEED) {
-      out.push("Fish are hungry — press F, or click above the " +
-               "waterline to drop food.");
+      out.push("Fish are hungry — drop food near the surface " +
+               "(press F or click high in the tank).");
     } else if (st.hungriest && st.hungriest.hunger >= HUNGER_STARVING) {
       out.push(`${st.hungriest.name} is starving — feed soon.`);
     }
   }
   if (!out.length) out.push("The tank is healthy — nothing needed.");
   return out.slice(0, 2);
-}
-
-/** A paste-ready one-glance summary — the window's rows, compressed
- * to a few lines of plain text. */
-export function summaryText(st: TankStats): string {
-  const fish = `${st.fishCount} fish` +
-    (st.seeking ? `, ${st.seeking} seeking food` : "") +
-    (st.startled ? `, ${st.startled} startled` : "");
-  const hunger = st.avgHunger === null ? "no hunger data"
-    : `avg hunger ${Math.round(st.avgHunger * 100)}%`;
-  const food = st.food
-    ? `${st.food} pellet${st.food > 1 ? "s" : ""}` +
-      (st.foodSettled ? `, ${st.foodSettled} rotting` : "")
-    : "none";
-  const lines = [
-    `Tank Stats — ${fish}; water ${Math.round(st.waterPct)}%; ${hunger}; ` +
-      `up ${uptime(st.uptimeMin)}`,
-    `Hungriest: ${st.hungriest
-      ? `${st.hungriest.name} — ${hungerLabel(st.hungriest.hunger)}`
-      : "—"}`,
-    `Food: ${food} · Light: ${st.lightLabel}`,
-  ];
-  if (st.advice.length) lines.push(`Care: ${st.advice.join(" · ")}`);
-  return lines.join("\n");
 }
 
 /** "1h 23m" / "45m" — matches the panel overview's uptime format. */
@@ -159,8 +119,7 @@ export function uptime(minutes: number): string {
 
 /** Compact hunger label — same bands as the overview's. */
 export function hungerLabel(h: number): string {
-  // "peckish" means the fish is looking for food.
-  if (h < HUNGER_SEEK) return "full";
+  if (h < 0.33) return "full";
   if (h < 0.66) return "peckish";
   return "hungry";
 }
@@ -174,36 +133,4 @@ export function trend(prev: number | null, cur: number,
   const d = cur - prev;
   if (Math.abs(d) < deadZone) return "→";
   return d > 0 ? "↑" : "↓";
-}
-
-/** Sparkline size in pixels, and the time one column covers: 44
- * columns of 2 s span the ~90 s history the trend arrows use. */
-export const SPARK_W = 44;
-export const SPARK_H = 14;
-export const SPARK_SLOT_MS = 2_000;
-
-/** One value per sparkline column, oldest on the left: the latest
- * sample by the end of the column's time slot, held until the next.
- * Columns are time, not pushes: every open client window adds pushes,
- * so a column per push stretched and squeezed with the window count.
- * undefined is before the first sample, null a missing one. */
-export function sparkColumns(
-    series: readonly { t: number; v: number | null }[],
-    now: number): (number | null | undefined)[] {
-  const start = now - SPARK_W * SPARK_SLOT_MS;
-  const cols: (number | null | undefined)[] = [];
-  let j = 0;
-  let cur: number | null | undefined;
-  for (let i = 0; i < SPARK_W; i++) {
-    const end = start + (i + 1) * SPARK_SLOT_MS;
-    while (j < series.length && series[j]!.t <= end) cur = series[j++]!.v;
-    cols.push(cur);
-  }
-  return cols;
-}
-
-/** The canvas row for a 0..1 value, in rows 1..SPARK_H-2: row 0 sits
- * under the frame's 1 px border, where a full-scale line vanished. */
-export function sparkRow(v: number): number {
-  return 1 + Math.round((1 - Math.min(1, Math.max(0, v))) * (SPARK_H - 3));
 }

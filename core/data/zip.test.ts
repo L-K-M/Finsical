@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { ownBytes } from "./bytes.js";
 import { zipEntries, zipRead } from "./zip.js";
 
 const enc = new TextEncoder();
@@ -43,7 +42,7 @@ function buildZip(name: string | Uint8Array, payload: Uint8Array,
 
 async function deflate(payload: Uint8Array): Promise<Uint8Array> {
   const cs = new CompressionStream("deflate-raw");
-  const stream = new Blob([ownBytes(payload)]).stream().pipeThrough(cs);
+  const stream = new Blob([payload]).stream().pipeThrough(cs);
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 

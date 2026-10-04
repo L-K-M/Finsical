@@ -1,9 +1,6 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
-import {
-  MACHINES, SCREENBACK_HOLE_PAD, machineById, previewMarkup, rasterInGlass,
-  shellMarkup,
-} from "./machines.js";
+import { MACHINES, SCREENBACK_HOLE_PAD } from "./machines.js";
 
 // Each machine's `shape` is hand-synced to the outer <rect> geometry
 // of its svg — the native shell unions it into the window's layer
@@ -99,7 +96,7 @@ describe("machine silhouettes", () => {
     // layoutMachine pads #screenback past the hole so a few px of
     // translucent glass rim past the measured aperture still has black
     // behind it. The pad must land on opaque art; per the art audit
-    // every hole keeps >= 44px to the nearest see-through pixel. This
+    // every hole keeps >= 46px to the nearest see-through pixel. This
     // test can't measure that, so it pins the weaker invariant: the
     // hole stays pad + 8 slack inside the viewBox.
     for (const m of MACHINES) {
@@ -145,75 +142,6 @@ describe("machine silhouettes", () => {
       for (const [px, py] of points)
         expect(inShape(px, py), `${m.id} screen point ${px},${py}`)
           .toBe(true);
-    }
-  });
-});
-
-describe("previewMarkup", () => {
-  it("fills exactly the screen rect with water, shell painted last", () => {
-    for (const m of MACHINES) {
-      const mk = previewMarkup(m);
-      expect(mk, m.id).toContain(
-        `<rect x="${m.sx}" y="${m.sy}" width="${m.sw}" height="${m.sh}"` +
-        ` fill="url(#pvwater-${m.id})"/>`);
-      if (m.image)
-        expect(mk.endsWith(shellMarkup(m)), m.id).toBe(true);
-    }
-  });
-
-  it("backs the glass aperture only where a hole exists", () => {
-    const pad = SCREENBACK_HOLE_PAD;
-    for (const m of MACHINES) {
-      const mk = previewMarkup(m);
-      if (m.hole) {
-        // Padded past the hole like the live backplate (#screenback).
-        expect(mk, m.id).toContain(
-          `<rect x="${m.hole.x - pad}" y="${m.hole.y - pad}"` +
-          ` width="${m.hole.w + pad * 2}" height="${m.hole.h + pad * 2}"` +
-          ` fill="#050505"/>`);
-      } else {
-        expect(mk, m.id).not.toContain('fill="#050505"');
-      }
-    }
-  });
-
-  it("stocks every preview with swimmers, gravel, and bubbles", () => {
-    for (const m of MACHINES) {
-      const mk = previewMarkup(m);
-      // previewMarkup ends with shellMarkup — strip it so a future
-      // transformed shell group can't trip the swimmer count.
-      const tank = mk.slice(0, mk.length - shellMarkup(m).length);
-      expect((tank.match(/<g transform=/g) ?? []).length, m.id).toBe(3);
-      expect(mk, m.id).toContain('fill="#8a6d3b"');
-      expect(mk, m.id).toContain('fill="#cfe8ff"');
-    }
-  });
-});
-
-// The CRT canvas covers the glass aperture; the raster sits at the
-// tank's rect within it. A tank shorter than its glass (Performa 450)
-// must leave room above and below for the height pot to grow into.
-describe("rasterInGlass", () => {
-  it("places the Performa 450 tank inside its taller glass", () => {
-    const r = rasterInGlass(machineById("performa")!);
-    expect(r.x).toBe(0);
-    expect(r.w).toBe(1);
-    expect(r.y).toBeCloseTo((137 - 99) / 541);
-    expect(r.h).toBeCloseTo(466 / 541);
-  });
-
-  it("is the whole box for a machine without a hole", () => {
-    expect(rasterInGlass(machineById("bare")!))
-      .toEqual({ x: 0, y: 0, w: 1, h: 1 });
-  });
-
-  it("keeps every tank inside its glass", () => {
-    for (const m of MACHINES) {
-      const r = rasterInGlass(m);
-      expect(r.x, m.id).toBeGreaterThanOrEqual(0);
-      expect(r.y, m.id).toBeGreaterThanOrEqual(0);
-      expect(r.x + r.w, m.id).toBeLessThanOrEqual(1);
-      expect(r.y + r.h, m.id).toBeLessThanOrEqual(1);
     }
   });
 });

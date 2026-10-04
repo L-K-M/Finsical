@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveStats, hungerLabel, SPARK_H, SPARK_SLOT_MS, SPARK_W,
-         sparkColumns, sparkRow, summaryText, trend, uptime } from "./statsmodel.js";
-import { DAY_TICKS, Sim } from "../core/sim.js";
-import { HUNGER_SEEK } from "../core/tuning.js";
+import { deriveStats, hungerLabel, trend, uptime } from "./statsmodel.js";
 
 const base = {
   fish: [
@@ -98,30 +95,6 @@ describe("deriveStats", () => {
     expect(s.phase).toBe("night");
     expect(s.bubbles).toBe(4);
   });
-
-  it("reads night for a real share of the demo cycle", () => {
-    const sim = new Sim({ width: 100, height: 100 }, 1);
-    let night = 0;
-    for (let i = 0; i < DAY_TICKS; i++) {
-      sim.tick();
-      if (deriveStats({ ...base, light: sim.light }).phase === "night")
-        night++;
-    }
-    expect(night / DAY_TICKS).toBeGreaterThanOrEqual(0.3);
-  });
-
-  it("names the next switch under the light timer", () => {
-    const timer = { mode: "timer", on: 8, off: 22 };
-    expect(deriveStats({ ...base, light: 0.45, lighting: timer }).lightLabel)
-      .toBe("Night (lights on at 08:00)");
-    expect(deriveStats({ ...base, light: 1, lighting: timer }).lightLabel)
-      .toBe("Day (lights off at 22:00)");
-    for (const lighting of [undefined, { ...timer, mode: "demo" },
-                            { ...timer, mode: "always" },
-                            { ...timer, on: 9, off: 9 }])
-      expect(deriveStats({ ...base, light: 0.3, lighting }).lightLabel)
-        .toBe("Night");
-  });
 });
 
 describe("labels", () => {
@@ -134,9 +107,6 @@ describe("labels", () => {
     expect(hungerLabel(0.1)).toBe("full");
     expect(hungerLabel(0.5)).toBe("peckish");
     expect(hungerLabel(0.9)).toBe("hungry");
-    // "peckish" starts where the sim's fish start looking for food.
-    expect(hungerLabel(HUNGER_SEEK - 0.01)).toBe("full");
-    expect(hungerLabel(HUNGER_SEEK)).toBe("peckish");
   });
   it("trend", () => {
     expect(trend(null, 0.5)).toBe("→");
@@ -164,61 +134,5 @@ describe("labels", () => {
     expect(s.uptimeMin).toBe(0);
     // A NaN must not silently suppress the rotting-food hint — zero
     // genuinely means none settled, so this just mustn't read "NaN".
-  });
-});
-
-describe("sparkline", () => {
-  it("keeps a full-scale line off the frame's top edge", () => {
-    // Row 0 sits under the 1 px border: 100% water vanished into it.
-    expect(sparkRow(1)).toBe(1);
-    expect(sparkRow(0)).toBe(SPARK_H - 2);
-    expect(sparkRow(7)).toBe(1); // clamped
-  });
-
-  it("lays samples out by time, not by push", () => {
-    const now = 100_000;
-    // Two pushes in one slot (another window said hello) draw one
-    // column, the later one; a column holds until the next sample.
-    const cols = sparkColumns([
-      { t: now - 10_500, v: 0.2 }, { t: now - 10_100, v: 0.4 },
-      { t: now, v: 0.5 },
-    ], now);
-    expect(cols).toHaveLength(SPARK_W);
-    const first = SPARK_W - 1 - Math.floor(10_000 / SPARK_SLOT_MS);
-    expect(cols[first - 1]).toBeUndefined(); // before the first sample
-    expect(cols[first]).toBe(0.4);
-    expect(cols[first + 1]).toBe(0.4);
-    expect(cols[SPARK_W - 1]).toBe(0.5);
-  });
-
-  it("shows a missing sample as a gap", () => {
-    const now = 100_000;
-    const cols = sparkColumns([
-      { t: now - 2 * SPARK_SLOT_MS, v: 0.5 },
-      { t: now - SPARK_SLOT_MS, v: null }, { t: now, v: 0.5 },
-    ], now);
-    expect(cols[SPARK_W - 2]).toBeNull();
-  });
-});
-
-describe("summaryText", () => {
-  it("compresses the window rows into a few plain-text lines", () => {
-    const text = summaryText(deriveStats({
-      ...base, food: 3, foodSettled: 1, waterQuality: 0.5,
-    }));
-    const lines = text.split("\n");
-    expect(lines[0]).toBe(
-      "Tank Stats — 2 fish, 1 seeking food; water 50%; " +
-      "avg hunger 40%; up 1h 30m");
-    expect(lines[1]).toBe("Hungriest: Angel — peckish");
-    expect(lines[2]).toBe("Food: 3 pellets, 1 rotting · Light: Day");
-    expect(lines[3]).toMatch(/^Care: /);
-  });
-
-  it("handles an empty tank", () => {
-    const text = summaryText(deriveStats({ fish: [], tickCount: 0 }));
-    expect(text.split("\n")[0]).toContain("0 fish");
-    expect(text).toContain("no hunger data");
-    expect(text).toContain("Hungriest: —");
   });
 });

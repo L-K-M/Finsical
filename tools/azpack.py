@@ -8,8 +8,6 @@
 
 Then drag the output folder onto the Finsical window (or drop it in
 web/pack/ for the dev shell).
-
-Python 3.9+, stdlib only.
 """
 from __future__ import annotations
 import argparse

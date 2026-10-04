@@ -5,7 +5,6 @@
  * under sprites/ and images/. This module is environment-agnostic: the
  * caller supplies file bytes (fs in node, fetch in the browser shell).
  */
-import { inflateCap, InflateTooLargeError } from "./inflate.js";
 
 export interface SpriteSheetMeta {
   image: string;
@@ -51,22 +50,12 @@ export interface IndexedImage {
 }
 
 const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-/** Cap on an image's inflated scanlines, h * (w + 1) bytes: the
- * buffer decodeIndexedPng allocates before inflating. */
-const MAX_SCANLINE_BYTES = 1 << 26;
-const MAX_PALETTE_ENTRIES = 256;
 
-async function inflate(data: Uint8Array, expected: number): Promise<Uint8Array> {
-  let out: Uint8Array;
-  try { out = await inflateCap(data, "deflate", expected); }
-  catch (e) {
-    // The byte cap doubles as the excess-pixels check.
-    if (e instanceof InflateTooLargeError)
-      throw new Error("png: excess pixel data", { cause: e });
-    throw e;
-  }
-  if (out.length !== expected) throw new Error("png: short pixel data");
-  return out;
+async function inflate(data: Uint8Array): Promise<Uint8Array> {
+  const ds = new DecompressionStream("deflate");
+  const stream = new Blob([data]).stream().pipeThrough(ds);
+  const buf = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buf);
 }
 
 function unfilter(raw: Uint8Array, w: number, h: number, bpp: number): Uint8Array {
@@ -103,7 +92,6 @@ export async function decodeIndexedPng(d: Uint8Array): Promise<IndexedImage> {
     throw new Error("png: bad signature");
   let w = 0, h = 0;
   const palette: [number, number, number][] = [];
-  let sawPlte = false;
   const idat: Uint8Array[] = [];
   let p = 8;
   while (p + 12 <= d.length) {
@@ -120,12 +108,7 @@ export async function decodeIndexedPng(d: Uint8Array): Promise<IndexedImage> {
           v.getUint8(10) !== 0 || v.getUint8(11) !== 0 || v.getUint8(12) !== 0)
         throw new Error("png: need 8-bit indexed, non-interlaced, methods 0");
     } else if (tag === "PLTE") {
-      // PNG allows one PLTE; appending repeats would grow the palette
-      // past the MAX_PALETTE_ENTRIES limit checked per chunk.
-      if (sawPlte) throw new Error("png: repeated PLTE");
-      sawPlte = true;
-      if (len % 3 !== 0 || len > MAX_PALETTE_ENTRIES * 3)
-        throw new Error("png: bad PLTE length");
+      if (len % 3 !== 0) throw new Error("png: bad PLTE length");
       for (let i = 0; i + 2 < len; i += 3)
         palette.push([body[i] ?? 0, body[i + 1] ?? 0, body[i + 2] ?? 0]);
     } else if (tag === "IDAT") idat.push(body);
@@ -134,15 +117,12 @@ export async function decodeIndexedPng(d: Uint8Array): Promise<IndexedImage> {
   }
   if (!w || !h || !idat.length) throw new Error("png: missing IHDR/IDAT");
   if (!palette.length) throw new Error("png: missing PLTE");
-  // The scanline buffer, not just w * h: a filter byte per row makes a
-  // 1-px-wide image allocate twice its pixel count.
-  if (h * (w + 1) > MAX_SCANLINE_BYTES)
-    throw new Error("png: image too large");
   const zlen = idat.reduce((n, c) => n + c.length, 0);
   const z = new Uint8Array(zlen);
   let o = 0;
   for (const c of idat) { z.set(c, o); o += c.length; }
-  const raw = await inflate(z, h * (w + 1));
+  const raw = await inflate(z);
+  if (raw.length < h * (w + 1)) throw new Error("png: short pixel data");
   const idx = unfilter(raw, w, h, 1);
   for (let i = 0; i < idx.length; i++)
     if (idx[i]! >= palette.length) throw new Error(`png: palette index ${idx[i]} out of range (palette size ${palette.length})`);
@@ -179,35 +159,6 @@ export class SpriteSheet {
   }
 }
 
-/**
- * Validate sheet metadata from an untrusted manifest. emit.py writes dims
- * as a prefix of the group-major grid (a corrupt stream truncates late
- * cells), so entries must be ordered and complete but may be fewer than
- * groups*framesPerGroup; frame() reports absent cells at use time.
- */
-function checkSheetMeta(s: SpriteSheetMeta, img: IndexedImage, file: string): void {
-  const bad = (what: string) => new Error(`manifest: ${file}: ${what}`);
-  const { groups, framesPerGroup, cellW, cellH, dims } = s;
-  if (!Number.isInteger(groups) || groups < 1) throw bad("bad groups");
-  if (!Number.isInteger(framesPerGroup) || framesPerGroup < 1)
-    throw bad("bad framesPerGroup");
-  if (!Number.isInteger(cellW) || cellW < 1 ||
-      !Number.isInteger(cellH) || cellH < 1) throw bad("bad cell size");
-  if (!Array.isArray(dims)) throw bad("dims is not an array");
-  if (dims.length < 1 || dims.length > groups * framesPerGroup)
-    throw bad(`dims length ${dims.length} not in 1..${groups * framesPerGroup}`);
-  for (let i = 0; i < dims.length; i++) {
-    const d = dims[i];
-    if (!Array.isArray(d) || d.length !== 4 ||
-        d[0] !== Math.floor(i / framesPerGroup) || d[1] !== i % framesPerGroup ||
-        !Number.isInteger(d[2]) || !Number.isInteger(d[3]) ||
-        d[2] < 1 || d[3] < 1 || d[2] > cellW || d[3] > cellH)
-      throw bad(`bad dims[${i}]`);
-  }
-  if (framesPerGroup * cellW > img.w || groups * cellH > img.h)
-    throw bad("sheet grid exceeds image bounds");
-}
-
 /** Load a bundle from a path→bytes resolver (fs readFile or fetch). */
 export async function loadAzpack(
   read: (path: string) => Promise<Uint8Array>,
@@ -231,7 +182,6 @@ export async function loadAzpack(
       img = await decodeIndexedPng(await read(imagePath));
       images.set(imagePath, img);
     }
-    checkSheetMeta(c.sprites, img, c.file);
     sheets.set(c.file, new SpriteSheet(c.sprites, img));
   }
   return { manifest, sheets };
