@@ -206,7 +206,6 @@ export class TankAudio {
   private bubblesOn = SOUND_DEFAULTS.bubbles;
   private ambientOn = SOUND_DEFAULTS.ambient;
   private musicOn = SOUND_DEFAULTS.music;
-  private flybackOn = SOUND_DEFAULTS.flyback;
   // The flyback pair while live: the 15.7 kHz fundamental and the
   // mains hum beside it, stopped and dropped on every switch off.
   private flybackOscs: OscillatorNode[] | null = null;
@@ -464,13 +463,12 @@ export class TankAudio {
    * the tube. The synth is two oscillators into the master, so Mute
    * and the volume slider reach it like everything else. */
   setFlyback(on: boolean): void {
-    this.flybackOn = on;
     if (on) this.startFlyback();
     else this.stopFlyback();
   }
 
   private startFlyback(): void {
-    if (!this.flybackOn || this.flybackOscs) return;
+    if (this.flybackOscs) return;
     // Created even while hidden or locked: a suspended context holds
     // the pair silent, and resuming (a gesture, the page returning)
     // sounds it — no retry bookkeeping. This is also the one sound
