@@ -3,8 +3,7 @@
 // real second page claiming the same origin's lease.
 // Set FINSICAL_CHROMIUM to a Chrome/Chromium binary, as for verify-caustics.
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { constants as HTTP } from "node:http2";
@@ -12,28 +11,14 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildSync } from "esbuild";
+import { BROWSER_TIMEOUT_MS, findBrowser, removeTemp, startBrowser }
+  from "./lib/browser.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const WEB = join(ROOT, "web");
-const BROWSER_TIMEOUT_MS = 30_000;
-const SHUTDOWN_TIMEOUT_MS = 5_000;
-const CLEANUP_RETRIES = 5;
-const CLEANUP_RETRY_MS = 100;
 assert.equal(typeof WebSocket, "function",
              "verify:spectator needs Node.js 22+");
-const candidates = process.env.FINSICAL_CHROMIUM
-  ? [process.env.FINSICAL_CHROMIUM]
-  : ["google-chrome", "chromium", "chromium-browser",
-     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"];
-const browser = candidates.find((candidate) => {
-  try {
-    execFileSync(candidate, ["--version"], {
-      timeout: BROWSER_TIMEOUT_MS, stdio: ["ignore", "pipe", "pipe"],
-    });
-    return true;
-  } catch { return false; }
-});
-assert.ok(browser, "Install Chrome/Chromium or set FINSICAL_CHROMIUM");
+const browser = findBrowser();
 
 // The production module is instrumented only inside the test bundle:
 // the probe appends handles to module-scope internals without widening
@@ -117,7 +102,7 @@ const server = createServer(async (request, response) => {
 
 const temp = mkdtempSync(join(tmpdir(), "finsical-spectator-"));
 const errors = [], failures = [], passed = [];
-let child, socket;
+let chrome;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function test(name, run) {
   try { await run(); passed.push(name); console.log("PASS: " + name); }
@@ -129,59 +114,12 @@ async function test(name, run) {
 try {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const url = `http://127.0.0.1:${server.address().port}`;
-  child = spawn(browser, [
-    "--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
-    "--remote-debugging-port=0", "--user-data-dir=" + join(temp, "profile"),
-    "about:blank",
-  ], { stdio: ["ignore", "ignore", "pipe"] });
-  const endpoint = await new Promise((resolve, reject) => {
-    let logs = "";
-    const timer = setTimeout(() => reject(new Error("Browser startup timed out")),
-                             BROWSER_TIMEOUT_MS);
-    child.on("error", reject);
-    child.once("exit", () => {
-      clearTimeout(timer);
-      reject(new Error("Browser exited before startup: " + logs));
-    });
-    child.stderr.on("data", (data) => {
-      logs += data;
-      const url = logs.match(/DevTools listening on (ws:\/\/\S+)/);
-      if (!url) return;
-      clearTimeout(timer);
-      resolve(url[1]);
-    });
+  chrome = startBrowser(browser, join(temp, "profile"));
+  const call = await chrome.connect((message) => {
+    if (message.method !== "Runtime.exceptionThrown") return;
+    const d = message.params.exceptionDetails;
+    errors.push(d.exception?.description ?? d.text);
   });
-  socket = new WebSocket(endpoint);
-  await new Promise((resolve, reject) => {
-    socket.addEventListener("open", resolve, { once: true });
-    socket.addEventListener("error", reject, { once: true });
-  });
-  const waiting = new Map();
-  let serial = 0;
-  socket.addEventListener("message", ({ data }) => {
-    const message = JSON.parse(data);
-    if (message.method === "Runtime.exceptionThrown") {
-      const d = message.params.exceptionDetails;
-      errors.push(d.exception?.description ?? d.text);
-      return;
-    }
-    const waiter = waiting.get(message.id);
-    if (!waiter) return;
-    waiting.delete(message.id);
-    clearTimeout(waiter.timer);
-    if (message.error) waiter.reject(new Error(JSON.stringify(message.error)));
-    else waiter.resolve(message.result);
-  });
-  const call = (method, params = {}, sessionId) =>
-    new Promise((resolve, reject) => {
-      const id = ++serial;
-      const timer = setTimeout(() => {
-        waiting.delete(id);
-        reject(new Error(method + " timed out"));
-      }, BROWSER_TIMEOUT_MS);
-      waiting.set(id, { resolve, reject, timer });
-      socket.send(JSON.stringify({ id, method, params, sessionId }));
-    });
   const evalJs = async (expression, sessionId) => {
     const { result, exceptionDetails } = await call("Runtime.evaluate", {
       expression, returnByValue: true, awaitPromise: true,
@@ -393,20 +331,8 @@ try {
   assert.equal(passed.length, 7, "Missing checks");
   console.log(`${passed.length} live spectator scenarios passed`);
 } finally {
-  if (child && child.exitCode === null) {
-    const exited = new Promise((resolve) => child.once("exit", resolve));
-    // A hard kill leaves Chrome's children writing the profile while
-    // cleanup removes it. Ask the browser to close its whole process tree.
-    if (socket?.readyState === WebSocket.OPEN)
-      socket.send(JSON.stringify({ id: 0, method: "Browser.close" }));
-    else child.kill("SIGTERM");
-    const timer = setTimeout(() => child.kill("SIGKILL"), SHUTDOWN_TIMEOUT_MS);
-    await exited;
-    clearTimeout(timer);
-  }
-  socket?.close();
+  await chrome?.close();
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));
-  rmSync(temp, { recursive: true, force: true,
-                maxRetries: CLEANUP_RETRIES, retryDelay: CLEANUP_RETRY_MS });
+  removeTemp(temp);
 }

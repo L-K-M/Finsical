@@ -6,22 +6,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildSync } from "esbuild";
+import { findBrowser } from "./lib/browser.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const BROWSER_TIMEOUT_MS = 30_000;
-const candidates = process.env.FINSICAL_CHROMIUM
-  ? [process.env.FINSICAL_CHROMIUM]
-  : ["google-chrome", "chromium", "chromium-browser",
-     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"];
-const browser = candidates.find((candidate) => {
-  try {
-    execFileSync(candidate, ["--version"], {
-      timeout: BROWSER_TIMEOUT_MS, stdio: ["ignore", "pipe", "pipe"],
-    });
-    return true;
-  } catch { return false; }
-});
-assert.ok(browser, "Install Chrome/Chromium or set FINSICAL_CHROMIUM");
+const browser = findBrowser();
 
 const fixture = String.raw`
 const W = 320, H = 200, FLOOR_Y = 180;
