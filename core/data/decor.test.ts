@@ -107,10 +107,10 @@ describe("pickDecorFrames", () => {
     expect(pickDecorFrames([tile, art]))
       .toEqual({ frames: [art], key: 0 });
   });
-  it("falls back to key 0, flagged guessed, with no keyed image", () => {
+  it("falls back to key 0 with no keyed image", () => {
     const only = thumbnail(50);
     expect(pickDecorFrames([only]))
-      .toEqual({ frames: [only], key: 0, guessed: true });
+      .toEqual({ frames: [only], key: 0 });
     expect(pickDecorFrames([])).toBeNull();
   });
 });
@@ -181,16 +181,16 @@ describe("pickDecorArt", () => {
     const pick = pickDecorArt([thumb, small, big]);
     expect(pick).toEqual({ img: big, key: 255 });
   });
-  it("falls back to the largest image with key 0, flagged guessed", () => {
+  it("falls back to the largest image with key 0", () => {
     const only = thumbnail(50);
     expect(pickDecorArt([only]))
-      .toEqual({ img: only, key: 0, guessed: true });
+      .toEqual({ img: only, key: 0 });
   });
   it("treats zero-area images as keyless", () => {
     const empty = { w: 0, h: 0, palette: PAL, idx: new Uint8Array(0) };
     expect(cornerKey(empty)).toBeNull();
     expect(pickDecorArt([empty]))
-      .toEqual({ img: empty, key: 0, guessed: true });
+      .toEqual({ img: empty, key: 0 });
   });
   it("returns null for an empty pack", () => {
     expect(pickDecorArt([])).toBeNull();
