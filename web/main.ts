@@ -59,7 +59,7 @@ import { containPoint, isFeedZone } from "./feedzone.js";
 import { mountNameTags } from "./nametags.js";
 import { cleanFishName, fishLabel, NAME_MAX } from "./fishname.js";
 import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
-         PAW_GAP_RANGE, PAW_H, PAW_W, pawPose, pawSpawnX, pawSwatAt }
+         PAW_GAP_RANGE, PAW_W, pawPose, pawSpawnX, pawSwatAt }
   from "./catpaw.js";
 import type { PawVisit } from "./catpaw.js";
 import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
