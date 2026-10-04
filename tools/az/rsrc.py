@@ -7,6 +7,10 @@ import struct
 # Most resources of one type read from a file: MAX_FILE_SOUNDS in
 # core/data/sndbank.ts. Real forks hold a few dozen.
 MAX_RESOURCES = 1024
+# Most bytes a BinHex stream may decode to, as in core/data/resfork.ts:
+# its run-length code repeats a byte up to 254 more times for every two
+# bytes in, so a crafted half megabyte of text could ask for gigabytes.
+MAX_BINHEX_BYTES = 64 << 20
 
 _BINHEX_ALPHABET = (
     b'!"#$%&\'()*+,-012345689@ABCDEFGHIJKLMNPQRSTUVXYZ[`abcdefhijklmpqr')
@@ -88,14 +92,18 @@ def _binhex_decode(raw):
         if b == 0x90 and i + 1 < len(out):
             n = out[i + 1]
             if n == 0:
+                if len(d) + 1 > MAX_BINHEX_BYTES:
+                    return None
                 d.append(0x90)
                 i += 2
                 continue
-            if not d:
+            if not d or len(d) + n - 1 > MAX_BINHEX_BYTES:
                 return None
             d += bytes([d[-1]]) * (n - 1)
             i += 2
             continue
+        if len(d) + 1 > MAX_BINHEX_BYTES:
+            return None
         d.append(b)
         i += 1
     return d
@@ -172,7 +180,7 @@ class ResFile:
     def resources(self, rtype):
         """rtype: 4-byte tag. Yields (id, name, attrs, rawbytes).
 
-        Like core/data/snd.ts: only the first entry for the type is
+        Like core/data/resfork.ts: only the first entry for the type is
         read, each payload yields once however many references share
         it, and at most MAX_RESOURCES resources come back, so a
         crafted map can't multiply one blob into millions. A reference

@@ -26,9 +26,11 @@ refactor. These candidates were checked and left alone:
 - **`lruSet`'s throw handling** (`web/lru.ts`) and the in-page
   `sndsChain` (`web/store.ts`): deliberate hardening; the second relies
   on IndexedDB ordering in old WKWebView builds, which is unverified.
-- **One resource-map walker for `sndResources` and `bankSounds`**
+- **One resource-map walker for `openFork` and `bankSounds`**
   (`core/data`): an untrusted-input parser with an off-by-two
   type-list base between the two; needs its own tests first.
+  `openFork` (`resfork.ts`) now reads Mac forks for sounds and
+  pictures alike; the little-endian pack walkers stay apart.
 - **Shared staging for `build-deb.sh` and `build-tarball.sh`, the
   duplicated `smoke.py` step, `WebHost`'s menu factory**: GTK and
   packaging paths run only in CI; compare artifact hashes there.

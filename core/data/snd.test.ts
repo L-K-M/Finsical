@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { ownBytes } from "./bytes.js";
+import { MAX_FILE_SOUNDS } from "./sndbank.js";
+import { unwrapContainer } from "./resfork.js";
+import { buildRsrc, wrapAppledouble, wrapBinhex, wrapMacbinary }
+  from "./resfork.fixture.js";
 import { fileSoundRecords, mace3Decode, parseSnd,
-         qualifySoundNames, soundsFromRsrc, unwrapContainer, wavBytes }
+         qualifySoundNames, soundsFromRsrc, wavBytes }
   from "./snd.js";
 
 const sha256 = async (d: Uint8Array): Promise<string> =>
@@ -85,130 +89,6 @@ function sndFmt1Mace(frames: Uint8Array, nframes: number,
   out.set(head); out.set(hdr, head.length); out.set(frames, head.length + hdr.length);
   return out;
 }
-
-/** Minimal resource fork builder: {type: [[id, name|null, attr, data]]}. */
-function buildRsrc(types: Map<string, [number, string | null, number, Uint8Array][]>): Uint8Array {
-  const dataArea: number[] = [];
-  const dataOffsets: [string, number, string | null, number, number][] = [];
-  for (const [tid, entries] of types) {
-    for (const [rid, name, attr, blob] of entries) {
-      dataOffsets.push([tid, rid, name, attr, dataArea.length]);
-      dataArea.push(blob.length >>> 24 & 0xFF, blob.length >>> 16 & 0xFF,
-                    blob.length >>> 8 & 0xFF, blob.length & 0xFF);
-      for (const b of blob) dataArea.push(b);
-    }
-  }
-  const typeList: number[] = [0, types.size - 1];
-  const refLists: number[] = [];
-  const nameList: number[] = [];
-  const nameOffsets = new Map<string, number>();
-  const refBase = 2 + 8 * types.size;
-  const macEnc = new TextEncoder();
-  for (const [tid, entries] of types) {
-    for (let i = 0; i < 4; i++) typeList.push(tid.charCodeAt(i)!);
-    typeList.push(entries.length - 1 >>> 8 & 0xFF, (entries.length - 1) & 0xFF);
-    const ro = refBase + refLists.length;
-    typeList.push(ro >>> 8 & 0xFF, ro & 0xFF);
-    for (const [, rid, name, attr, doff] of
-         dataOffsets.filter((e) => e[0] === tid)) {
-      let noff = -1;
-      if (name !== null) {
-        noff = nameOffsets.get(name) ?? -1;
-        if (noff === -1) {
-          noff = nameList.length;
-          const enc = macEnc.encode(name);
-          nameList.push(enc.length);
-          for (const b of enc) nameList.push(b);
-          nameOffsets.set(name, noff);
-        }
-      }
-      refLists.push(rid >>> 8 & 0xFF, rid & 0xFF);
-      refLists.push(noff >>> 8 & 0xFF, noff & 0xFF);
-      refLists.push(attr, doff >>> 16 & 0xFF, doff >>> 8 & 0xFF, doff & 0xFF);
-      refLists.push(0, 0, 0, 0);
-    }
-  }
-  typeList.push(...refLists);
-  const mapBody = [...new Array(22).fill(0),
-                   0, 0, 0, 28,
-                   (28 + typeList.length) >>> 8 & 0xFF,
-                   (28 + typeList.length) & 0xFF,
-                   ...typeList, ...nameList];
-  const dataOff = 256, mapOff = dataOff + dataArea.length;
-  const out = new Uint8Array(mapOff + mapBody.length);
-  const v = new DataView(out.buffer);
-  v.setUint32(0, dataOff); v.setUint32(4, mapOff);
-  v.setUint32(8, dataArea.length); v.setUint32(12, mapBody.length);
-  out.set(Uint8Array.from(dataArea), dataOff);
-  out.set(Uint8Array.from(mapBody), mapOff);
-  return out;
-}
-
-const wrapAppledouble = (rsrc: Uint8Array): Uint8Array => {
-  const out = new Uint8Array(26 + 12 + rsrc.length);
-  const v = new DataView(out.buffer);
-  v.setUint32(0, 0x00051607); v.setUint32(4, 0x00020000);
-  v.setUint16(24, 1);
-  v.setUint32(26, 2); v.setUint32(30, 38); v.setUint32(34, rsrc.length);
-  out.set(rsrc, 38);
-  return out;
-};
-
-const wrapMacbinary = (rsrc: Uint8Array, data = new Uint8Array(0),
-                       name = "file"): Uint8Array => {
-  const pad = (128 - (data.length % 128)) % 128;
-  const out = new Uint8Array(128 + data.length + pad + rsrc.length);
-  const v = new DataView(out.buffer);
-  const nb = new TextEncoder().encode(name);
-  out[1] = nb.length; out.set(nb, 2);
-  out.set([0x41, 0x50, 0x50, 0x4C], 65);   // 'APPL'
-  out.set([0x39, 0x30, 0x30, 0x33], 69);   // '9003'
-  v.setUint32(83, data.length); v.setUint32(87, rsrc.length);
-  out.set(data, 128); out.set(rsrc, 128 + data.length + pad);
-  return out;
-};
-
-const wrapBinhex = (rsrc: Uint8Array, data = new Uint8Array(0),
-                    name = "file"): Uint8Array => {
-  const nb = new TextEncoder().encode(name);
-  const head = new Uint8Array(1 + nb.length + 1 + 18 + 2);
-  head[0] = nb.length; head.set(nb, 1);
-  head.set([0x41, 0x50, 0x50, 0x4C, 0x39, 0x30, 0x30, 0x33],
-           2 + nb.length);
-  const hv = new DataView(head.buffer);
-  hv.setUint32(1 + nb.length + 1 + 10, data.length);
-  hv.setUint32(1 + nb.length + 1 + 14, rsrc.length);
-  const body = new Uint8Array(head.length + data.length + 2 +
-                              rsrc.length + 2);
-  body.set(head); body.set(data, head.length);
-  body.set(rsrc, head.length + data.length + 2);
-  // RLE: 0x90 literal + runs of 4+.
-  const rle: number[] = [];
-  for (let i = 0; i < body.length;) {
-    const b = body[i]!;
-    let run = 1;
-    while (i + run < body.length && body[i + run] === b && run < 255) run++;
-    if (b === 0x90) { rle.push(0x90, 0); i += 1; }
-    else if (run >= 4) { rle.push(b, 0x90, run); i += run; }
-    else { for (let k = 0; k < run; k++) rle.push(b); i += run; }
-  }
-  const enc: number[] = [];
-  for (let i = 0; i < rle.length; i += 3) {
-    const c = rle.slice(i, i + 3);
-    const acc = (c[0]! << 16) | ((c[1] ?? 0) << 8) | (c[2] ?? 0);
-    const n = c.length === 3 ? 4 : c.length + 1;
-    for (const s of [18, 12, 6, 0].slice(0, n))
-      enc.push(BINHEX_ALPHABET.charCodeAt(acc >>> s & 63));
-  }
-  const pre = new TextEncoder().encode(
-    "(This file must be converted with BinHex 4.0)\r\n:");
-  const out = new Uint8Array(pre.length + enc.length + 1);
-  out.set(pre); out.set(Uint8Array.from(enc), pre.length);
-  out[out.length - 1] = 0x3A;
-  return out;
-};
-const BINHEX_ALPHABET =
-  '!"#$%&\'()*+,-012345689@ABCDEFGHIJKLMNPQRSTUVXYZ[`abcdefhijklmpqr';
 
 // --- tests ------------------------------------------------------------
 
@@ -466,6 +346,88 @@ describe("soundsFromRsrc", () => {
     expect(soundsFromRsrc(buildRsrc(new Map([["PICT", [[1, null, 0, snd]]]]))))
       .toEqual([]);
     expect(soundsFromRsrc(new Uint8Array([1, 2, 3]))).toEqual([]);
+  });
+
+  // The fork's map: type list and reference list offsets, as the
+  // pinning tests below patch them.
+  const mapOf = (fork: Uint8Array) => {
+    const dv = new DataView(fork.buffer, fork.byteOffset, fork.byteLength);
+    const map = dv.getUint32(4);
+    const types = map + dv.getUint16(map + 24);
+    return { dv, map, types, refs: types + dv.getUint16(types + 2 + 6),
+             names: map + dv.getUint16(map + 26) };
+  };
+
+  it("keeps an empty name as the empty string", () => {
+    // Only a missing name (offset -1) falls back to snd_<id>.
+    const fork = buildRsrc(new Map([["snd ", [[7, "", 0, snd]]]]));
+    expect(soundsFromRsrc(fork).map((s) => s.name)).toEqual([""]);
+  });
+
+  it("decodes names as Mac Roman", () => {
+    const fork = buildRsrc(new Map([["snd ", [[7, "x", 0, snd]]]]));
+    fork[mapOf(fork).names + 1] = 0x8e; // é
+    expect(soundsFromRsrc(fork).map((s) => s.name)).toEqual(["é"]);
+  });
+
+  it("finds nothing in a fork too short for its header or map", () => {
+    const fork = buildRsrc(new Map([["snd ", [[1, "a", 0, snd]]]]));
+    expect(soundsFromRsrc(fork.subarray(0, 15))).toEqual([]);
+    // The map lives after the data. A cut before the end of the
+    // reference finds nothing; one that only loses the name list keeps
+    // the sound, nameless.
+    const { map, refs, names } = mapOf(fork);
+    expect(names).toBe(refs + 12);
+    for (let n = 0; n < fork.length; n++)
+      expect(soundsFromRsrc(fork.subarray(0, n)).map((s) => s.name),
+             `fork cut to ${n} bytes`)
+        .toEqual(n < refs + 12 ? [] : ["snd_1"]);
+    const mapPast = fork.slice();
+    new DataView(mapPast.buffer).setUint32(4, fork.length - 27);
+    expect(soundsFromRsrc(mapPast)).toEqual([]);
+    const typesPast = fork.slice();
+    new DataView(typesPast.buffer).setUint16(map + 24, fork.length - map - 1);
+    expect(soundsFromRsrc(typesPast)).toEqual([]);
+  });
+
+  it("skips references whose payload or length runs past the end", () => {
+    const fork = buildRsrc(new Map([["snd ", [[1, "a", 0, snd],
+                                              [2, "b", 0, snd],
+                                              [3, "c", 0, snd]]]]));
+    const { dv, refs } = mapOf(fork);
+    // a: data offset past the end; b: a length past the end.
+    dv.setUint32(refs + 4, 0x00ffffff);
+    const bAt = 256 + (dv.getUint32(refs + 12 + 4) & 0xffffff);
+    dv.setUint32(bAt, 0x7fffffff);
+    expect(soundsFromRsrc(fork).map((s) => s.name)).toEqual(["c"]);
+  });
+
+  it("stops at a reference list that runs past the end", () => {
+    const fork = buildRsrc(new Map([["snd ", [[1, "a", 0, snd]]]]));
+    const { dv, types } = mapOf(fork);
+    dv.setUint16(types + 2 + 4, 999); // 1000 references claimed
+    expect(soundsFromRsrc(fork).map((s) => s.name)).toEqual(["a"]);
+  });
+
+  it("names a resource nameless when its name runs past the end", () => {
+    const fork = buildRsrc(new Map([["snd ", [[9, "abc", 0, snd]]]]));
+    fork[mapOf(fork).names] = 200; // a 200-byte name in a short file
+    expect(soundsFromRsrc(fork).map((s) => s.name)).toEqual(["snd_9"]);
+  });
+
+  it("reads at most MAX_FILE_SOUNDS resources, decodable or not", () => {
+    const many = (n: number, body: (i: number) => Uint8Array) =>
+      buildRsrc(new Map([["snd ", Array.from({ length: n },
+        (_, i): [number, string | null, number, Uint8Array] =>
+          [i, null, 0, body(i)])]]));
+    const ok = (i: number) => sndFmt1U8(Uint8Array.of(i & 0xff, 0x80));
+    expect(soundsFromRsrc(many(MAX_FILE_SOUNDS + 6, ok)))
+      .toHaveLength(MAX_FILE_SOUNDS);
+    // The cap counts resources read: a decodable one past 1024
+    // undecodable ones is never reached.
+    const bad = Uint8Array.from([0, 99, ...new Array(20).fill(0)]);
+    expect(soundsFromRsrc(many(MAX_FILE_SOUNDS + 1, (i) =>
+      i < MAX_FILE_SOUNDS ? bad.slice() : ok(i)))).toEqual([]);
   });
 
   it("rejects truncated binhex headers without throwing", () => {

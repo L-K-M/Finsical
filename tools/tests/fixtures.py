@@ -212,6 +212,12 @@ def wrap_binhex(rsrc: bytes, data: bytes = b"",
         else:
             rle += bytes([b]) * run
             i += run
+    return binhex_text(bytes(rle))
+
+
+def binhex_text(rle: bytes) -> bytes:
+    """BinHex 4 text for a stream already run-length coded (0x90 runs),
+    between the preamble line and the closing colon."""
     enc = bytearray()
     for i in range(0, len(rle), 3):
         chunk = rle[i:i + 3]
