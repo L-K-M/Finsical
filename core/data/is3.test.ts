@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { explode, Is3Error, is3Members, isIs3, MAX_MEMBER_BYTES,
-         readIs3Member } from "./is3.js";
+import { DCL_LENGTHS, explode, Is3Error, is3Members, isIs3,
+         MAX_MEMBER_BYTES, readIs3Member } from "./is3.js";
 import { buildIs3, implode } from "./is3.fixture.js";
 
 const ascii = (s: string) => Uint8Array.from(s, (c) => c.charCodeAt(0));
@@ -24,6 +24,24 @@ describe("explode", () => {
     // outside it.
     expect(explode(Uint8Array.of(0x00, 0x04, 0x82, 0x24, 0x25, 0x8f, 0x80,
                                  0x7f), 13)).toEqual(ascii("AIAIAIAIAIAIA"));
+  });
+
+  it("has the code lengths blast's tables give", () => {
+    // The tables are deark's, two lengths a byte; zlib's contrib/blast
+    // writes the same lengths as runs, each byte a length (low nibble)
+    // and its repeat count less one (high). Their agreeing pins every
+    // code, not only the few the example above uses.
+    const runs = (rep: number[]) =>
+      rep.flatMap((b) => new Array<number>((b >> 4) + 1).fill(b & 15));
+    expect(DCL_LENGTHS.lit).toEqual(runs([
+      11, 124, 8, 7, 28, 7, 188, 13, 76, 4, 10, 8, 12, 10, 12, 10, 8, 23, 8,
+      9, 7, 6, 7, 8, 7, 6, 55, 8, 23, 24, 12, 11, 7, 9, 11, 12, 6, 7, 22, 5,
+      7, 24, 6, 11, 9, 6, 7, 22, 7, 11, 38, 7, 9, 8, 25, 11, 8, 11, 9, 12,
+      8, 12, 5, 38, 5, 38, 5, 11, 7, 5, 6, 21, 6, 10, 53, 8, 7, 24, 10, 27,
+      44, 253, 253, 253, 252, 252, 252, 13, 12, 45, 12, 45, 12, 61, 12, 45,
+      44, 173]));
+    expect(DCL_LENGTHS.len).toEqual(runs([2, 35, 36, 53, 38, 23]));
+    expect(DCL_LENGTHS.dist).toEqual(runs([2, 20, 53, 230, 247, 151, 248]));
   });
 
   it("round-trips each form", () => {

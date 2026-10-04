@@ -2,21 +2,14 @@
  * implode encoder and the archive layout, so the reader's tests need
  * no real cabinets. tools/tests/fixtures.py has the Python twins. */
 
-const LIT_LENGTHS =
-  "bcccccccc87cc7ccccccccccccdccccc4a8caca87789767876777787788cb79b" +
-  "c676657886b967667b66679899b8b9c8c566656665b756556a55558788abbccc" +
-  "ddddddddddddddddddddddddddddddddddddddddddddddddcccccccccccccccc" +
-  "ccccccccccccccccccccccccccccccccdcdddcdddcddddcdddcccddddddddddd";
-const LEN_LENGTHS = "2333444555566677";
-const DIST_LENGTHS =
-  "2445555666666666666666777777777777777777777777778888888888888888";
+import { DCL_LENGTHS } from "./is3.js";
+
 const LEN_BASE = [3, 2, 4, 5, 6, 7, 8, 9, 10, 12, 16, 24, 40, 72, 136, 264];
 const LEN_EXTRA = [0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8];
 
-/** Canonical codes for packed code lengths, as [code, length] by
- * symbol: shorter first, by symbol within a length. */
-function codes(packed: string): [number, number][] {
-  const lengths = [...packed].map((c) => parseInt(c, 16));
+/** Canonical codes for code lengths, as [code, length] by symbol:
+ * shorter first, by symbol within a length. */
+function codes(lengths: number[]): [number, number][] {
   const out: [number, number][] = [];
   let code = 0;
   for (let length = 1; length <= Math.max(...lengths); length++) {
@@ -34,8 +27,8 @@ function codes(packed: string): [number, number][] {
  * everything is packed from each byte's low bit up. */
 export function implode(data: Uint8Array, coded = false, low = 6,
                         window = 64): Uint8Array {
-  const lit = codes(LIT_LENGTHS), lens = codes(LEN_LENGTHS);
-  const dists = codes(DIST_LENGTHS);
+  const lit = codes(DCL_LENGTHS.lit), lens = codes(DCL_LENGTHS.len);
+  const dists = codes(DCL_LENGTHS.dist);
   const out = [coded ? 1 : 0, low];
   let acc = 0, n = 0;
   const put = (v: number, k: number): void => {

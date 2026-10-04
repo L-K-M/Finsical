@@ -154,9 +154,17 @@ function decoder(lengths: number[]): Decoder {
   return { width, table };
 }
 
-const LIT = decoder(nibbles(LIT_LENGTHS, 256));
-const LEN = decoder(nibbles(LEN_LENGTHS, 16));
-const DIST = decoder(nibbles(DIST_LENGTHS, 64));
+/** The three codes' lengths by symbol: literals, match lengths and
+ * distances. Exported for the test encoder, and for the test that
+ * checks them against blast's own tables. */
+export const DCL_LENGTHS = {
+  lit: nibbles(LIT_LENGTHS, 256),
+  len: nibbles(LEN_LENGTHS, 16),
+  dist: nibbles(DIST_LENGTHS, 64),
+};
+const LIT = decoder(DCL_LENGTHS.lit);
+const LEN = decoder(DCL_LENGTHS.len);
+const DIST = decoder(DCL_LENGTHS.dist);
 
 /** Decompress a DCL Implode stream to exactly `size` bytes. Throws
  * Is3Error for a stream that is malformed, truncated, or doesn't come
