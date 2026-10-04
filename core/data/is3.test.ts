@@ -17,6 +17,15 @@ function lcg(seed: number): () => number {
 }
 
 describe("explode", () => {
+  it("decodes blast's documented example", () => {
+    // The example zlib's contrib/blast gives for the format: raw
+    // literals, 4 distance bits, a match and the end code. The round
+    // trips below share this reader's conventions; this one comes from
+    // outside it.
+    expect(explode(Uint8Array.of(0x00, 0x04, 0x82, 0x24, 0x25, 0x8f, 0x80,
+                                 0x7f), 13)).toEqual(ascii("AIAIAIAIAIAIA"));
+  });
+
   it("round-trips each form", () => {
     // Raw and coded literals, every distance width, overlapping copies
     // ("ab" over and over) and a length 2 match, whose distance takes 2
@@ -103,11 +112,14 @@ describe("is3Members and readIs3Member", () => {
     new DataView(past.buffer).setUint32(filepos + 11, good.length, true);
     for (const bad of [split, past])
       expect(() => is3Members(bad)).toThrow(Is3Error);
-    // A member too big to allocate.
+    // A member too big to allocate: listed, but not read.
     const huge = good.slice();
     new DataView(huge.buffer).setUint32(filepos + 3, MAX_MEMBER_BYTES + 1,
                                         true);
-    expect(() => readIs3Member(huge, is3Members(huge)[0]!)).toThrow(Is3Error);
+    const m = is3Members(huge)[0]!;
+    expect(() => readIs3Member(huge, m)).toThrow(/over the cap/);
+    expect(() => explode(implode(new Uint8Array(0)), MAX_MEMBER_BYTES + 1))
+      .toThrow(/over the cap/);
   });
 
   it("throws only Is3Error on damage", () => {
