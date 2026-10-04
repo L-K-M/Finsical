@@ -17,6 +17,10 @@ _BINHEX_ALPHABET = (
 _BINHEX_LUT = {c: i for i, c in enumerate(_BINHEX_ALPHABET)}
 
 
+class RsrcError(ValueError):
+    """A resource fork too short or too broken to open."""
+
+
 # The forks a transfer encoding carries, as (data, rsrc), None for a
 # fork it doesn't carry: a Mac file keeps its document (a PICT file's
 # picture) in the data fork and its resources in the resource fork.
@@ -193,12 +197,21 @@ class ResFile:
         return self
 
     def _init(self, d):
+        # Each read is checked first, as in openFork in
+        # core/data/resfork.ts: past here types() and resources() read
+        # only what is in bounds, so RsrcError is all a caller catches.
         self.data = unwrap_container(d)
         r = self.data
+        if len(r) < 16:
+            raise RsrcError('too short for a resource fork header')
         self.do, self.mo, self.dl, self.ml = struct.unpack_from('>4I', r, 0)
+        if self.mo + 28 > len(r):
+            raise RsrcError('resource map runs past the end')
         tlo, nlo = struct.unpack_from('>HH', r, self.mo + 24)
         self.tbase = self.mo + tlo
         self.nbase = self.mo + nlo
+        if self.tbase + 2 > len(r):
+            raise RsrcError('type list runs past the end')
         self.ntypes = struct.unpack_from('>H', r, self.tbase)[0] + 1
 
     def types(self):

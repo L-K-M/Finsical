@@ -14,7 +14,7 @@ import re
 from itertools import islice
 
 from .pict import PictError, decode_pict, is_pict
-from .rsrc import ResFile, data_fork
+from .rsrc import ResFile, RsrcError, data_fork
 
 # In-tank art first, so it leads the images' order.
 PICTURE_TYPES = (b"BAPC", b"BADP", b"PICT")
@@ -26,17 +26,14 @@ _LATIN_TOUCHING = re.compile(f"[A-Za-z]{_JAPANESE}|{_JAPANESE}[A-Za-z]")
 
 
 def _resources(fork, rtype, n):
-    """Up to n resources of one type; [] where a crafted map breaks."""
-    try:
-        return list(islice(fork.resources(rtype), n))
-    except Exception:  # struct.error, IndexError: an unreadable map
-        return []
+    """Up to n resources of one type."""
+    return list(islice(fork.resources(rtype), n))
 
 
 def _open_fork(data):
     try:
         return ResFile.from_bytes(data)
-    except Exception:  # not a resource fork
+    except RsrcError:  # not a resource fork
         return None
 
 

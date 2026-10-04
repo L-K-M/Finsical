@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Bundles you make with the asset tools from Windows packs now show
+  their BMP backdrops and gravels in the tank. The tools wrote those
+  pictures as PNGs the tank doesn't read. `tools/fetch.py` also takes
+  the Mac files in a zip made on a Mac: a gravel's AppleDouble fork
+  under `__MACOSX/`, and pictures without an extension.
 - A picture dropped on the Import Add-ons window now gets an answer
   there: one note says which pictures went in and names every problem
   with the drop, where the tank used to answer on its own glass only.

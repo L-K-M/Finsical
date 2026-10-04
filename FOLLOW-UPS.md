@@ -457,18 +457,6 @@ the plants also needs their `AccH` and `AccI` records worked out.
   can build on that. `tools/fetch.py --archive` can now take the bank
   out of the 7z through archive.org's archive view, but its bundle has
   no sounds for that reason.
-- `emit` in `tools/az/emit.py` writes a pack's BMP chunks as RGBA
-  PNGs, and the tank's bundle loader (`decodeIndexedPng`) reads only
-  indexed ones, so a bundle's BMP backdrops and gravels never show.
-  Mac pictures go out indexed and do. `save_indexed_png` with the
-  BMP's own palette would fix it.
-- `tools/fetch.py`'s zip walker skips `__MACOSX/` and `._` entries, so
-  the AppleDouble forks in a zip made on a Mac, gravel add-ons among
-  them, never reach the emitters.
-- `ResFile` in `tools/az/rsrc.py` lets a crafted map raise
-  `struct.error` or `IndexError`, so `tools/az/macpics.py` catches any
-  exception around it. A named error, as `IsoError` is for ISO images,
-  would let callers catch only that.
 
 - In `web/audio.test.ts`, "ambient off aborts a loop waiting on a
   locked context" waits exactly two microtasks. The file's `flush`

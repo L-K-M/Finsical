@@ -45,11 +45,13 @@ def main(argv: list[str] | None = None) -> int:
         sub, n = name, 2
         while sub in used:
             sub, n = f"{name}-{n}", n + 1
-        used.add(sub)
         out = args.out if len(args.inputs) == 1 else os.path.join(args.out, sub)
         try:
             with open(src, "rb") as f:
                 data = f.read()
+            # Taken once the bundle may be written, so an input that
+            # can't be read leaves the name to the next.
+            used.add(sub)
             os.makedirs(out, exist_ok=True)
             if is_pack(data):
                 manifest = emit(Pack(data), out)

@@ -243,13 +243,24 @@ def _entry_name(zi: zipfile.ZipInfo) -> str:
     return zi.filename
 
 
+def _is_mac_file(name: str) -> bool:
+    """Whether name may be a classic Mac file's, which needs no
+    extension: an AppleDouble companion ("._Pebbles", which a zip made
+    on a Mac keeps under __MACOSX/), whose resource fork holds a
+    gravel's pictures, or a name without a dot, as the 7z's PICT
+    backdrops have (MAC_FILES in web/import.ts). Content decides what
+    such a file holds, as for a drop."""
+    base = os.path.basename(name)
+    return base.startswith("._") or "." not in base
+
+
 def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,
              budget: list[int] | None = None) -> list[str]:
     """Recurse into archives; emit .azpack for anything importable."""
     if budget is None:
         budget = [_MAX_TOTAL_BYTES]
     lower = name.lower()
-    if lower.endswith(IMPORTABLE):
+    if lower.endswith(IMPORTABLE) or _is_mac_file(name):
         out = _emit_source(name, data, outdir)
         return [out] if out else []
     if lower.endswith(".zip") and depth < _MAX_ZIP_DEPTH:
@@ -262,8 +273,7 @@ def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,
             entry = _entry_name(zi)
             norm = entry.replace("\\", "/")
             base = os.path.basename(norm)
-            if (zi.is_dir() or "__MACOSX/" in norm
-                    or not base or base.startswith("._")):
+            if zi.is_dir() or not base:
                 continue
             if zi.file_size > _ENTRY_CAP:
                 print(f"  {entry}: skipped, declares "

@@ -98,7 +98,9 @@ class TestHarvest(unittest.TestCase):
             z.writestr("dir\\back.fsh", fake_pack(bmp_8bit()))
             z.writestr("._meta.fsh", fake_pack(bmp_8bit()))
         made = _harvest("slip.zip", buf.getvalue(), self.out)
-        self.assertEqual(len(made), 3)  # ._meta.fsh skipped
+        # ._meta.fsh too: an AppleDouble companion reaches the emitters,
+        # which go by content, and its bundle is named without the "._".
+        self.assertEqual(len(made), 4)
         for p in made:
             self.assertEqual(os.path.commonpath([p, self.out]), self.out)
         self.assertFalse(any("._" in os.path.basename(p) for p in made))
