@@ -8,6 +8,18 @@ class ImgError(ValueError):
 
 def read_bmp(d, off=0):
     """Decode a BMP at d[off:]. Returns (w, h, rgba_bytes, bmp_size)."""
+    w, h, idx, pal, size = read_bmp_indexed(d, off)
+    rgba = bytearray(w * h * 4)
+    for i, v in enumerate(idx):
+        r, g, b = pal[v] if v < len(pal) else (0, 0, 0)
+        rgba[i * 4:i * 4 + 4] = bytes((r, g, b, 255))
+    return w, h, bytes(rgba), size
+
+
+def read_bmp_indexed(d, off=0):
+    """Decode an 8-bit BMP at d[off:] to its palette indices. Returns
+    (w, h, idx_bytes, palette, bmp_size): idx holds w * h indices, top
+    row first, and palette the color table as [(r, g, b), ...]."""
     # Untrusted input: raise, never assert — run under python -O an
     # assert would let garbage decode as a 0x0 image.
     if d[off:off + 2] != b'BM':
@@ -46,7 +58,9 @@ def read_bmp(d, off=0):
             break
         b, g, r, _ = ent
         pal.append((r, g, b))
-    rgba = bytearray(w * h * 4)
+    if bpp != 8:
+        raise ImgError(f'bpp {bpp} unsupported')
+    idx = bytearray(w * h)
     stride = ((w * bpp + 31) // 32) * 4
     rows = []
     if comp == 1:  # RLE8: one continuous stream, first stored scanline = image bottom
@@ -83,19 +97,15 @@ def read_bmp(d, off=0):
         rows += [bytes(w)] * (h - len(rows))
     for y in range(h):
         row = y if topdown else h - 1 - y
-        if bpp == 8:
-            if comp == 0:
-                base = off + px_off + row * stride
-                idx = d[base:base + w]
-            else:  # RLE8 rows are in stored order; flip like uncompressed rows
-                idx = rows[row]
-        else:
-            raise ImgError(f'bpp {bpp} unsupported')
-        for x in range(w):
-            r, g, b = pal[idx[x]] if idx[x] < len(pal) else (0, 0, 0)
-            i = (y * w + x) * 4
-            rgba[i:i + 4] = bytes((r, g, b, 255))
-    return w, h, bytes(rgba), size
+        if comp == 0:
+            base = off + px_off + row * stride
+            line = d[base:base + w]
+            if len(line) < w:
+                raise ImgError('BMP pixel rows run past the end')
+        else:  # RLE8 rows are in stored order; flip like uncompressed rows
+            line = rows[row]
+        idx[y * w:(y + 1) * w] = line
+    return w, h, bytes(idx), pal, size
 
 
 def bmp_palette(d, off=0):

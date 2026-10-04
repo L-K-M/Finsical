@@ -4,8 +4,10 @@ import tempfile
 import unittest
 from unittest import mock
 
-from tools.az.rsrc import (ResFile, data_fork, unwrap_appledouble,
+from tools.az.macpics import has_mac_pictures, mac_pictures
+from tools.az.rsrc import (ResFile, RsrcError, data_fork, unwrap_appledouble,
                            unwrap_binhex, unwrap_container, unwrap_macbinary)
+from tools.az.snd import has_sounds, sounds_from_rsrc
 from tools.tests.fixtures import (build_rsrc, wrap_appledouble,
                                   wrap_applesingle, binhex_text, wrap_binhex,
                                   wrap_macbinary)
@@ -217,6 +219,37 @@ class TestRsrc(unittest.TestCase):
         # is zero, failing MacBinary's 1..63 name-length check.
         raw = b"\x00\x00\x01\x00" + b"\x00" * 200
         self.assertIs(unwrap_macbinary(raw), raw)
+
+    def test_crafted_forks_raise_only_rsrc_error(self):
+        # Every offset is checked before it's read, as in openFork in
+        # core/data/resfork.ts: a fork too broken to open raises
+        # RsrcError, and one that opens reads what is in bounds, so
+        # callers catch RsrcError alone.
+        fork = build_rsrc({b"PICT": [(128, "Fish", 0, b"fakepict")],
+                           b"snd ": [(1, None, 0, b"audio")]})
+        map_off = struct.unpack_from(">I", fork, 4)[0]
+        cases = [fork[:n] for n in range(len(fork))]
+        for at in [*range(16), *range(map_off, len(fork))]:
+            for v in (0x00, 0x7F, 0x80, 0xFF):
+                b = bytearray(fork)
+                b[at] = v
+                cases.append(bytes(b))
+        refused = 0
+        for d in cases:
+            for wrapped in (d, wrap_appledouble(d)):
+                try:
+                    rf = ResFile.from_bytes(wrapped)
+                except RsrcError:
+                    refused += 1
+                else:
+                    for t, _cnt, _base in rf.types():
+                        list(rf.resources(t))
+                    list(sounds_from_rsrc(wrapped))
+                # The callers that used to catch any exception.
+                has_sounds(wrapped)
+                has_mac_pictures(wrapped)
+                mac_pictures(wrapped)
+        self.assertGreater(refused, 0)
 
 
 if __name__ == "__main__":

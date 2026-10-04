@@ -130,6 +130,35 @@ class TestEmit(unittest.TestCase):
                 self.assertEqual(raw[y*9+1:y*9+5], bytes(px[y + 4*i] for i in range(4)))
                 self.assertEqual(raw[y*9+5:y*9+9], bytes(rev[y + 4*i] for i in range(4)))
 
+    def test_emit_writes_bmps_as_indexed_pngs(self):
+        # The tank's bundle loader (decodeIndexedPng in core/data/azpack.ts)
+        # reads only 8-bit indexed PNGs, so a pack's backdrops and gravels
+        # go out as those, with the BMP's own palette and indices.
+        import os
+        import tempfile
+        from tools.az.emit import emit
+
+        pal = [(0, 0, 0), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
+        idx = bytes([0, 1, 2, 3, 3, 2, 1, 0, 1, 1, 2, 2])  # 4x3, top row first
+        pack = Pack(build_pack([build_bmp8(4, 3, idx, pal)],
+                               [(0x258, 0xFFFF, 0)]))
+        with tempfile.TemporaryDirectory() as td:
+            rec = emit(pack, td)["chunks"][0]
+            with open(os.path.join(td, rec["image"]), "rb") as f:
+                d = f.read()
+        self.assertEqual((rec["w"], rec["h"]), (4, 3))
+        chunks, pos = {}, 8
+        while pos + 8 <= len(d):
+            ln, tag = struct.unpack(">I4s", d[pos:pos + 8])
+            chunks[tag] = chunks.get(tag, b"") + d[pos + 8:pos + 8 + ln]
+            pos += 12 + ln
+        self.assertEqual(chunks[b"IHDR"][8:10], bytes([8, 3]))  # 8-bit indexed
+        plte = chunks[b"PLTE"]
+        self.assertEqual([tuple(plte[i:i + 3]) for i in range(0, 12, 3)], pal)
+        raw = zlib.decompress(chunks[b"IDAT"])
+        self.assertEqual(b"".join(raw[y * 5 + 1:(y + 1) * 5] for y in range(3)),
+                         idx)
+
     def test_emit_survives_bad_bmp(self):
         import os
         import tempfile

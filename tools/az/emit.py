@@ -2,8 +2,8 @@
 
 A bundle is:
   manifest.json   — pack metadata + per-chunk records (id, kind, file)
-  images/         — BMP chunks converted to PNG; Mac PICT pictures
-                    (emit_mac) as indexed PNG
+  images/         — BMP chunks and Mac PICT pictures (emit_mac) as
+                    indexed PNG, the kind the tank reads
   sprites/        — decoded sprite-stream chunks as PNG sheets
   chunks/         — every chunk's raw payload (id-named), for later decoding
 """
@@ -12,7 +12,7 @@ import os
 import sys
 
 from .fsh import is_sprite_stream, iter_frames
-from .img import bmp_palette, read_bmp, save_indexed_png, write_png
+from .img import bmp_palette, read_bmp_indexed, save_indexed_png
 from .macpics import mac_pictures
 from .pack import Pack
 from .snd import sounds_from_rsrc
@@ -91,12 +91,13 @@ def emit(pack: Pack, outdir: str) -> dict:
             rec["name"] = c.name
         if c.is_bmp:
             try:
-                w, h, rgba, _ = read_bmp(c.payload)
+                w, h, idx, bmp_pal, _ = read_bmp_indexed(c.payload)
             except Exception:
                 rec["bad_image"] = True
             else:
                 img = f"images/{fname}.png"
-                write_png(os.path.join(outdir, img), w, h, rgba)
+                save_indexed_png(os.path.join(outdir, img), w, h, idx,
+                                 bmp_pal)
                 rec["image"] = img
                 rec["w"], rec["h"] = w, h
         else:
@@ -186,15 +187,12 @@ def emit_mac(data: bytes, outdir: str) -> dict:
         raise ValueError("no picture the tank can show")
     for f in failed:
         print(f"  skipping picture {f}", file=sys.stderr)
-    # A PICT file carries no sounds; a fork may. They are read before
-    # anything is written, so a map the walker trips on costs only the
-    # sounds, not a half-written bundle.
+    # A PICT file carries no sounds; a fork may. mac_pictures opened
+    # this fork, so it opens again, and a sound that won't decode is
+    # skipped where it's read.
     decoded = []
     if images[0][1] is not None:
-        try:
-            decoded = list(sounds_from_rsrc(data))
-        except Exception as e:  # struct.error and kin from a broken map
-            print(f"  skipping sounds: {e}", file=sys.stderr)
+        decoded = list(sounds_from_rsrc(data))
     for sub in ("images", "chunks"):
         os.makedirs(os.path.join(outdir, sub), exist_ok=True)
     records = []

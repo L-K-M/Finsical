@@ -7,6 +7,7 @@ import os
 import struct
 import tempfile
 import unittest
+import zipfile
 import zlib
 from unittest import mock
 
@@ -241,6 +242,47 @@ class TestAzpackCli(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(azpack.main(src + ["-o", out]), 0)
             self.assertEqual(sorted(os.listdir(out)), ["Reef", "Reef-2"])
+
+    def test_an_unreadable_input_takes_no_name(self):
+        # A name is taken once its bundle may be written: a missing
+        # Reef.pct leaves "Reef" to the next file of that name.
+        with tempfile.TemporaryDirectory() as tmp:
+            good = os.path.join(tmp, "b", "Reef.pct")
+            os.makedirs(os.path.dirname(good))
+            with open(good, "wb") as f:
+                f.write(build_pict(320, 200, [1] * 64000, clut=CLUT,
+                                   file=True))
+            out = os.path.join(tmp, "out")
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                rc = azpack.main([os.path.join(tmp, "a", "Reef.pct"), good,
+                                  "-o", out])
+            self.assertEqual(rc, 1)
+            self.assertEqual(os.listdir(out), ["Reef"])
+
+
+class TestZipHarvest(unittest.TestCase):
+    def setUp(self):
+        tools.fetch._EMITTED.clear()
+        self.tmp = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_mac_files_in_a_zip_reach_the_emitters(self):
+        # A zip made on a Mac keeps a file's resource fork in an
+        # AppleDouble companion under __MACOSX/, and a Mac file needs no
+        # extension: both reach the emitters, which go by content.
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("gravel/Pebbles", b"")  # the empty data fork
+            z.writestr("__MACOSX/gravel/._Pebbles", gravel_fork())
+            z.writestr("Reef", build_pict(320, 200, [1] * 64000, clut=CLUT,
+                                          file=True))
+            z.writestr(".DS_Store", b"\0\0\0\1Bud1")
+        made = tools.fetch._harvest("mac.zip", buf.getvalue(), self.tmp.name)
+        self.assertEqual(sorted(os.path.basename(p) for p in made),
+                         ["Pebbles.azpack", "Reef.azpack"])
 
 
 class TestArchiveEntries(unittest.TestCase):

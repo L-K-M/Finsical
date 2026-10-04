@@ -146,9 +146,9 @@ def sounds_from_rsrc(data: bytes):
 
 def has_sounds(data: bytes) -> bool:
     """True if data parses as a resource fork holding a 'snd ' resource."""
-    from .rsrc import ResFile
+    from .rsrc import ResFile, RsrcError
     try:
         rf = ResFile.from_bytes(data)
-        return next(iter(rf.resources(b"snd ")), None) is not None
-    except Exception:
+    except RsrcError:
         return False
+    return next(iter(rf.resources(b"snd ")), None) is not None
