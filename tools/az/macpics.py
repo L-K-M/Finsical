@@ -9,6 +9,7 @@ picture the item catalog shows (BADP) and the floor's geometry (Grvl):
 the Windows .grv packs carry the same three. 'PICT' is the Mac's own
 picture resource.
 """
+import re
 from itertools import islice
 
 from .pict import PictError, decode_pict, is_pict
@@ -19,6 +20,8 @@ PICTURE_TYPES = (b"BAPC", b"BADP", b"PICT")
 # Most pictures decoded from one file, as in core/data/macpics.ts: an
 # application's fork holds hundreds of interface PICTs.
 MAX_FILE_PICTURES = 16
+_JAPANESE = "[\u3040-\u30ff\u4e00-\u9fff]"
+_LATIN_TOUCHING = re.compile(f"[A-Za-z]{_JAPANESE}|{_JAPANESE}[A-Za-z]")
 
 
 def _resources(fork, rtype, n):
@@ -79,7 +82,9 @@ def mac_display_name(name):
     """A Mac file's name for people, as web/import.ts's macDisplayName:
     no AppleDouble "._", and Japanese read back where an archiver took
     Shift-JIS bytes for Mac Roman ("ë€" is 苔, moss). A heuristic: the
-    bytes must decode as Shift-JIS and give kana or kanji."""
+    bytes must decode as Shift-JIS and give kana or kanji, none of them
+    right next to an ASCII letter, as an accented Latin name's would be
+    ("Noël" reads "No鼠")."""
     base = name[2:] if name.startswith("._") else name
     if all(ord(c) < 0x80 for c in base):
         return base
@@ -87,7 +92,6 @@ def mac_display_name(name):
         fixed = base.encode("mac_roman").decode("shift_jis")
     except (UnicodeEncodeError, UnicodeDecodeError):
         return base
-    if any("\u3040" <= c <= "\u30ff" or "\u4e00" <= c <= "\u9fff"
-           for c in fixed):
+    if re.search(_JAPANESE, fixed) and not _LATIN_TOUCHING.search(fixed):
         return fixed
     return base

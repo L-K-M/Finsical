@@ -88,6 +88,12 @@ class TestMacPictures(unittest.TestCase):
         self.assertEqual(mac_display_name("ë€"), "苔")
         self.assertEqual(mac_display_name("._星砂- star sand"), "星砂- star sand")
         self.assertEqual(mac_display_name("Café"), "Café")
+        self.assertEqual(mac_display_name("ãæÇÃÇÊÇ§Ç»äC"), "鏡のような海")
+
+    def test_accented_latin_names_stay(self):
+        # Each decodes as Shift-JIS without error, to kanji among letters.
+        for n in ("Réal", "Noël", "Crème brûlée", "Smörgåsbord", "Ångström"):
+            self.assertEqual(mac_display_name(n), n)
 
 
 class TestEmitMac(unittest.TestCase):
