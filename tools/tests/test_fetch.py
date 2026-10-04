@@ -187,9 +187,13 @@ class TestHarvest(unittest.TestCase):
         made = _harvest("DATA.Z", cab, self.out)
         self.assertEqual(sorted(os.path.basename(p) for p in made),
                          ["Anchor rock.azpack", "Eden.azpack"])
-        # One whose tables are cut off costs only itself.
-        with contextlib.redirect_stderr(io.StringIO()):
+        # One whose tables are cut off costs only itself, and a .z
+        # that isn't a cabinet says so.
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
             self.assertEqual(_harvest("data.z", cab[:300], self.out), [])
+            self.assertEqual(_harvest("data.z", b"<html>", self.out), [])
+        self.assertIn("data.z: not an InstallShield 3 archive", err.getvalue())
 
     def test_cabinets_within_cabinets_stop_at_the_depth_cap(self):
         inner = build_is3([(0, "Eden.azn", fake_pack(bmp_8bit()), False)])

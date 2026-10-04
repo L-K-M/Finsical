@@ -1,11 +1,24 @@
 import struct
 import unittest
 
-from tools.az.is3 import (Is3Error, MAX_MEMBER_BYTES, explode, is_is3,
-                          members, read_member)
+from tools.az.is3 import (_DIST_LENGTHS, _LEN_LENGTHS, _LIT_LENGTHS,
+                          Is3Error, MAX_MEMBER_BYTES, _nibbles, explode,
+                          is_is3, members, read_member)
 from tools.tests.fixtures import build_is3, implode
 
 PACK = struct.pack("<I", 0x100) + bytes(range(256)) * 3
+
+# The same code lengths as zlib's contrib/blast writes them: runs, each
+# byte a length (low nibble) and its repeat count less one (high).
+BLAST_LIT = bytes([
+    11, 124, 8, 7, 28, 7, 188, 13, 76, 4, 10, 8, 12, 10, 12, 10, 8, 23, 8,
+    9, 7, 6, 7, 8, 7, 6, 55, 8, 23, 24, 12, 11, 7, 9, 11, 12, 6, 7, 22, 5,
+    7, 24, 6, 11, 9, 6, 7, 22, 7, 11, 38, 7, 9, 8, 25, 11, 8, 11, 9, 12,
+    8, 12, 5, 38, 5, 38, 5, 11, 7, 5, 6, 21, 6, 10, 53, 8, 7, 24, 10, 27,
+    44, 253, 253, 253, 252, 252, 252, 13, 12, 45, 12, 45, 12, 61, 12, 45,
+    44, 173])
+BLAST_LEN = bytes([2, 35, 36, 53, 38, 23])
+BLAST_DIST = bytes([2, 20, 53, 230, 247, 151, 248])
 
 
 class TestExplode(unittest.TestCase):
@@ -16,6 +29,18 @@ class TestExplode(unittest.TestCase):
         # comes from outside it.
         self.assertEqual(explode(bytes.fromhex("00048224258f807f"), 13),
                          b"AIAIAIAIAIAIA")
+
+    def test_code_length_tables_match_blasts(self):
+        # The tables are deark's, two lengths a byte; blast's runs come
+        # from another source. Their agreeing pins every code, not only
+        # the few the example above uses.
+        def runs(rep):
+            return [b & 15 for b in rep for _ in range((b >> 4) + 1)]
+        self.assertEqual(_nibbles(_LIT_LENGTHS, 256), runs(BLAST_LIT))
+        self.assertEqual(_nibbles(_LEN_LENGTHS, 16), runs(BLAST_LEN))
+        self.assertEqual(_nibbles(_DIST_LENGTHS, 64), runs(BLAST_DIST))
+        self.assertEqual((len(_LIT_LENGTHS), len(_LEN_LENGTHS),
+                          len(_DIST_LENGTHS)), (128, 8, 32))
 
     def test_round_trips_each_form(self):
         # Raw and coded literals, every distance width, overlapping

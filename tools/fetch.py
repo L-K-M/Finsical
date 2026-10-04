@@ -277,7 +277,7 @@ def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,
               lambda cap, zi=zi: _read_capped(zf, zi, cap))
              for zi in zf.infolist() if not zi.is_dir()),
             outdir, depth, budget)
-    if lower.endswith(".z") and is_is3(data):
+    if lower.endswith(".z"):
         try:
             listed = members(data)
         except Is3Error as e:
