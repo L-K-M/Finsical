@@ -40,7 +40,7 @@ from typing import Callable
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.az.emit import emit, emit_mac, emit_sounds
-from tools.az.is3 import Is3Error, is_is3, members, read_member
+from tools.az.is3 import Is3Error, members, read_member
 from tools.az.iso9660 import Iso
 from tools.az.macpics import has_mac_pictures, mac_display_name
 from tools.az.pack import Pack, is_pack
