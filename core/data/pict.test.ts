@@ -35,7 +35,11 @@ const sha256 = async (d: Uint8Array): Promise<string> =>
 /** Seeded generator for the fuzz tests: the same bytes every run. */
 function lcg(seed: number): () => number {
   let s = seed >>> 0;
-  return () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0);
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    // An LCG's low bits repeat quickly; fold the high bits into them.
+    return (s ^ s >>> 16) >>> 0;
+  };
 }
 
 const be16 = (v: number) => [(v >> 8) & 0xff, v & 0xff];
@@ -461,39 +465,54 @@ describe("decodePict: untrusted input", () => {
                                            { y: 4, xs: [1, 8] }] } },
   ] });
 
-  it("decodes the fuzz seed", () => {
-    expect(decodePict(good).w).toBe(9);
+  // The other parsers' shapes: a version 1 picture of a packed 1-bit
+  // BitMap, and a data-fork file of unpacked 32-bit pixels.
+  const seeds = [good,
+    buildPict({ version: 1, frame: rect(0, 0, 3, 70), ops: [
+      { kind: "mono", w: 70, h: 3,
+        px: Array.from({ length: 210 }, (_, i) => i % 3 & 1) }] }),
+    buildPict({ file: true, frame: rect(0, 0, 2, 3), ops: [
+      { kind: "direct", depth: 32, packType: 1, w: 3, h: 2,
+        px: [RED, BLUE, RED, BLUE, RED, BLUE] }] }),
+  ];
+  /** Decoding `d` either throws a PictError or gives a sound image. */
+  const decodesSoundly = (d: Uint8Array) => {
+    let img: IndexedImage;
+    try { img = decodePict(d); }
+    catch (e) { expect(e).toBeInstanceOf(PictError); return; }
+    expect(img.idx.length).toBe(img.w * img.h);
+    expect(img.palette.length).toBeLessThanOrEqual(256);
+    expect(img.idx.every((k) => k < img.palette.length)).toBe(true);
+  };
+
+  it("decodes the fuzz seeds", () => {
+    expect(seeds.map((d) => decodePict(d).w)).toEqual([9, 70, 3]);
   });
 
   it("throws only PictError for every truncation", () => {
-    for (let n = 0; n < good.length; n++)
-      expect(() => decodePict(good.subarray(0, n))).toThrow(PictError);
+    for (const seed of seeds)
+      for (let n = 0; n < seed.length; n++)
+        expect(() => decodePict(seed.subarray(0, n))).toThrow(PictError);
   });
 
   it("throws only PictError, or decodes, under byte flips", () => {
     const rnd = lcg(42);
-    for (let k = 0; k < 3000; k++) {
-      const d = good.slice();
-      const flips = 1 + rnd() % 4;
-      for (let f = 0; f < flips; f++) d[rnd() % d.length] = rnd() & 0xff;
-      try {
-        const img = decodePict(d);
-        expect(img.idx.length).toBe(img.w * img.h);
-        expect(img.palette.length).toBeLessThanOrEqual(256);
-        expect(img.idx.every((k) => k < img.palette.length)).toBe(true);
-      } catch (e) {
-        expect(e).toBeInstanceOf(PictError);
+    for (const seed of seeds)
+      for (let k = 0; k < 1500; k++) {
+        const d = seed.slice();
+        const flips = 1 + rnd() % 4;
+        for (let f = 0; f < flips; f++) d[rnd() % d.length] = rnd() & 0xff;
+        decodesSoundly(d);
       }
-    }
   });
 
-  it("throws only PictError on random bytes behind a valid header", () => {
+  it("throws only PictError, or decodes, on random bytes behind a valid header",
+     () => {
     const rnd = lcg(7);
     for (let k = 0; k < 500; k++) {
       const head = [...good.subarray(0, 40)];
       const tail = Array.from({ length: rnd() % 400 }, () => rnd() & 0xff);
-      try { decodePict(Uint8Array.from([...head, ...tail])); }
-      catch (e) { expect(e).toBeInstanceOf(PictError); }
+      decodesSoundly(Uint8Array.from([...head, ...tail]));
     }
   });
 
@@ -566,6 +585,7 @@ describe("decodePict: untrusted input", () => {
       decodePict(buildPict({ frame: rect(0, 0, 1, 2), ops: [
         { kind: "direct", depth: 32, packType: 4, w: 2, h: 1,
           px: [RED, BLUE], ...o }] }));
+    expect(one({})).not.toThrow(); // the table's own row decodes
     expect(one({ cmpCount: 2 })).toThrow(/component count 2/);
     expect(one({ packType: 5 })).toThrow(/packType 5/);
     expect(one({ depth: 24 })).toThrow(/direct pixel size 24/);
@@ -587,20 +607,23 @@ describe("decodePict: untrusted input", () => {
   });
 
   it("stops after too many opcodes", () => {
+    // More no-op opcodes than the decoder's cap of 1 << 17.
     const nops = new Array<number>(2 * 140_000).fill(0);
     expect(() => decodePict(buildPict({ frame: rect(0, 0, 1, 2), ops: [
       { kind: "raw", bytes: nops },
       { kind: "indexed", depth: 8, w: 2, h: 1, px: [1, 2], clut: CLUT }] })))
-      .toThrow(/opcodes/);
+      .toThrow(/over \d+ opcodes/);
   });
 
   it("stops a picture that asks for too much drawing", () => {
-    // Every band scales one pixel over the whole 2048 x 2048 frame.
+    // Every band scales one pixel over the whole 2048 x 2048 frame:
+    // 20 bands draw 84 million pixels, past the decoder's budget of
+    // 1 << 25.
     const one = { kind: "indexed" as const, depth: 8 as const, w: 1, h: 1,
                   px: [1], clut: CLUT, dst: rect(0, 0, 2048, 2048) };
     expect(() => decodePict(buildPict({ frame: rect(0, 0, 2048, 2048),
                                         ops: new Array<Op>(20).fill(one) })))
-      .toThrow(/too much/);
+      .toThrow(/too much drawing/);
   });
 });
 
@@ -633,5 +656,10 @@ describe("packBits fixture", () => {
   it("round-trips through the decoder's word mode", () => {
     expect(packBits([1, 2, 1, 2, 1, 2, 9, 9], 2))
       .toEqual([254, 1, 2, 0, 9, 9]);
+    // packType 3 rows of runs, which only the word mode reads right.
+    const px = [RED, RED, RED, RED, RED, BLUE, BLUE, BLUE];
+    expect(colors(decode({ frame: rect(0, 0, 1, 8), ops: [
+      { kind: "direct", depth: 16, packType: 3, w: 8, h: 1, px }] })))
+      .toEqual(px);
   });
 });

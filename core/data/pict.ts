@@ -635,7 +635,8 @@ function quantize(rgb: Uint32Array, w: number, h: number): IndexedImage {
 
 /** Heckbert's median cut: the box of entries whose pixel count times
  * longest side is largest splits at its weighted median along that
- * side, until there are 255 boxes or none can split. Each split is a
+ * side, until there are 255 boxes (white's palette entry makes 256)
+ * or none can split. Each split is a
  * histogram of that channel and a stable partition, so it costs the
  * box's size; ties go to the earlier box. Returns each entry's box
  * and how many boxes there are. */
