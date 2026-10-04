@@ -370,7 +370,7 @@ try {
       }
     });
 
-  await test("startup falls back to defaults on unreadable or corrupt preferences",
+  await test("startup reads saved preferences, defaults unreadable or corrupt ones",
     async () => {
       // Page-local storage faults, installed before fixture.js and the
       // bundle run: the shared profile and the owner page stay intact.
@@ -382,19 +382,48 @@ try {
         "finsical:paused": "true", "finsical:names": "on",
         "finsical:autofeed": "yes",
       };
+      // Valid, non-default values: what a returning user saved.
+      const saved = {
+        "finsical:lighting": '{"mode":"timer","on":7,"off":21,"lamp":false}',
+        "finsical:sound": '{"volume":0.25,"muted":true,"v":2}',
+        "finsical:effects": '{"cat":false,"smudges":true}',
+        "finsical:crt-cfg": '{"scanlines":0.9,"mask":"slot"}',
+        "finsical:waterChange": '{"fraction":0.5,"temp":40}',
+        "finsical:boot": "off", "finsical:scoldSign": "off",
+        "finsical:hints": "on", "finsical:paused": "1",
+        "finsical:names": "1", "finsical:autofeed": "1",
+      };
+      const fallback = (defaults) => ({
+        bootEnabled: true, scoldOn: true, hintsOn: false, paused: false,
+        namesOn: false, autoFeed: false,
+        waterChangeCfg: { fraction: 0.2, temp: defaults.heater },
+        lighting: defaults.lighting, soundCfg: defaults.soundCfg,
+        effects: defaults.effects, crtCfg: defaults.crtCfg,
+      });
       const faults = {
+        saved: [`key => (${JSON.stringify(saved)})[key] ?? null`,
+          (defaults) => ({
+            bootEnabled: false, scoldOn: false, hintsOn: true, paused: true,
+            namesOn: true, autoFeed: true,
+            // The temperature clamps to the heater's 36 °C ceiling.
+            waterChangeCfg: { fraction: 0.5, temp: 36 },
+            lighting: { mode: "timer", on: 7, off: 21, lamp: false },
+            soundCfg: { ...defaults.soundCfg, volume: 0.25, muted: true },
+            effects: { ...defaults.effects, cat: false, smudges: true },
+            crtCfg: { ...defaults.crtCfg, scanlines: 0.9, mask: "slot" },
+          })],
         // Every read throws, as where storage is blocked. The seed flag
         // and the tank lease stay readable, so this page spectates
         // rather than taking the tank from the owner page.
-        unreadable: `key => {
+        unreadable: [`key => {
           if (key === '__fixture' || key === 'finsical:tank-owner')
             return null;
           throw new DOMException('blocked', 'SecurityError');
-        }`,
+        }`, fallback],
         // Corrupt JSON, and flag strings that are neither on nor off.
-        corrupt: `key => (${JSON.stringify(junk)})[key] ?? null`,
+        corrupt: [`key => (${JSON.stringify(junk)})[key] ?? null`, fallback],
       };
-      for (const [fault, read] of Object.entries(faults)) {
+      for (const [fault, [read, expected]] of Object.entries(faults)) {
         const page = await openPage(false);
         try {
           await waitFor("!!window.__probe", page.sessionId);
@@ -412,13 +441,7 @@ try {
                         "!!window.__probe", page.sessionId);
           const { defaults, ...prefs } =
             await evalJs("__probe.startupPrefs()", page.sessionId);
-          assert.deepEqual(prefs, {
-            bootEnabled: true, scoldOn: true, hintsOn: false, paused: false,
-            namesOn: false, autoFeed: false,
-            waterChangeCfg: { fraction: 0.2, temp: defaults.heater },
-            lighting: defaults.lighting, soundCfg: defaults.soundCfg,
-            effects: defaults.effects, crtCfg: defaults.crtCfg,
-          }, fault);
+          assert.deepEqual(prefs, expected(defaults), fault);
           assert.deepEqual(errors.slice(seen), [], fault + " page errors");
         } finally {
           await call("Target.closeTarget", { targetId: page.targetId })
