@@ -150,3 +150,20 @@ describe("store.ts after the browser closes its connection", () => {
     expect(idb.opens()).toBe(2);
   });
 });
+
+describe("sndsMerge", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubGlobal("indexedDB", fakeIdb().api);
+    vi.stubGlobal("IDBKeyRange", { bound: () => null });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("merges over the stored baseline, the newest drop first", async () => {
+    const store = await import("./store.js");
+    await store.sndsMerge([{ name: "a", wav: new Uint8Array(4) }]);
+    await store.sndsMerge([{ name: "b", wav: new Uint8Array(4) }]);
+    expect((await store.sndsGet())!.map((r) => r.name))
+      .toEqual(["b", "a"]);
+  });
+});
