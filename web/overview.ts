@@ -308,11 +308,6 @@ listEl.addEventListener("keydown", (e) => {
   }
 });
 
-// A file dropped here would navigate this borderless window to the
-// raw file, with no way back — swallow drops like the tank page does.
-window.addEventListener("dragover", (e) => e.preventDefault());
-window.addEventListener("drop", (e) => e.preventDefault());
-
 // Place a thumbnail at whole-pixel offsets inside its box — flex
 // centering would put odd sizes on half pixels and blur the art.
 function placeThumb(img: HTMLImageElement): void {
