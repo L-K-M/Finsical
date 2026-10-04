@@ -782,8 +782,6 @@ export class Sim {
     // hovering fish.
     for (const f of alive) {
       f.hover = 0;
-      f.phase = 0;
-      f.latch = -1;
       this.decide(f);
     }
     // The pointer watch stands down: a fish drifting over to look at
@@ -1390,6 +1388,14 @@ export class Sim {
    * the original's per-tick swim-bound jitter.
    */
   private decide(f: Fish): void {
+    // Every new trip starts a fresh stroke and refunds the budget, a
+    // trip to a formation slot included. The formation's shorter
+    // cadence can spend it before a slow fish arrives; retaining it
+    // would keep resetting the ramp instead of giving the fish another
+    // speed-preserving stroke. Nothing below reads these three.
+    f.phase = 0;
+    f.latch = -1;
+    f.strokes = 0;
     // A Clean Up overrides every other destination: the fish's place in
     // the grid is where it is going, until the roll call ends.
     const slot = this.slotFor(f);
@@ -1397,13 +1403,6 @@ export class Sim {
       const { x0, x1, y0, y1 } = this.room(f);
       f.tx = Math.min(x1, Math.max(x0, slot.x));
       f.ty = Math.min(y1, Math.max(y0, slot.y));
-      f.phase = 0;
-      f.latch = -1;
-      // A new trip refunds the budget, like a wandering decision. The
-      // formation's shorter cadence can spend it before a slow fish
-      // arrives; retaining it would keep resetting the ramp instead
-      // of giving the fish another speed-preserving stroke.
-      f.strokes = 0;
       return;
     }
     const { x0, x1, y0, y1 } = this.room(f);
@@ -1425,9 +1424,6 @@ export class Sim {
       }
       const top = Math.min(y1, Math.max(y0, c.top + this.halfH(f)));
       f.ty = top + this.zRand() * (y1 - top);
-      f.phase = 0;
-      f.latch = -1;
-      f.strokes = 0;
       return;
     }
     if (this.rand() < BAND_SHIFT) f.bandY = y0 + this.rand() * (y1 - y0);
@@ -1481,9 +1477,6 @@ export class Sim {
     if (f.life?.sick)
       f.ty = y0 + (y1 - y0) * (SICK_DEPTH + this.rand() * (1 - SICK_DEPTH));
     if (this.zRand() < Z_SHIFT) f.tz = Z_MIN + this.zRand() * (Z_MAX - Z_MIN);
-    f.phase = 0;
-    f.latch = -1;
-    f.strokes = 0;
   }
 
   /** Re-arm the stroke ramp at the fish's current speed, so it keeps
