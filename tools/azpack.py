@@ -37,9 +37,16 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     rc = 0
+    used: set[str] = set()
     for src in args.inputs:
         name = os.path.splitext(mac_display_name(os.path.basename(src)))[0]
-        out = args.out if len(args.inputs) == 1 else os.path.join(args.out, name)
+        # A Mac file and its "._" companion, or Foo.fsh beside Foo.rez,
+        # name one bundle: the later ones get -2, -3..., as in fetch.py.
+        sub, n = name, 2
+        while sub in used:
+            sub, n = f"{name}-{n}", n + 1
+        used.add(sub)
+        out = args.out if len(args.inputs) == 1 else os.path.join(args.out, sub)
         try:
             with open(src, "rb") as f:
                 data = f.read()

@@ -109,6 +109,7 @@ class TestMacPictures(unittest.TestCase):
         tbase = mo + struct.unpack_from(">H", fork, mo + 24)[0]
         struct.pack_into(">H", fork, tbase, 500)
         gravel, images, _ = mac_pictures(bytes(fork))
+        self.assertTrue(gravel)  # Grvl, the second type, still counts
         self.assertEqual([k for k, *_ in images], ["BAPC 4020"])
 
     def test_an_id_listed_twice_is_one_picture(self):
@@ -211,6 +212,22 @@ class TestAzpackCli(unittest.TestCase):
                     tmp, "out", name, "manifest.json")))
 
 
+    def test_inputs_with_one_name_get_their_own_bundles(self):
+        # A Mac file and its AppleDouble companion both name "Reef".
+        with tempfile.TemporaryDirectory() as tmp:
+            src = []
+            for name, data in (("Reef.pct", build_pict(320, 200, [1] * 64000,
+                                                       clut=CLUT, file=True)),
+                               ("._Reef.pct", gravel_fork())):
+                src.append(os.path.join(tmp, name))
+                with open(src[-1], "wb") as f:
+                    f.write(data)
+            out = os.path.join(tmp, "out")
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(azpack.main(src + ["-o", out]), 0)
+            self.assertEqual(sorted(os.listdir(out)), ["Reef", "Reef-2"])
+
+
 class TestArchiveEntries(unittest.TestCase):
     ITEM = "aquazonewithguppiesandaddons"
     SEVEN_Z = "Missing addons Aquazone.7z"
@@ -252,7 +269,7 @@ class TestArchiveEntries(unittest.TestCase):
         return calls, mock.patch.object(tools.fetch, "_get", fake_get)
 
     def test_lists_entries_under_the_stored_folder(self):
-        calls, patch = self.serve({"ë€": b"x", "._星雲- nebula": b"y"})
+        _, patch = self.serve({"ë€": b"x", "._星雲- nebula": b"y"})
         with patch:
             names = tools.fetch._archive_entries(self.ITEM, self.SEVEN_Z)
         self.assertEqual(names, ["Missing addons Aquazone/" + self.FOLDER + "ë€",
@@ -304,7 +321,7 @@ class TestArchiveEntries(unittest.TestCase):
     def test_a_picture_that_fails_to_emit_counts_as_failed(self):
         # Sniffs as a PICT, decodes to nothing: an error, not a skip.
         broken = build_pict(320, 200, [1] * 64000, clut=CLUT, file=True)[:600]
-        calls, patch = self.serve({"ë€": broken})
+        _, patch = self.serve({"ë€": broken})
         with patch, contextlib.redirect_stdout(io.StringIO()), \
                 contextlib.redirect_stderr(io.StringIO()):
             made, failed = tools.fetch.fetch_entries(
@@ -323,7 +340,7 @@ class TestArchiveEntries(unittest.TestCase):
             tools.fetch.main(["--entries", "Misc"])
 
     def test_an_empty_answer_fails_and_is_not_kept(self):
-        calls, patch = self.serve({"ë€": b""})
+        _, patch = self.serve({"ë€": b""})
         dl = os.path.join(self.tmp.name, "dl")
         with patch, contextlib.redirect_stdout(io.StringIO()), \
                 contextlib.redirect_stderr(io.StringIO()):
