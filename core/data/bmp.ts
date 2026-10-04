@@ -3,13 +3,8 @@
  * tools/az/img.py read_bmp). Returns palette-indexed pixels.
  */
 import type { IndexedImage } from "./azpack.js";
+import { u16, u32 } from "./bytes.js";
 
-function u16(d: Uint8Array, o: number): number {
-  return (d[o] ?? 0) | ((d[o + 1] ?? 0) << 8);
-}
-function u32(d: Uint8Array, o: number): number {
-  return (u16(d, o) | (u16(d, o + 2) << 16)) >>> 0;
-}
 function i32(d: Uint8Array, o: number): number {
   return u32(d, o) | 0;
 }

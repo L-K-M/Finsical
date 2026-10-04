@@ -28,6 +28,7 @@
  * to the chunk count in type order, so when refs don't land on chunk
  * boundaries types are assigned to chunks sequentially instead.
  */
+import { u16, u32 } from "./bytes.js";
 import { packChunks } from "./fsh.js";
 
 export interface PackResource {
@@ -38,13 +39,6 @@ export interface PackResource {
 }
 
 const DATA_BASE = 0x100;
-
-function u16(d: Uint8Array, o: number): number {
-  return (d[o] ?? 0) | ((d[o + 1] ?? 0) << 8);
-}
-function u32(d: Uint8Array, o: number): number {
-  return (u16(d, o) | (u16(d, o + 2) << 16)) >>> 0;
-}
 
 function tagAt(d: Uint8Array, o: number): string {
   return String.fromCharCode(d[o + 3]!, d[o + 2]!, d[o + 1]!, d[o]!);

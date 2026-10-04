@@ -18,17 +18,11 @@
  */
 import { SpriteSheet } from "./azpack.js";
 import { decodeBmp, isBmp } from "./bmp.js";
+import { u16, u32 } from "./bytes.js";
 import type { IndexedImage, SpriteSheetMeta } from "./azpack.js";
 
 const MAGIC = 0x00000100;
 const DATA_BASE = 0x100;
-
-function u16(d: Uint8Array, o: number): number {
-  return (d[o] ?? 0) | ((d[o + 1] ?? 0) << 8);
-}
-function u32(d: Uint8Array, o: number): number {
-  return (u16(d, o) | (u16(d, o + 2) << 16)) >>> 0;
-}
 
 export function isPack(d: Uint8Array): boolean {
   return d.length > DATA_BASE && u32(d, 0) === MAGIC;
