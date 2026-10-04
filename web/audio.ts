@@ -163,6 +163,10 @@ export function panFor(x: number, w: number): number {
   return Math.min(0.8, Math.max(-0.8, 0.8 * (2 * x / w - 1)));
 }
 
+/** A running context and its master gain, as liveContext() hands
+ * them to a synthesized sound. */
+interface LiveAudio { ac: AudioContext; master: GainNode; }
+
 /** Per-play color: stereo pan (-1..1) and a playback-rate jitter. */
 interface PlayFx { pan?: number; rate?: number;
   /** Seconds of fade-out to schedule before the buffer's end, hiding
@@ -724,16 +728,8 @@ export class TankAudio {
         Math.max(0, buf.duration / (fx.rate || 1) - fx.fadeSec - 0.02);
       g.gain.setTargetAtTime(0, end, 0.005);
     }
-    const pan = fx?.pan ?? 0;
-    // StereoPannerNode needs WebKit 14.1+, fine for macOS 12 — and a
-    // pan of 0 keeps the direct path, so the node is opt-in only.
-    if (pan !== 0 && typeof this.ctx.createStereoPanner === "function") {
-      const p = this.ctx.createStereoPanner();
-      p.pan.value = pan;
-      src.connect(p).connect(g).connect(this.master!);
-    } else {
-      src.connect(g).connect(this.master!); // created with ctx
-    }
+    src.connect(this.panInto(this.ctx, fx?.pan ?? 0, g));
+    g.connect(this.master!); // created with ctx
     src.start();
     if (!loop) this.trackOneShot(src);
     return src;
@@ -893,12 +889,12 @@ export class TankAudio {
    */
   note(freq: number, pan = 0, gain = NOTE_GAIN): void {
     if (!this.musicOn || !this.shouldRun()) return;
-    const ac = this.ctx;
-    if (!ac || !this.master || this.hidden || ac.state !== "running" ||
-        !Number.isFinite(freq) || freq <= 0 ||
+    const live = this.liveContext();
+    if (!live || !Number.isFinite(freq) || freq <= 0 ||
         // An exponential ramp throws on a zero or negative target, so
         // the level needs the same guard as the pitch.
         !Number.isFinite(gain) || gain <= 0) return;
+    const { ac, master } = live;
     const t = ac.currentTime;
     const env = ac.createGain();
     env.gain.setValueAtTime(0.0001, t);
@@ -916,14 +912,7 @@ export class TankAudio {
     body.connect(env);
     // Pan only off-centre and only where the WebView has a panner, the
     // way pop() and play() do.
-    let out: AudioNode = env;
-    if (pan !== 0 && typeof ac.createStereoPanner === "function") {
-      const p = ac.createStereoPanner();
-      p.pan.value = pan;
-      env.connect(p);
-      out = p;
-    }
-    out.connect(this.master);
+    env.connect(this.panInto(ac, pan, master));
     for (const osc of [body, partial]) {
       osc.start(t);
       osc.stop(t + NOTE_S + 0.01);
@@ -943,33 +932,12 @@ export class TankAudio {
                 { pan, rate: 0.94 + Math.random() * 0.12 });
       return;
     }
-    const ac = this.ctx;
-    if (!ac || !this.master || this.hidden || ac.state !== "running")
-      return;
-    const t = ac.currentTime;
+    const live = this.liveContext();
+    if (!live) return;
     const f0 = BLOOP_HZ[0] + Math.random() * (BLOOP_HZ[1] - BLOOP_HZ[0]);
-    const osc = ac.createOscillator();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(f0, t);
     // The rising chirp of a real bubble clearing the surface: keep
     // climbing across the whole pulse rather than flattening early.
-    osc.frequency.exponentialRampToValueAtTime(f0 * 1.5, t + BLOOP_S);
-    const g = ac.createGain();
-    // Exponential ramps can't start from 0: from a whisper to the peak
-    // in 4 ms, then away, so it never clicks on or off.
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(BLOOP_GAIN, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + BLOOP_S);
-    if (pan !== 0 && typeof ac.createStereoPanner === "function") {
-      const p = ac.createStereoPanner();
-      p.pan.value = pan;
-      osc.connect(p).connect(g).connect(this.master);
-    } else {
-      osc.connect(g).connect(this.master);
-    }
-    osc.start(t);
-    osc.stop(t + BLOOP_S + 0.01);
-    this.trackOneShot(osc);
+    this.chirp(live, f0, f0 * 1.5, BLOOP_S, BLOOP_S, BLOOP_GAIN, pan);
   }
 
   /** A bubble popped by a click, panned to it. A sound the user added
@@ -982,32 +950,53 @@ export class TankAudio {
     if (!this.bubblesOn) return;
     const own = this.find(["pop"]);
     if (own) { this.play(own, 0.5, false, true, { pan }); return; }
-    const ac = this.ctx;
-    if (!ac || !this.master || this.hidden || this.level() === 0 ||
-        ac.state !== "running")
-      return;
+    const live = this.liveContext();
+    if (live)
+      this.chirp(live, POP_HZ[0], POP_HZ[1], POP_S / 2, POP_S, POP_GAIN, pan);
+  }
+
+  /** The device a synthesized sound may use right now: a running
+   * context on a visible, audible tank. Never creates or resumes one —
+   * a synthesized sound drops rather than spend a resume(). */
+  private liveContext(): LiveAudio | null {
+    const ac = this.ctx, master = this.master;
+    if (!ac || !master || !this.shouldRun() || ac.state !== "running")
+      return null;
+    return { ac, master };
+  }
+
+  /** `dest`, or a StereoPannerNode feeding it when the sound is panned:
+   * connect a source to the returned node, never chain past it.
+   * StereoPannerNode needs WebKit 14.1+, fine for macOS 12 — and a
+   * pan of 0 keeps the direct path, so the node is opt-in only. */
+  private panInto(ac: AudioContext, pan: number, dest: AudioNode): AudioNode {
+    if (pan === 0 || typeof ac.createStereoPanner !== "function") return dest;
+    const p = ac.createStereoPanner();
+    p.pan.value = pan;
+    p.connect(dest);
+    return p;
+  }
+
+  /** A one-shot sine gliding from f0 to f1 over rampS seconds, `durS`
+   * long at a `peak` gain, panned, into the master. */
+  private chirp({ ac, master }: LiveAudio, f0: number, f1: number,
+                rampS: number, durS: number, peak: number,
+                pan: number): void {
     const t = ac.currentTime;
     const osc = ac.createOscillator();
     osc.type = "sine";
-    osc.frequency.setValueAtTime(POP_HZ[0], t);
-    osc.frequency.exponentialRampToValueAtTime(POP_HZ[1], t + POP_S / 2);
+    osc.frequency.setValueAtTime(f0, t);
+    osc.frequency.exponentialRampToValueAtTime(f1, t + rampS);
     const g = ac.createGain();
     // Exponential ramps can't start from 0: from a whisper to the peak
     // in 4 ms, then away, so it never clicks on or off.
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(POP_GAIN, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + POP_S);
-    // Panned the way play() pans: only off-centre, and only where the
-    // WebView has a StereoPannerNode.
-    if (pan !== 0 && typeof ac.createStereoPanner === "function") {
-      const p = ac.createStereoPanner();
-      p.pan.value = pan;
-      osc.connect(p).connect(g).connect(this.master);
-    } else {
-      osc.connect(g).connect(this.master);
-    }
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + durS);
+    osc.connect(this.panInto(ac, pan, g));
+    g.connect(master);
     osc.start(t);
-    osc.stop(t + POP_S + 0.01);
+    osc.stop(t + durS + 0.01);
     this.trackOneShot(osc);
   }
 
@@ -1016,30 +1005,31 @@ export class TankAudio {
    * field dies. Silent unless the context is already running — a
    * degauss the user can't hear shouldn't spend a resume(). */
   degauss(): void {
-    if (!this.ctx || !this.master || this.hidden ||
-        this.level() === 0 || this.ctx.state !== "running") return;
-    const t = this.ctx.currentTime;
-    const thump = this.ctx.createOscillator();
+    const live = this.liveContext();
+    if (!live) return;
+    const { ac, master } = live;
+    const t = ac.currentTime;
+    const thump = ac.createOscillator();
     thump.type = "sine";
     thump.frequency.value = 55;
-    const tg = this.ctx.createGain();
+    const tg = ac.createGain();
     tg.gain.setValueAtTime(0.5, t);
     tg.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-    thump.connect(tg).connect(this.master);
+    thump.connect(tg).connect(master);
     thump.start(t);
     thump.stop(t + 0.3);
     this.trackOneShot(thump);
-    const whine = this.ctx.createOscillator();
+    const whine = ac.createOscillator();
     whine.type = "sawtooth";
     whine.frequency.setValueAtTime(900, t);
     whine.frequency.exponentialRampToValueAtTime(300, t + 0.5);
-    const lp = this.ctx.createBiquadFilter();
+    const lp = ac.createBiquadFilter();
     lp.type = "lowpass";
     lp.frequency.value = 300;
-    const wg = this.ctx.createGain();
+    const wg = ac.createGain();
     wg.gain.setValueAtTime(0.12, t);
     wg.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
-    whine.connect(lp).connect(wg).connect(this.master);
+    whine.connect(lp).connect(wg).connect(master);
     whine.start(t);
     whine.stop(t + 0.7);
     this.trackOneShot(whine);
