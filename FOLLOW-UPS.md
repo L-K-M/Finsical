@@ -266,19 +266,16 @@ descriptions of #161 and #162.
 - The machine previews in Preferences (`previewMarkup` in
   `web/machines.ts`) still draw the old rectangle fish, with no
   waterline or air strip.
-- Of the 40 Windows gravel strips, 36 put their white sky at palette
-  index 0, the color the tank keys out of a strip. Jewelstone, moss2
-  and whitesand put black at 0 and white at 255, so the tank drops
-  their black pixels and paints their sky. Keying white would fix
-  them.
 - A gravel's `Grvl` record holds two numbers, its front-face height h
   and its floor's depth span s. AquaZone's DLL stands an object at
   depth d (0 to 400) at `bottom - h - s + d * s / 400`. The tank's
   floor line ignores the record, so decor sits at the same height on
-  every gravel.
-- At launch the restore shows each installed backdrop as it lands and
-  only then puts the chosen one back, a visible flicker with several
-  backdrops installed.
+  every gravel. The record can't be applied as given: the tank draws
+  only a strip's top `GRAVEL_MAX_H` (20) pixels, at the scale that
+  fits its width to the tank, and on most gravels the band the
+  formula spans runs below those rows. On Jewelstone the band lies
+  entirely below them. Using the record means lifting the cap for
+  gravels that carry one, or fitting the band into the rows shown.
 
 ### Alerts and Preferences
 

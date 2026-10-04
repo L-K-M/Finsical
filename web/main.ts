@@ -16,7 +16,7 @@ import { isBmp } from "../core/data/bmp.js";
 import { hasMacPictures } from "../core/data/macpics.js";
 import { isPict } from "../core/data/pict.js";
 import { BACKDROP_MIN, decodeDroppedPack, isRefusedPicture } from "./drop.js";
-import { decorFrame, decorPhase, decorPhaseFrac }
+import { decorFrame, decorPhase, decorPhaseFrac, keyToZero }
   from "../core/data/decor.js";
 import { decorDepth, drawOrder } from "../core/depth.js";
 import { bodySize, pickDrawableSheet }
@@ -45,8 +45,8 @@ import { SWAY_AMP, SWAY_BANDS, swayOffset } from "./sway.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
 import { isLocalPack, LOCAL_PREFIX, localPacks, packDelete, packPut, sndsGet,
          sndsMerge, sndsRemove } from "./store.js";
-import { coverCrop, decorCanvases, imageCanvas, isBackdropImage,
-         isGravelImage,
+import { coverCrop, decorCanvases, gravelKey, imageCanvas,
+         isBackdropImage, isGravelImage,
          previewOf, soundIcon, swimCanvas } from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
 import { corpseSprite } from "./corpse.js";
@@ -1264,7 +1264,7 @@ function fitBackdrop(img: IndexedImage): HTMLCanvasElement {
  * painted deeper would put fish visibly under the gravel. */
 const GRAVEL_MAX_H = 20;
 function fitGravel(img: IndexedImage): HTMLCanvasElement {
-  const src = imageCanvas(img, false);
+  const src = imageCanvas(keyToZero(img, gravelKey(img)), false);
   const out = document.createElement("canvas");
   out.width = TANK.width;
   out.height = Math.min(GRAVEL_MAX_H,
@@ -1278,7 +1278,16 @@ function fitGravel(img: IndexedImage): HTMLCanvasElement {
   c.drawImage(src, 0, 0, src.width, srcH, 0, 0, out.width, out.height);
   return out;
 }
-function pickBackdrop(images: Iterable<IndexedImage>, src = ""): void {
+/** Whether art a pack just loaded goes on display. A live install
+ * always shows; a restore shows the chosen pack's art, or any when
+ * nothing is chosen, so a launch doesn't show each restored backdrop
+ * in turn before the chosen one lands. */
+function showsOnLoad(kind: SceneryKind, src: string, live: boolean): boolean {
+  const chosen = sceneryChoice[kind];
+  return live || chosen === undefined || chosen === src;
+}
+function pickBackdrop(images: Iterable<IndexedImage>, src: string,
+                      live: boolean): void {
   let best: IndexedImage | null = null;
   let gravel: IndexedImage | null = null;
   for (const img of images) {
@@ -1293,10 +1302,15 @@ function pickBackdrop(images: Iterable<IndexedImage>, src = ""): void {
   if (gravel) { gravelByPack.delete(src);
                 gravelByPack.set(src, fitGravel(gravel)); }
   // A pack with no qualifying art leaves the current winner in place.
-  if (best) { backdropCv = backdropByPack.get(src)!; backdropSrc = src; }
-  if (gravel) { gravelCv = gravelByPack.get(src)!; gravelSrc = src; }
+  if (best && showsOnLoad("backdrop", src, live)) {
+    backdropCv = backdropByPack.get(src)!; backdropSrc = src;
+  }
+  if (gravel && showsOnLoad("gravel", src, live)) {
+    gravelCv = gravelByPack.get(src)!; gravelSrc = src;
+  }
 }
-function pickGravel(images: Iterable<IndexedImage>, src: string): void {
+function pickGravel(images: Iterable<IndexedImage>, src: string,
+                    live: boolean): void {
   // .grv packs also carry a ~square texture-fill tile — strip-only, never a backdrop
   let gravel: IndexedImage | null = null;
   for (const img of images) {
@@ -1305,7 +1319,9 @@ function pickGravel(images: Iterable<IndexedImage>, src: string): void {
   }
   if (gravel) { gravelByPack.delete(src);
                 gravelByPack.set(src, fitGravel(gravel)); }
-  if (gravel) { gravelCv = gravelByPack.get(src)!; gravelSrc = src; }
+  if (gravel && showsOnLoad("gravel", src, live)) {
+    gravelCv = gravelByPack.get(src)!; gravelSrc = src;
+  }
 }
 /** Record what now shows as the user's choice ("" clears it). */
 function chooseScenery(kind: SceneryKind, src: string): void {
@@ -1314,16 +1330,22 @@ function chooseScenery(kind: SceneryKind, src: string): void {
 }
 /** Put the chosen scenery back on display wherever its pack has
  * loaded: after the launch restore chain, and after a retry lands a
- * pack. A choice whose pack isn't loaded keeps the current art. */
+ * pack. While a choice's pack isn't loaded, the newest pack's art
+ * shows, as install order would have put it up: the restore holds the
+ * other packs' art back only while the choice may still land. */
 function applySceneryChoice(): void {
   const bd = sceneryChoice.backdrop, gr = sceneryChoice.gravel;
-  if (bd !== undefined && backdropByPack.has(bd)) {
-    backdropCv = backdropByPack.get(bd)!;
-    backdropSrc = bd;
+  const bdSrc = bd !== undefined && backdropByPack.has(bd) ? bd
+    : [...backdropByPack.keys()].pop();
+  if (bdSrc !== undefined) {
+    backdropCv = backdropByPack.get(bdSrc)!;
+    backdropSrc = bdSrc;
   }
-  if (gr !== undefined && gravelByPack.has(gr)) {
-    gravelCv = gravelByPack.get(gr)!;
-    gravelSrc = gr;
+  const grSrc = gr !== undefined && gravelByPack.has(gr) ? gr
+    : [...gravelByPack.keys()].pop();
+  if (grSrc !== undefined) {
+    gravelCv = gravelByPack.get(grSrc)!;
+    gravelSrc = grSrc;
   }
   requestPaint();
 }
@@ -1605,7 +1627,7 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
                       section: string, live: boolean,
                       count = 1): void {
   // fish packs carry portraits too — only scenery sections touch the tank
-  if (section === "gravel") pickGravel(images, src);
+  if (section === "gravel") pickGravel(images, src, live);
   else if (section === "plants" || section === "accessories") {
     // A restore replays the persisted copy count; `images` may be a
     // single-use Map iterator, so materialize before looping. Live
@@ -1618,7 +1640,7 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
       addDecor(imgs, src, section === "plants");
   }
   else if (section === "backgrounds" || section === "tanks")
-    pickBackdrop(images, src);
+    pickBackdrop(images, src, live);
   else return;
   if (live) audio.sceneryIn();
   // A live install shows its art and so becomes the choice; a restore
@@ -3160,7 +3182,7 @@ void (async () => {
     try { imgs.push(await decodeIndexedPng(await packFetch(c.image))); }
     catch { /* keep going without that image */ }
   }
-  pickBackdrop(imgs);
+  pickBackdrop(imgs, "", false);
 })()
   .catch((e) => {
     if (e instanceof NoBundledPack) console.info("no bundled pack in pack/");
@@ -3172,6 +3194,11 @@ void (async () => {
   .then(() => importPanel.restore([...installedAddons], stillListed))
   .then((failed) => {
     restoreFailed = failed;
+    // The user's chosen scenery wins over install-recency — applied
+    // once every pack has had its restore chance, before the tank
+    // shows. A pack that failed to restore leaves the newest pack's
+    // art up, until a retry.
+    applySceneryChoice();
     // The parade holds a beat after the last add-on settles (boot.ts).
     if (bootT0 !== null) bootDoneAt = performance.now() - bootT0;
   })
@@ -3190,10 +3217,6 @@ void (async () => {
     // The saved sounds are back: the bubbling starts, and the opening
     // sound plays now or on the first click.
     audio.open();
-    // The user's chosen scenery wins over install-recency — applied
-    // once every pack has had its restore chance. A pack that failed
-    // to restore leaves whatever the chain picked, until a retry.
-    applySceneryChoice();
     remapSheetIdx(); reconcileFish();
     // An offer still due brings the sounds with the rest. A view-only
     // tab installs nothing: its writes (welcome state, starter sounds)
@@ -3405,7 +3428,7 @@ window.addEventListener("drop", (e) => {
         try { imgs.push(await decodeIndexedPng(await readFile(c.image))); }
         catch { /* keep going without that image */ }
       }
-      pickBackdrop(imgs);
+      pickBackdrop(imgs, "", true);
       dropSay(idx >= 0 && !spawn
         ? fishRefusal("fish") ?? "The tank is full."
         : `Added ${pack.manifest.tag?.trim() || "the add-on"}.`);

@@ -124,17 +124,25 @@ const items = {
 // ---- the tank page, instrumented --------------------------------------
 
 const probe = `
-// The launch chain ends by opening the audio and, in the same step,
-// putting the chosen scenery back: the restore has settled after that.
+// The launch chain ends by opening the audio, after it has put the
+// chosen scenery back: the restore has settled after that.
 let settled = false;
 const openAudio = audio.open.bind(audio);
 audio.open = (...args) => { settled = true; return openAudio(...args); };
+// Every backdrop the tank has shown since this launch, sampled a frame
+// at a time: art that never lasts a frame never shows either.
+const shownBackdrops = [];
+(function sample() {
+  if (shownBackdrops.at(-1) !== backdropSrc) shownBackdrops.push(backdropSrc);
+  requestAnimationFrame(sample);
+})();
 window.__probe = {
   onBusMessage, boot, packPut, recordInstall, settled: () => settled,
   addons: () => installedAddons.map(a => a.url),
   records: () => installedAddons,
   scenery: () => ({ backdrop: backdropSrc, gravel: gravelSrc,
                     choice: { ...sceneryChoice } }),
+  shownBackdrops: () => shownBackdrops,
   // The fitted art the tank blits: a backdrop pixel, and the gravel's
   // top and bottom rows (transparent sky, then stones).
   backdropPixel: () => backdropCv && [...backdropCv.getContext('2d')
@@ -435,10 +443,12 @@ try {
       assert.equal((await evalJs("__probe.scenery()", tank)).backdrop,
                    items.moss.url);
       await reload(tank);
-      // The restore shows each backdrop as it lands, then puts the
-      // chosen one back once the last add-on is in.
+      // The restore holds back every backdrop but the chosen one: blue
+      // lands after moss, and used to show until the last add-on was in.
       assert.equal((await evalJs("__probe.scenery()", tank)).backdrop,
                    items.moss.url);
+      assert.ok(!(await evalJs("__probe.shownBackdrops()", tank))
+        .includes(items.blue.url));
       assert.deepEqual(await evalJs("__probe.backdropPixel()", tank), RED);
     });
 

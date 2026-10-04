@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The Jewelstone, moss2 and whitesand gravels now show their stones
+  whole under a clear sky. The tank keyed out their black stones and
+  painted their white sky, where every other gravel's sky is clear.
+- At launch your chosen backdrop and gravel come back without the
+  other installed ones showing on the way. The restore used to show
+  each backdrop as it arrived and only then put your choice back.
 - Bundles you make with the asset tools from Windows packs now show
   their BMP backdrops and gravels in the tank. The tools wrote those
   pictures as PNGs the tank doesn't read. `tools/fetch.py` also takes
