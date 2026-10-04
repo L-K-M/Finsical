@@ -5,17 +5,26 @@ what's inside into .azpack bundles.
     python3 tools/fetch.py                      # default item, into packs/
     python3 tools/fetch.py <identifier> -o out/ # another item
     python3 tools/fetch.py --include '\.zip$'   # only matching files
+    python3 tools/fetch.py --archive 'Missing addons Aquazone.7z' \
+        --entries 'Misc Macintosh files/'       # entries, one by one
 
 Nothing is committed to the repo — output lands in packs/ (gitignored).
 .ZIP is unpacked in memory; .ISO is walked via tools.az.iso9660; anything
-that looks like a pack (.fsh/.acc/.plt/.azn/.REZ) or a resource fork with
-'snd ' resources becomes an .azpack via the normal emitters.
+that looks like a pack (.fsh/.acc/.plt/.azn/.REZ), a Mac PICT picture or
+a resource fork with pictures or 'snd ' resources becomes an .azpack via
+the normal emitters.
+
+--archive reads entries through archive.org's archive view, which
+serves the files inside a zip, 7z or ISO one at a time: for archives
+this tool can't open itself (7z), or to take a few files from a big
+one. Each entry is identified by its content, not its name.
 
 Python 3.9+, stdlib only.
 """
 from __future__ import annotations
 import argparse
 import hashlib
+import html
 import io
 import json
 import os
@@ -29,13 +38,24 @@ import zipfile
 from typing import Callable
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from tools.az.emit import emit, emit_sounds
+from tools.az.emit import emit, emit_mac, emit_sounds
 from tools.az.iso9660 import Iso
+from tools.az.macpics import has_mac_pictures, mac_display_name
 from tools.az.pack import Pack, is_pack
 from tools.az.snd import has_sounds
 
 META = "https://archive.org/metadata/{ident}"
 DOWNLOAD = "https://archive.org/download/{ident}/{name}"
+# The archive view's listing of an archive in an item: one link per
+# entry, the entry's whole path percent-encoded into one segment.
+ARCHIVE_VIEW = "https://archive.org/download/{ident}/{archive}/"
+# Listings that name entries under the wrong top folder, as
+# web/import.ts's Collection.rename knows them: the listed URLs serve
+# 0 bytes, the stored folder serves the file.
+LISTING_RENAMES = {
+    ("aquazonewithguppiesandaddons", "Missing addons Aquazone.7z"):
+        ("addons Aquazone/", "Missing addons Aquazone/"),
+}
 DEFAULT_IDENT = "aquazonewithguppiesandaddons"
 IMPORTABLE = (".fsh", ".acc", ".plt", ".azn", ".rez", ".rsrc",
             ".grv", ".fd", ".dna", ".med", ".bin", ".hqx")
@@ -86,9 +106,12 @@ def _list_item(ident: str) -> list[dict]:
     return meta.get("files", [])
 
 
-def _emit_source(name: str, data: bytes, outdir: str) -> str | None:
-    """If data is importable, emit an .azpack under outdir; return path."""
-    base = os.path.splitext(os.path.basename(name))[0]
+def _emit_source(name: str, data: bytes, outdir: str,
+                 strict: bool = False) -> str | None:
+    """If data is importable, emit an .azpack under outdir; return path.
+    A failed emit is reported and returns None, or raises when strict,
+    so a caller can count it as failed rather than not importable."""
+    base = os.path.splitext(mac_display_name(os.path.basename(name)))[0]
     out = os.path.join(outdir, base + ".azpack")
     n = 2
     while out in _EMITTED:
@@ -118,10 +141,15 @@ def _emit_source(name: str, data: bytes, outdir: str) -> str | None:
         if is_pack(data):
             _install_emitted(lambda dst: emit(Pack(data), dst), out)
             return finish()
+        if has_mac_pictures(data):
+            _install_emitted(lambda dst: emit_mac(data, dst), out)
+            return finish()
         if has_sounds(data):
             _install_emitted(lambda dst: emit_sounds(data, dst), out)
             return finish()
     except Exception as e:
+        if strict:
+            raise
         print(f"  {name}: {type(e).__name__}: {e}", file=sys.stderr)
     return None
 
@@ -286,6 +314,84 @@ def _harvest_disc(iso, outdir: str) -> list[str]:
     return made
 
 
+def _archive_entries(ident: str, archive: str) -> list[str]:
+    """Entry paths an archive's archive view lists, as stored: a known
+    listing quirk (LISTING_RENAMES) is put right. Links are read as
+    web/import.ts reads them: resolved against the page, https on
+    archive.org only, matched on the decoded path."""
+    page_url = ARCHIVE_VIEW.format(ident=ident,
+                                   archive=urllib.parse.quote(archive))
+    text = _get(page_url).decode("utf-8", "replace")
+    prefix = f"/download/{ident}/{archive}/"
+    listed, stored = LISTING_RENAMES.get((ident, archive), ("", ""))
+    out: list[str] = []
+    for href in re.findall(r'href="([^"]+)"', text):
+        try:
+            u = urllib.parse.urlsplit(
+                urllib.parse.urljoin(page_url, html.unescape(href)))
+        except ValueError:
+            continue  # a malformed href: no entry link
+        host = u.hostname or ""
+        if u.scheme != "https" or not (host == "archive.org" or
+                                       host.endswith(".archive.org")):
+            continue
+        path = urllib.parse.unquote(u.path)
+        if not path.startswith(prefix):
+            continue
+        rel = path[len(prefix):]
+        if not rel or rel.endswith("/"):
+            continue
+        if listed and rel.startswith(listed):
+            rel = stored + rel[len(listed):]
+        if rel not in out:
+            out.append(rel)
+    return out
+
+
+def fetch_entries(ident: str, archive: str, outdir: str,
+                  entries: re.Pattern, downloads: str
+                  ) -> tuple[list[str], int]:
+    """Fetch the entries of one archive in an item that match
+    `entries`, through archive.org's archive view, and harvest each by
+    its content. Downloads are cached like whole files."""
+    names = [n for n in _archive_entries(ident, archive) if entries.search(n)]
+    if not names:
+        print(f"{ident}/{archive}: no entries match {entries.pattern}")
+        return [], 0
+    made: list[str] = []
+    failed = 0
+    _EMITTED.clear()
+    os.makedirs(outdir, exist_ok=True)
+    os.makedirs(downloads, exist_ok=True)
+    for name in names:
+        url = (ARCHIVE_VIEW.format(ident=ident,
+                                   archive=urllib.parse.quote(archive))
+               + urllib.parse.quote(name, safe=""))
+        key = hashlib.sha256(url.encode()).hexdigest()[:16]
+        path = os.path.join(downloads, f"{key}-{os.path.basename(name)}")
+        print(name)
+        try:
+            _cached_get(url, path, max_bytes=_MAX_ARCHIVE_BYTES)
+            with open(path, "rb") as fh:
+                blob = fh.read()
+            if not blob:
+                # Cached or not, an empty answer is no file: drop it so
+                # the next run asks again.
+                os.remove(path)
+                raise ValueError("archive.org served 0 bytes (its listing "
+                                 "may name the wrong folder)")
+            if name.lower().endswith(".zip"):
+                made += _harvest(os.path.basename(name), blob, outdir)
+            else:
+                out = _emit_source(name, blob, outdir, strict=True)
+                if out:
+                    made.append(out)
+        except Exception as e:
+            print(f"  {name}: {type(e).__name__}: {e}", file=sys.stderr)
+            failed += 1
+    return made, failed
+
+
 def fetch(ident: str, outdir: str, include: re.Pattern,
           downloads: str) -> tuple[list[str], int]:
     files = [f for f in _list_item(ident)
@@ -356,11 +462,24 @@ def main(argv: list[str] | None = None) -> int:
                     help="regex over item file names (default: iso/zip)")
     ap.add_argument("--downloads", default="packs/downloads",
                     help="where big downloads are cached")
+    ap.add_argument("--archive",
+                    help="an archive in the item (zip, 7z, iso) whose "
+                         "entries archive.org serves one by one: fetch "
+                         "those instead of whole files")
+    ap.add_argument("--entries", default="", type=_regex,
+                    help="with --archive: regex over entry paths "
+                         "(default: all)")
     args = ap.parse_args(argv)
+    if args.entries.pattern and not args.archive:
+        ap.error("--entries needs --archive")
 
     try:
-        made, failed = fetch(args.ident, args.out, args.include,
-                             args.downloads)
+        if args.archive:
+            made, failed = fetch_entries(args.ident, args.archive, args.out,
+                                         args.entries, args.downloads)
+        else:
+            made, failed = fetch(args.ident, args.out, args.include,
+                                 args.downloads)
     except (OSError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

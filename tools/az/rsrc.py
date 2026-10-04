@@ -171,6 +171,10 @@ class ResFile:
         out = []
         for i in range(self.ntypes):
             e = self.tbase + 2 + i * 8
+            # A count that overshoots the map ends the list there, as in
+            # core/data/resfork.ts: the types before it still count.
+            if e + 8 > len(self.data):
+                break
             t = self.data[e:e + 4]
             cnt = struct.unpack_from('>H', self.data, e + 4)[0] + 1
             roff = struct.unpack_from('>H', self.data, e + 6)[0]
