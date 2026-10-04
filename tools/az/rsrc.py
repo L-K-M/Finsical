@@ -17,40 +17,62 @@ _BINHEX_ALPHABET = (
 _BINHEX_LUT = {c: i for i, c in enumerate(_BINHEX_ALPHABET)}
 
 
+# The forks a transfer encoding carries, as (data, rsrc), None for a
+# fork it doesn't carry: a Mac file keeps its document (a PICT file's
+# picture) in the data fork and its resources in the resource fork.
+# Each reader returns None when d isn't its encoding, and like
+# core/data/resfork.ts checks every offset before reading.
+
+def _apple_forks(d):
+    """AppleSingle carries both forks, AppleDouble (the "._" companion)
+    the resource fork alone, as entries: id 1 the data fork, id 2 the
+    resource fork."""
+    if len(d) < 26:
+        return None
+    if struct.unpack_from('>I', d, 0)[0] not in (0x00051607, 0x00051600):
+        return None
+    data = rsrc = None
+    for i in range(struct.unpack_from('>H', d, 24)[0]):
+        o = 26 + i * 12
+        if o + 12 > len(d):
+            break
+        eid, off, ln = struct.unpack_from('>III', d, o)
+        if off + ln > len(d):
+            continue
+        if eid == 1 and ln and data is None:
+            data = d[off:off + ln]
+        if eid == 2 and rsrc is None:
+            rsrc = d[off:off + ln]
+    return data, rsrc
+
+
+def _macbinary_forks(d):
+    """A MacBinary file's forks. Detection: header bytes 0, 74 and 82,
+    which every MacBinary version keeps zero, and a sane name length; a
+    raw resource fork (which starts with its data offset, usually
+    0x00000100) fails the name-length check, so this can't misfire on
+    a bare fork."""
+    if len(d) < 128 or d[0] != 0 or d[74] != 0 or d[82] != 0:
+        return None
+    if not 1 <= d[1] <= 63:
+        return None
+    dlen, rlen = struct.unpack_from('>II', d, 83)
+    roff = 128 + (dlen + 127) // 128 * 128
+    data = d[128:128 + dlen] if dlen and 128 + dlen <= len(d) else None
+    rsrc = d[roff:roff + rlen] if rlen and roff + rlen <= len(d) else None
+    return (data, rsrc) if data is not None or rsrc is not None else None
+
+
 def unwrap_appledouble(d):
     """If d is AppleDouble/AppleSingle, return the resource-fork bytes."""
-    magic = struct.unpack_from('>I', d, 0)[0]
-    if magic not in (0x00051607, 0x00051600):
-        return d
-    n = struct.unpack_from('>H', d, 24)[0]
-    rsrc = None
-    for i in range(n):
-        eid, off, ln = struct.unpack_from('>III', d, 26 + i * 12)
-        if eid == 2:  # resource fork
-            rsrc = d[off:off + ln]
-    return rsrc if rsrc is not None else d
+    forks = _apple_forks(d)
+    return forks[1] if forks and forks[1] is not None else d
 
 
 def unwrap_macbinary(d):
-    """If d looks like a MacBinary file, return its resource fork.
-
-    Detection: the 128-byte header's fixed-zero fields, a sane name
-    length, and fork sizes that fit the file — a raw resource fork
-    (which starts with its data offset, usually 0x00000100) fails the
-    name-length check, so this can't misfire on a bare fork.
-    """
-    if len(d) < 128 or d[0] != 0 or d[74] != 0:
-        return d
-    nlen = d[1]
-    if not 1 <= nlen <= 63:
-        return d
-    dlen, rlen = struct.unpack_from('>II', d, 83)
-    if not rlen:
-        return d
-    roff = 128 + (dlen + 127) // 128 * 128
-    if roff + rlen > len(d):
-        return d
-    return d[roff:roff + rlen]
+    """If d looks like a MacBinary file, return its resource fork."""
+    forks = _macbinary_forks(d)
+    return forks[1] if forks and forks[1] is not None else d
 
 
 def _binhex_decode(raw):
@@ -109,26 +131,38 @@ def _binhex_decode(raw):
     return d
 
 
-def unwrap_binhex(d):
-    """If d is BinHex 4 text, return the resource fork of its file."""
+def _binhex_forks(d):
+    """A BinHex 4 file's forks."""
     if not d.lstrip()[:1] in (b':',) and \
             b'This file must be converted with BinHex' not in d[:8192]:
-        return d
+        return None
     dec = _binhex_decode(d)
     if dec is None or len(dec) < 22:
-        return d
+        return None
     nlen = dec[0]
     if not 1 <= nlen <= 63 or len(dec) < nlen + 22 or dec[1 + nlen] != 0:
-        return d
+        return None
     off = 1 + nlen + 1 + 18  # name + pad + type/creator/flags/dlens
-    if off + 2 > len(dec):
-        return d
     dlen, rlen = struct.unpack_from('>II', dec, off - 8)
     off += 2  # header CRC
     if off + dlen + 2 + rlen > len(dec):
-        return d
-    rsrc = dec[off + dlen + 2:off + dlen + 2 + rlen]
-    return rsrc if rlen else d
+        return None
+    return (bytes(dec[off:off + dlen]) if dlen else None,
+            bytes(dec[off + dlen + 2:off + dlen + 2 + rlen]) if rlen else None)
+
+
+def unwrap_binhex(d):
+    """If d is BinHex 4 text, return the resource fork of its file."""
+    forks = _binhex_forks(d)
+    return forks[1] if forks and forks[1] is not None else d
+
+
+def data_fork(d):
+    """The data fork a MacBinary, BinHex or AppleSingle file carries, or
+    None when d is none of these or its data fork is empty. A PICT file
+    wrapped for the trip keeps its picture there."""
+    forks = _apple_forks(d) or _macbinary_forks(d) or _binhex_forks(d)
+    return forks[0] if forks else None
 
 
 def unwrap_container(d):

@@ -1,7 +1,8 @@
 """The pictures in a classic Mac file, the Python twin of
 core/data/macpics.ts: a data-fork PICT (a backdrop as Photoshop saved
-it, 512-byte header and all), or the picture resources of a resource
-fork in any wrapping rsrc.py peels. Stdlib only.
+it, 512-byte header and all, bare or wrapped in MacBinary, BinHex or
+AppleSingle), or the picture resources of a resource fork in any
+wrapping rsrc.py peels. Stdlib only.
 
 AquaZone files its pictures under its own resource types. A gravel
 add-on carries, all as id 4020, the strip the tank draws (BAPC), the
@@ -13,7 +14,7 @@ import re
 from itertools import islice
 
 from .pict import PictError, decode_pict, is_pict
-from .rsrc import ResFile
+from .rsrc import ResFile, data_fork
 
 # In-tank art first, so it leads the images' order.
 PICTURE_TYPES = (b"BAPC", b"BADP", b"PICT")
@@ -64,12 +65,21 @@ def mac_pictures(data):
             except PictError as e:
                 failed.append(f"{key}: {e}")
         return gravel, list(images.values()), failed
-    if not is_pict(data):
+    file = _pict_file(data)
+    if file is None:
         return None
     try:
-        return False, [("PICT", None, data, decode_pict(data))], []
+        return False, [("PICT", None, file, decode_pict(file))], []
     except PictError as e:
         return False, [], [f"PICT: {e}"]
+
+
+def _pict_file(data):
+    """The PICT file data is, or carries in its data fork, or None."""
+    if is_pict(data):
+        return data
+    inner = data_fork(data)
+    return inner if inner is not None and is_pict(inner) else None
 
 
 def has_mac_pictures(data):
@@ -78,7 +88,7 @@ def has_mac_pictures(data):
     fork = _open_fork(data)
     if fork is not None and any(_resources(fork, t, 1) for t in PICTURE_TYPES):
         return True
-    return is_pict(data)
+    return _pict_file(data) is not None
 
 
 def mac_display_name(name):

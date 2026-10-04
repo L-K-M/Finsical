@@ -172,6 +172,16 @@ def wrap_appledouble(rsrc: bytes) -> bytes:
     return hdr + rsrc
 
 
+def wrap_applesingle(rsrc: bytes, data: bytes = b"") -> bytes:
+    """Wrap both forks in an AppleSingle file: the data fork (id 1),
+    then the resource fork (id 2)."""
+    hdr = struct.pack(">II", 0x00051600, 0x00020000) + b"\0" * 16
+    hdr += struct.pack(">H", 2)
+    hdr += struct.pack(">III", 1, 50, len(data))
+    hdr += struct.pack(">III", 2, 50 + len(data), len(rsrc))
+    return hdr + data + rsrc
+
+
 def wrap_macbinary(rsrc: bytes, data: bytes = b"",
                    name: bytes = b"file") -> bytes:
     """Wrap a resource fork in a MacBinary container (128-byte header,

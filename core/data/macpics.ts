@@ -1,7 +1,8 @@
 /**
  * The pictures in a classic Mac file: a data-fork PICT (a backdrop as
- * Photoshop saved it, 512-byte header and all), or the picture
- * resources of a resource fork in any wrapping resfork.ts peels.
+ * Photoshop saved it, 512-byte header and all, bare or wrapped in
+ * MacBinary, BinHex or AppleSingle), or the picture resources of a
+ * resource fork in any wrapping resfork.ts peels.
  *
  * AquaZone files its pictures under its own resource types. A gravel
  * add-on (Finder type AqGr) carries, all as id 4020, the strip the
@@ -12,7 +13,7 @@
  */
 import type { IndexedImage } from "./azpack.js";
 import { decodePict, isPict } from "./pict.js";
-import { openFork } from "./resfork.js";
+import { dataFork, openFork } from "./resfork.js";
 import type { Fork } from "./resfork.js";
 
 export interface MacPictures {
@@ -58,9 +59,10 @@ export function macPictures(d: Uint8Array): MacPictures | null {
     }
     return out;
   }
-  if (!isPict(d)) return null;
+  const file = pictFile(d);
+  if (!file) return null;
   try {
-    return { gravel: false, images: new Map([["PICT", decodePict(d)]]),
+    return { gravel: false, images: new Map([["PICT", decodePict(file)]]),
              failed: [] };
   } catch (e) {
     return { gravel: false, images: new Map(),
@@ -68,11 +70,23 @@ export function macPictures(d: Uint8Array): MacPictures | null {
   }
 }
 
+/** A PICT file `d` is, or carries in its data fork, or null. */
+function pictFile(d: Uint8Array): Uint8Array | null {
+  if (isPict(d)) return d;
+  const data = dataFork(d);
+  return data && isPict(data) ? data : null;
+}
+
+/** Whether `d` is a PICT file, bare or wrapped in MacBinary, BinHex or
+ * AppleSingle: a cheap sniff, not a promise that it decodes. */
+export const isPictFile = (d: Uint8Array): boolean => pictFile(d) !== null;
+
 /** Whether `d` carries pictures macPictures would try, without
  * decoding any of them: a test for sorting dropped files. It still
  * peels the file's wrapping (a BinHex file decodes in full), which
  * macPictures then does again. */
 export function hasMacPictures(d: Uint8Array): boolean {
   const fork = openFork(d);
-  return (fork !== null && forkPictures(fork).length > 0) || isPict(d);
+  return (fork !== null && forkPictures(fork).length > 0) ||
+    pictFile(d) !== null;
 }

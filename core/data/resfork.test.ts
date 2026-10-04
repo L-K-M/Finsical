@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { openFork, unwrapContainer } from "./resfork.js";
-import { binhexText, buildRsrc, wrapAppledouble, wrapBinhex, wrapMacbinary }
-  from "./resfork.fixture.js";
+import { dataFork, openFork, unwrapContainer } from "./resfork.js";
+import { binhexText, buildRsrc, wrapAppledouble, wrapApplesingle, wrapBinhex,
+         wrapMacbinary } from "./resfork.fixture.js";
 
 const bytes = (...b: number[]) => Uint8Array.from(b);
 type Entry = [number, string | null, number, Uint8Array];
@@ -105,7 +105,34 @@ describe("unwrapContainer", () => {
 
   it("peels AppleSingle as it peels AppleDouble", () => {
     const single = wrapAppledouble(gravel());
-    new DataView(single.buffer).setUint32(0, 0x00051600);
+    new DataView(single.buffer, single.byteOffset).setUint32(0, 0x00051600);
     expect(read(single, "BAPC")).toEqual([[4020, null, [4, 5, 6, 7]]]);
+  });
+
+  it("takes no file for MacBinary whose byte 82 isn't zero", () => {
+    // Every MacBinary version keeps byte 82 zero.
+    const bin = wrapMacbinary(gravel());
+    bin[82] = 1;
+    expect(unwrapContainer(bin)).toBe(bin);
+  });
+});
+
+describe("dataFork", () => {
+  const data = Uint8Array.of(9, 8, 7);
+  it("finds the data fork MacBinary, BinHex and AppleSingle carry", () => {
+    for (const d of [wrapMacbinary(gravel(), data),
+                     wrapMacbinary(new Uint8Array(0), data),
+                     wrapBinhex(gravel(), data),
+                     wrapApplesingle(gravel(), data)])
+      expect([...dataFork(d) ?? []]).toEqual([9, 8, 7]);
+    // The resource fork still peels beside it.
+    expect(read(wrapApplesingle(gravel(), data), "BAPC"))
+      .toEqual([[4020, null, [4, 5, 6, 7]]]);
+  });
+
+  it("finds none in files that carry none", () => {
+    for (const d of [gravel(), wrapAppledouble(gravel()),
+                     wrapMacbinary(gravel()), Uint8Array.of(1, 2, 3)])
+      expect(dataFork(d)).toBeNull();
   });
 });

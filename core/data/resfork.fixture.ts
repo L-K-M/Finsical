@@ -71,8 +71,25 @@ export const wrapAppledouble = (rsrc: Uint8Array): Uint8Array => {
   return out;
 };
 
-export const wrapMacbinary = (rsrc: Uint8Array, data = new Uint8Array(0),
-                       name = "file"): Uint8Array => {
+/** An AppleSingle file: both forks as entries, the data fork (id 1)
+ * first. */
+export const wrapApplesingle = (rsrc: Uint8Array,
+                                data: Uint8Array = new Uint8Array(0)):
+    Uint8Array => {
+  const out = new Uint8Array(26 + 24 + data.length + rsrc.length);
+  const v = new DataView(out.buffer);
+  v.setUint32(0, 0x00051600); v.setUint32(4, 0x00020000);
+  v.setUint16(24, 2);
+  v.setUint32(26, 1); v.setUint32(30, 50); v.setUint32(34, data.length);
+  v.setUint32(38, 2); v.setUint32(42, 50 + data.length);
+  v.setUint32(46, rsrc.length);
+  out.set(data, 50); out.set(rsrc, 50 + data.length);
+  return out;
+};
+
+export const wrapMacbinary = (rsrc: Uint8Array,
+                              data: Uint8Array = new Uint8Array(0),
+                              name = "file"): Uint8Array => {
   const pad = (128 - (data.length % 128)) % 128;
   const out = new Uint8Array(128 + data.length + pad + rsrc.length);
   const v = new DataView(out.buffer);
@@ -85,8 +102,9 @@ export const wrapMacbinary = (rsrc: Uint8Array, data = new Uint8Array(0),
   return out;
 };
 
-export const wrapBinhex = (rsrc: Uint8Array, data = new Uint8Array(0),
-                    name = "file"): Uint8Array => {
+export const wrapBinhex = (rsrc: Uint8Array,
+                           data: Uint8Array = new Uint8Array(0),
+                           name = "file"): Uint8Array => {
   const nb = new TextEncoder().encode(name);
   const head = new Uint8Array(1 + nb.length + 1 + 18 + 2);
   head[0] = nb.length; head.set(nb, 1);

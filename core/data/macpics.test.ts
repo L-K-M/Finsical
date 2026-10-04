@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { hasMacPictures, macPictures } from "./macpics.js";
+import { hasMacPictures, isPictFile, macPictures } from "./macpics.js";
 import { buildPict, rect } from "./pict.fixture.js";
-import { buildRsrc, wrapAppledouble, wrapBinhex, wrapMacbinary }
-  from "./resfork.fixture.js";
+import { buildRsrc, wrapAppledouble, wrapApplesingle, wrapBinhex,
+         wrapMacbinary } from "./resfork.fixture.js";
 
 type Entry = [number, string | null, number, Uint8Array];
 
@@ -81,6 +81,20 @@ describe("macPictures", () => {
     for (const d of [new Uint8Array(0), Uint8Array.of(1, 2, 3), sounds,
                      new Uint8Array(4096)])
       expect(macPictures(d)).toBeNull();
+  });
+
+  it("reads a PICT file wrapped for the trip, its picture in the data fork",
+     () => {
+    const empty = new Uint8Array(0);
+    for (const d of [wrapMacbinary(empty, pict(320, 200, true)),
+                     wrapBinhex(empty, pict(320, 200, true)),
+                     wrapApplesingle(empty, pict(320, 200, true))]) {
+      expect(sizes(macPictures(d))).toEqual([["PICT", 320, 200]]);
+      expect(hasMacPictures(d) && isPictFile(d)).toBe(true);
+    }
+    // A fork's own pictures still come first.
+    expect(sizes(macPictures(wrapMacbinary(gravelFork(), pict(320, 200, true))))
+      ?.map((x) => x[0])).toEqual(["BAPC 4020", "BADP 4020"]);
   });
 
   it("says why a PICT file won't decode", () => {

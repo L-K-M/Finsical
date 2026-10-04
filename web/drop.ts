@@ -8,7 +8,8 @@
  */
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
-import { hasMacPictures, macPictures } from "../core/data/macpics.js";
+import { hasMacPictures, isPictFile, macPictures }
+  from "../core/data/macpics.js";
 import { fileSoundRecords } from "../core/data/snd.js";
 import { isPict } from "../core/data/pict.js";
 import { openFork } from "../core/data/resfork.js";
@@ -120,11 +121,11 @@ function macPicture(name: string, stem: string, data: Uint8Array):
 }
 
 /** Whether a file decodeDroppedPack turned down is a picture the tank
- * can't use, which the drop explains: a BMP, a PICT file, or a fork
- * carrying AquaZone's own pictures (BAPC, BADP). A fork's 'PICT'
+ * can't use, which the drop explains: a BMP, a PICT file (bare or
+ * wrapped), or a fork carrying AquaZone's own pictures (BAPC, BADP). A fork's 'PICT'
  * resources alone don't count: most forks have a preview or icons. */
 export function isRefusedPicture(data: Uint8Array): boolean {
-  if (isBmp(data) || isPict(data)) return true;
+  if (isBmp(data) || isPictFile(data)) return true;
   const fork = openFork(data);
   return !!fork && (fork.resources("BAPC", 1).length > 0 ||
                     fork.resources("BADP", 1).length > 0);
