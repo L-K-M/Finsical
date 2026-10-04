@@ -1939,7 +1939,7 @@ function onBusMessage(m: BusMsg): void {
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
   else if (m.op === "installDropped")
-    void installDropped(m.url, m.section, m.inner);
+    void installDropped(m.url, m.section, m.inner, m.id);
   else if (m.op === "renameFish" && typeof m.id === "number") {
     const f = sim.fish.find((x) => x.id === m.id);
     if (f) renameFish(f, m.name);
@@ -2163,7 +2163,7 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
  * under the same name replaces the stored bytes. Only scenery travels
  * this way; the window sends no packs. */
 async function installDropped(url: unknown, section: unknown,
-                              inner: unknown): Promise<void> {
+                              inner: unknown, id: unknown): Promise<void> {
   if (typeof url !== "string" || !isLocalPack(url)) {
     console.warn("installDropped: invalid request", url);
     return;
@@ -2203,8 +2203,9 @@ async function installDropped(url: unknown, section: unknown,
     else droppedInFlight.delete(url);
     if (!added && !waiting && !installedAddons.some((a) => a.url === url))
       void packDelete(url).catch(() => {});
-    // The window that asked says how it went.
-    bus.post({ op: "droppedResult", url, ok: added });
+    // Answer the window that asked, by its request id.
+    if (typeof id === "string")
+      bus.post({ op: "droppedResult", url, id, ok: added });
   }
 }
 

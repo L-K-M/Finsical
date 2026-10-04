@@ -1,3 +1,4 @@
+import { answerBook } from "./answers.js";
 import { openBus, TANK_QUIET_MS } from "./bus.js";
 import { qualifySoundNames } from "../core/data/snd.js";
 import { showAlert } from "./alert.js";
@@ -17,27 +18,11 @@ let greeted = false;
 let lastStateAt = 0;
 /** How long a dropped picture waits for the tank's answer. */
 const DROP_ANSWER_MS = 20_000;
-/** Dropped pictures waiting for the tank's answer, by url, in the order
- * they were asked in. */
-const awaitingDrop = new Map<string, ((ok: boolean | null) => void)[]>();
-
-/** The tank's answer to the installDropped request about to be posted
- * for `url`: whether it added the picture, or null if no answer came. */
-function tankAnswer(url: string): Promise<boolean | null> {
-  return new Promise((resolve) => {
-    const queue = awaitingDrop.get(url) ?? [];
-    awaitingDrop.set(url, queue);
-    const done = (ok: boolean | null) => {
-      clearTimeout(timer);
-      const i = queue.indexOf(done);
-      if (i >= 0) queue.splice(i, 1);
-      if (!queue.length) awaitingDrop.delete(url);
-      resolve(ok);
-    };
-    const timer = setTimeout(() => done(null), DROP_ANSWER_MS);
-    queue.push(done);
-  });
-}
+/** Dropped pictures waiting for the tank's answer, by request id. */
+const dropAnswers = answerBook<boolean>();
+/** Request ids: unique to this page load. */
+const dropIdBase = Math.random().toString(36).slice(2);
+let dropSeq = 0;
 
 /** "Reef", "Reef and Wall", "Reef, Wall and Moss". */
 const listOf = (names: string[]): string =>
@@ -47,9 +32,9 @@ const listOf = (names: string[]): string =>
 const bus = openBus((m) => {
   if (m.op === "state") { greeted = true; lastStateAt = Date.now(); }
   // The tank's answer to a dropped picture's installDropped request.
-  else if (m.op === "droppedResult" && typeof m.url === "string" &&
+  else if (m.op === "droppedResult" && typeof m.id === "string" &&
            typeof m.ok === "boolean")
-    awaitingDrop.get(m.url)?.shift()?.(m.ok);
+    dropAnswers.settle(m.id, m.ok);
   panel.notify(m);
 });
 
@@ -128,9 +113,11 @@ window.addEventListener("drop", (e) => {
       const url = `${LOCAL_PREFIX}${name}`;
       if (!await packPut(url, data).catch(() => null)) { unsaved++; continue; }
       // Listening before asking: the answer can't come first.
-      answers.push(tankAnswer(url).then((ok) => [pack.name, ok]));
+      const id = `${dropIdBase}-${++dropSeq}`;
+      answers.push(dropAnswers.wait(id, DROP_ANSWER_MS)
+        .then((ok) => [pack.name, ok]));
       bus.post({ op: "installDropped", url, section: pack.section,
-                 inner: pack.name });
+                 inner: pack.name, id });
     }
     // One note for the whole drop, as the tank says one for its own.
     const results = await Promise.all(answers);
