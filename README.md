@@ -326,7 +326,13 @@ You can also drag files from the Finder onto the tank:
 | Audio files: `.wav`, `.mp3`, `.aif`, `.aiff`, `.m4a`, `.ogg`, `.flac` | Imported as sounds and kept |
 
 Sound and resource files over 32 MB are skipped. The Import Add-ons
-window accepts the pictures and sound formats too.
+window accepts the pictures and sound formats too. Finsical doesn't
+open StuffIt archives (`.sit`): extract one with `unar -k visible` from
+[The Unarchiver](https://theunarchiver.com/command-line), which saves
+each resource fork as an AppleDouble `.rsrc` file, and drop those. That
+brings in the 13 Mac gravels packed in `.sit` files in
+`Missing addons Aquazone.7z` of
+[AquaZone with Guppies and Add-ons](https://archive.org/details/aquazonewithguppiesandaddons).
 
 Installed archive.org add-ons come back at every launch. Remove fish and
 add-ons in Tank Overview, choose which installed gravel or background
