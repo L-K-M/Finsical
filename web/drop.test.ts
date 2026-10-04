@@ -1,48 +1,20 @@
 import { describe, expect, it, vi } from "vitest";
 import { decodeBmp } from "../core/data/bmp.js";
-import { decodeDroppedPacks, dropSection } from "./drop.js";
+import { fshToSheets } from "../core/data/fsh.js";
+import { decodeDroppedPack, dropSection } from "./drop.js";
+import type { DroppedPack } from "./drop.js";
+import { buildBmp8, buildChunkPack, cat, PAL, u16le, u32le }
+  from "../core/data/fsh.fixture.js";
 
-// The real decoder, wrapped so one test can make a call throw.
+// The real decoders, wrapped so a test can make one call throw.
 vi.mock("../core/data/bmp.js", async (importOriginal) => {
   const m = await importOriginal<typeof import("../core/data/bmp.js")>();
   return { ...m, decodeBmp: vi.fn(m.decodeBmp) };
 });
-
-const PAL: [number, number, number][] =
-  [[0, 0, 0], [255, 0, 0], [0, 0, 255], [0, 255, 0]];
-
-function u32le(n: number): Uint8Array {
-  const b = new Uint8Array(4);
-  new DataView(b.buffer).setUint32(0, n, true);
-  return b;
-}
-function u16le(n: number): Uint8Array {
-  const b = new Uint8Array(2);
-  new DataView(b.buffer).setUint16(0, n, true);
-  return b;
-}
-const cat = (...parts: Uint8Array[]) => {
-  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
-  let o = 0;
-  for (const p of parts) { out.set(p, o); o += p.length; }
-  return out;
-};
-
-/** Minimal 8-bit BMP — only the palette region needs to be valid. */
-function buildBmp8(pal: [number, number, number][]): Uint8Array {
-  const pxOff = 14 + 40 + 256 * 4;
-  const hdr = new Uint8Array(pxOff);
-  hdr[0] = 0x42; hdr[1] = 0x4d; // "BM"
-  const v = new DataView(hdr.buffer);
-  v.setUint32(2, pxOff + 4, true);
-  v.setUint32(10, pxOff, true);
-  v.setUint32(14, 40, true);
-  v.setUint16(26, 1, true);
-  v.setUint16(28, 8, true);
-  v.setUint32(46, pal.length, true);
-  pal.forEach(([r, g, b], i) => hdr.set([b, g, r, 0], 14 + 40 + i * 4));
-  return hdr;
-}
+vi.mock("../core/data/fsh.js", async (importOriginal) => {
+  const m = await importOriginal<typeof import("../core/data/fsh.js")>();
+  return { ...m, fshToSheets: vi.fn(m.fshToSheets) };
+});
 
 /** 8-bit BMP with real pixel rows — packImages decodes it. */
 function buildBmpImage(w: number, h: number): Uint8Array {
@@ -67,24 +39,19 @@ function spriteChunk(w: number, h: number, color: number): Uint8Array {
   );
 }
 
-function buildPack(...chunks: Uint8Array[]): Uint8Array {
-  const body: Uint8Array[] = [new Uint8Array(0x100)];
-  for (const pl of chunks) body.push(u32le(pl.length), pl);
-  const dirOff = body.reduce((n, p) => n + p.length, 0);
-  const hdr = cat(u32le(0x00000100), u32le(dirOff),
-                  u32le(dirOff - 0x100), u32le(0x104));
-  const out = cat(...body);
-  const full = cat(out, hdr);
-  full.set(hdr, 0);
-  return full;
+const packA = buildChunkPack(buildBmp8(PAL), spriteChunk(4, 4, 1));
+const packB = buildChunkPack(buildBmp8(PAL), spriteChunk(6, 3, 2));
+
+/** A multi-file drop, each file decoded on its own and in order, the
+ * skipped ones (null) left out. */
+function decodeEach(entries: [string, Uint8Array][]): DroppedPack[] {
+  return entries.map(([name, data]) => decodeDroppedPack(name, data))
+    .filter((p): p is DroppedPack => p !== null);
 }
 
-const packA = buildPack(buildBmp8(PAL), spriteChunk(4, 4, 1));
-const packB = buildPack(buildBmp8(PAL), spriteChunk(6, 3, 2));
-
-describe("decodeDroppedPacks", () => {
+describe("decodeDroppedPack", () => {
   it("decodes every pack in a multi-file drop, in order", () => {
-    const packs = decodeDroppedPacks([
+    const packs = decodeEach([
       ["NeonTetra.fsh", packA],
       ["Guppy.fsh", packB],
     ]);
@@ -94,13 +61,13 @@ describe("decodeDroppedPacks", () => {
   });
 
   it("strips the extension for the display name", () => {
-    const packs = decodeDroppedPacks([["a/b/ANGEL.REZ", packA]]);
+    const packs = decodeEach([["a/b/ANGEL.REZ", packA]]);
     expect(packs[0]!.name).toBe("a/b/ANGEL");
   });
 
   it("keeps a dotted folder name when the file has no extension", () => {
     // Only the file's own extension goes, as dropSection reads it.
-    const packs = decodeDroppedPacks([["backup.v2/Guppy", packA]]);
+    const packs = decodeEach([["backup.v2/Guppy", packA]]);
     expect(packs[0]!.name).toBe("backup.v2/Guppy");
   });
 
@@ -108,16 +75,25 @@ describe("decodeDroppedPacks", () => {
     // Truncated mid-directory: isPack still sees the magic, decoding
     // must not take the healthy sibling down with it.
     const truncated = packA.slice(0, 0x120);
-    const packs = decodeDroppedPacks([
+    const packs = decodeEach([
       ["corrupt.fsh", truncated],
       ["Guppy.fsh", packB],
     ]);
     expect(packs.map((p) => p.name)).toEqual(["Guppy"]);
+    expect(decodeDroppedPack("corrupt.fsh", truncated)).toBeNull();
+  });
+
+  it("skips a pack whose decode throws and keeps the rest", () => {
+    vi.mocked(fshToSheets).mockImplementationOnce(() => {
+      throw new RangeError("offset is out of bounds");
+    });
+    const packs = decodeEach([["Bad.fsh", packA], ["Guppy.fsh", packB]]);
+    expect(packs.map((p) => p.name)).toEqual(["Guppy"]);
   });
 
   it("skips non-pack files and pack containers with no sprites", () => {
-    const empty = buildPack(buildBmp8(PAL));
-    const packs = decodeDroppedPacks([
+    const empty = buildChunkPack(buildBmp8(PAL));
+    const packs = decodeEach([
       ["notes.txt", new Uint8Array([1, 2, 3])],
       ["empty.fsh", empty],
       ["Guppy.fsh", packB],
@@ -127,11 +103,11 @@ describe("decodeDroppedPacks", () => {
 
   it("classifies by extension: fish add no scenery, scenery no fish", () => {
     const art = buildBmpImage(8, 4);
-    const [fish, gravel, tank, rez] = decodeDroppedPacks([
-      ["Guppy.fsh", buildPack(art, spriteChunk(4, 4, 1))],
-      ["Sand.grv", buildPack(art)],
-      ["Reef.azn", buildPack(art, spriteChunk(4, 4, 1))],
-      ["ANGEL.REZ", buildPack(art, spriteChunk(4, 4, 1))],
+    const [fish, gravel, tank, rez] = decodeEach([
+      ["Guppy.fsh", buildChunkPack(art, spriteChunk(4, 4, 1))],
+      ["Sand.grv", buildChunkPack(art)],
+      ["Reef.azn", buildChunkPack(art, spriteChunk(4, 4, 1))],
+      ["ANGEL.REZ", buildChunkPack(art, spriteChunk(4, 4, 1))],
     ]);
     expect([fish!.section, fish!.sheets.size, fish!.images.size])
       .toEqual(["fish", 1, 0]);
@@ -155,28 +131,33 @@ describe("decodeDroppedPacks", () => {
   });
 });
 
-describe("decodeDroppedPacks with pictures", () => {
+describe("decodeDroppedPack with pictures", () => {
   it("skips a picture whose decode throws and keeps the rest", () => {
     // decodeBmp allocates from header-controlled dimensions; a throw
     // there must cost only that file, as a throwing pack does.
-    vi.mocked(decodeBmp).mockImplementationOnce(() => {
+    const boom = (): never => {
       throw new RangeError("Array buffer allocation failed");
-    });
-    const got = decodeDroppedPacks([
+    };
+    vi.mocked(decodeBmp).mockImplementationOnce(boom);
+    const got = decodeEach([
       ["Broken.bmp", buildBmpImage(640, 480)],
       ["Fine.bmp", buildBmpImage(320, 200)],
     ]);
     expect(got.map((p) => p.name)).toEqual(["Fine"]);
+    vi.mocked(decodeBmp).mockImplementationOnce(boom);
+    expect(decodeDroppedPack("Broken.bmp", buildBmpImage(640, 480)))
+      .toBeNull();
   });
 
   it("takes a 256-color BMP as a backdrop, by its content", () => {
-    const [pic, bare] = decodeDroppedPacks([
+    const [pic, bare] = decodeEach([
       ["MyBackdrop.bmp", buildBmpImage(640, 480)],
       // A classic Mac file can carry no extension at all.
       ["Reef", buildBmpImage(160, 100)],
     ]);
     expect([pic!.name, pic!.section, pic!.sheets.size])
       .toEqual(["MyBackdrop", "backgrounds", 0]);
+    expect([...pic!.images.keys()]).toEqual(["MyBackdrop.bmp"]);
     expect([...pic!.images.values()].map((i) => [i.w, i.h]))
       .toEqual([[640, 480]]);
     expect([bare!.name, bare!.section, bare!.images.size])
@@ -186,7 +167,7 @@ describe("decodeDroppedPacks with pictures", () => {
   it("skips pictures the tank can't show", () => {
     const deep = buildBmpImage(640, 480);
     new DataView(deep.buffer).setUint16(28, 24, true); // 24-bit
-    expect(decodeDroppedPacks([
+    expect(decodeEach([
       ["Photo.bmp", deep],
       ["Tiny.bmp", buildBmpImage(64, 40)],
       ["Narrow.bmp", buildBmpImage(159, 100)],

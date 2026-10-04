@@ -1,7 +1,7 @@
 import { makeRng } from "./rng.js";
 import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
   from "./tuning.js";
-import { demoLight, DUSK_LIGHT } from "./light.js";
+import { demoLight, DUSK_LIGHT, MINUTES_PER_DAY } from "./light.js";
 import { Aquarium } from "./aquarium/aquarium.js";
 import type { Resident } from "./aquarium/aquarium.js";
 import { hungerOf, newLife, randInt, rescaleStomach, stomachSize, vigorOf }
@@ -422,6 +422,8 @@ export const DAY_TICKS = 24000;
  * fluttering between states. Exported for the sleep test. */
 export const SLEEP_LIGHT = DUSK_LIGHT;
 export const WAKE_LIGHT = 0.6;
+const AQUARIUM_STREAM_SALT = 0x5eed;
+const PLANT_UNIT_AREA = 1000;
 /** Breeding on tank time, as the original's Start_Coupling paces it:
  * once a tank day each species with a pair of breeding age rolls
  * BREED_ODDS in 100 to couple, and a coupling takes 50% of the time,
@@ -430,9 +432,6 @@ export const WAKE_LIGHT = 0.6;
  * original: health at least 0.75 of its maximum) and not sick.
  * FRY_SCALE is the juvenile minimum addFish clamps to, so a newborn
  * reads visibly smaller than its parents and grows up on its meals. */
-const MINUTES_PER_DAY = 24 * 60;
-const AQUARIUM_STREAM_SALT = 0x5eed;
-const PLANT_UNIT_AREA = 1000;
 const BREED_ODDS = 15;
 const CONCEIVE_ODDS = 50;
 const BREED_HEALTH = 75;
@@ -599,13 +598,19 @@ export class Sim {
       // A new fish arrives young: a little before adulthood. Its
       // stomach starts as full as its hunger says, so a fish from a
       // save that predates the life model keeps its appetite.
-      const l = newLife(this.rand, care,
-                        care.adultAge * (0.4 + this.rand() * 0.5));
-      l.stomach = stomachSize(this.weightOf(f));
-      l.ate = Math.round(l.stomach * (1 - Math.min(1, Math.max(0, f.hunger))));
-      f.life = l;
+      f.life = this.newLifeFor(f, care,
+                               care.adultAge * (0.4 + this.rand() * 0.5));
     }
     return f.life;
+  }
+
+  /** A new life for `f` at `age`, its stomach sized by its weight and
+   * as full as its hunger says. */
+  private newLifeFor(f: Fish, care: SpeciesCare, age: number): FishLife {
+    const l = newLife(this.rand, care, age);
+    l.stomach = stomachSize(this.weightOf(f));
+    l.ate = Math.round(l.stomach * (1 - Math.min(1, Math.max(0, f.hunger))));
+    return l;
   }
 
   /** Fish whose sickness has already fired a "sick" event — the life
@@ -777,8 +782,6 @@ export class Sim {
     // hovering fish.
     for (const f of alive) {
       f.hover = 0;
-      f.phase = 0;
-      f.latch = -1;
       this.decide(f);
     }
     // The pointer watch stands down: a fish drifting over to look at
@@ -982,12 +985,9 @@ export class Sim {
     if (f.state === "sleep") {
       // A fish already in bed gets up for the roll call; the place it
       // has to be is set below, where the formation is consulted.
-      if (this.forming) {
-        this.setState(f, "drift");
-        this.decide(f);
-        this.maybeTurn(f);
-      } else if (this.brightTicks > LIE_IN_MIN + (h >>> 16) % LIE_IN_SPREAD ||
-                 peckish) {
+      if (this.forming ||
+          this.brightTicks > LIE_IN_MIN + (h >>> 16) % LIE_IN_SPREAD ||
+          peckish) {
         this.setState(f, "drift");
         this.decide(f);
         this.maybeTurn(f); // like the startle exit: roll, don't pitch over
@@ -1388,6 +1388,14 @@ export class Sim {
    * the original's per-tick swim-bound jitter.
    */
   private decide(f: Fish): void {
+    // Every new trip starts a fresh stroke and refunds the budget, a
+    // trip to a formation slot included. The formation's shorter
+    // cadence can spend it before a slow fish arrives; retaining it
+    // would keep resetting the ramp instead of giving the fish another
+    // speed-preserving stroke. Nothing below reads these three.
+    f.phase = 0;
+    f.latch = -1;
+    f.strokes = 0;
     // A Clean Up overrides every other destination: the fish's place in
     // the grid is where it is going, until the roll call ends.
     const slot = this.slotFor(f);
@@ -1395,13 +1403,6 @@ export class Sim {
       const { x0, x1, y0, y1 } = this.room(f);
       f.tx = Math.min(x1, Math.max(x0, slot.x));
       f.ty = Math.min(y1, Math.max(y0, slot.y));
-      f.phase = 0;
-      f.latch = -1;
-      // A new trip refunds the budget, like a wandering decision. The
-      // formation's shorter cadence can spend it before a slow fish
-      // arrives; retaining it would keep resetting the ramp instead
-      // of giving the fish another speed-preserving stroke.
-      f.strokes = 0;
       return;
     }
     const { x0, x1, y0, y1 } = this.room(f);
@@ -1423,9 +1424,6 @@ export class Sim {
       }
       const top = Math.min(y1, Math.max(y0, c.top + this.halfH(f)));
       f.ty = top + this.zRand() * (y1 - top);
-      f.phase = 0;
-      f.latch = -1;
-      f.strokes = 0;
       return;
     }
     if (this.rand() < BAND_SHIFT) f.bandY = y0 + this.rand() * (y1 - y0);
@@ -1479,9 +1477,6 @@ export class Sim {
     if (f.life?.sick)
       f.ty = y0 + (y1 - y0) * (SICK_DEPTH + this.rand() * (1 - SICK_DEPTH));
     if (this.zRand() < Z_SHIFT) f.tz = Z_MIN + this.zRand() * (Z_MAX - Z_MIN);
-    f.phase = 0;
-    f.latch = -1;
-    f.strokes = 0;
   }
 
   /** Re-arm the stroke ramp at the fish's current speed, so it keeps
@@ -1636,11 +1631,7 @@ export class Sim {
       });
       // Born today: a fry starts its life at age 0, not as the young
       // adult a newly bought fish arrives as.
-      const care = this.careOf(fry);
-      const life = newLife(this.rand, care, 0);
-      life.stomach = stomachSize(this.weightOf(fry));
-      life.ate = Math.round(life.stomach * 0.7);
-      fry.life = life;
+      fry.life = this.newLifeFor(fry, this.careOf(fry), 0);
       this.events.push({ type: "birth", fish: fry });
     }
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { packKind, packResources } from "./rsrc.js";
+import { packResources } from "./rsrc.js";
 import { buildPack } from "./rsrc.fixture.js";
 
 describe("packResources", () => {
@@ -8,7 +8,7 @@ describe("packResources", () => {
       { type: "FsTH", id: 600, name: "AngelFish", payload: [1, 2, 3] },
       { type: "FsTI", id: 600, name: "AngelFish", payload: [4, 5] },
       { type: "FsTI", id: 601, payload: [6] },
-    ], { kind: "XXXX" });
+    ]);
     const r = packResources(d);
     expect(r.map((x) => [x.type, x.id, x.name, [...x.payload]])).toEqual([
       ["FsTH", 600, "AngelFish", [1, 2, 3]],
@@ -32,14 +32,5 @@ describe("packResources", () => {
     const d = buildPack([{ type: "SicI", id: 400, payload: [1] }]);
     d[4] = 0xff; d[5] = 0xff; // map offset past the end
     expect(packResources(d)).toEqual([]);
-  });
-});
-
-describe("packKind", () => {
-  it("reads the header tag, null when blank", () => {
-    expect(packKind(buildPack([{ type: "DrgI", id: 1, payload: [0] }],
-                              { kind: "AqDr" }))).toBe("AqDr");
-    expect(packKind(buildPack([{ type: "DrgI", id: 1, payload: [0] }])))
-      .toBeNull();
   });
 });

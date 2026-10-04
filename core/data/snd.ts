@@ -324,11 +324,6 @@ export function soundsFromRsrc(data: Uint8Array): DecodedSnd[] {
   return out;
 }
 
-export function hasSounds(data: Uint8Array): boolean {
-  try { return sndResources(data).length > 0; }
-  catch { return false; }
-}
-
 /** Extensions decodeAudioData handles natively — a plain audio file
  * imports as a named record with the encoded bytes carried verbatim
  * (`wav` is "the encoded payload", not always literal WAV). */

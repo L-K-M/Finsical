@@ -198,6 +198,6 @@ export function decorCanvases(images: Iterable<IndexedImage>,
   const first = pick?.frames[0];
   if (!pick || !first?.w || !first.h) return null; // zero-area art
   const s = decorScale(first.h, tankH);
-  // shrinkSprite keys index 0; 'guessed' legacy art is key 0 already.
+  // shrinkSprite keys index 0; the unkeyed legacy fallback is key 0 already.
   return pick.frames.map((f) => shrunkCanvas(keyToZero(f, pick.key), s));
 }

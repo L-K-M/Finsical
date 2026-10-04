@@ -1,74 +1,61 @@
 import { describe, expect, it } from "vitest";
-import { SURFACE } from "../core/sim.js";
 import { makeRng } from "../core/rng.js";
 import { armHolds, declutterTags, pruneHolds, TAG_CLEARANCE, TAG_HOLD_MS,
-         tagPlacement, tagSides } from "./nametags.js";
+         tagSides } from "./nametags.js";
 import type { TagCandidate, TagChoice } from "./nametags.js";
 
-// A tank drawn at 2x, its corner 10 px into the host; tags stay
-// inside the host's 660 x 420 box.
-const MAP = { s: 2, ox: 10, oy: 10 };
+// Tags are laid out in client px: main.ts maps every fish through the
+// letterbox (or the CRT's warp) before placement sees it. The cases
+// picture a tank drawn at 2x with its corner 10 px into a 660 x 420
+// box: tank x 100 shows at x 210, and the waterline (tank row
+// SURFACE + 1) at y 32.
 const BOUNDS = { left: 0, top: 0, right: 660, bottom: 420 };
+const SURF = 32;
 const W = 40, H = 12;
 
-describe("tagPlacement", () => {
-  it("centres the tag just above the fish", () => {
-    // Body rows 90..110 at tank x 100: host x 210, top at host y 190.
-    const p = tagPlacement(100, 90, 110, MAP, W, H, BOUNDS, SURFACE + 1);
-    expect(p.left).toBe(210 - W / 2);
-    expect(p.top).toBeLessThan(190);
-    expect(p.top + H).toBeGreaterThan(185); // close above, not far off
-  });
-
-  it("puts the tag under a fish at the surface", () => {
-    // Above would reach into the air strip.
-    const p = tagPlacement(100, 14, 30, MAP, W, H, BOUNDS, SURFACE + 1);
-    expect(p.top).toBeGreaterThanOrEqual(10 + 30 * 2);
-  });
-
-  it("stays inside the host at the side walls", () => {
-    expect(tagPlacement(0, 90, 110, MAP, W, H, BOUNDS, SURFACE + 1).left)
-      .toBe(0);
-    expect(tagPlacement(319, 90, 110, MAP, W, H, BOUNDS, SURFACE + 1).left)
-      .toBe(BOUNDS.right - W);
-  });
-
-  it("stays inside the host at the bottom", () => {
-    const p = tagPlacement(100, 14, 205, MAP, W, H, BOUNDS, SURFACE + 1);
-    expect(p.top).toBe(BOUNDS.bottom - H);
-  });
-
-  it("stays inside a box that does not start at the origin", () => {
-    // Viewport space: the tank rect sits at 100,50 in the window.
-    const box = { left: 100, top: 50, right: 740, bottom: 450 };
-    const map = { s: 2, ox: 100, oy: 50 };
-    expect(tagPlacement(0, 90, 110, map, W, H, box, SURFACE + 1).left)
-      .toBe(100);
-    expect(tagPlacement(100, 14, 205, map, W, H, box, SURFACE + 1).top)
-      .toBe(450 - H);
-  });
-
-  it("lands on whole pixels", () => {
-    const p = tagPlacement(100.3, 90.7, 110, { s: 1.37, ox: 3.5, oy: 2.25 },
-                           41, 13, BOUNDS, SURFACE + 1);
-    expect(Number.isInteger(p.left)).toBe(true);
-    expect(Number.isInteger(p.top)).toBe(true);
-  });
-});
-
 describe("tagSides", () => {
-  it("offers both sides in open water, the usual one being above", () => {
-    const s = tagSides(100, 90, 110, MAP, W, H, BOUNDS, SURFACE + 1);
-    expect(s.above).toEqual(tagPlacement(100, 90, 110, MAP, W, H, BOUNDS,
-                                         SURFACE + 1));
-    expect(s.below.top).toBeGreaterThanOrEqual(10 + 110 * 2);
+  it("centres a tag just above the fish, with a spot below too", () => {
+    // Body from y 190 to 230 at x 210.
+    expect(tagSides(210, 190, 230, W, H, BOUNDS, SURF)).toEqual({
+      above: { left: 190, top: 176 }, below: { left: 190, top: 232 },
+    });
   });
 
   it("offers no spot above a fish at the surface", () => {
-    const s = tagSides(100, 14, 30, MAP, W, H, BOUNDS, SURFACE + 1);
-    expect(s.above).toBeNull();
-    expect(s.below).toEqual(tagPlacement(100, 14, 30, MAP, W, H, BOUNDS,
-                                         SURFACE + 1));
+    // Above would reach past the waterline into the air strip.
+    expect(tagSides(210, 38, 70, W, H, BOUNDS, SURF)).toEqual({
+      above: null, below: { left: 190, top: 72 },
+    });
+  });
+
+  it("stays inside the bounds at the side walls", () => {
+    expect(tagSides(10, 190, 230, W, H, BOUNDS, SURF).above)
+      .toEqual({ left: 0, top: 176 });
+    expect(tagSides(648, 190, 230, W, H, BOUNDS, SURF).above)
+      .toEqual({ left: BOUNDS.right - W, top: 176 });
+  });
+
+  it("stays inside the bounds at the bottom", () => {
+    expect(tagSides(210, 38, 420, W, H, BOUNDS, SURF)).toEqual({
+      above: null, below: { left: 190, top: BOUNDS.bottom - H },
+    });
+  });
+
+  it("stays inside bounds that do not start at the origin", () => {
+    // Viewport space: the tank rect sits at 100,50 in the window, its
+    // waterline at y 72.
+    const box = { left: 100, top: 50, right: 740, bottom: 450 };
+    expect(tagSides(100, 230, 270, W, H, box, 72).above)
+      .toEqual({ left: 100, top: 216 });
+    expect(tagSides(300, 78, 460, W, H, box, 72)).toEqual({
+      above: null, below: { left: 280, top: 450 - H },
+    });
+  });
+
+  it("lands on whole pixels", () => {
+    expect(tagSides(140.9, 126.6, 152.95, 41, 13, BOUNDS, 17.32))
+      .toEqual({ above: { left: 120, top: 112 },
+                 below: { left: 120, top: 155 } });
   });
 });
 

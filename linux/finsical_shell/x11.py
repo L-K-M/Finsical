@@ -17,10 +17,7 @@ from typing import Optional
 
 from gi.repository import Gdk, GdkX11
 
-from . import logic
 from .logic import Rect
-
-log = logic.log
 
 # X.h and X11/extensions/shape.h.
 _CLIENT_MESSAGE = 33

@@ -187,10 +187,6 @@ class WebRoot:
     def __init__(self, path: str) -> None:
         self._root = os.path.realpath(path)
 
-    @property
-    def path(self) -> str:
-        return self._root
-
     def resolve_request(self, request_path: str) -> Optional[str]:
         """The file a finsical:// request path (as WebKit hands it
         over: percent-encoded, query stripped) names, or None when the
@@ -498,14 +494,6 @@ SLIVER_HEIGHT = 40
 _ZOOM_EPSILON = 0.5
 
 
-@dataclass(frozen=True)
-class SizeHints:
-    min_w: int
-    min_h: int
-    max_w: Optional[int]
-    max_h: Optional[int]
-
-
 class ClientWindowState:
     """The windowshade and zoom state of one client window.
 
@@ -529,14 +517,11 @@ class ClientWindowState:
     def resizable(self) -> bool:
         return self.spec.min_size is not None
 
-    def hints(self) -> SizeHints:
-        # Fixed windows use min = max rather than a non-resizable
-        # window: GTK refuses to fold those to the title bar.
-        if self.spec.min_size is None:
-            h = SHADED_HEIGHT if self.shaded else self.spec.size.h
-            return SizeHints(self.spec.size.w, h, self.spec.size.w, h)
-        min_h = SHADED_HEIGHT if self.shaded else self.spec.min_size.h
-        return SizeHints(self.spec.min_size.w, min_h, None, None)
+    def hints(self) -> Size:
+        """The page's minimum size: the spec's minimum, or its fixed
+        size, cut to the title bar while folded."""
+        floor = self.spec.min_size or self.spec.size
+        return Size(floor.w, SHADED_HEIGHT if self.shaded else floor.h)
 
     def shade(self, current: Rect) -> Rect:
         """Fold to the title bar, top edge pinned. A reload while folded

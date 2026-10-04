@@ -32,8 +32,6 @@ from .screen import (
 from .tank import TankWindow
 from .web import PageView, Press, WebHost
 
-log = logic.log
-
 # (client, json_text, parsed) for a client's "finsical" bus post.
 BusHandler = Callable[["ClientWindow", str, Any], None]
 # (client, parsed) for a client's "osmium" window op, after it is applied.
@@ -222,7 +220,7 @@ class ClientHost:
         request, so it could not fold."""
         assert client.window is not None and client.page is not None
         hints = client.state.hints()
-        client.page.view.set_size_request(hints.min_w, hints.min_h)
+        client.page.view.set_size_request(hints.w, hints.h)
 
     def _resize(self, client: ClientWindow, w: int, h: int) -> None:
         assert client.window is not None

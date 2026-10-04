@@ -336,28 +336,13 @@ function mutateSnds(update: (cur: StoredSnd[] | null) => StoredSnd[] | null):
   });
 }
 
-/** The capped merge policy shared by the transaction and its unit tests. */
+/** The capped merge policy sndsMerge applies inside its transaction. */
 function mergeSnds(cur: StoredSnd[] | null, records: StoredSnd[]): StoredSnd[] {
   const { out, dropped } = capSnds(cur, records);
   if (dropped)
     console.warn(`snd store over ${SNDS_CAP >> 20}MB cap; dropped`,
                  dropped, "records");
   return out;
-}
-
-/** Read-modify-write of the snds record, factored for tests. `get`
- * resolves null on a real miss and must reject on a backend failure;
- * `put` rejects or resolves falsy on a failed write. Either failure
- * propagates — a failed read never overwrites the store, and callers
- * can't report a save that did not happen. */
-export async function sndsMergeInto(
-    get: () => Promise<StoredSnd[] | null>,
-    put: (out: StoredSnd[]) => Promise<unknown>,
-    records: StoredSnd[]): Promise<unknown> {
-  const cur = await get();
-  const ok = await put(mergeSnds(cur, records));
-  if (!ok) throw new Error("snd store write failed");
-  return ok;
 }
 
 // Serialize merges: read-modify-write means two overlapping calls can

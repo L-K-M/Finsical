@@ -1,44 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { decodePixels, fshToSheets, isPack, packChunks } from "./fsh.js";
 import { makeRng } from "../rng.js";
-
-const PAL: [number, number, number][] =
-  [[0, 0, 0], [255, 0, 0], [0, 0, 255], [0, 255, 0]];
-
-function u32le(n: number): Uint8Array {
-  const b = new Uint8Array(4);
-  new DataView(b.buffer).setUint32(0, n, true);
-  return b;
-}
-function u16le(n: number): Uint8Array {
-  const b = new Uint8Array(2);
-  new DataView(b.buffer).setUint16(0, n, true);
-  return b;
-}
-const cat = (...parts: Uint8Array[]) => {
-  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
-  let o = 0;
-  for (const p of parts) { out.set(p, o); o += p.length; }
-  return out;
-};
-
-/** Minimal 8-bit BMP — only the palette region needs to be valid. */
-function buildBmp8(pal: [number, number, number][]): Uint8Array {
-  const pxOff = 14 + 40 + 256 * 4;
-  const hdr = new Uint8Array(pxOff);
-  hdr[0] = 0x42; hdr[1] = 0x4d;                    // "BM"
-  const v = new DataView(hdr.buffer);
-  v.setUint32(2, pxOff + 4, true);                 // size
-  v.setUint32(10, pxOff, true);                    // pixel offset
-  v.setUint32(14, 40, true);                       // BITMAPINFOHEADER
-  v.setUint16(26, 1, true);                        // planes
-  v.setUint16(28, 8, true);                        // bpp
-  v.setUint32(46, pal.length, true);               // colors used
-  pal.forEach(([r, g, b], i) => {
-    hdr.set([b, g, r, 0], 14 + 40 + i * 4);        // BGRA
-  });
-  return hdr;
-}
+import { buildBmp8, buildChunkPack, cat, PAL, u16le, u32le }
+  from "./fsh.fixture.js";
 
 /** Signed-i16 run/literal encoder mirroring tools/tests/fixtures.py. */
 function encodeFrameStream(px: Uint8Array): Uint8Array {
@@ -91,16 +55,6 @@ function buildFsh(nf: number, frames: [number, number, Uint8Array][]): Uint8Arra
   return cat(...parts);
 }
 
-function buildPack(...chunks: Uint8Array[]): Uint8Array {
-  const body: Uint8Array[] = [new Uint8Array(0x100)];
-  for (const pl of chunks) body.push(u32le(pl.length), pl);
-  const dirOff = body.reduce((n, p) => n + p.length, 0);
-  const hdr = cat(u32le(0x00000100), u32le(dirOff), u32le(dirOff - 0x100), u32le(0x104));
-  const out = cat(...body, hdr); // trailer: 16B header copy
-  out.set(hdr, 0);
-  return out;
-}
-
 /** Column-major fixture pixels for a w×h frame. */
 function toCol(w: number, h: number, fill: (x: number, y: number) => number): Uint8Array {
   const px = new Uint8Array(w * h);
@@ -120,7 +74,7 @@ function rawSpriteChunk(w: number, h: number, stream: Uint8Array): Uint8Array {
 
 describe("pack", () => {
   it("detects magic and walks chunks", () => {
-    const pack = buildPack(new Uint8Array([1, 2, 3]), new Uint8Array([4]));
+    const pack = buildChunkPack(new Uint8Array([1, 2, 3]), new Uint8Array([4]));
     expect(isPack(pack)).toBe(true);
     const chunks = packChunks(pack);
     expect(chunks).toHaveLength(2);
@@ -130,7 +84,7 @@ describe("pack", () => {
 
   it("rejects non-pack data", () => {
     expect(isPack(new Uint8Array(0x200))).toBe(false);
-    expect(packChunks(buildPack(new Uint8Array([9])))).toHaveLength(1);
+    expect(packChunks(buildChunkPack(new Uint8Array([9])))).toHaveLength(1);
   });
 });
 
@@ -138,7 +92,7 @@ describe("fshToSheets", () => {
   it("decodes a sprite stream into a sheet", () => {
     const f0 = toCol(4, 4, (x) => x + 1);      // column stripes
     const f1 = toCol(4, 4, (_x, y) => y + 1);  // row stripes
-    const pack = buildPack(buildBmp8(PAL), buildFsh(2, [[4, 4, f0], [4, 4, f1]]));
+    const pack = buildChunkPack(buildBmp8(PAL), buildFsh(2, [[4, 4, f0], [4, 4, f1]]));
     const sheets = fshToSheets(pack);
     expect(sheets.size).toBe(1);
     const sheet = [...sheets.values()][0]!;
@@ -155,7 +109,7 @@ describe("fshToSheets", () => {
   it("decodes multi-group streams", () => {
     const px = toCol(2, 2, () => 1);
     const stream = buildFsh(1, [[2, 2, px], [2, 2, px], [2, 2, px]]);
-    const sheets = fshToSheets(buildPack(stream));
+    const sheets = fshToSheets(buildChunkPack(stream));
     const sheet = [...sheets.values()][0]!;
     expect(sheet.meta.groups).toBe(3);
     expect([...sheet.frame(2, 0).idx]).toEqual([1, 1, 1, 1]);
@@ -163,14 +117,14 @@ describe("fshToSheets", () => {
 
   it("skips malformed payloads", () => {
     const bad = cat(u16le(4), u16le(4), u32le(0), new Uint8Array([9, 9]));
-    expect(fshToSheets(buildPack(bad)).size).toBe(0);
+    expect(fshToSheets(buildChunkPack(bad)).size).toBe(0);
   });
 
   it("emits a literal run verbatim, 0xFF bytes included", () => {
     // `04 00` = a 4-pixel literal run; the FF bytes are pixel data, and the
     // positive i16 cannot be mistaken for a color run.
     const stream = new Uint8Array([0x04, 0x00, 0xff, 0x07, 0xaa, 0xbb]);
-    const sheet = [...fshToSheets(buildPack(rawSpriteChunk(2, 2, stream))).values()][0]!;
+    const sheet = [...fshToSheets(buildChunkPack(rawSpriteChunk(2, 2, stream))).values()][0]!;
     // column-major emit [ff,07,aa,bb] -> row-major [ff,aa,07,bb]
     expect([...sheet.frame(0, 0).idx]).toEqual([0xff, 0xaa, 0x07, 0xbb]);
   });
@@ -178,7 +132,7 @@ describe("fshToSheets", () => {
   it("decodes a color run followed by a literal run", () => {
     // `FE FF 09` = i16 -2 → run of 2 × col 9; `01 00 2A` = 1 literal 0x2A.
     const stream = new Uint8Array([0xfe, 0xff, 0x09, 0x01, 0x00, 0x2a]);
-    const sheet = [...fshToSheets(buildPack(rawSpriteChunk(3, 1, stream))).values()][0]!;
+    const sheet = [...fshToSheets(buildChunkPack(rawSpriteChunk(3, 1, stream))).values()][0]!;
     expect([...sheet.frame(0, 0).idx]).toEqual([9, 9, 0x2a]);
   });
 
@@ -187,7 +141,7 @@ describe("fshToSheets", () => {
     const px = new Uint8Array(300).fill(7);
     const stream = encodeFrameStream(px);
     expect([...stream]).toEqual([0xd4, 0xfe, 0x07]);
-    const sheet = [...fshToSheets(buildPack(rawSpriteChunk(1, 300, stream))).values()][0]!;
+    const sheet = [...fshToSheets(buildChunkPack(rawSpriteChunk(1, 300, stream))).values()][0]!;
     expect([...sheet.frame(0, 0).idx]).toEqual([...px]);
   });
 
@@ -195,16 +149,16 @@ describe("fshToSheets", () => {
     // `FE FF 09` = run of 2 × col 9; `7A` is one orphan byte with no high
     // byte, so it is dropped and the shortfall pads with 0.
     const stream = new Uint8Array([0xfe, 0xff, 0x09, 0x7a]);
-    const sheet = [...fshToSheets(buildPack(rawSpriteChunk(4, 1, stream))).values()][0]!;
+    const sheet = [...fshToSheets(buildChunkPack(rawSpriteChunk(4, 1, stream))).values()][0]!;
     expect([...sheet.frame(0, 0).idx]).toEqual([9, 9, 0, 0]);
   });
 
   it("does not read past the stream on a truncated item", () => {
     // `FE FF` alone is a run header with no color byte -> col defaults to 0.
-    const a = [...fshToSheets(buildPack(rawSpriteChunk(2, 1, new Uint8Array([0xfe, 0xff])))).values()][0]!;
+    const a = [...fshToSheets(buildChunkPack(rawSpriteChunk(2, 1, new Uint8Array([0xfe, 0xff])))).values()][0]!;
     expect([...a.frame(0, 0).idx]).toEqual([0, 0]);
     // `09 00 AA` claims 9 literals but only one remains -> pads the rest.
-    const b = [...fshToSheets(buildPack(rawSpriteChunk(4, 1, new Uint8Array([0x09, 0x00, 0xaa])))).values()][0]!;
+    const b = [...fshToSheets(buildChunkPack(rawSpriteChunk(4, 1, new Uint8Array([0x09, 0x00, 0xaa])))).values()][0]!;
     expect([...b.frame(0, 0).idx]).toEqual([0xaa, 0, 0, 0]);
   });
 });

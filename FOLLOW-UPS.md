@@ -9,6 +9,55 @@ to change, constraints to keep, and follow-up work. `ANALYSIS.md` was
 written before the merge, so check its entries against the outcomes
 below.
 
+## Simplification pass, 2026-10-04
+
+A behavior-preserving cleanup removed dead code, write-only state and
+duplicated logic, with characterization tests committed before each
+refactor. These candidates were checked and left alone:
+
+- **Derived scenery canvases** (`web/main.ts`): `backdropCv` and
+  `gravelCv` always equal their map entries, but `pickBackdrop` and
+  `pickGravel` delete the entry before fitting. A fit that throws on
+  the shown pack keeps the old art today and would draw nothing
+  derived. Fit before touching the maps first.
+- **One in-flight memo for `fetchZip` and `fetchAddon`**
+  (`web/import.ts`): S-02/S-04 will likely change `fetchZip`'s
+  caching, so the two may diverge again.
+- **`lruSet`'s throw handling** (`web/lru.ts`) and the in-page
+  `sndsChain` (`web/store.ts`): deliberate hardening; the second relies
+  on IndexedDB ordering in old WKWebView builds, which is unverified.
+- **One resource-map walker for `sndResources` and `bankSounds`**
+  (`core/data`): an untrusted-input parser with an off-by-two
+  type-list base between the two; needs its own tests first.
+- **Shared staging for `build-deb.sh` and `build-tarball.sh`, the
+  duplicated `smoke.py` step, `WebHost`'s menu factory**: GTK and
+  packaging paths run only in CI; compare artifact hashes there.
+- **Verify scripts**: the tank-page half (server, seed, `openPage`)
+  is still copied between pr-integration and spectator. `close()` in
+  `scripts/lib/browser.mjs` waits forever on a Chrome killed by a
+  signal (`exitCode` null, `signalCode` set).
+
+Noticed during the audit, not fixed; unverified unless stated:
+
+- `drawNight` in `web/main.ts` gates the moonbeam on the timer mode
+  without checking the lamp.
+- The Import window's sound drop (`web/addons.ts`) has no per-drop
+  record cap; the tank's drop stops at 64.
+- The two retake tests in `web/tankclaim.test.ts` never reach the
+  retake branch (verified with an instrumented copy).
+- Tank Overview and the tank page swallow `contextmenu` inside text
+  fields (Rename, the name editor), losing Cut/Copy/Paste.
+- Import Tank in a view-only tab does nothing and says nothing.
+- The Linux smoke test's quit step passes when the save failed.
+- `verify-pr-integration.mjs` reads `osmium.css` inside its request
+  handler, so a missing osmium-ui crashes the run;
+  `verify-caustics.mjs` removes its profile without retries.
+- Stale comments: `pushRestPrint` (no renderer calls it), `cleanUp`'s
+  return value (its caller ignores it), `ambientKey` in
+  `web/audio.ts`, and `announce_x11` in `dbusmenu.py`. The Sound
+  follow-up below about `addWavs` restarting the loop at launch no
+  longer holds: the rule compares content keys (`bufferKey`) now.
+
 ## Second pass, 2026-09-25
 
 A second batch of 22 overlapping agent PRs (#208 to #292) was reviewed

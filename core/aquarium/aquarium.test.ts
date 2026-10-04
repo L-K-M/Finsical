@@ -6,7 +6,8 @@ import { Aquarium } from "./aquarium.js";
 import type { Resident } from "./aquarium.js";
 import { Cause, newLife, vitalityAt } from "./life.js";
 import { DISEASES } from "./disease.js";
-import { acidity, hardness, o2Saturation, tapWater } from "./water.js";
+import { acidity, hardness, mixIn, o2Saturation, setElement, tapWater }
+  from "./water.js";
 
 const DAY = 24 * 60;
 
@@ -380,6 +381,44 @@ describe("water change", () => {
     a.addMedicine(1000, 5);
     a.advanceMinutes(60, []);
     expect(a.water.chlorine).toBe(0);
+  });
+
+  it("mixes up to a mineral ceiling, not past it", () => {
+    // 100 L just under the calcium and ammonia ceilings (300 and 10
+    // mg/L); the fresh water is stronger than either allows.
+    const w = tapWater(100, 26, true);
+    setElement(w, "calcium", 290 * 100);
+    setElement(w, "ammonia", 8 * 100);
+    setElement(w, "co2", 30 * 100);
+    const fresh = tapWater(50, 26, true);
+    fresh.calcium = 400 * 50;
+    fresh.ammonia = 20 * 50;
+    const d = mixIn(w, fresh, 0.5);
+    expect(d).toEqual({
+      o2: 0, co2: -750, nitrate: 0, ammonia: 200, chlorine: 0,
+      calcium: 1000, magnesium: 0, protein: 0, carbohydrate: 0, fat: 0,
+      vitamin: 0, temp: 0, pH: expect.closeTo(0.15, 9), gH: 0,
+    });
+    expect([w.calcium, w.ammonia, w.co2, w.magnesium])
+      .toEqual([30000, 1000, 2250, 1000]);
+    expect(w.gH).toBe(20);
+    expect(w.pH).toBeCloseTo(7.55, 9);
+  });
+
+  it("caps oxygen at the mixed temperature's saturation", () => {
+    // 36 °C water topped up with a quarter of 16 °C tap water: the mix
+    // lands at 31 °C, which holds less than the blended oxygen.
+    const w = tapWater(100, 36, true);
+    const d = mixIn(w, tapWater(100, 16), 0.25);
+    expect(d).toEqual({
+      o2: 48, co2: 0, nitrate: 0, ammonia: 0,
+      chlorine: expect.closeTo(27.5, 9), calcium: 0, magnesium: 0,
+      protein: 0, carbohydrate: 0, fat: 0, vitamin: 0, temp: -5, pH: 0,
+      gH: 0,
+    });
+    expect(w.temp).toBe(31);
+    expect(w.o2).toBe(o2Saturation(31) * 100);
+    expect(w.o2).toBe(742);
   });
 });
 

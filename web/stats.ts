@@ -315,11 +315,6 @@ const bus = openBus((m: BusMsg) => {
   syncKeeping(st.water);
 });
 
-// A file dropped here would navigate this borderless window to the
-// raw file, with no way back — swallow drops like the tank page does.
-window.addEventListener("dragover", (e) => e.preventDefault());
-window.addEventListener("drop", (e) => e.preventDefault());
-
 // ---- tabs ----------------------------------------------------------------
 // The window reopens on the tab it was left on, as Preferences reopens
 // on its pane.

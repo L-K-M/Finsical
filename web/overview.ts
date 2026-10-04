@@ -308,11 +308,6 @@ listEl.addEventListener("keydown", (e) => {
   }
 });
 
-// A file dropped here would navigate this borderless window to the
-// raw file, with no way back — swallow drops like the tank page does.
-window.addEventListener("dragover", (e) => e.preventDefault());
-window.addEventListener("drop", (e) => e.preventDefault());
-
 // Place a thumbnail at whole-pixel offsets inside its box — flex
 // centering would put odd sizes on half pixels and blur the art.
 function placeThumb(img: HTMLImageElement): void {
@@ -336,10 +331,10 @@ function row(it: Item, need: Set<string>): HTMLElement {
   r.dataset.name = it.name;
   const name = el("span", "ocell ocell-name");
   const box = el("span", "othumb");
-  box.dataset.thumb = it.thumb;
-  if (!thumbStore.has(it.thumb) && !thumbRequested.has(it.thumb)) {
-    thumbRequested.add(it.thumb);
-    need.add(it.thumb);
+  box.dataset.thumb = it.key;
+  if (!thumbStore.has(it.key) && !thumbRequested.has(it.key)) {
+    thumbRequested.add(it.key);
+    need.add(it.key);
   }
   name.append(box, el("span", "oname", it.name));
   r.append(name, el("span", "ocell ocell-kind", it.kind),
@@ -362,7 +357,7 @@ function render(scroll: ListScroll = "keep"): void {
   list.setEmpty("The tank is empty. Import add-ons to stock it.");
   const fishN = (s.fish ?? []).length;
   const next = sortItems(itemsOf(s), sortBy, sortDir);
-  const addonN = next.filter((i) => i.rank === 1).length;
+  const addonN = next.filter((i) => i.remove.op === "removeAddon").length;
   summaryEl.textContent =
     summary(fishN, addonN, s.waterQuality ?? 1, s.tickCount ?? 0);
   centerText(summaryEl);
@@ -398,7 +393,7 @@ function render(scroll: ListScroll = "keep"): void {
   paintThumbs();
   // Rows were just rebuilt — drop thumb state for keys that died with
   // them (removed fish, uninstalled add-ons) so the maps stay bounded.
-  const live = new Set(items.map((i) => i.thumb));
+  const live = new Set(items.map((i) => i.key));
   for (const k of thumbStore.keys()) if (!live.has(k)) thumbStore.delete(k);
   for (const k of thumbRequested) if (!live.has(k)) thumbRequested.delete(k);
   if (need.size) bus.post({ op: "wantThumbs", keys: [...need] });

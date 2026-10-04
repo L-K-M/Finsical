@@ -8,6 +8,10 @@
  * `FsTI`, medicines `DrgI`, diseases `SicI` — so the simulation data
  * can only be found through this map.
  *
+ * The pack header also carries a kind tag at offset 0x10, stored
+ * byte-reversed like the type tags below (AqDr medicine, AqFd food),
+ * or zero when the pack has none.
+ *
  * Layout (offsets from the map start `m = u32@4`):
  *   m+26 u16  name-list offset (from m)
  *   m+28 u16  type count - 1
@@ -24,6 +28,7 @@
  * to the chunk count in type order, so when refs don't land on chunk
  * boundaries types are assigned to chunks sequentially instead.
  */
+import { u16, u32 } from "./bytes.js";
 import { packChunks } from "./fsh.js";
 
 export interface PackResource {
@@ -34,13 +39,6 @@ export interface PackResource {
 }
 
 const DATA_BASE = 0x100;
-
-function u16(d: Uint8Array, o: number): number {
-  return (d[o] ?? 0) | ((d[o + 1] ?? 0) << 8);
-}
-function u32(d: Uint8Array, o: number): number {
-  return (u16(d, o) | (u16(d, o + 2) << 16)) >>> 0;
-}
 
 function tagAt(d: Uint8Array, o: number): string {
   return String.fromCharCode(d[o + 3]!, d[o + 2]!, d[o + 1]!, d[o]!);
@@ -102,11 +100,4 @@ export function packResources(d: Uint8Array): PackResource[] {
     for (let j = 0; j < t.count; j++)
       seq.push({ type: t.tag, id: -1, name: null, payload: chunks[k++]!.payload });
   return seq;
-}
-
-/** The pack's kind tag from its header (AqDr medicine, AqFd food, …),
- * or null when it carries none. */
-export function packKind(d: Uint8Array): string | null {
-  if (d.length < 0x14 || u32(d, 0x10) === 0) return null;
-  return tagAt(d, 0x10);
 }

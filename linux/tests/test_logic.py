@@ -57,7 +57,9 @@ class TestWebRoot(TempDirTest):
         self.assertEqual(self.root.resolve_request("/"), self.index)
         self.assertEqual(
             self.root.resolve_request("/assets/"),
-            os.path.join(self.root.path, "assets", "index.html"),
+            os.path.join(
+                os.path.realpath(self.root_dir), "assets", "index.html"
+            ),
         )
 
     def test_plain_file(self):
@@ -119,7 +121,9 @@ class TestWebRoot(TempDirTest):
     def test_asset_paths(self):
         self.assertEqual(
             self.root.resolve_asset("assets/case.png"),
-            os.path.join(self.root.path, "assets", "case.png"),
+            os.path.join(
+                os.path.realpath(self.root_dir), "assets", "case.png"
+            ),
         )
         for rel in (
             "",
@@ -531,10 +535,10 @@ class TestClientWindowState(unittest.TestCase):
         folded = state.shade(self.FRAME)
         self.assertEqual(folded, Rect(100, 50, 521, 23))
         self.assertTrue(state.shaded)
-        self.assertEqual(state.hints(), logic.SizeHints(361, 23, None, None))
+        self.assertEqual(state.hints(), logic.Size(361, 23))
         self.assertEqual(state.unshade(folded), self.FRAME)
         self.assertFalse(state.shaded)
-        self.assertEqual(state.hints(), logic.SizeHints(361, 201, None, None))
+        self.assertEqual(state.hints(), logic.Size(361, 201))
 
     def test_load_time_unshade_is_a_no_op(self):
         state = ClientWindowState(logic.OVERVIEW)
@@ -558,9 +562,9 @@ class TestClientWindowState(unittest.TestCase):
 
     def test_fixed_window_hints(self):
         state = ClientWindowState(logic.PREFS)
-        self.assertEqual(state.hints(), logic.SizeHints(565, 518, 565, 518))
+        self.assertEqual(state.hints(), logic.Size(565, 518))
         state.shade(Rect(0, 0, 565, 518))
-        self.assertEqual(state.hints(), logic.SizeHints(565, 23, 565, 23))
+        self.assertEqual(state.hints(), logic.Size(565, 23))
 
     def test_zoom_toggles(self):
         state = ClientWindowState(logic.OVERVIEW)

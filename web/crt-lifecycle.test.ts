@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { initCrt } from "./crt.js";
+import { initCrt, sanitizeCrtConfig } from "./crt.js";
+import type { CrtConfig } from "./crt.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -53,6 +54,7 @@ function fixture() {
   expect(crt).not.toBeNull();
   return {
     crt,
+    uniform1f,
     advanceTo: (time: number) => { now = time; },
     power: () => uniform1f.mock.calls.filter(([name]) => name === "uPower")
       .at(-1)?.[1],
@@ -94,5 +96,37 @@ describe("CRT warm-up frame ownership", () => {
     expect(f.crt.animating).toBe(false);
     f.crt.setEnabled(true);
     expect(f.crt.enabled).toBe(false);
+  });
+});
+
+describe("CRT configure", () => {
+  // The page hands configure() each full Monitor-pane config; what
+  // reaches the shader is the uniform set, the mask as its CRT_MASKS
+  // index.
+  it("uploads each config it is given, and A, B, A restores A", () => {
+    const f = fixture();
+    const upload = (c: CrtConfig): Record<string, unknown> => {
+      f.uniform1f.mockClear();
+      f.crt.configure(c);
+      return Object.fromEntries(f.uniform1f.mock.calls);
+    };
+    const a = sanitizeCrtConfig({ scanlines: 0.9, bloom: 0.1, mask: "slot" });
+    const b = sanitizeCrtConfig({ scanlines: 0.2, bloom: 0.7, softening: 0.3,
+                                  curvature: 0.8, red: 0.1, mask: "shadow" });
+
+    const first = upload(a);
+    expect(first).toMatchObject({ uScan: 0.9, uBloom: 0.1, uMask: 1 });
+    const second = upload(b);
+    expect(second).toMatchObject({ uScan: 0.2, uBloom: 0.7, uSoft: 0.3,
+                                   uCurve: 0.8, uRed: 0.1, uMask: 2 });
+    expect(second).not.toEqual(first);
+    expect(upload(a)).toEqual(first);
+  });
+
+  it("clamps values a caller passes out of range", () => {
+    const f = fixture();
+    f.crt.configure({ ...sanitizeCrtConfig(null), scanlines: 2, bloom: -1 });
+    expect(Object.fromEntries(f.uniform1f.mock.calls))
+      .toMatchObject({ uScan: 1, uBloom: 0 });
   });
 });

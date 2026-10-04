@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alertOrigin, alertOriginIn, alertWidth, focusStep }
-  from "./alert.js";
+import { alertOriginIn, alertWidth, focusStep } from "./alert.js";
 
 // The modal stack's close() wiring needs a real browser to exercise
 // focus; pin its ordering by source instead (the overview.test.ts
@@ -25,17 +24,22 @@ describe("alertWidth", () => {
   });
 });
 
-describe("alertOrigin", () => {
+describe("alertOriginIn the whole viewport", () => {
+  const viewport = (vw: number, vh: number) =>
+    ({ left: 0, top: 0, width: vw, height: vh });
+
   it("centers across with a third of the spare height above", () => {
-    expect(alertOrigin(1280, 800, 340, 140)).toEqual({ left: 470, top: 220 });
+    expect(alertOriginIn(viewport(1280, 800), 340, 140))
+      .toEqual({ left: 470, top: 220 });
   });
 
   it("lands on whole pixels", () => {
-    expect(alertOrigin(331, 431, 314, 150)).toEqual({ left: 8, top: 93 });
+    expect(alertOriginIn(viewport(331, 431), 314, 150))
+      .toEqual({ left: 8, top: 93 });
   });
 
   it("keeps the top edge on screen when the alert is taller", () => {
-    expect(alertOrigin(330, 100, 314, 200).top).toBe(8);
+    expect(alertOriginIn(viewport(330, 100), 314, 200).top).toBe(8);
   });
 });
 

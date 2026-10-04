@@ -2,16 +2,6 @@
 import struct
 
 
-def _packbits_literal(data: bytes) -> bytes:
-    """Encode as pure literal runs (max 128 bytes each)."""
-    out = bytearray()
-    for i in range(0, len(data), 128):
-        run = data[i:i + 128]
-        out.append(len(run) - 1)
-        out += run
-    return bytes(out)
-
-
 def build_bmp8(w: int, h: int, idx: bytes, pal: list) -> bytes:
     """8-bit uncompressed BMP. idx is top-down row-major pixel indices."""
     assert len(idx) == w * h, f"idx is {len(idx)} bytes, expected {w * h}"
@@ -49,34 +39,6 @@ def build_bmp8_rle(w: int, h: int, idx: bytes, pal: list) -> bytes:
            + struct.pack("<IiiHHIIiiII", 40, w, h, 1, 8, 1, len(px),
                          2835, 2835, 256, 0))
     return hdr + palbytes + bytes(px)
-
-
-def build_pict8(w: int, h: int, idx: bytes, pal: list) -> bytes:
-    """PICT v2 with a single PackBitsRect. idx is top-down row-major."""
-    rowbytes = w
-    out = bytearray()
-    out += struct.pack(">H4H", 0, 0, 0, h, w)      # picSize, picFrame
-    out += struct.pack(">HH", 0x0011, 0x02FF)      # version op
-    out += struct.pack(">H", 0x0C00) + b"\0" * 24  # headerOp
-    out += struct.pack(">H", 0x0098)               # PackBitsRect
-    out += struct.pack(">H4H", rowbytes | 0x8000, 0, 0, h, w)
-    out += struct.pack(">HHI", 0, 0, 0)            # pmVersion, packType, packSize
-    out += struct.pack(">II", 72 << 16, 72 << 16)  # hRes, vRes
-    out += struct.pack(">HHHH", 0, 8, 1, 8)        # pixelType, size, cmp
-    out += struct.pack(">III", 0, 0, 0)            # planeBytes, pmTable, rsvd
-    out += struct.pack(">IHH", 0, 0, len(pal) - 1)  # ctSeed, ctFlags, ctSize
-    for i, (r, g, b) in enumerate(pal):
-        out += struct.pack(">H3H", i, r << 8, g << 8, b << 8)
-    out += struct.pack(">4H4HH", 0, 0, h, w, 0, 0, h, w, 0)  # src, dst, mode
-    for y in range(h):
-        enc = _packbits_literal(idx[y * w:(y + 1) * w])
-        if rowbytes > 250:  # word-length row counts when rowBytes > 250
-            out += struct.pack(">H", len(enc))
-        else:
-            out.append(len(enc))
-        out += enc
-    out += struct.pack(">H", 0x00FF)               # endOfPic
-    return bytes(out)
 
 
 def build_rsrc(types: dict) -> bytes:

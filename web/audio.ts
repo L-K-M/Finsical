@@ -163,6 +163,10 @@ export function panFor(x: number, w: number): number {
   return Math.min(0.8, Math.max(-0.8, 0.8 * (2 * x / w - 1)));
 }
 
+/** A running context and its master gain, as liveContext() hands
+ * them to a synthesized sound. */
+interface LiveAudio { ac: AudioContext; master: GainNode; }
+
 /** Per-play color: stereo pan (-1..1) and a playback-rate jitter. */
 interface PlayFx { pan?: number; rate?: number;
   /** Seconds of fade-out to schedule before the buffer's end, hiding
@@ -206,7 +210,6 @@ export class TankAudio {
   private bubblesOn = SOUND_DEFAULTS.bubbles;
   private ambientOn = SOUND_DEFAULTS.ambient;
   private musicOn = SOUND_DEFAULTS.music;
-  private flybackOn = SOUND_DEFAULTS.flyback;
   // The flyback pair while live: the 15.7 kHz fundamental and the
   // mains hum beside it, stopped and dropped on every switch off.
   private flybackOscs: OscillatorNode[] | null = null;
@@ -249,8 +252,8 @@ export class TankAudio {
   /** Merge a pack's manifest sounds into the table — a later pack
    * replaces only its same-named entries instead of wiping an earlier
    * pack's bindings. The ambient loop restarts when the bubbling pick
-   * changed (addWavs' rule); callers still run startAmbient() for the
-   * not-yet-playing case. */
+   * changed (ambientAfterMerge); callers still run startAmbient() for
+   * the not-yet-playing case. */
   async load(read: (path: string) => Promise<Uint8Array>,
              manifest: AzpackManifest): Promise<void> {
     const sounds = manifest.sounds ?? [];
@@ -258,10 +261,7 @@ export class TankAudio {
     // old tail would overlap this pack's install cue. The generation
     // bump also kills a cue still waiting on a pending resume().
     this.feedbackGen++;
-    if (this.feedbackSrc) {
-      try { this.feedbackSrc.stop(); } catch { /* already ended */ }
-      this.feedbackSrc = null;
-    }
+    this.stopFeedbackSource();
     if (sounds.length) {
       // context(), not a bare AudioContext: it also builds the master
       // gain every play() connects to.
@@ -282,14 +282,7 @@ export class TankAudio {
       }));
       for (const d of decoded) if (d) this.buffers.set(d.name, d.data);
     }
-    const now = this.ambientPick();
-    if (this.ambientWanted && now !== "" && now !== this.ambientKey) {
-      if (this.ambientSrc) {
-        try { this.ambientSrc.stop(); } catch { /* already ended */ }
-        this.ambientSrc = null;
-      }
-      this.startAmbient();
-    }
+    this.ambientAfterMerge();
   }
 
   /** Merge decoded WAVs (e.g. from a dropped .rsrc) under their resource
@@ -313,14 +306,36 @@ export class TankAudio {
     // A dropped bubbling sound can replace what's looping (or supply the
     // loop an earlier startAmbient found missing) — restart when the
     // buffer that would play now differs from the one currently selected.
+    this.ambientAfterMerge();
+  }
+
+  /** The restart rule after load() or addWavs() merged sounds in: a
+   * wanted loop restarts when the bubbling that would play now differs
+   * from the one selected. An empty pick leaves it alone — only
+   * removeWavs may take the loop's sound away. */
+  private ambientAfterMerge(): void {
     const now = this.ambientPick();
-    if (this.ambientWanted && now !== "" && now !== this.ambientKey) {
-      if (this.ambientSrc) {
-        try { this.ambientSrc.stop(); } catch { /* already ended */ }
-        this.ambientSrc = null;
-      }
-      this.startAmbient();
-    }
+    if (this.ambientWanted && now !== "" && now !== this.ambientKey)
+      this.restartAmbient();
+  }
+
+  private restartAmbient(): void {
+    this.stopAmbientSource();
+    this.startAmbient();
+  }
+
+  private stopAmbientSource(): void {
+    if (!this.ambientSrc) return;
+    try { this.ambientSrc.stop(); } catch { /* already ended */ }
+    this.ambientSrc = null;
+  }
+
+  /** Cut off the install feedback still playing, if any. Callers bump
+   * feedbackGen first, so a cue still waiting on resume() dies too. */
+  private stopFeedbackSource(): void {
+    if (!this.feedbackSrc) return;
+    try { this.feedbackSrc.stop(); } catch { /* already ended */ }
+    this.feedbackSrc = null;
   }
 
   private context(): AudioContext {
@@ -412,7 +427,7 @@ export class TankAudio {
    * muted or hidden, there is nothing a click would let you hear. */
   get blocked(): boolean {
     return this.ctx !== null && this.ctx.state === "suspended" &&
-      !this.hidden && this.level() > 0;
+      this.shouldRun();
   }
 
   /** Glide the live master to the current level: a hard step in the
@@ -450,10 +465,7 @@ export class TankAudio {
       if (this.ctx) this.startAmbient();
       return;
     }
-    if (this.ambientSrc) {
-      try { this.ambientSrc.stop(); } catch { /* already ended */ }
-      this.ambientSrc = null;
-    }
+    this.stopAmbientSource();
     // Also aborts a loop still waiting on a pending resume() in play().
     this.ambientWanted = false;
     this.ambientGen++;
@@ -464,13 +476,12 @@ export class TankAudio {
    * the tube. The synth is two oscillators into the master, so Mute
    * and the volume slider reach it like everything else. */
   setFlyback(on: boolean): void {
-    this.flybackOn = on;
     if (on) this.startFlyback();
     else this.stopFlyback();
   }
 
   private startFlyback(): void {
-    if (!this.flybackOn || this.flybackOscs) return;
+    if (this.flybackOscs) return;
     // Created even while hidden or locked: a suspended context holds
     // the pair silent, and resuming (a gesture, the page returning)
     // sounds it — no retry bookkeeping. This is also the one sound
@@ -561,18 +572,13 @@ export class TankAudio {
   }
 
   /** Drop imported records (add-on uninstall). If the ambient loop was
-   * playing one, restart it on whatever bubbling remains — same restart
-   * rule as addWavs. */
+   * playing one, restart it on whatever bubbling remains — the
+   * ambientAfterMerge rule without its non-empty guard. */
   removeWavs(names: Iterable<string>): void {
     for (const n of names) this.imported.delete(n);
     // No non-empty guard here: deleting the loop's own sound must stop it.
-    if (this.ambientWanted && this.ambientPick() !== this.ambientKey) {
-      if (this.ambientSrc) {
-        try { this.ambientSrc.stop(); } catch { /* already ended */ }
-        this.ambientSrc = null;
-      }
-      this.startAmbient();
-    }
+    if (this.ambientWanted && this.ambientPick() !== this.ambientKey)
+      this.restartAmbient();
   }
 
   /** Play one imported sound by name as install feedback: replaces any
@@ -581,17 +587,14 @@ export class TankAudio {
   playImported(name: string): void {
     // A newer cue supersedes both a playing one and a deferred retry.
     this.feedbackGen++;
-    if (this.feedbackSrc) {
-      try { this.feedbackSrc.stop(); } catch { /* already ended */ }
-      this.feedbackSrc = null;
-    }
+    this.stopFeedbackSource();
     const buf = this.imported.get(name);
     // Not through play() — but a feedback that answers the install
     // gesture itself may still wait out the lock, like play()'s
     // gesture retry. Without an activation (a remote relay, a drop
     // whose walk outlasted the gesture) resume() rejects quietly and
     // the cue drops rather than firing long after the install.
-    if (!buf || !this.ctx || this.hidden || this.level() === 0) return;
+    if (!buf || !this.ctx || !this.shouldRun()) return;
     if (this.ctx.state === "suspended") {
       // A live gesture always starts a fresh resume — a parked one
       // (a gesture-less unlock() can stay pending forever on an
@@ -689,7 +692,7 @@ export class TankAudio {
     // Hidden or silent (muted/volume 0): drop the sound rather than
     // resume() the device below for one nobody would hear. A wanted
     // ambient loop restarts from setHidden(false) / syncSleep.
-    if (this.hidden || this.level() === 0) return null;
+    if (!this.shouldRun()) return null;
     if (this.ctx.state === "suspended" && retry) {
       // Only the ambient loop and a sound answering the gesture in
       // progress wait out the lock. Anything else (bubbles from a
@@ -726,16 +729,8 @@ export class TankAudio {
         Math.max(0, buf.duration / (fx.rate || 1) - fx.fadeSec - 0.02);
       g.gain.setTargetAtTime(0, end, 0.005);
     }
-    const pan = fx?.pan ?? 0;
-    // StereoPannerNode needs WebKit 14.1+, fine for macOS 12 — and a
-    // pan of 0 keeps the direct path, so the node is opt-in only.
-    if (pan !== 0 && typeof this.ctx.createStereoPanner === "function") {
-      const p = this.ctx.createStereoPanner();
-      p.pan.value = pan;
-      src.connect(p).connect(g).connect(this.master!);
-    } else {
-      src.connect(g).connect(this.master!); // created with ctx
-    }
+    src.connect(this.panInto(this.ctx, fx?.pan ?? 0, g));
+    g.connect(this.master!); // created with ctx
     src.start();
     if (!loop) this.trackOneShot(src);
     return src;
@@ -895,12 +890,12 @@ export class TankAudio {
    */
   note(freq: number, pan = 0, gain = NOTE_GAIN): void {
     if (!this.musicOn || !this.shouldRun()) return;
-    const ac = this.ctx;
-    if (!ac || !this.master || this.hidden || ac.state !== "running" ||
-        !Number.isFinite(freq) || freq <= 0 ||
+    const live = this.liveContext();
+    if (!live || !Number.isFinite(freq) || freq <= 0 ||
         // An exponential ramp throws on a zero or negative target, so
         // the level needs the same guard as the pitch.
         !Number.isFinite(gain) || gain <= 0) return;
+    const { ac, master } = live;
     const t = ac.currentTime;
     const env = ac.createGain();
     env.gain.setValueAtTime(0.0001, t);
@@ -918,14 +913,7 @@ export class TankAudio {
     body.connect(env);
     // Pan only off-centre and only where the WebView has a panner, the
     // way pop() and play() do.
-    let out: AudioNode = env;
-    if (pan !== 0 && typeof ac.createStereoPanner === "function") {
-      const p = ac.createStereoPanner();
-      p.pan.value = pan;
-      env.connect(p);
-      out = p;
-    }
-    out.connect(this.master);
+    env.connect(this.panInto(ac, pan, master));
     for (const osc of [body, partial]) {
       osc.start(t);
       osc.stop(t + NOTE_S + 0.01);
@@ -945,33 +933,12 @@ export class TankAudio {
                 { pan, rate: 0.94 + Math.random() * 0.12 });
       return;
     }
-    const ac = this.ctx;
-    if (!ac || !this.master || this.hidden || ac.state !== "running")
-      return;
-    const t = ac.currentTime;
+    const live = this.liveContext();
+    if (!live) return;
     const f0 = BLOOP_HZ[0] + Math.random() * (BLOOP_HZ[1] - BLOOP_HZ[0]);
-    const osc = ac.createOscillator();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(f0, t);
     // The rising chirp of a real bubble clearing the surface: keep
     // climbing across the whole pulse rather than flattening early.
-    osc.frequency.exponentialRampToValueAtTime(f0 * 1.5, t + BLOOP_S);
-    const g = ac.createGain();
-    // Exponential ramps can't start from 0: from a whisper to the peak
-    // in 4 ms, then away, so it never clicks on or off.
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(BLOOP_GAIN, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + BLOOP_S);
-    if (pan !== 0 && typeof ac.createStereoPanner === "function") {
-      const p = ac.createStereoPanner();
-      p.pan.value = pan;
-      osc.connect(p).connect(g).connect(this.master);
-    } else {
-      osc.connect(g).connect(this.master);
-    }
-    osc.start(t);
-    osc.stop(t + BLOOP_S + 0.01);
-    this.trackOneShot(osc);
+    this.chirp(live, f0, f0 * 1.5, BLOOP_S, BLOOP_S, BLOOP_GAIN, pan);
   }
 
   /** A bubble popped by a click, panned to it. A sound the user added
@@ -984,32 +951,53 @@ export class TankAudio {
     if (!this.bubblesOn) return;
     const own = this.find(["pop"]);
     if (own) { this.play(own, 0.5, false, true, { pan }); return; }
-    const ac = this.ctx;
-    if (!ac || !this.master || this.hidden || this.level() === 0 ||
-        ac.state !== "running")
-      return;
+    const live = this.liveContext();
+    if (live)
+      this.chirp(live, POP_HZ[0], POP_HZ[1], POP_S / 2, POP_S, POP_GAIN, pan);
+  }
+
+  /** The device a synthesized sound may use right now: a running
+   * context on a visible, audible tank. Never creates or resumes one —
+   * a synthesized sound drops rather than spend a resume(). */
+  private liveContext(): LiveAudio | null {
+    const ac = this.ctx, master = this.master;
+    if (!ac || !master || !this.shouldRun() || ac.state !== "running")
+      return null;
+    return { ac, master };
+  }
+
+  /** `dest`, or a StereoPannerNode feeding it when the sound is panned:
+   * connect a source to the returned node, never chain past it.
+   * StereoPannerNode needs WebKit 14.1+, fine for macOS 12 — and a
+   * pan of 0 keeps the direct path, so the node is opt-in only. */
+  private panInto(ac: AudioContext, pan: number, dest: AudioNode): AudioNode {
+    if (pan === 0 || typeof ac.createStereoPanner !== "function") return dest;
+    const p = ac.createStereoPanner();
+    p.pan.value = pan;
+    p.connect(dest);
+    return p;
+  }
+
+  /** A one-shot sine gliding from f0 to f1 over rampS seconds, `durS`
+   * long at a `peak` gain, panned, into the master. */
+  private chirp({ ac, master }: LiveAudio, f0: number, f1: number,
+                rampS: number, durS: number, peak: number,
+                pan: number): void {
     const t = ac.currentTime;
     const osc = ac.createOscillator();
     osc.type = "sine";
-    osc.frequency.setValueAtTime(POP_HZ[0], t);
-    osc.frequency.exponentialRampToValueAtTime(POP_HZ[1], t + POP_S / 2);
+    osc.frequency.setValueAtTime(f0, t);
+    osc.frequency.exponentialRampToValueAtTime(f1, t + rampS);
     const g = ac.createGain();
     // Exponential ramps can't start from 0: from a whisper to the peak
     // in 4 ms, then away, so it never clicks on or off.
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(POP_GAIN, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + POP_S);
-    // Panned the way play() pans: only off-centre, and only where the
-    // WebView has a StereoPannerNode.
-    if (pan !== 0 && typeof ac.createStereoPanner === "function") {
-      const p = ac.createStereoPanner();
-      p.pan.value = pan;
-      osc.connect(p).connect(g).connect(this.master);
-    } else {
-      osc.connect(g).connect(this.master);
-    }
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + durS);
+    osc.connect(this.panInto(ac, pan, g));
+    g.connect(master);
     osc.start(t);
-    osc.stop(t + POP_S + 0.01);
+    osc.stop(t + durS + 0.01);
     this.trackOneShot(osc);
   }
 
@@ -1018,30 +1006,31 @@ export class TankAudio {
    * field dies. Silent unless the context is already running — a
    * degauss the user can't hear shouldn't spend a resume(). */
   degauss(): void {
-    if (!this.ctx || !this.master || this.hidden ||
-        this.level() === 0 || this.ctx.state !== "running") return;
-    const t = this.ctx.currentTime;
-    const thump = this.ctx.createOscillator();
+    const live = this.liveContext();
+    if (!live) return;
+    const { ac, master } = live;
+    const t = ac.currentTime;
+    const thump = ac.createOscillator();
     thump.type = "sine";
     thump.frequency.value = 55;
-    const tg = this.ctx.createGain();
+    const tg = ac.createGain();
     tg.gain.setValueAtTime(0.5, t);
     tg.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-    thump.connect(tg).connect(this.master);
+    thump.connect(tg).connect(master);
     thump.start(t);
     thump.stop(t + 0.3);
     this.trackOneShot(thump);
-    const whine = this.ctx.createOscillator();
+    const whine = ac.createOscillator();
     whine.type = "sawtooth";
     whine.frequency.setValueAtTime(900, t);
     whine.frequency.exponentialRampToValueAtTime(300, t + 0.5);
-    const lp = this.ctx.createBiquadFilter();
+    const lp = ac.createBiquadFilter();
     lp.type = "lowpass";
     lp.frequency.value = 300;
-    const wg = this.ctx.createGain();
+    const wg = ac.createGain();
     wg.gain.setValueAtTime(0.12, t);
     wg.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
-    whine.connect(lp).connect(wg).connect(this.master);
+    whine.connect(lp).connect(wg).connect(master);
     whine.start(t);
     whine.stop(t + 0.7);
     this.trackOneShot(whine);

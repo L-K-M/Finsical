@@ -39,13 +39,13 @@ export function isCurrentTankAction(tankGone: boolean,
 /** One line of the list: a fish, or an add-on with no fish of its own
  * in the tank. */
 export interface Item {
+  /** Row identity, and also the thumbnail key in the format main.ts
+   * serveThumbs parses: fishThumbKey's "f:" for a fish, "a:<url>" for
+   * an add-on. */
   key: string;
-  thumb: string;
   name: string;
   kind: string;
   status: string;
-  /** 0 for a fish, 1 for an add-on (the header's counts). */
-  rank: number;
   remove: BusMsg;
   /** "Use" intent for scenery packs not currently on display. */
   use?: BusMsg | undefined;
@@ -144,13 +144,11 @@ export function itemsOf(s: TankState): Item[] {
     const stateTxt = stateLabel(f.state);
     return {
       key: fishThumbKey(f),
-      thumb: fishThumbKey(f),
       name: fishRowName(f),
       kind: "Fish",
       // Bus data is untrusted: an unknown state reads as swimming.
       status: ailing ? conditionLabel(f)
                      : `${stateTxt}, ${hungerLabel(f.hunger)}`,
-      rank: 0,
       remove: { op: "removeFish", id: f.id },
       fishId: f.id,
       // Ailing rows lead the list, Dead before Sick — a corpse needs
@@ -169,11 +167,9 @@ export function itemsOf(s: TankState): Item[] {
     const on = showing.has(a.url);
     items.push({
       key: `a:${a.url}`,
-      thumb: `a:${a.url}`,
       name: a.inner,
       kind: KINDS[a.section] ?? a.section,
       status: on ? "Showing" : "In tank",
-      rank: 1,
       // Add-ons sit after every fish; "In tank" sorts ahead of
       // "Showing" the way the old status-text compare did.
       statusKey: [3, on ? 1 : 0],

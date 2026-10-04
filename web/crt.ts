@@ -934,9 +934,9 @@ export interface CrtFilter {
   /** Ring the degauss coil: the raster wobbles and its color fringing
    * blooms, then settles. No-op while off or under reduced motion. */
   degauss(): void;
-  /** Live-update shader params; `config` reflects the merged result. */
-  configure(cfg: Partial<CrtConfig>): void;
-  readonly config: CrtConfig;
+  /** Live-update shader params from a full config; the filter keeps
+   * its own sanitized copy. */
+  configure(cfg: CrtConfig): void;
   /** Where the tank sits inside the canvas — the canvas may span more
    * glass than the tank so the size pots have room to grow into. */
   setRasterBox(box: RasterBox): void;
@@ -1186,9 +1186,6 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
                         Number.isFinite(offT0),
                         performance.now() - degaussT0);
     },
-    // A copy — the live cfg could otherwise be mutated without the
-    // shader ever seeing it, and goes stale once configure() swaps it.
-    get config(): CrtConfig { return { ...cfg }; },
     setEnabled(on: boolean): void {
       if (on && lost) return; // dead context — stay on the plain path
       // A collapse in flight ignores re-disable — the instant-off
@@ -1215,13 +1212,11 @@ export function initCrt(src: HTMLCanvasElement): CrtFilter | null {
       if (!enabled || reducedMotion.matches) return;
       degaussT0 = performance.now();
     },
-    configure(p: Partial<CrtConfig>): void {
-      // Merge onto the current config, then sanitize: unknown keys
-      // drop, values clamp to 0–1, undefined keeps the current value.
-      const merged: Record<string, unknown> = { ...cfg };
-      for (const [k, v] of Object.entries(p))
-        if (v !== undefined) merged[k] = v;
-      cfg = sanitizeCrtConfig(merged);
+    configure(c: CrtConfig): void {
+      // Sanitize into a fresh copy: a caller mutating its object later
+      // can't change cfg behind the shader, and out-of-range values
+      // still clamp to 0–1.
+      cfg = sanitizeCrtConfig(c);
       upload();
     },
     setRasterBox(box: RasterBox): void { rasterBox = { ...box }; },

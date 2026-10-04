@@ -13,7 +13,7 @@ const base = {
     { species: "Guppy", hunger: 0.2, state: "drift" },
     { species: "Angel", hunger: 0.6, state: "seek" },
   ],
-  waterQuality: 0.9, food: 0, foodSettled: 0, bubbles: 0,
+  waterQuality: 0.9, food: 0, foodSettled: 0,
   light: 1, tickCount: 30 * 60 * 90, // 90 min
 };
 
@@ -158,10 +158,9 @@ describe("deriveStats", () => {
     expect(s.advice.length).toBeLessThanOrEqual(2);
   });
 
-  it("counts night phase and bubbles", () => {
-    const s = deriveStats({ ...base, light: 0.3, bubbles: 4 });
+  it("counts night phase", () => {
+    const s = deriveStats({ ...base, light: 0.3 });
     expect(s.phase).toBe("night");
-    expect(s.bubbles).toBe(4);
   });
 
   it("reads night for a real share of the demo cycle", () => {
@@ -229,10 +228,8 @@ describe("labels", () => {
   });
 
   it("treats NaN counters as zero", () => {
-    const s = deriveStats({ ...base, foodSettled: NaN, bubbles: NaN,
-                            tickCount: NaN });
+    const s = deriveStats({ ...base, foodSettled: NaN, tickCount: NaN });
     expect(s.foodSettled).toBe(0);
-    expect(s.bubbles).toBe(0);
     expect(s.uptimeMin).toBe(0);
     expect(s.milestone).toBeNull();
     // A NaN must not silently suppress the rotting-food hint — zero

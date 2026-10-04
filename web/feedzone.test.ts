@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { makeRng } from "../core/rng.js";
 import { SURFACE } from "../core/sim.js";
+import { TANK_SIZE } from "../core/tuning.js";
 import { containPoint, isFeedZone, tankMap } from "./feedzone.js";
 
 const TANK = { width: 320, height: 200 };
@@ -95,14 +97,40 @@ describe("containPoint", () => {
 describe("tankMap", () => {
   it("is containPoint's forward twin, letterbox included", () => {
     const canvas = { left: 50, top: 30, width: 700, height: 300 };
-    const host = { left: 20, top: 10 };
-    const m = tankMap(canvas, host, TANK);
+    const m = tankMap(canvas, TANK);
     expect(m.s).toBe(1.5); // height-limited: 300 / 200
     for (const [x, y] of [[0, 0], [160, 100], [319, 199]] as const) {
-      const back = containPoint(host.left + m.ox + x * m.s,
-                                host.top + m.oy + y * m.s, canvas, TANK);
+      const back = containPoint(m.ox + x * m.s, m.oy + y * m.s, canvas,
+                                TANK);
       expect(back!.x).toBeCloseTo(x, 9);
       expect(back!.y).toBeCloseTo(y, 9);
+    }
+  });
+
+  it("lands exactly where the inline contain formula does", () => {
+    // The forward letterbox math written out, as main.ts placed the Get
+    // Info card and the name tags before it used tankMap: the map must
+    // reproduce it to the last bit (toBe compares with Object.is).
+    const rand = makeRng(11);
+    const rects = [
+      { left: 12.3, top: 7.75, width: 701.1, height: 333.3 },
+      { left: 0.5, top: 41.2, width: 319.7, height: 610.9 },
+      { left: 1234.56, top: 0.1, width: 0, height: 0 }, // hidden canvas
+      ...Array.from({ length: 200 }, () => ({
+        left: rand() * 2000 - 500, top: rand() * 1500 - 300,
+        width: rand() * 1600, height: rand() * 1200 })),
+    ];
+    for (const r of rects) {
+      const m = tankMap(r, TANK_SIZE);
+      const s = Math.min(r.width / TANK_SIZE.width,
+                         r.height / TANK_SIZE.height);
+      for (const [x, y] of [[0, 0], [17.25, 199.5], [160.1, 99.9],
+                            [319, 3.3]] as const) {
+        expect(m.ox + x * m.s)
+          .toBe(r.left + (r.width - TANK_SIZE.width * s) / 2 + x * s);
+        expect(m.oy + y * m.s)
+          .toBe(r.top + (r.height - TANK_SIZE.height * s) / 2 + y * s);
+      }
     }
   });
 });

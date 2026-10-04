@@ -22,8 +22,8 @@ class TestPack(unittest.TestCase):
     def test_walks_chunks_and_directory(self):
         p = Pack(_pack())
         self.assertEqual(len(p.chunks), 3)
-        self.assertEqual(len(p.images()), 1)
-        self.assertEqual(len(p.blobs()), 2)
+        self.assertEqual(sum(c.is_bmp for c in p.chunks), 1)
+        self.assertEqual(sum(not c.is_bmp for c in p.chunks), 2)
         self.assertEqual(len(p.directory), 3)
         self.assertEqual(p.chunks[0].res_id, 0x258)
         self.assertEqual(p.chunks[1].res_id, 0x500)

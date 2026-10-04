@@ -73,18 +73,11 @@ export function alertWidth(vw: number): number {
   return Math.max(0, Math.min(MAX_W, Math.floor(vw) - 2 * EDGE));
 }
 
-/** Where an alert w x h goes in a vw x vh viewport: centered across,
- * and a third of the leftover height above it (the Dialog Manager's
- * alert position), on whole pixels so the bitmap text stays crisp. */
-export function alertOrigin(vw: number, vh: number, w: number,
-                            h: number): { left: number; top: number } {
-  return alertOriginIn({ left: 0, top: 0, width: vw, height: vh }, w, h);
-}
-
-/** The same Dialog Manager position inside an arbitrary box: centered
- * across, a third of the leftover height above, never nearer than
- * EDGE to the box's top, never left of it, and on whole pixels (a
- * fractional box origin is floored) so the bitmap text stays crisp. */
+/** Where an alert w x h goes inside box `b`: centered across, and a
+ * third of the leftover height above it (the Dialog Manager's alert
+ * position), never nearer than EDGE to the box's top, never left of
+ * it, and on whole pixels (a fractional box origin is floored) so the
+ * bitmap text stays crisp. */
 export function alertOriginIn(b: AlertBox, w: number, h: number):
     { left: number; top: number } {
   return {

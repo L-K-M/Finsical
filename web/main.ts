@@ -13,7 +13,7 @@ import { conditionLabel, eventText, noticeText } from "./lifecopy.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { isPack } from "../core/data/fsh.js";
 import { isBmp } from "../core/data/bmp.js";
-import { BACKDROP_MIN, decodeDroppedPacks } from "./drop.js";
+import { BACKDROP_MIN, decodeDroppedPack } from "./drop.js";
 import { decorFrame, decorPhase, decorPhaseFrac }
   from "../core/data/decor.js";
 import { decorDepth, drawOrder } from "../core/depth.js";
@@ -55,11 +55,11 @@ import { nextNotice, noticePoint } from "./curiosity.js";
 import type { Notice } from "./curiosity.js";
 import { laserAim } from "./laser.js";
 import type { LaserAim } from "./laser.js";
-import { containPoint, isFeedZone } from "./feedzone.js";
+import { containPoint, isFeedZone, tankMap } from "./feedzone.js";
 import { mountNameTags } from "./nametags.js";
 import { cleanFishName, fishLabel, NAME_MAX } from "./fishname.js";
 import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
-         PAW_GAP_RANGE, PAW_H, PAW_W, pawPose, pawSpawnX, pawSwatAt }
+         PAW_GAP_RANGE, PAW_W, pawPose, pawSpawnX, pawSwatAt }
   from "./catpaw.js";
 import type { PawVisit } from "./catpaw.js";
 import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
@@ -236,9 +236,7 @@ const journal = sanitizeDiary(saved?.journal);
 // reduced motion, or when the Tank menu turns it off; a click or a
 // key skips it outright.
 const BOOT_KEY = "finsical:boot";
-let bootEnabled = true;
-try { bootEnabled = localStorage.getItem(BOOT_KEY) !== "off"; }
-catch { /* storage unavailable: default on */ }
+let bootEnabled = readPreference(BOOT_KEY) !== "off";
 let bootT0 = bootEnabled && installedAddons.length > 0 &&
     !window.matchMedia("(prefers-reduced-motion: reduce)").matches
   ? performance.now() : null;
@@ -344,15 +342,12 @@ let lifeClock = typeof saved?.savedAt === "number" &&
 const CHANGE_KEY = "finsical:waterChange";
 interface WaterChange { fraction: number; temp: number }
 let waterChangeCfg: WaterChange = (() => {
-  try {
-    const o = JSON.parse(localStorage.getItem(CHANGE_KEY) ?? "null") as
-      Partial<WaterChange> | null;
-    const f = o?.fraction, t = o?.temp;
-    if (typeof f === "number" && Number.isFinite(f) &&
-        typeof t === "number" && Number.isFinite(t))
-      return { fraction: Math.min(0.9, Math.max(0.01, f)),
-               temp: Math.min(36, Math.max(16, t)) };
-  } catch { /* storage unavailable */ }
+  const o = readJsonPreference(CHANGE_KEY) as Partial<WaterChange> | null;
+  const f = o?.fraction, t = o?.temp;
+  if (typeof f === "number" && Number.isFinite(f) &&
+      typeof t === "number" && Number.isFinite(t))
+    return { fraction: Math.min(0.9, Math.max(0.01, f)),
+             temp: Math.min(36, Math.max(16, t)) };
   return { fraction: 0.2, temp: sim.aquarium.heater.target };
 })();
 
@@ -362,12 +357,7 @@ let waterChangeCfg: WaterChange = (() => {
 // the sim, which stays tick-only. Declared this early because
 // postState() reads it and runs during module eval.
 const LIGHTING_KEY = "finsical:lighting";
-let lighting: Lighting = (() => {
-  try {
-    return sanitizeLighting(
-      JSON.parse(localStorage.getItem(LIGHTING_KEY) ?? "null"));
-  } catch { return sanitizeLighting(null); /* storage: defaults */ }
-})();
+let lighting: Lighting = sanitizeLighting(readJsonPreference(LIGHTING_KEY));
 const minutesOfDay = (d: Date): number =>
   d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
 function syncLight(now: Date): void {
@@ -457,6 +447,20 @@ function savePreference(key: string, value: string): void {
   if (!tankOwner) return;
   try { localStorage.setItem(key, value); }
   catch { /* storage unavailable */ }
+}
+/** A stored preference, or null when it is unset or storage is
+ * unavailable. Reads don't depend on owning the tank, and both readers
+ * are function declarations: module eval calls them (boot, water
+ * change, lighting) before this point. */
+function readPreference(key: string): string | null {
+  try { return localStorage.getItem(key); }
+  catch { return null; /* storage unavailable */ }
+}
+/** A stored JSON preference, or null when it is unset, storage is
+ * unavailable or the JSON is corrupt. Callers sanitize the value. */
+function readJsonPreference(key: string): unknown {
+  try { return JSON.parse(localStorage.getItem(key) ?? "null"); }
+  catch { return null; /* storage or JSON: defaults */ }
 }
 if (!tankOwner) {
   setInterval(() => { if (claim.ownerGone()) location.reload(); },
@@ -669,9 +673,8 @@ function tankToClient(x: number, y: number, r: DOMRect):
     { x: number; y: number } {
   if (crtMapsPointer())
     return crtTankToClient(x, y, r, rasterInGlass(machine), crtCfg, TANK);
-  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
-  return { x: r.left + (r.width - TANK.width * s) / 2 + x * s,
-           y: r.top + (r.height - TANK.height * s) / 2 + y * s };
+  const m = tankMap(r, TANK);
+  return { x: m.ox + x * m.s, y: m.oy + y * m.s };
 }
 
 /** The fish under a tank point. None in the air above the waterline:
@@ -1103,9 +1106,7 @@ const SCOLD_CLEAR_MS = 4_200;
 let scoldTimer: ReturnType<typeof setTimeout> | undefined;
 let glassTaps: number[] = [];
 let scoldedAt: number | null = null;
-let scoldOn = true;
-try { scoldOn = localStorage.getItem(SCOLD_KEY) !== "off"; }
-catch { /* storage unavailable */ }
+let scoldOn = readPreference(SCOLD_KEY) !== "off";
 function noteGlassTap(): void {
   if (!scoldOn) return;
   const now = performance.now();
@@ -1128,9 +1129,7 @@ function noteGlassTap(): void {
 // pellets) says why, at most once a minute. Hints are opt-in: off, a
 // refused feed is silent.
 const HINTS_KEY = "finsical:hints";
-let hintsOn = false;
-try { hintsOn = localStorage.getItem(HINTS_KEY) === "on"; }
-catch { /* storage unavailable */ }
+let hintsOn = readPreference(HINTS_KEY) === "on";
 let foodRefusedAt = -Infinity; // first refusal always shows
 function noteFoodRefused(): void {
   if (!hintsOn) return;
@@ -1703,7 +1702,7 @@ function aquariumState(): Record<string, unknown> {
     litres: L, temp: w.temp, pH: w.pH, gH: w.gH,
     o2: w.o2 / L, co2: w.co2 / L, nitrate: w.nitrate / L,
     ammonia: w.ammonia / L, chlorine: w.chlorine / L,
-    organics: a.organics(), oxygenSat: 1 - a.oxygenDeficit(),
+    oxygenSat: 1 - a.oxygenDeficit(),
     heaterTarget: a.heater.target, heaterMin: a.heater.min,
     heaterMax: a.heater.max, filterDirt: a.filter.dirt,
     doses: a.doses.map((d) => ({ id: d.medicine, ml: d.ml })),
@@ -1768,7 +1767,7 @@ function sendState(): void {
          // leave when real fish arrive.
          ...(placeholderIds.has(id) ? { standIn: true } : {}),
          ...(pack !== undefined ? { pack } : {}),
-         ...(life ? { health: life.health, ageDays: life.age / 1440,
+         ...(life ? { health: life.health,
                       sick: life.sick?.disease ?? null,
                       dead: life.dead?.cause ?? null } : {}) })),
     waterQuality: sim.waterQuality,
@@ -1778,10 +1777,8 @@ function sendState(): void {
     // its own guidance (e.g. settled pellets foul the water as they rot).
     food: sim.food.length,
     foodSettled: sim.food.reduce((n, f) => n + (f.settled > 0 ? 1 : 0), 0),
-    bubbles: sim.bubbles.length,
     light: sim.light,
     lighting,
-    autoFeed,
     // Preferences window reads this — `on`/`available` reflect the
     // live GL state (a lost context reports off/unavailable even if
     // the stored preference says on).
@@ -2102,7 +2099,6 @@ function removeAddon(url: string, opts: { persist?: boolean } = {}): void {
   pendingThumbs.delete(`a:${url}`);
   sweepThumbs();
   if (persist) saveTank(); // persists and pushes fresh state to the panel
-  bus.post({ op: "uninstalled", url });
   requestPaint(); // removed fish and decor vanish at once
 }
 
@@ -2248,8 +2244,8 @@ async function downloadAddon(it: Importable): Promise<void> {
 // ---- pause -----------------------------------------------------------------
 // Stops hunger, rot, filtration, and the day/night clock while the app
 // stays interactive (render, CRT, saves). Keyboard P / Tank ▸ Pause.
-let paused = false;
 const PAUSE_KEY = "finsical:paused";
+let paused = readPreference(PAUSE_KEY) === "1";
 function setPaused(on: boolean): boolean {
   if (paused !== on) {
     paused = on;
@@ -2262,17 +2258,13 @@ function setPaused(on: boolean): boolean {
   }
   return paused;
 }
-try { paused = localStorage.getItem(PAUSE_KEY) === "1"; }
-catch { /* storage unavailable */ }
 
 // ---- fish names -----------------------------------------------------------
 // AquaZone's Options > Names: a tag on every fish at once (the hover
 // balloon names one). Keyboard N / Tank > Fish Names; remembered.
 // Declared here for the TDZ reason above: postState() reads it.
-let namesOn = false;
 const NAMES_KEY = "finsical:names";
-try { namesOn = localStorage.getItem(NAMES_KEY) === "1"; }
-catch { /* storage unavailable */ }
+let namesOn = readPreference(NAMES_KEY) === "1";
 /** Turn the name tags on or off; returns the new flag for the native
  * menu's checkmark. */
 function setNames(on: boolean): boolean {
@@ -2294,11 +2286,7 @@ const CRT_KEY = "finsical:crt";
 const CRT_CFG_KEY = "finsical:crt-cfg";
 const crt = initCrt(canvas);
 let crtOn = false;
-let crtCfg: CrtConfig;
-try {
-  crtCfg = sanitizeCrtConfig(
-    JSON.parse(localStorage.getItem(CRT_CFG_KEY) ?? "null"));
-} catch { crtCfg = sanitizeCrtConfig(null); /* storage — defaults */ }
+let crtCfg: CrtConfig = sanitizeCrtConfig(readJsonPreference(CRT_CFG_KEY));
 crt?.configure(crtCfg);
 function setCrt(on: boolean): void {
   crtOn = crt !== null && on;
@@ -2356,10 +2344,7 @@ let machine: Machine = machineById(savedMachineId())!;
 // Volume, mute and the bubble/ambience switches. Declared before the
 // setCrt call below for the same TDZ reason: postState() reads them.
 const SOUND_KEY = "finsical:sound";
-let soundCfg: SoundConfig = loadSoundConfig(
-  (() => { try {
-    return JSON.parse(localStorage.getItem(SOUND_KEY) ?? "null");
-  } catch { return null; /* storage or JSON: defaults */ } })());
+let soundCfg: SoundConfig = loadSoundConfig(readJsonPreference(SOUND_KEY));
 function configureAudio(): void {
   audio.setVolume(soundCfg.volume);
   audio.setMuted(soundCfg.muted);
@@ -2420,12 +2405,7 @@ function playNote(at: { x: number; y: number }, octave: number,
 // with the other flags: the setCrt call below posts state during
 // module eval, and postState() reads this.
 const EFFECTS_KEY = "finsical:effects";
-let effects: EffectsConfig = (() => {
-  try {
-    return sanitizeEffects(
-      JSON.parse(localStorage.getItem(EFFECTS_KEY) ?? "null"));
-  } catch { return sanitizeEffects(null); /* storage: defaults */ }
-})();
+let effects: EffectsConfig = sanitizeEffects(readJsonPreference(EFFECTS_KEY));
 /** Merge a partial config (the Effects pane's boxes) onto the current
  * one, persist and apply — a switched-off effect clears its in-flight
  * visuals at once rather than playing them out. */
@@ -2469,9 +2449,7 @@ function applyEffects(raw: unknown): void {
 const AUTOFEED_KEY = "finsical:autofeed";
 const AUTOFEED_TICKS = 45 * 60 * TICKS_PER_SECOND; // every 45 tank minutes
 const AUTOFEED_MAX_FOOD = 4;
-let autoFeed = (() => { try {
-    return localStorage.getItem(AUTOFEED_KEY) === "1";
-  } catch { return false; /* storage unavailable — default off */ } })();
+let autoFeed = readPreference(AUTOFEED_KEY) === "1";
 
 try { setCrt(localStorage.getItem(CRT_KEY) === "1"); }
 catch { /* storage unavailable — default off */ }
@@ -2494,8 +2472,6 @@ const screenEl = document.getElementById("screen")!;
 const nameTags = mountNameTags(document.body);
 /** Half the drawn height of a stand-in fish, whose sheet reports none. */
 const PLACEHOLDER_HALF_H = 6;
-/** Tags are placed in viewport pixels already, so their map is 1:1. */
-const CLIENT_MAP = { s: 1, ox: 0, oy: 0 };
 /** Tag slots reused frame to frame: syncNameTags runs every frame
  * while Fish Names is on, so fresh objects per fish per frame churned
  * the GC for nothing. */
@@ -2519,11 +2495,8 @@ function syncNameTags(): void {
   const surface = tankToClient(TANK.width / 2, SURFACE + 1, r).y;
   let n = 0;
   // Without the tube the mapping is one affine — tankToClient's
-  // contain math, computed once here instead of twice per fish. (Keep
-  // the formula in step with tankToClient.)
-  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
-  const ox = r.left + (r.width - TANK.width * s) / 2;
-  const oy = r.top + (r.height - TANK.height * s) / 2;
+  // contain math, computed once here instead of twice per fish.
+  const { s, ox, oy } = tankMap(r, TANK);
   for (const f of sim.fish) {
     if (f === carded) continue;
     const hh = (f.halfH ?? PLACEHOLDER_HALF_H) * f.scale;
@@ -2547,7 +2520,7 @@ function syncNameTags(): void {
     n++;
   }
   tagSlots.length = n;
-  nameTags.sync(tagSlots, CLIENT_MAP, r, surface);
+  nameTags.sync(tagSlots, r, surface);
 }
 // Cosmetic layer — recreate #screenback and enforce sibling order when
 // stale markup is detected (#machine/#shell/#screen must still exist).
@@ -3390,7 +3363,7 @@ window.addEventListener("drop", (e) => {
       else notes.push("Couldn't save the sounds.");
     }
     // Not an .azpack folder — every dropped pack file imports, not
-    // just the first (web/drop.ts, tested there). One file at a time:
+    // just the first. One file at a time (web/drop.ts decodes each):
     // an unreadable file costs only itself, and a folder drop never
     // holds every pack's bytes at once. Sections come from the
     // extension like remote installs' collections: a .fsh fish adds
@@ -3406,7 +3379,7 @@ window.addEventListener("drop", (e) => {
         console.warn(`drop: skipping unreadable ${name}:`, e);
         continue;
       }
-      const [p] = decodeDroppedPacks([[name, data]]);
+      const p = decodeDroppedPack(name, data);
       if (!p && isBmp(data)) {
         console.warn(`drop: ${name}: not a 256-color BMP of at least ` +
           `${BACKDROP_MIN.w} x ${BACKDROP_MIN.h}`);

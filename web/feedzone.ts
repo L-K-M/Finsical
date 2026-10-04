@@ -38,22 +38,21 @@ export function containPoint(
   return { x, y };
 }
 
-/** Where the tank's picture sits inside a host element: `s` screen px
- * per tank px, and the picture's top-left corner `ox`, `oy` in the
- * host's own px. The forward twin of containPoint. */
+/** Where the tank's picture shows: `s` screen px per tank px, and the
+ * picture's top-left corner `ox`, `oy` in the client px of the rect it
+ * was measured from. The forward twin of containPoint. */
 export interface TankMap { s: number; ox: number; oy: number }
 
 /** The object-fit: contain placement of a `tank`-sized picture drawn
- * in `canvas`, measured from `host`'s corner (both client rects). */
+ * in `canvas` (a client rect). */
 export function tankMap(
   canvas: { left: number; top: number; width: number; height: number },
-  host: { left: number; top: number },
   tank: { width: number; height: number },
 ): TankMap {
   const s = Math.min(canvas.width / tank.width, canvas.height / tank.height);
   return {
     s,
-    ox: canvas.left - host.left + (canvas.width - tank.width * s) / 2,
-    oy: canvas.top - host.top + (canvas.height - tank.height * s) / 2,
+    ox: canvas.left + (canvas.width - tank.width * s) / 2,
+    oy: canvas.top + (canvas.height - tank.height * s) / 2,
   };
 }

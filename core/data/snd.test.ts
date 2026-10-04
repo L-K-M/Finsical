@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ownBytes } from "./bytes.js";
-import { fileSoundRecords, hasSounds, mace3Decode, parseSnd,
+import { fileSoundRecords, mace3Decode, parseSnd,
          qualifySoundNames, soundsFromRsrc, unwrapContainer, wavBytes }
   from "./snd.js";
 
@@ -461,12 +461,11 @@ describe("soundsFromRsrc", () => {
     expect(soundsFromRsrc(fork).map((s) => s.name)).toEqual(["a"]);
   });
 
-  it("hasSounds gates on 'snd ' presence", () => {
-    expect(hasSounds(buildRsrc(new Map([["snd ", [[1, null, 0, snd]]]]))))
-      .toBe(true);
-    expect(hasSounds(buildRsrc(new Map([["PICT", [[1, null, 0, snd]]]]))))
-      .toBe(false);
-    expect(hasSounds(new Uint8Array([1, 2, 3]))).toBe(false);
+  it("finds nothing in a fork without a 'snd ' type, or in junk", () => {
+    // A playable payload under another type is not a sound.
+    expect(soundsFromRsrc(buildRsrc(new Map([["PICT", [[1, null, 0, snd]]]]))))
+      .toEqual([]);
+    expect(soundsFromRsrc(new Uint8Array([1, 2, 3]))).toEqual([]);
   });
 
   it("rejects truncated binhex headers without throwing", () => {

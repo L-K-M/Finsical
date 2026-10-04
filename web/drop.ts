@@ -1,9 +1,9 @@
 /**
  * Drag-dropped raw pack containers (.fsh/.grv/.plt/.acc/.azn/.REZ) and
  * 256-color BMP backdrops. The drop handler in web/main.ts decodes
- * every pack file and picture it was handed here; this module owns the
- * "which of these files are packs, and what do they contain" half so
- * it stays testable in node.
+ * each pack file and picture it was handed here, one at a time; this
+ * module owns the "is this file a pack, and what does it contain" half
+ * so it stays testable in node.
  */
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
 import { fshToSheets, isPack, packImages } from "../core/data/fsh.js";
@@ -45,49 +45,45 @@ export function dropSection(name: string): PackSection {
     : "fish"; // .fsh and unknown extensions
 }
 
-/** Decode every pack container and BMP picture among the entries
- * (name → bytes), in drop order. Other files and packs with nothing
- * usable for their section are skipped, as are pictures the tank
- * can't show (see BACKDROP_MIN); a pack that throws while decoding is
- * skipped too — one corrupt file must not cost the rest of the drop. */
-export function decodeDroppedPacks(
-  entries: readonly (readonly [string, Uint8Array])[],
-): DroppedPack[] {
-  const out: DroppedPack[] = [];
-  for (const [name, data] of entries) {
-    // The same extension dropSection reads: never across a slash.
-    const stem = name.replace(/\.[^./]+$/, "");
-    // A picture is known by its content, not its name: classic Mac
-    // files often carry no extension. AquaZone took 256-color BMPs
-    // only, as decodeBmp does.
-    if (isBmp(data)) {
-      // decodeBmp allocates from the header's dimensions: a throw there
-      // costs this picture, as a throwing pack does below.
-      try {
-        const img = decodeBmp(data);
-        if (img && img.w >= BACKDROP_MIN.w && img.h >= BACKDROP_MIN.h)
-          out.push({ name: stem, section: "backgrounds", sheets: new Map(),
-                     images: new Map([[name, img]]), care: null });
-      } catch (e) {
-        console.warn(`drop: skipping undecodable picture ${name}:`, e);
-      }
-      continue;
-    }
-    if (!isPack(data)) continue;
+/** Decode one dropped file, a pack container or a BMP picture, from
+ * its name and bytes. Null for other files, packs with nothing usable
+ * for their section and pictures the tank can't show (see
+ * BACKDROP_MIN); a file that throws while decoding is logged and
+ * skipped too, so one corrupt file costs only itself. */
+export function decodeDroppedPack(name: string, data: Uint8Array):
+    DroppedPack | null {
+  // The same extension dropSection reads: never across a slash.
+  const stem = name.replace(/\.[^./]+$/, "");
+  // A picture is known by its content, not its name: classic Mac
+  // files often carry no extension. AquaZone took 256-color BMPs
+  // only, as decodeBmp does.
+  if (isBmp(data)) {
+    // decodeBmp allocates from the header's dimensions: a throw there
+    // costs this picture, as a throwing pack does below.
     try {
-      const section = dropSection(name);
-      // .REZ is the base library: fish sheets and scenery in one file.
-      const spawns = section === "fish" || /\.rez$/i.test(name);
-      const sheets = spawns ? fshToSheets(data)
-                            : new Map<string, SpriteSheet>();
-      const images = section === "fish"
-        ? new Map<string, IndexedImage>() : packImages(data);
-      if (!sheets.size && !images.size) continue;
-      out.push({ name: stem, section, sheets, images,
-                 care: sheets.size ? packSpeciesCare(data) : null });
+      const img = decodeBmp(data);
+      if (img && img.w >= BACKDROP_MIN.w && img.h >= BACKDROP_MIN.h)
+        return { name: stem, section: "backgrounds", sheets: new Map(),
+                 images: new Map([[name, img]]), care: null };
     } catch (e) {
-      console.warn(`drop: skipping undecodable pack ${name}:`, e);
+      console.warn(`drop: skipping undecodable picture ${name}:`, e);
     }
+    return null;
   }
-  return out;
+  if (!isPack(data)) return null;
+  try {
+    const section = dropSection(name);
+    // .REZ is the base library: fish sheets and scenery in one file.
+    const spawns = section === "fish" || /\.rez$/i.test(name);
+    const sheets = spawns ? fshToSheets(data)
+                          : new Map<string, SpriteSheet>();
+    const images = section === "fish"
+      ? new Map<string, IndexedImage>() : packImages(data);
+    if (!sheets.size && !images.size) return null;
+    return { name: stem, section, sheets, images,
+             care: sheets.size ? packSpeciesCare(data) : null };
+  } catch (e) {
+    console.warn(`drop: skipping undecodable pack ${name}:`, e);
+    return null;
+  }
 }

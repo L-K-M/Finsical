@@ -62,12 +62,12 @@ function frameKey(img: IndexedImage): number | null {
 }
 
 /** The decor art frame: largest image with a corner or border key.
- * Falls back (`guessed`) to the largest image with sprite-convention
+ * Falls back to the largest image with sprite-convention
  * index-0 transparency when no frame declares a key — legacy packs may
  * rely on enclosed index-0 holes staying transparent, so the fallback
  * keeps the old global-clear semantics instead of flood-filling. */
 export function pickDecorArt(images: Iterable<IndexedImage>):
-    { img: IndexedImage; key: number; guessed?: boolean } | null {
+    { img: IndexedImage; key: number } | null {
   let best: { img: IndexedImage; key: number } | null = null;
   let anyImg: IndexedImage | null = null;
   for (const img of images) {
@@ -77,7 +77,7 @@ export function pickDecorArt(images: Iterable<IndexedImage>):
     if (!best || img.w * img.h > best.img.w * best.img.h)
       best = { img, key };
   }
-  return best ?? (anyImg ? { img: anyImg, key: 0, guessed: true } : null);
+  return best ?? (anyImg ? { img: anyImg, key: 0 } : null);
 }
 
 /** The longest animation an item plays; longer runs are cut here to
@@ -96,7 +96,6 @@ const MIN_ANIMATION_FRAMES = 3;
 export interface DecorFrames {
   frames: IndexedImage[];
   key: number;
-  guessed?: boolean;
 }
 
 /**
@@ -132,8 +131,7 @@ export function pickDecorFrames(images: Iterable<IndexedImage>):
 
   const one = pickDecorArt(all);
   if (!one) return null;
-  const { img, ...rest } = one;
-  return { frames: [img], ...rest };
+  return { frames: [one.img], key: one.key };
 }
 
 /** Whether any of `images` would render as decor — a pickable frame

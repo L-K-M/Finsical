@@ -27,7 +27,7 @@ export interface StatsFish {
 export interface AquariumInput {
   litres?: number; temp?: number; pH?: number; gH?: number;
   o2?: number; co2?: number; nitrate?: number; ammonia?: number;
-  chlorine?: number; organics?: number; oxygenSat?: number;
+  chlorine?: number; oxygenSat?: number;
   heaterTarget?: number; heaterMin?: number; heaterMax?: number;
   filterDirt?: number; doses?: { id?: number; ml?: number }[];
   speed?: number; days?: number;
@@ -38,7 +38,6 @@ export interface StatsInput {
   waterQuality?: number; // 1 clean .. 0 foul
   food?: number;         // pellets in the water
   foodSettled?: number;  // pellets rotting on the gravel
-  bubbles?: number;
   light?: number;        // 0.3 night .. 1 day
   lighting?: unknown;    // core/light.ts Lighting, validated here
   tickCount?: number;    // 30 ticks per second
@@ -67,7 +66,6 @@ export interface TankStats {
   waterPct: number;
   food: number;
   foodSettled: number;
-  bubbles: number;
   phase: "day" | "night";
   /** "Night (lights on at 08:00)" under the timer, else the phase. */
   lightLabel: string;
@@ -154,7 +152,6 @@ export function deriveStats(s: StatsInput): TankStats {
     waterPct: Math.round(water * 100),
     food: fin(s.food, 0),
     foodSettled: fin(s.foodSettled, 0),
-    bubbles: fin(s.bubbles, 0),
     phase,
     lightLabel: lightLabel(phase, s.lighting),
     uptimeMin,
