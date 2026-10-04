@@ -43,7 +43,7 @@ import { clampDecorCopies, decorCopyRoom, decorRefusal, fetchAddon,
   from "./import.js";
 import { SWAY_AMP, SWAY_BANDS, swayOffset } from "./sway.js";
 import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
-import { isLocalPack, LOCAL_PREFIX, packDelete, packPut, sndsGet,
+import { isLocalPack, LOCAL_PREFIX, localPacks, packDelete, packPut, sndsGet,
          sndsMerge, sndsRemove } from "./store.js";
 import { coverCrop, decorCanvases, imageCanvas, isBackdropImage,
          isGravelImage,
@@ -2203,6 +2203,8 @@ async function installDropped(url: unknown, section: unknown,
     else droppedInFlight.delete(url);
     if (!added && !waiting && !installedAddons.some((a) => a.url === url))
       void packDelete(url).catch(() => {});
+    // The window that asked says how it went.
+    bus.post({ op: "droppedResult", url, ok: added });
   }
 }
 
@@ -3214,7 +3216,25 @@ void (async () => {
   .finally(() => {
     try { retryRestores(restoreFailed); }
     catch (e) { console.warn("add-on restore retry failed to start:", e); }
+    void sweepDroppedFiles();
   });
+
+/** A dropped file no add-on owns is deleted at launch once it has sat
+ * unused this long: a window drop the tank never took in (it quit
+ * first) or a write a crash cut off from its record. Younger ones may
+ * be a window drop still on its way. */
+const ORPHAN_AGE_MS = 10 * 60_000;
+async function sweepDroppedFiles(): Promise<void> {
+  // A view-only tab's list isn't the saved one.
+  if (!tankOwner) return;
+  const now = Date.now();
+  for (const { url, at } of await localPacks()) {
+    if (now - at < ORPHAN_AGE_MS || droppedInFlight.has(url) ||
+        installedAddons.some((a) => a.url === url)) continue;
+    console.info(`deleting ${url}: no add-on owns it`);
+    void packDelete(url).catch(() => {});
+  }
+}
 
 // First launch: offer to stock the tank (web/welcome.ts). Accepting
 // installs through the same path as the Import Add-ons window, and the
@@ -3503,10 +3523,18 @@ window.addEventListener("drop", (e) => {
       // now, not discovered as a missing pack on next launch. The
       // catch is belt-and-braces: packPut's contract is never-fail,
       // but a rejection here would skip the remaining files.
+      const deletions = bytesDeleted.get(url) ?? 0;
       const stored = await packPut(url, data).catch((err) => {
         console.warn(`drop: ${name} packPut rejected`, err);
         return null;
       });
+      // A Remove of an earlier drop under this name, landing while the
+      // bytes were written, deleted them too, and wins, as it does for
+      // a window drop (installDropped).
+      if ((bytesDeleted.get(url) ?? 0) !== deletions) {
+        console.warn(`drop: ${name}: removed while it was stored`);
+        continue;
+      }
       if (!stored) {
         console.warn(`drop: ${name} could not be stored — it won't ` +
           "survive a relaunch");

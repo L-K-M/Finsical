@@ -151,6 +151,26 @@ describe("store.ts after the browser closes its connection", () => {
   });
 });
 
+describe("localPacks", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubGlobal("indexedDB", fakeIdb().api);
+    vi.stubGlobal("IDBKeyRange", { bound: () => null });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("lists the dropped files with when each was last used", async () => {
+    const store = await import("./store.js");
+    const before = Date.now();
+    await store.packPut("local:Reef.pct", new Uint8Array([1]));
+    await store.packPut("https://archive.org/download/x/y.fsh",
+                        new Uint8Array([2]));
+    const got = await store.localPacks();
+    expect(got.map((p) => p.url)).toEqual(["local:Reef.pct"]);
+    expect(got[0]!.at).toBeGreaterThanOrEqual(before);
+  });
+});
+
 describe("sndsMerge", () => {
   beforeEach(() => {
     vi.resetModules();
