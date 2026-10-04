@@ -483,7 +483,7 @@ STATS = ClientSpec(
     "stats.html",
     "Tank Stats",
     "FinsicalStatsTabs",
-    Size(380, 360),
+    Size(380, 330),
     Size(340, 330),
 )
 CLIENT_SPECS = (PREFS, OVERVIEW, ADDONS, STATS)

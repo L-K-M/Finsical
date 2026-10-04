@@ -601,7 +601,7 @@ class TestClientWindowState(unittest.TestCase):
     def test_reopen_grows_a_saved_sliver(self):
         state = ClientWindowState(logic.STATS)
         self.assertEqual(
-            state.reopen(Rect(5, 6, 380, 23)), Rect(5, 6, 380, 360)
+            state.reopen(Rect(5, 6, 380, 23)), Rect(5, 6, 380, 330)
         )
 
     def test_folded_window_saves_its_expanded_frame(self):

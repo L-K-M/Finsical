@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preferences settings start at the top of each pane. Tank Stats opens
+  30 pixels shorter, with its tabs, care hints and controls still visible.
 - A fish from an add-on that holds several packs now keeps its own
   pack across a restart. The save did not record which of the add-on's
   packs a fish came from, so on the next launch it had to guess from

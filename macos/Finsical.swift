@@ -186,7 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
     /// were at least 560 points tall, sized for one long pane.
     private lazy var stats = host.add(OsmiumWindowSpec(
         url: page("stats.html"), title: "Tank Stats",
-        frameKey: "FinsicalStatsTabs", size: NSSize(width: 380, height: 360),
+        frameKey: "FinsicalStatsTabs", size: NSSize(width: 380, height: 330),
         minSize: NSSize(width: 340, height: 330)))
 
     private func page(_ name: String) -> URL {
