@@ -9,7 +9,6 @@ import type { TagCandidate, TagChoice } from "./nametags.js";
 // picture a tank drawn at 2x with its corner 10 px into a 660 x 420
 // box: tank x 100 shows at x 210, and the waterline (tank row
 // SURFACE + 1) at y 32.
-const ID = { s: 1, ox: 0, oy: 0 };
 const BOUNDS = { left: 0, top: 0, right: 660, bottom: 420 };
 const SURF = 32;
 const W = 40, H = 12;
@@ -17,27 +16,27 @@ const W = 40, H = 12;
 describe("tagSides", () => {
   it("centres a tag just above the fish, with a spot below too", () => {
     // Body from y 190 to 230 at x 210.
-    expect(tagSides(210, 190, 230, ID, W, H, BOUNDS, SURF)).toEqual({
+    expect(tagSides(210, 190, 230, W, H, BOUNDS, SURF)).toEqual({
       above: { left: 190, top: 176 }, below: { left: 190, top: 232 },
     });
   });
 
   it("offers no spot above a fish at the surface", () => {
     // Above would reach past the waterline into the air strip.
-    expect(tagSides(210, 38, 70, ID, W, H, BOUNDS, SURF)).toEqual({
+    expect(tagSides(210, 38, 70, W, H, BOUNDS, SURF)).toEqual({
       above: null, below: { left: 190, top: 72 },
     });
   });
 
   it("stays inside the bounds at the side walls", () => {
-    expect(tagSides(10, 190, 230, ID, W, H, BOUNDS, SURF).above)
+    expect(tagSides(10, 190, 230, W, H, BOUNDS, SURF).above)
       .toEqual({ left: 0, top: 176 });
-    expect(tagSides(648, 190, 230, ID, W, H, BOUNDS, SURF).above)
+    expect(tagSides(648, 190, 230, W, H, BOUNDS, SURF).above)
       .toEqual({ left: BOUNDS.right - W, top: 176 });
   });
 
   it("stays inside the bounds at the bottom", () => {
-    expect(tagSides(210, 38, 420, ID, W, H, BOUNDS, SURF)).toEqual({
+    expect(tagSides(210, 38, 420, W, H, BOUNDS, SURF)).toEqual({
       above: null, below: { left: 190, top: BOUNDS.bottom - H },
     });
   });
@@ -46,15 +45,15 @@ describe("tagSides", () => {
     // Viewport space: the tank rect sits at 100,50 in the window, its
     // waterline at y 72.
     const box = { left: 100, top: 50, right: 740, bottom: 450 };
-    expect(tagSides(100, 230, 270, ID, W, H, box, 72).above)
+    expect(tagSides(100, 230, 270, W, H, box, 72).above)
       .toEqual({ left: 100, top: 216 });
-    expect(tagSides(300, 78, 460, ID, W, H, box, 72)).toEqual({
+    expect(tagSides(300, 78, 460, W, H, box, 72)).toEqual({
       above: null, below: { left: 280, top: 450 - H },
     });
   });
 
   it("lands on whole pixels", () => {
-    expect(tagSides(140.9, 126.6, 152.95, ID, 41, 13, BOUNDS, 17.32))
+    expect(tagSides(140.9, 126.6, 152.95, 41, 13, BOUNDS, 17.32))
       .toEqual({ above: { left: 120, top: 112 },
                  below: { left: 120, top: 155 } });
   });

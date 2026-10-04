@@ -7,7 +7,6 @@
  * pure, so vitest pins it; the DOM layer only writes what placement
  * returns.
  */
-import type { TankMap } from "./feedzone.js";
 
 /** Gap between a tag and the fish it names, px. */
 const TAG_GAP = 2;
@@ -23,38 +22,27 @@ export interface TagBounds {
 export type TagSide = "above" | "below";
 
 /**
- * Where a tag of `w` x `h` px may go for a fish centred at tank x `fx`
- * whose drawn body spans tank rows `top`..`bottom`: centred above the
- * body, or centred under it. `above` is null where it would reach past
- * the waterline (tank row `surface`) into the air strip. Both are
- * clamped inside `bounds` and land on whole pixels.
+ * Where a tag of `w` x `h` px may go for a fish centred at client x
+ * `fx` whose drawn body spans client rows `top`..`bottom`: centred
+ * above the body, or centred under it. `above` is null where it would
+ * reach past the waterline (client row `surface`) into the air strip.
+ * Both are clamped inside `bounds` and land on whole pixels.
  */
 export function tagSides(fx: number, top: number, bottom: number,
-                         map: TankMap, w: number, h: number,
+                         w: number, h: number,
                          bounds: TagBounds,
                          surface: number): { above: TagSpot | null;
                                              below: TagSpot } {
   const left = Math.round(Math.max(bounds.left,
-    Math.min(map.ox + fx * map.s - w / 2, bounds.right - w)));
+    Math.min(fx - w / 2, bounds.right - w)));
   const at = (y: number): TagSpot => ({
     left, top: Math.round(Math.max(bounds.top, Math.min(y, bounds.bottom - h))),
   });
-  const up = map.oy + top * map.s - TAG_GAP - h;
+  const up = top - TAG_GAP - h;
   return {
-    above: up < map.oy + surface * map.s ? null : at(up),
-    below: at(map.oy + bottom * map.s + TAG_GAP),
+    above: up < surface ? null : at(up),
+    below: at(bottom + TAG_GAP),
   };
-}
-
-/** A tag's usual place when nothing else is near: above the fish, or
- * under it near the surface (see tagSides). The tank lays tags out
- * with declutterTags; this is the one-tag case. */
-export function tagPlacement(fx: number, top: number, bottom: number,
-                             map: TankMap, w: number, h: number,
-                             bounds: TagBounds,
-                             surface: number): TagSpot {
-  const s = tagSides(fx, top, bottom, map, w, h, bounds, surface);
-  return s.above ?? s.below;
 }
 
 /** One tag to lay out: its fish's id, its size and where it may go. */
@@ -157,22 +145,21 @@ export function declutterTags(cands: readonly TagCandidate[],
 }
 
 /** One fish to tag: its id (the tag's identity from frame to frame),
- * label, centre x and the tank rows its drawn body spans. */
+ * label, centre x and the rows its drawn body spans, in client px. */
 export interface TagFish {
   id: number; label: string; x: number; top: number; bottom: number;
 }
 
 export interface NameTags {
-  /** Show exactly these tags, placed through `map`, kept inside
-   * `bounds`. */
-  sync(fish: readonly TagFish[], map: TankMap,
-       bounds: TagBounds, surface: number): void;
+  /** Show exactly these tags, kept inside `bounds`. */
+  sync(fish: readonly TagFish[], bounds: TagBounds, surface: number): void;
   /** Remove every tag. */
   clear(): void;
 }
 
-/** A layer of `.nametag` labels appended to `host`. The caller's map
- * and bounds must be in the coordinates `.nametag` is positioned in. */
+/** A layer of `.nametag` labels appended to `host`. The caller's fish,
+ * bounds and surface must be in the coordinates `.nametag` is
+ * positioned in. */
 export function mountNameTags(host: HTMLElement): NameTags {
   const tags = new Map<number, { el: HTMLElement; w: number; h: number }>();
   // Last frame's layout, which declutterTags keeps steady, and until
@@ -186,7 +173,7 @@ export function mountNameTags(host: HTMLElement): NameTags {
     heldUntil.clear();
   };
   return {
-    sync(fish, map, bounds, surface) {
+    sync(fish, bounds, surface) {
       const live = new Set<number>();
       // Text first and every size read after, so the layout runs once
       // per frame rather than once per tag.
@@ -215,7 +202,7 @@ export function mountNameTags(host: HTMLElement): NameTags {
       choices = declutterTags(fish.map((f) => {
         const t = tags.get(f.id)!;
         return { id: f.id, w: t.w, h: t.h,
-                 ...tagSides(f.x, f.top, f.bottom, map, t.w, t.h, bounds,
+                 ...tagSides(f.x, f.top, f.bottom, t.w, t.h, bounds,
                              surface) };
       }), prev, new Set(heldUntil.keys()));
       armHolds(prev, choices, heldUntil, now);

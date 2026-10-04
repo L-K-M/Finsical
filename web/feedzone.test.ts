@@ -97,21 +97,20 @@ describe("containPoint", () => {
 describe("tankMap", () => {
   it("is containPoint's forward twin, letterbox included", () => {
     const canvas = { left: 50, top: 30, width: 700, height: 300 };
-    const host = { left: 20, top: 10 };
-    const m = tankMap(canvas, host, TANK);
+    const m = tankMap(canvas, TANK);
     expect(m.s).toBe(1.5); // height-limited: 300 / 200
     for (const [x, y] of [[0, 0], [160, 100], [319, 199]] as const) {
-      const back = containPoint(host.left + m.ox + x * m.s,
-                                host.top + m.oy + y * m.s, canvas, TANK);
+      const back = containPoint(m.ox + x * m.s, m.oy + y * m.s, canvas,
+                                TANK);
       expect(back!.x).toBeCloseTo(x, 9);
       expect(back!.y).toBeCloseTo(y, 9);
     }
   });
 
   it("lands exactly where the inline contain formula does", () => {
-    // tankToClient's forward letterbox math, written out: the map must
-    // reproduce it to the last bit (toBe compares with Object.is), or
-    // tags and the Get Info card would drift from the picture.
+    // The forward letterbox math written out, as main.ts placed the Get
+    // Info card and the name tags before it used tankMap: the map must
+    // reproduce it to the last bit (toBe compares with Object.is).
     const rand = makeRng(11);
     const rects = [
       { left: 12.3, top: 7.75, width: 701.1, height: 333.3 },
@@ -122,7 +121,7 @@ describe("tankMap", () => {
         width: rand() * 1600, height: rand() * 1200 })),
     ];
     for (const r of rects) {
-      const m = tankMap(r, { left: 0, top: 0 }, TANK_SIZE);
+      const m = tankMap(r, TANK_SIZE);
       const s = Math.min(r.width / TANK_SIZE.width,
                          r.height / TANK_SIZE.height);
       for (const [x, y] of [[0, 0], [17.25, 199.5], [160.1, 99.9],

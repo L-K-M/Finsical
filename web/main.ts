@@ -55,7 +55,7 @@ import { nextNotice, noticePoint } from "./curiosity.js";
 import type { Notice } from "./curiosity.js";
 import { laserAim } from "./laser.js";
 import type { LaserAim } from "./laser.js";
-import { containPoint, isFeedZone } from "./feedzone.js";
+import { containPoint, isFeedZone, tankMap } from "./feedzone.js";
 import { mountNameTags } from "./nametags.js";
 import { cleanFishName, fishLabel, NAME_MAX } from "./fishname.js";
 import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
@@ -669,9 +669,8 @@ function tankToClient(x: number, y: number, r: DOMRect):
     { x: number; y: number } {
   if (crtMapsPointer())
     return crtTankToClient(x, y, r, rasterInGlass(machine), crtCfg, TANK);
-  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
-  return { x: r.left + (r.width - TANK.width * s) / 2 + x * s,
-           y: r.top + (r.height - TANK.height * s) / 2 + y * s };
+  const m = tankMap(r, TANK);
+  return { x: m.ox + x * m.s, y: m.oy + y * m.s };
 }
 
 /** The fish under a tank point. None in the air above the waterline:
@@ -2494,8 +2493,6 @@ const screenEl = document.getElementById("screen")!;
 const nameTags = mountNameTags(document.body);
 /** Half the drawn height of a stand-in fish, whose sheet reports none. */
 const PLACEHOLDER_HALF_H = 6;
-/** Tags are placed in viewport pixels already, so their map is 1:1. */
-const CLIENT_MAP = { s: 1, ox: 0, oy: 0 };
 /** Tag slots reused frame to frame: syncNameTags runs every frame
  * while Fish Names is on, so fresh objects per fish per frame churned
  * the GC for nothing. */
@@ -2519,11 +2516,8 @@ function syncNameTags(): void {
   const surface = tankToClient(TANK.width / 2, SURFACE + 1, r).y;
   let n = 0;
   // Without the tube the mapping is one affine — tankToClient's
-  // contain math, computed once here instead of twice per fish. (Keep
-  // the formula in step with tankToClient.)
-  const s = Math.min(r.width / TANK.width, r.height / TANK.height);
-  const ox = r.left + (r.width - TANK.width * s) / 2;
-  const oy = r.top + (r.height - TANK.height * s) / 2;
+  // contain math, computed once here instead of twice per fish.
+  const { s, ox, oy } = tankMap(r, TANK);
   for (const f of sim.fish) {
     if (f === carded) continue;
     const hh = (f.halfH ?? PLACEHOLDER_HALF_H) * f.scale;
@@ -2547,7 +2541,7 @@ function syncNameTags(): void {
     n++;
   }
   tagSlots.length = n;
-  nameTags.sync(tagSlots, CLIENT_MAP, r, surface);
+  nameTags.sync(tagSlots, r, surface);
 }
 // Cosmetic layer — recreate #screenback and enforce sibling order when
 // stale markup is detected (#machine/#shell/#screen must still exist).
