@@ -86,12 +86,14 @@ function appleDouble(rsrc) {
 }
 
 // Backdrops: one red, one blue. The gravel strip is white (the sky the
-// tank keys out) over green, its catalog picture all blue.
+// tank keys out) over green. Its catalog picture is all blue, at
+// AquaZone's 373 by 209: the size of a backdrop, which it must never
+// become.
 const RED_BACKDROP = pict(320, 200, () => 1, true);
 const BLUE_BACKDROP = pict(320, 200, () => 3, true);
 const GRAVEL = appleDouble(fork({
   Grvl: [[4020, [0, 53, 0, 52, 0, 0, 0, 0]]],
-  BADP: [[4020, pict(64, 48, () => 3)]],
+  BADP: [[4020, pict(373, 209, () => 3)]],
   BAPC: [[4020, pict(400, 60, (y) => y < 20 ? 0 : 2)]],
 }));
 
