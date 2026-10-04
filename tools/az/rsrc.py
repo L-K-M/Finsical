@@ -172,7 +172,7 @@ class ResFile:
     def resources(self, rtype):
         """rtype: 4-byte tag. Yields (id, name, attrs, rawbytes).
 
-        Like core/data/snd.ts: only the first entry for the type is
+        Like core/data/resfork.ts: only the first entry for the type is
         read, each payload yields once however many references share
         it, and at most MAX_RESOURCES resources come back, so a
         crafted map can't multiply one blob into millions. A reference
