@@ -572,6 +572,12 @@ describe("installProblem", () => {
     expect(installProblem(new Error("no pack inside")))
       .toBe("The download has no add-on in it.");
   });
+  it("explains add-ons whose format Finsical can't read", () => {
+    expect(installProblem(new Error("unreadable legacy pack")))
+      .toBe("Finsical can't read this add-on yet.");
+    expect(installProblem(new Error("unreadable picture")))
+      .toBe("Finsical can't read this add-on's pictures.");
+  });
   it("passes the tank's own messages through untouched", () => {
     expect(installProblem(
       new Error("cancelled — the tank was emptied mid-install")))

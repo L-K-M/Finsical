@@ -1,8 +1,10 @@
 import { openBus, TANK_QUIET_MS } from "./bus.js";
-import { fileSoundRecords, qualifySoundNames } from "../core/data/snd.js";
+import { qualifySoundNames } from "../core/data/snd.js";
+import { showAlert } from "./alert.js";
+import { BACKDROP_MIN, sortClientDrop } from "./drop.js";
 import { mountImportPanel } from "./import.js";
 import { previewOf } from "./render.js";
-import { sndsMerge } from "./store.js";
+import { LOCAL_PREFIX, packPut, sndsMerge } from "./store.js";
 import { hostWindow } from "osmium-ui";
 
 // Import Add-ons window: the archive.org add-on browser. The tank page
@@ -40,36 +42,66 @@ const panel = mountImportPanel({
      connected: tankConnected });
 panel.open();
 
-// Sound files dropped on the window: decoded/encoded bytes persist to
-// the shared IndexedDB store, then the tank page is asked to reload
-// and play them (audio contexts live in the tank page's webview).
+const showNote = (text: string) => showAlert({ icon: "caution", text,
+  buttons: [{ title: "OK", default: true, cancel: true }] });
+
+// Files dropped on the window: sounds and pictures. Their bytes persist
+// to the shared IndexedDB store, then the tank page is asked to take
+// them in, since it owns the sim and the audio context: sounds through
+// the store's sound records, a picture under its own local: key, as a
+// drop on the tank keeps one.
 window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener("drop", (e) => {
   e.preventDefault();
   void (async () => {
-    const recs: { name: string; wav: Uint8Array }[] = [];
+    const files: { name: string; data: Uint8Array }[] = [];
     for (const file of Array.from(e.dataTransfer?.files ?? [])) {
       if (file.size > 32 * 1024 * 1024) { // same cap as the tank
-        console.warn("snd skip (too large):", file.name);
+        console.warn("drop skip (too large):", file.name);
         continue;
       }
       try {
-        recs.push(...fileSoundRecords(
-          file.name, new Uint8Array(await file.arrayBuffer())));
-      } catch (err) { console.warn("snd skip:", file.name, err); }
+        files.push({ name: file.name,
+                     data: new Uint8Array(await file.arrayBuffer()) });
+      } catch (err) { console.warn("drop skip:", file.name, err); }
     }
-    if (!recs.length) return;
-    qualifySoundNames(recs);
-    try { await sndsMerge(recs); }
-    catch (err) {
-      // The tank re-reads the store on soundsLoaded — nothing landed,
-      // so posting it would report a success that isn't one.
-      console.warn("snd persist failed:", err);
+    const { sounds: recs, pictures, refused } = sortClientDrop(files);
+    if (recs.length) {
+      qualifySoundNames(recs);
+      try {
+        await sndsMerge(recs);
+        bus.post({ op: "soundsLoaded", name: recs[0]!.name,
+                   names: recs.map((r) => r.name) });
+      } catch (err) {
+        // The tank re-reads the store on soundsLoaded — nothing landed,
+        // so posting it would report a success that isn't one.
+        console.warn("snd persist failed:", err);
+      }
+    }
+    // A picture stored with no tank to take it in would stay in the
+    // store, owned by no add-on. tankConnected trusts a state push up
+    // to TANK_QUIET_MS old, so a tank that quit within that time still
+    // leaves the bytes behind.
+    if (pictures.length && !tankConnected()) {
+      showNote("The tank isn't running, so the picture wasn't added. " +
+            "Open Finsical and drop it again.");
       return;
     }
-    bus.post({ op: "soundsLoaded", name: recs[0]!.name,
-               names: recs.map((r) => r.name) });
-  })().catch((err) => console.warn("sound drop failed:", err));
+    let unsaved = 0;
+    for (const { name, data, pack } of pictures) {
+      const url = `${LOCAL_PREFIX}${name}`;
+      if (!await packPut(url, data).catch(() => null)) { unsaved++; continue; }
+      bus.post({ op: "installDropped", url, section: pack.section,
+                 inner: pack.name });
+    }
+    if (refused)
+      showNote(`Finsical can't use ${refused > 1 ? "those pictures"
+        : "that picture"}. Drop a PICT or a 256-color BMP of at least ` +
+        `${BACKDROP_MIN.w} by ${BACKDROP_MIN.h} pixels.`);
+    else if (unsaved)
+      showNote("Couldn't save the dropped picture. If storage is full, " +
+            "remove some add-ons to make room.");
+  })().catch((err) => console.warn("drop failed:", err));
 });
 
 // The tank page may still be loading when the window opens — retry the

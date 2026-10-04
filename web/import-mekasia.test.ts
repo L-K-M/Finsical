@@ -86,9 +86,10 @@ describe("the Mekasia collections", () => {
       if (!own[c.section] || (!c.outer.includes("/") && !c.prefix))
         continue;
       expect(c.exts, `${c.section} ${c.outer}`).toBeDefined();
+      // A Mac collection lists Mac files, so it takes no pack at all.
       for (const [section, file] of Object.entries(own))
         expect(c.exts!.test(file), `${c.outer} vs ${file}`)
-          .toBe(section === c.section);
+          .toBe(!c.mac && section === c.section);
     }
   });
 });

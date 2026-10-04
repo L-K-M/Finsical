@@ -17,7 +17,9 @@ import { fshToSheets, isLegacyPack, isPack, packImages }
 import { packSpeciesCare } from "../core/data/species.js";
 import type { SpeciesCare } from "../core/data/species.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
-import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
+import { macPictures } from "../core/data/macpics.js";
+import { AUDIO_FILE_EXT, fileSoundRecords, isAudioFileName }
+  from "../core/data/snd.js";
 import { bankSounds } from "../core/data/sndbank.js";
 import { isLocalPack, metaGet, metaPut, packDelete, packGet, packPut }
   from "./store.js";
@@ -46,6 +48,15 @@ const JPN_BONUS = `${JPN_ZIP}/AQUAZONE (JPN) SET/` +
  * view lists and serves entry by entry, like a zip. */
 const MISSING_7Z = "Missing addons Aquazone.7z";
 const MISSING_ROOT = "Missing addons Aquazone/";
+/** The 7z's listing drops the first word of its top folder, and the
+ * listed URLs serve 0 bytes: read entries under the folder it stores. */
+const MISSING_RENAME = { listed: "addons Aquazone/", stored: MISSING_ROOT };
+/** Mac-only scenery in the 7z: PICT backdrops as data-fork files
+ * without extensions, and gravels whose pictures live in AppleDouble
+ * resource forks ("._name"). The listing only names them, so a name's
+ * shape places each in its section; its content decodes it. */
+const MAC_FILES = MISSING_ROOT +
+  "Spare interesting things/Misc Macintosh files/";
 
 export interface Collection {
   section: PackSection;
@@ -74,6 +85,9 @@ export interface Collection {
    * folder. Listed paths starting with `listed` are read (and fetched)
    * as starting with `stored`, before `prefix` is matched. */
   rename?: { listed: string; stored: string };
+  /** Loose-file mode: Mac files, which carry no extensions. The name
+   * shown is macDisplayName's, not the file name minus an extension. */
+  mac?: boolean;
 }
 
 /** Outer archives that hold importable add-on packs. The JPN SET item
@@ -108,10 +122,15 @@ export const COLLECTIONS: Collection[] = [
   // The Windows game's own sound effects. The 7z's listing drops the
   // first word of its top folder, and the listed URLs serve 0 bytes.
   { section: "sounds", outer: MISSING_7Z, prefix: MISSING_ROOT + "System/",
-    exts: /\/AZ_WAVES\.REZ$/i,
-    rename: { listed: "addons Aquazone/", stored: MISSING_ROOT } },
+    exts: /\/AZ_WAVES\.REZ$/i, rename: MISSING_RENAME },
   { section: "sounds", item: JPN_ITEM, outer: JPN_BONUS,
     exts: AUDIO_FILE_EXT, deep: true, inside: /\.zip$/i },
+  // The 7z's Mac scenery: a name without an extension is a PICT
+  // backdrop, an AppleDouble companion a gravel's fork.
+  { section: "backgrounds", outer: MISSING_7Z, prefix: MAC_FILES,
+    exts: /\/[^/.]+$/, rename: MISSING_RENAME, mac: true },
+  { section: "gravel", outer: MISSING_7Z, prefix: MAC_FILES,
+    exts: /\/\._[^/]+$/, rename: MISSING_RENAME, mac: true },
 ];
 
 const PACK_EXT = /\.(fsh|grv|plt|acc|azn|rez)$/i;
@@ -492,8 +511,10 @@ async function listCollection(col: Collection): Promise<Importable[]> {
       // `inner` is the entry's basename (minus extension) for display.
       if (!rel.startsWith(col.prefix) ||
           !(col.exts ?? DIRECT_EXT).test(rel)) continue;
-      const inner = rel.slice(col.prefix.length)
-        .replace(/\.[^.]+$/, "").split("/").pop()!;
+      const inner = col.mac
+        ? macDisplayName(rel.slice(col.prefix.length).split("/").pop()!)
+        : rel.slice(col.prefix.length)
+          .replace(/\.[^.]+$/, "").split("/").pop()!;
       if (!inner || seen.has(url)) continue;
       seen.add(url);
       out.push({ section: "", inner, url });
@@ -507,6 +528,43 @@ async function listCollection(col: Collection): Promise<Importable[]> {
     }
   }
   return out;
+}
+
+/** Mac Roman's upper half by character: macDisplayName encodes names
+ * back to the bytes a Mac wrote. */
+let macRomanBytes: Map<string, number> | null = null;
+const JAPANESE = /[\u3040-\u30ff\u4e00-\u9fff]/;
+const LATIN_TOUCHING = new RegExp(`[A-Za-z]${JAPANESE.source}|` +
+                                  `${JAPANESE.source}[A-Za-z]`);
+
+/** A Mac file's name for the add-on list: without an AppleDouble
+ * companion's "._", and read back as Japanese where an archiver took
+ * Shift-JIS bytes for Mac Roman (the 7z stores "苔" as "ë€"). The
+ * repair is a heuristic: it applies only when the name's bytes decode
+ * as Shift-JIS without error, and the result holds kana or kanji with
+ * no ASCII letter right next to one. An accented Latin name can decode
+ * too, but its kanji land among its letters ("Noël" reads "No鼠"). */
+export function macDisplayName(name: string): string {
+  const base = name.startsWith("._") ? name.slice(2) : name;
+  return shiftJisFromMacRoman(base) ?? base;
+}
+
+function shiftJisFromMacRoman(s: string): string | null {
+  if (!/[^\x00-\x7f]/.test(s)) return null;
+  try {
+    macRomanBytes ??= new Map([...new TextDecoder("macintosh").decode(
+      Uint8Array.from({ length: 128 }, (_, i) => 128 + i))]
+      .map((c, i) => [c, 128 + i]));
+    const bytes: number[] = [];
+    for (const c of s) {
+      const b = c.charCodeAt(0) < 0x80 ? c.charCodeAt(0) : macRomanBytes.get(c);
+      if (b === undefined) return null;
+      bytes.push(b);
+    }
+    const out = new TextDecoder("shift_jis", { fatal: true })
+      .decode(Uint8Array.from(bytes));
+    return JAPANESE.test(out) && !LATIN_TOUCHING.test(out) ? out : null;
+  } catch { return null; } // an encoding this engine lacks, or not Shift-JIS
 }
 
 interface RawBlob { name: string; data: Uint8Array }
@@ -674,9 +732,13 @@ const SCENERY_BY_EXT: ReadonlyMap<string, PackSection> = new Map([
  * Before each Mekasia collection took only its own kind of pack,
  * mekaccs.zip's G_Debris.grv listed and installed as an accessory, a
  * big textured block in the tank; its record restores as the gravel it
- * is. Fish, sounds and non-scenery records pass through unchanged. */
+ * is. Fish, sounds and non-scenery records pass through unchanged, and
+ * so do dropped files: a dropped pack's section came from these same
+ * extensions, and a picture's from its content (a Mac gravel named
+ * "bed.plt" is still a gravel). */
 export function sceneryFix(it: Importable): Importable {
-  if (![...SCENERY_BY_EXT.values()].includes(it.section)) return it;
+  if (isLocalPack(it.url) ||
+      ![...SCENERY_BY_EXT.values()].includes(it.section)) return it;
   const ext = /\.([a-z]+)$/i.exec(it.url)?.[1]?.toLowerCase();
   const section = ext ? SCENERY_BY_EXT.get(ext) : undefined;
   return section && section !== it.section ? { ...it, section } : it;
@@ -738,7 +800,18 @@ export async function importAddon(url: string): Promise<PackResult[]> {
       return [{ entry: url, sheets: new Map(), images: new Map([[url, img]]),
                 sounds: [] }];
     }
-    if (!isPack(d)) throw new Error(`${url}: stored data is not a pack`);
+    if (!isPack(d)) {
+      // A dropped Mac picture: a PICT file or a fork carrying pictures,
+      // decoded as the remote branch below decodes one.
+      const pics = macPictures(d);
+      if (pics?.images.size)
+        return [{ entry: url, sheets: new Map(), sounds: [],
+                  images: keyedImages(url, pics.images) }];
+      // A stored picture that won't decode reads as the archive.org
+      // case does: the words installProblem shows plainly.
+      throw new Error(pics ? "unreadable picture"
+                           : `${url}: stored data is not a pack`);
+    }
     // Same shape as the remote isPack branch: a pack blob yields no
     // sound records — dropped loose audio already persisted via
     // handleSounds/sndsMerge at drop time.
@@ -747,7 +820,7 @@ export async function importAddon(url: string): Promise<PackResult[]> {
   }
   const blobs = await fetchInnerBlobs(url);
   const out: PackResult[] = [];
-  let legacy = false;
+  let legacy = false, badPictures = false;
   for (const b of blobs) {
     if (isLegacyPack(b.data)) {
       legacy = true; // count it below, once the readable blobs are in
@@ -763,6 +836,18 @@ export async function importAddon(url: string): Promise<PackResult[]> {
       if (img) out.push({ entry: b.name, sheets: new Map(), sounds: [],
                          images: new Map([[url, img]]) });
     } else {
+      // A Mac file: a PICT, or a fork whose resources hold pictures. Its
+      // pictures make it scenery, even when none decodes, and its
+      // sounds, if any, stay out: one kind of content per add-on, as
+      // for a pack with art. A file named as audio is never a picture.
+      const pics = isAudioFileName(b.name) ? null : macPictures(b.data);
+      if (pics) {
+        if (pics.images.size)
+          out.push({ entry: b.name, sheets: new Map(), sounds: [],
+                     images: keyedImages(url, pics.images) });
+        else badPictures = true;
+        continue;
+      }
       const sounds = fileSoundRecords(b.name, b.data);
       if (sounds.length)
         out.push({ entry: b.name, sheets: new Map(), images: new Map(),
@@ -774,7 +859,15 @@ export async function importAddon(url: string): Promise<PackResult[]> {
   // that can only fail the same way. A mixed zip installs its
   // readable packs and quietly skips the rest.
   if (!out.length && legacy) throw new Error("unreadable legacy pack");
+  // Pictures that wouldn't decode recur the same way on a retry.
+  if (!out.length && badPictures) throw new Error("unreadable picture");
   return out;
+}
+
+/** A Mac file's pictures keyed under the add-on's url, one key each. */
+function keyedImages(url: string, images: Map<string, IndexedImage>):
+    Map<string, IndexedImage> {
+  return new Map([...images].map(([k, img]) => [`${url}#${k}`, img]));
 }
 
 /** Display order of sections — first collection index per section. */
@@ -1040,6 +1133,10 @@ export function browserGeometry(w: number, h: number):
            previewH: ph < MIN_PREVIEW_H ? null : ph };
 }
 
+/** Failures of an add-on whose bytes downloaded fine but whose format
+ * Finsical can't decode: no retry helps, so the panel dims the row. */
+const UNREADABLE = new Set(["unreadable legacy pack", "unreadable picture"]);
+
 /** A failed add-on download as one short line for the status area (the
  * full error, with its URL, goes to the console). */
 export function loadProblem(e: unknown): string {
@@ -1048,6 +1145,8 @@ export function loadProblem(e: unknown): string {
   if (http) return `archive.org answered with error ${http[1]}.`;
   if (msg === "unreadable legacy pack")
     return "Finsical can't read this add-on yet.";
+  if (msg === "unreadable picture")
+    return "Finsical can't read this add-on's pictures.";
   if (msg === "no pack inside")
     return "The download has no add-on in it.";
   if (msg.endsWith(": empty"))
@@ -1080,9 +1179,8 @@ export function transientFailure(e: unknown): boolean {
  * plain prose and pass through. */
 export function installProblem(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
-  return transientFailure(msg) || msg === "no pack inside"
-    ? loadProblem(msg)
-    : msg;
+  return transientFailure(msg) || msg === "no pack inside" ||
+    UNREADABLE.has(msg) ? loadProblem(msg) : msg;
 }
 
 export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
@@ -1506,7 +1604,7 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
       if (detailRef !== ref) return;
       dblAdd = false;
       console.warn(`add-on ${it.inner} failed to load:`, e);
-      if (e instanceof Error && e.message === "unreadable legacy pack") {
+      if (e instanceof Error && UNREADABLE.has(e.message)) {
         unreadable.add(it.url);
         rowOf(it.url)?.classList.add("unusable");
         status.textContent = loadProblem(e);

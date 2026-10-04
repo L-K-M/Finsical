@@ -160,6 +160,14 @@ export function soundsFromRsrc(data: Uint8Array): DecodedSnd[] {
  * (`wav` is "the encoded payload", not always literal WAV). */
 export const AUDIO_FILE_EXT = /\.(wav|mp3|aiff?|m4a|ogg|flac)$/i;
 
+/** Whether `name` (a path or a file name) names an audio file. "._x.mp3"
+ * is a macOS AppleDouble companion, not audio: its fork may hold
+ * 'snd 's, or nothing. */
+export function isAudioFileName(name: string): boolean {
+  const base = name.split("/").pop()!;
+  return !base.startsWith("._") && AUDIO_FILE_EXT.test(base);
+}
+
 /** Sound records for one file: audio files pass their bytes through
  * for decodeAudioData, a 9003 sound bank (the Windows game's
  * AZ_WAVES.REZ) gives its WAVs, and anything else is tried as a
@@ -167,9 +175,7 @@ export const AUDIO_FILE_EXT = /\.(wav|mp3|aiff?|m4a|ogg|flac)$/i;
 export function fileSoundRecords(name: string, data: Uint8Array):
     { name: string; wav: Uint8Array }[] {
   const base = name.split("/").pop()!;
-  // "._x.mp3" is a macOS AppleDouble companion, not raw audio — let it
-  // fall through to the fork path (or [] when it holds no 'snd ').
-  if (!base.startsWith("._") && AUDIO_FILE_EXT.test(base))
+  if (isAudioFileName(base))
     return [{ name: base.replace(/\.[^.]+$/, ""), wav: data }];
   // A fork whose data starts at 64 KB opens with the bytes a pack
   // does, so an empty bank falls through to the fork path.
