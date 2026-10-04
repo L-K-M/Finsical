@@ -1722,6 +1722,24 @@ describe("depth among the decor", () => {
     expect(f.hideTicks).toBe(0);
   });
 
+  it("a fish sent into hiding starts a fresh stroke", () => {
+    // Already behind its cover and still hiding: the hiding branch of
+    // decide() picks its next spot.
+    const sim = new Sim({ width: 320, height: 200 }, 7);
+    const cover = { x0: 40, x1: 90, top: 120, depth: 0.6 };
+    sim.cover = [cover];
+    const f = sim.addFish({ x: 60, y: 150, z: 0.2 });
+    f.hideIn = cover;
+    f.hideTicks = 500;
+    f.hover = 1;
+    f.phase = 5;
+    f.latch = 2;
+    f.strokes = 3;
+    sim.tick();
+    expect(f.hideTicks).toBeGreaterThan(0);
+    expect([f.phase, f.latch, f.strokes]).toEqual([0, -1, 0]);
+  });
+
   it("a fish darting into the cover's span in front waits beside it",
      () => {
     // Knocked from the far side toward a plant it is in front of, the
