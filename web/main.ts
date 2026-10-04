@@ -13,7 +13,9 @@ import { conditionLabel, eventText, noticeText } from "./lifecopy.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { isPack } from "../core/data/fsh.js";
 import { isBmp } from "../core/data/bmp.js";
-import { BACKDROP_MIN, decodeDroppedPack } from "./drop.js";
+import { hasMacPictures } from "../core/data/macpics.js";
+import { isPict } from "../core/data/pict.js";
+import { BACKDROP_MIN, decodeDroppedPack, isRefusedPicture } from "./drop.js";
 import { decorFrame, decorPhase, decorPhaseFrac }
   from "../core/data/decor.js";
 import { decorDepth, drawOrder } from "../core/depth.js";
@@ -33,7 +35,7 @@ import { recentTaps, shouldScold } from "./scold.js";
 import { backfillStarterSounds, launchOffer, showWelcome }
   from "./welcome.js";
 import { clampDecorCopies, decorCopyRoom, decorRefusal, fetchAddon,
-         installProblem,
+         importAddon, installProblem,
          mountImportPanel, orphanedSounds, recordAddon,
          qualifySoundItemName, isListed, isSavedAddon, sceneryFix,
          usablePacks,
@@ -1936,6 +1938,8 @@ function onBusMessage(m: BusMsg): void {
   }
   else if (m.op === "install")
     void remoteInstall(m.item as Importable, m.again === true);
+  else if (m.op === "installDropped")
+    void installDropped(m.url, m.section, m.inner);
   else if (m.op === "renameFish" && typeof m.id === "number") {
     const f = sim.fish.find((x) => x.id === m.id);
     if (f) renameFish(f, m.name);
@@ -2139,6 +2143,38 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
   }
   // installAddon reports the outcome to the panel itself.
   await installAddon(it, again).catch(() => {});
+}
+
+/** A picture dropped on the Import Add-ons window: that window stored
+ * its bytes under a local: key in the shared IndexedDB (as a drop on
+ * the tank does) and asks the tank to put it in, since the tank owns
+ * the sim. Decoded fresh, not through fetchAddon's memo: a re-drop
+ * under the same name replaces the stored bytes. Only scenery travels
+ * this way; the window sends no packs. */
+async function installDropped(url: unknown, section: unknown,
+                              inner: unknown): Promise<void> {
+  if (typeof url !== "string" || !isLocalPack(url) ||
+      (section !== "backgrounds" && section !== "gravel") ||
+      typeof inner !== "string" || !inner.trim()) {
+    console.warn("installDropped: invalid request", url, section);
+    return;
+  }
+  const epoch = tankEpoch;
+  try {
+    const usable = usablePacks(await importAddon(url), section);
+    if (epoch !== tankEpoch) return; // emptied while decoding
+    if (!usable.length) throw new Error(usableProblem(section));
+    for (const r of usable)
+      handleImages(r.images.values(), url, section, true);
+    recordInstall({ section, inner, url });
+    dropSay(`Added ${inner}.`);
+  } catch (e) {
+    console.warn(`installDropped: ${url}:`, e);
+    dropSay(`Couldn't add ${inner}.`);
+    // Bytes no add-on owns would stay in the store for good.
+    if (!installedAddons.some((a) => a.url === url))
+      void packDelete(url).catch(() => {});
+  }
 }
 
 /** Add an add-on to the tank: the one install path for the Import
@@ -3325,14 +3361,14 @@ window.addEventListener("drop", (e) => {
     // A real 'snd ' bank is ~25 records; a folder drop of MP3s is
     // bounded so it can't decode hundreds of files into the tank.
     const DROP_SOUNDS_MAX = 64;
-    // Pack files and BMP pictures are collected here (their head is
-    // read once) and decoded in the pass below, so no file is buffered
-    // twice.
+    // Pack files and pictures (BMP and PICT files, and resource forks
+    // that carry pictures) are collected here and decoded in the pass
+    // below. The head covers a PICT file's 512-byte header.
     const packFiles: [string, File][] = [];
     let sndSkipped = 0;
     for (const [name, file] of flat) {
-      const head = new Uint8Array(await file.slice(0, 0x104).arrayBuffer());
-      if (isPack(head) || isBmp(head)) {
+      const head = new Uint8Array(await file.slice(0, 0x210).arrayBuffer());
+      if (isPack(head) || isBmp(head) || isPict(head)) {
         packFiles.push([name, file]);
         continue;
       }
@@ -3340,9 +3376,14 @@ window.addEventListener("drop", (e) => {
         console.warn("snd skip (too large):", name);
         continue;
       }
+      const whole = new Uint8Array(await file.arrayBuffer());
+      // A fork can carry pictures and sounds. Its pictures become a
+      // scenery add-on in the pass below, and its sounds still import
+      // here, as dropped sounds always do: into the bank, not the
+      // add-on, which keeps one kind of content.
+      if (hasMacPictures(whole)) packFiles.push([name, file]);
       if (recs.length >= DROP_SOUNDS_MAX) { sndSkipped++; continue; }
-      const got = fileSoundRecords(
-        name, new Uint8Array(await file.arrayBuffer()));
+      const got = fileSoundRecords(name, whole);
       if (!got.length) continue;
       recs.push(...got);
       console.info(`${name}: ${got.length} sounds imported`);
@@ -3368,7 +3409,8 @@ window.addEventListener("drop", (e) => {
     // holds every pack's bytes at once. Sections come from the
     // extension like remote installs' collections: a .fsh fish adds
     // no scenery, so its catalog art can't take the backdrop. A BMP
-    // is your own picture for the backdrop, as in AquaZone.
+    // or a PICT is your own picture for the backdrop, as in AquaZone;
+    // a Mac gravel's fork brings its strip.
     let imported = 0;
     let badPictures = 0;
     let packName = "";
@@ -3380,12 +3422,15 @@ window.addEventListener("drop", (e) => {
         continue;
       }
       const p = decodeDroppedPack(name, data);
-      if (!p && isBmp(data)) {
-        console.warn(`drop: ${name}: not a 256-color BMP of at least ` +
-          `${BACKDROP_MIN.w} x ${BACKDROP_MIN.h}`);
+      if (!p && isRefusedPicture(data)) {
+        console.warn(`drop: ${name}: not a picture the tank can use ` +
+          `(a PICT or 256-color BMP of at least ` +
+          `${BACKDROP_MIN.w} x ${BACKDROP_MIN.h}, or a gravel strip)`);
         badPictures++;
         continue;
       }
+      // A fork's sounds were taken in the first pass.
+      if (!p && !isPack(data)) continue;
       if (!p) {
         // No art: it may be the game's sound bank (AZ_WAVES.REZ). Its
         // records persist like any dropped sound; the pack isn't kept.
@@ -3464,7 +3509,7 @@ window.addEventListener("drop", (e) => {
     // One note for the whole drop, however many pictures missed.
     if (badPictures)
       notes.push(`Finsical can't use ${badPictures > 1 ? "those pictures"
-        : "that picture"} as the backdrop. Drop a 256-color BMP of at ` +
+        : "that picture"}. Drop a PICT or a 256-color BMP of at ` +
         `least ${BACKDROP_MIN.w} by ${BACKDROP_MIN.h} pixels.`);
     if (notes.length) dropSay(notes.join(" "));
     // Sounds push a note on either outcome, so nothing said yet means
@@ -3472,7 +3517,7 @@ window.addEventListener("drop", (e) => {
     else
       dropSay(`Finsical can't use ${flat.size === 1 ? "that file" :
         "those files"} — drop an AquaZone .fsh or .azpack, ` +
-        "or a sound file.");
+        "a picture or a sound file.");
     if (!imported && !recs.length)
       console.warn("drop: no manifest.json, pack file, or 'snd ' found");
   })().catch((e) => {

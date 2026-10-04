@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { decodeBmp } from "../core/data/bmp.js";
 import { fshToSheets } from "../core/data/fsh.js";
-import { decodeDroppedPack, dropSection } from "./drop.js";
+import { buildPict, rect } from "../core/data/pict.fixture.js";
+import { buildRsrc, wrapAppledouble, wrapBinhex, wrapMacbinary }
+  from "../core/data/resfork.fixture.js";
+import { decodeDroppedPack, dropSection, isRefusedPicture, sortClientDrop }
+  from "./drop.js";
 import type { DroppedPack } from "./drop.js";
 import { buildBmp8, buildChunkPack, cat, PAL, u16le, u32le }
   from "../core/data/fsh.fixture.js";
@@ -173,5 +177,119 @@ describe("decodeDroppedPack with pictures", () => {
       ["Narrow.bmp", buildBmpImage(159, 100)],
       ["Low.bmp", buildBmpImage(160, 99)],
     ])).toEqual([]);
+  });
+});
+
+type Entry = [number, string | null, number, Uint8Array];
+const CLUT: [number, number, number][] = [[255, 255, 255], [40, 80, 160]];
+/** A w x h PICT: a data-fork file when `file`, else a bare payload. */
+const pict = (w: number, h: number, file = false) => buildPict({
+  file, frame: rect(0, 0, h, w),
+  ops: [{ kind: "indexed", depth: 8, w, h, clut: CLUT,
+          px: Array.from({ length: w * h }, (_, i) => i < w ? 0 : 1) }],
+});
+/** A gravel add-on's fork: its strip, catalog picture and Grvl. */
+const gravelFork = (stripW = 500, stripH = 60) => buildRsrc(
+  new Map<string, Entry[]>([
+    ["Grvl", [[4020, null, 0, Uint8Array.of(0, 53, 0, 52, 0, 0, 0, 0)]]],
+    ["BADP", [[4020, null, 0, pict(320, 240)]]],
+    ["BAPC", [[4020, null, 0, pict(stripW, stripH)]]],
+  ]));
+const dims = (p: DroppedPack) =>
+  [...p.images.values()].map((i) => [i.w, i.h]);
+
+describe("decodeDroppedPack with Mac pictures", () => {
+  it("takes a PICT file as a backdrop by its content, extension or not",
+     () => {
+    const got = decodeEach([["Reef.pct", pict(320, 240, true)],
+                            ["Astral Hill", pict(640, 480, true)]]);
+    expect(got.map((p) => [p.name, p.section, dims(p)])).toEqual([
+      ["Reef", "backgrounds", [[320, 240]]],
+      ["Astral Hill", "backgrounds", [[640, 480]]],
+    ]);
+  });
+
+  it("takes a gravel add-on's fork as its gravel strip", () => {
+    const p = decodeDroppedPack("._星砂- star sand",
+                                wrapAppledouble(gravelFork()));
+    // The catalog picture stays out: it is no backdrop.
+    expect(p && [p.name, p.section, dims(p)])
+      .toEqual(["星砂- star sand", "gravel", [[500, 60]]]);
+  });
+
+  it("reads picture resources from every fork wrapping", () => {
+    const fork = buildRsrc(new Map<string, Entry[]>([
+      ["PICT", [[128, null, 0, pict(320, 240)]]]]));
+    for (const [name, d] of [["Back.rsrc", fork],
+                             ["Back.bin", wrapMacbinary(fork)],
+                             ["Back.hqx", wrapBinhex(fork)]] as const) {
+      const p = decodeDroppedPack(name, d);
+      expect(p && [p.name, p.section, dims(p)])
+        .toEqual(["Back", "backgrounds", [[320, 240]]]);
+    }
+  });
+
+  it("skips Mac pictures the tank can't show", () => {
+    const quickTime = buildPict({ frame: rect(0, 0, 2, 2), file: true, ops: [
+      { kind: "raw", bytes: [0x82, 0x00, 0, 0, 0, 2, 1, 2] }] });
+    expect(decodeEach([
+      ["Tiny.pct", pict(64, 40, true)],
+      ["Movie.pct", quickTime],
+      ["._Short", wrapAppledouble(gravelFork(150, 30))],
+    ])).toEqual([]);
+  });
+});
+
+describe("isRefusedPicture", () => {
+  it("calls BMPs, PICT files and AquaZone picture forks pictures", () => {
+    expect(isRefusedPicture(buildBmpImage(64, 40))).toBe(true);
+    expect(isRefusedPicture(pict(64, 40, true))).toBe(true);
+    expect(isRefusedPicture(wrapAppledouble(gravelFork(150, 30)))).toBe(true);
+  });
+
+  it("lets a fork with only small 'PICT's pass quietly", () => {
+    // The "._" companion of a Photoshop file: a preview, no art.
+    const preview = wrapAppledouble(buildRsrc(new Map<string, Entry[]>([
+      ["PICT", [[256, null, 0, pict(96, 72)]]]])));
+    expect(decodeDroppedPack("._Astral Hill", preview)).toBeNull();
+    expect(isRefusedPicture(preview)).toBe(false);
+    expect(isRefusedPicture(Uint8Array.of(1, 2, 3))).toBe(false);
+  });
+});
+
+describe("sortClientDrop", () => {
+  /** A playable 'snd ': format 2, one bufferCmd, 8-bit samples. */
+  const snd = (pcm: number[]): Uint8Array => {
+    const out = new Uint8Array(14 + 22 + pcm.length);
+    const v = new DataView(out.buffer);
+    v.setUint16(0, 2); v.setUint16(4, 1);
+    v.setUint16(6, 0x8050); v.setUint32(10, 14);
+    v.setUint32(14 + 4, 1);
+    v.setUint32(14 + 8, 11025 * 65536);
+    out.set(pcm, 36);
+    return out;
+  };
+
+  it("sorts pictures from sounds, and counts the refused pictures", () => {
+    const both = wrapAppledouble(buildRsrc(new Map<string, Entry[]>([
+      ["Grvl", [[4020, null, 0, Uint8Array.of(0, 53, 0, 52, 0, 0, 0, 0)]]],
+      ["BAPC", [[4020, null, 0, pict(500, 60)]]],
+      ["snd ", [[1, "crunch", 0, snd([128, 140])]]],
+    ])));
+    const got = sortClientDrop([
+      { name: "Reef.pct", data: pict(320, 240, true) },
+      { name: "Wall.bmp", data: buildBmpImage(320, 200) },
+      { name: "._Pebbles", data: both },
+      { name: "Tiny.pct", data: pict(10, 10, true) },
+      { name: "Ding.wav", data: Uint8Array.of(0x52, 0x49, 0x46, 0x46) },
+      { name: "Guppy.fsh", data: packA },
+    ]);
+    expect(got.pictures.map((x) => [x.name, x.pack.section, x.pack.name]))
+      .toEqual([["Reef.pct", "backgrounds", "Reef"],
+                ["Wall.bmp", "backgrounds", "Wall"],
+                ["._Pebbles", "gravel", "Pebbles"]]);
+    // The fork's sound still imports; the pack waits for the tank.
+    expect(got.sounds.map((r) => r.name)).toEqual(["crunch", "Ding"]);
+    expect(got.refused).toBe(1);
   });
 });
