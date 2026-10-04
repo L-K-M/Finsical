@@ -309,9 +309,9 @@ up to 24 fish. The sections are:
 | Section | Contents |
 | --- | --- |
 | Fish | Add-on and modded fish, plus the Japanese release's fish and its non-retail bonus fish |
-| Gravel | Gravel packs from both archive.org items |
+| Gravel | Gravel packs from both archive.org items, and five Mac-only gravels (star sand, nebula, tatami, iron sand, moss carpet) |
 | Plants, Accessories | Meka Asia packs and the Japanese release's item library |
-| Backgrounds, Tanks | The Japanese release's backdrops and tank sets |
+| Backgrounds, Tanks | The Japanese release's backdrops and tank sets, and four Mac-only PICT backdrops |
 | Sounds | The game's own sound effects (AZ_WAVES), and audio from the Japanese set's non-retail bonus bundle, such as its CD bonus track |
 
 You can also drag files from the Finder onto the tank:
@@ -320,12 +320,13 @@ You can also drag files from the Finder onto the tank:
 | --- | --- |
 | An `.azpack` folder (made by the [asset tools](#asset-tools)) | Its fish, art and sounds are imported |
 | Aquazone pack files: fish (`.fsh`), gravel (`.grv`), plants (`.plt`), accessories (`.acc`), tanks (`.azn`), or the base library (`.REZ`, fish and scenery) | Imported into their section and kept, so they come back at every launch |
-| Your own picture: a 256-color BMP (`.bmp`) of at least 160 by 100 pixels | Becomes the backdrop and is kept, like a pack file. A strip at least three times as wide as it is tall becomes the gravel instead. Other pictures, such as 24-bit BMPs, get an alert |
+| Your own picture of at least 160 by 100 pixels: a 256-color BMP (`.bmp`), or a Mac PICT (`.pct`, `.pict` or no extension; any color depth, reduced to 256 colors) | Becomes the backdrop and is kept, like a pack file. A strip at least four times as wide as it is tall becomes the gravel instead. Other pictures, such as 24-bit BMPs, get an alert |
+| A Mac file whose resource fork carries pictures: `.rsrc`, MacBinary `.bin`, BinHex `.hqx`, or an AppleDouble `._` file, such as a Mac gravel add-on | A gravel add-on's strip becomes the gravel; another fork's `PICT` pictures work like a dropped picture. Either is kept, and the fork's sounds, if any, are imported too |
 | Resource files with `snd ` resources: `.rsrc`, MacBinary `.bin`, BinHex `.hqx`, AppleDouble, and the Windows game's sound bank `AZ_WAVES.REZ` | Their sounds are imported and kept |
 | Audio files: `.wav`, `.mp3`, `.aif`, `.aiff`, `.m4a`, `.ogg`, `.flac` | Imported as sounds and kept |
 
-Sound files over 32 MB are skipped. The Import Add-ons window accepts the
-sound formats too.
+Sound and resource files over 32 MB are skipped. The Import Add-ons
+window accepts the pictures and sound formats too.
 
 Installed archive.org add-ons come back at every launch. Remove fish and
 add-ons in Tank Overview, choose which installed gravel or background

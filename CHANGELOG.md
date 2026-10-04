@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Import Add-ons lists AquaZone's Mac-only scenery from the main
+  archive.org item: four backdrops under Backgrounds and five gravels
+  (star sand, nebula, tatami, iron sand and moss carpet) under Gravel.
+  Finsical now reads the Mac's PICT pictures, including the 32-bit
+  ones, which it reduces to 256 colors. Two of the backdrops show
+  their Japanese names, which the archive had garbled.
+- A PICT file dropped on the tank, with or without an extension,
+  becomes your backdrop as a 256-color BMP does. So do the pictures in
+  a Mac file's resource fork (.rsrc, MacBinary, BinHex or AppleDouble),
+  and a Mac gravel add-on's fork brings its gravel. The Import Add-ons
+  window takes these pictures too.
 - Preferences settings start at the top of each pane. Tank Stats opens
   30 pixels shorter, with its tabs, care hints and controls still visible.
 - A fish from an add-on that holds several packs now keeps its own
