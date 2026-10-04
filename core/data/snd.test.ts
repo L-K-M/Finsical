@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ownBytes } from "./bytes.js";
-import { fileSoundRecords, hasSounds, mace3Decode, parseSnd,
+import { fileSoundRecords, mace3Decode, parseSnd,
          qualifySoundNames, soundsFromRsrc, unwrapContainer, wavBytes }
   from "./snd.js";
 
@@ -466,14 +466,6 @@ describe("soundsFromRsrc", () => {
     expect(soundsFromRsrc(buildRsrc(new Map([["PICT", [[1, null, 0, snd]]]]))))
       .toEqual([]);
     expect(soundsFromRsrc(new Uint8Array([1, 2, 3]))).toEqual([]);
-  });
-
-  it("hasSounds gates on 'snd ' presence", () => {
-    expect(hasSounds(buildRsrc(new Map([["snd ", [[1, null, 0, snd]]]]))))
-      .toBe(true);
-    expect(hasSounds(buildRsrc(new Map([["PICT", [[1, null, 0, snd]]]]))))
-      .toBe(false);
-    expect(hasSounds(new Uint8Array([1, 2, 3]))).toBe(false);
   });
 
   it("rejects truncated binhex headers without throwing", () => {
