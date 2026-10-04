@@ -252,8 +252,8 @@ export class TankAudio {
   /** Merge a pack's manifest sounds into the table — a later pack
    * replaces only its same-named entries instead of wiping an earlier
    * pack's bindings. The ambient loop restarts when the bubbling pick
-   * changed (addWavs' rule); callers still run startAmbient() for the
-   * not-yet-playing case. */
+   * changed (ambientAfterMerge); callers still run startAmbient() for
+   * the not-yet-playing case. */
   async load(read: (path: string) => Promise<Uint8Array>,
              manifest: AzpackManifest): Promise<void> {
     const sounds = manifest.sounds ?? [];
@@ -261,10 +261,7 @@ export class TankAudio {
     // old tail would overlap this pack's install cue. The generation
     // bump also kills a cue still waiting on a pending resume().
     this.feedbackGen++;
-    if (this.feedbackSrc) {
-      try { this.feedbackSrc.stop(); } catch { /* already ended */ }
-      this.feedbackSrc = null;
-    }
+    this.stopFeedbackSource();
     if (sounds.length) {
       // context(), not a bare AudioContext: it also builds the master
       // gain every play() connects to.
@@ -285,14 +282,7 @@ export class TankAudio {
       }));
       for (const d of decoded) if (d) this.buffers.set(d.name, d.data);
     }
-    const now = this.ambientPick();
-    if (this.ambientWanted && now !== "" && now !== this.ambientKey) {
-      if (this.ambientSrc) {
-        try { this.ambientSrc.stop(); } catch { /* already ended */ }
-        this.ambientSrc = null;
-      }
-      this.startAmbient();
-    }
+    this.ambientAfterMerge();
   }
 
   /** Merge decoded WAVs (e.g. from a dropped .rsrc) under their resource
@@ -316,14 +306,36 @@ export class TankAudio {
     // A dropped bubbling sound can replace what's looping (or supply the
     // loop an earlier startAmbient found missing) — restart when the
     // buffer that would play now differs from the one currently selected.
+    this.ambientAfterMerge();
+  }
+
+  /** The restart rule after load() or addWavs() merged sounds in: a
+   * wanted loop restarts when the bubbling that would play now differs
+   * from the one selected. An empty pick leaves it alone — only
+   * removeWavs may take the loop's sound away. */
+  private ambientAfterMerge(): void {
     const now = this.ambientPick();
-    if (this.ambientWanted && now !== "" && now !== this.ambientKey) {
-      if (this.ambientSrc) {
-        try { this.ambientSrc.stop(); } catch { /* already ended */ }
-        this.ambientSrc = null;
-      }
-      this.startAmbient();
-    }
+    if (this.ambientWanted && now !== "" && now !== this.ambientKey)
+      this.restartAmbient();
+  }
+
+  private restartAmbient(): void {
+    this.stopAmbientSource();
+    this.startAmbient();
+  }
+
+  private stopAmbientSource(): void {
+    if (!this.ambientSrc) return;
+    try { this.ambientSrc.stop(); } catch { /* already ended */ }
+    this.ambientSrc = null;
+  }
+
+  /** Cut off the install feedback still playing, if any. Callers bump
+   * feedbackGen first, so a cue still waiting on resume() dies too. */
+  private stopFeedbackSource(): void {
+    if (!this.feedbackSrc) return;
+    try { this.feedbackSrc.stop(); } catch { /* already ended */ }
+    this.feedbackSrc = null;
   }
 
   private context(): AudioContext {
@@ -453,10 +465,7 @@ export class TankAudio {
       if (this.ctx) this.startAmbient();
       return;
     }
-    if (this.ambientSrc) {
-      try { this.ambientSrc.stop(); } catch { /* already ended */ }
-      this.ambientSrc = null;
-    }
+    this.stopAmbientSource();
     // Also aborts a loop still waiting on a pending resume() in play().
     this.ambientWanted = false;
     this.ambientGen++;
@@ -563,18 +572,13 @@ export class TankAudio {
   }
 
   /** Drop imported records (add-on uninstall). If the ambient loop was
-   * playing one, restart it on whatever bubbling remains — same restart
-   * rule as addWavs. */
+   * playing one, restart it on whatever bubbling remains — the
+   * ambientAfterMerge rule without its non-empty guard. */
   removeWavs(names: Iterable<string>): void {
     for (const n of names) this.imported.delete(n);
     // No non-empty guard here: deleting the loop's own sound must stop it.
-    if (this.ambientWanted && this.ambientPick() !== this.ambientKey) {
-      if (this.ambientSrc) {
-        try { this.ambientSrc.stop(); } catch { /* already ended */ }
-        this.ambientSrc = null;
-      }
-      this.startAmbient();
-    }
+    if (this.ambientWanted && this.ambientPick() !== this.ambientKey)
+      this.restartAmbient();
   }
 
   /** Play one imported sound by name as install feedback: replaces any
@@ -583,10 +587,7 @@ export class TankAudio {
   playImported(name: string): void {
     // A newer cue supersedes both a playing one and a deferred retry.
     this.feedbackGen++;
-    if (this.feedbackSrc) {
-      try { this.feedbackSrc.stop(); } catch { /* already ended */ }
-      this.feedbackSrc = null;
-    }
+    this.stopFeedbackSource();
     const buf = this.imported.get(name);
     // Not through play() — but a feedback that answers the install
     // gesture itself may still wait out the lock, like play()'s
