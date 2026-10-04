@@ -1,3 +1,4 @@
+import { answerBook } from "./answers.js";
 import { openBus, TANK_QUIET_MS } from "./bus.js";
 import { qualifySoundNames } from "../core/data/snd.js";
 import { showAlert } from "./alert.js";
@@ -15,10 +16,28 @@ import { hostWindow } from "osmium-ui";
 
 let greeted = false;
 let lastStateAt = 0;
+/** How long a dropped picture waits for the tank's answer. */
+const DROP_ANSWER_MS = 20_000;
+/** Dropped pictures waiting for the tank's answer, by request id. */
+const dropAnswers = answerBook<boolean>();
+/** Request ids: unique to this page load. */
+const dropIdBase = Math.random().toString(36).slice(2);
+let dropSeq = 0;
+
+/** "Reef", "Reef and Wall", "Reef, Wall and Moss". */
+const listOf = (names: string[]): string =>
+  names.length < 2 ? names.join("")
+    : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+
 const bus = openBus((m) => {
   if (m.op === "state") { greeted = true; lastStateAt = Date.now(); }
+  // The tank's answer to a dropped picture's installDropped request.
+  else if (m.op === "droppedResult" && typeof m.id === "string" &&
+           typeof m.ok === "boolean")
+    dropAnswers.settle(m.id, m.ok);
   panel.notify(m);
 });
+
 // The tank pushes on every save and answers each hello — a quiet
 // spell means the tab is gone or reloading, so Add to Tank would
 // just spin to its timeout.
@@ -42,8 +61,9 @@ const panel = mountImportPanel({
      connected: tankConnected });
 panel.open();
 
-const showNote = (text: string) => showAlert({ icon: "caution", text,
-  buttons: [{ title: "OK", default: true, cancel: true }] });
+const showNote = (text: string, icon: "note" | "caution" = "caution") =>
+  showAlert({ icon, text,
+              buttons: [{ title: "OK", default: true, cancel: true }] });
 
 // Files dropped on the window: sounds and pictures. Their bytes persist
 // to the shared IndexedDB store, then the tank page is asked to take
@@ -88,19 +108,40 @@ window.addEventListener("drop", (e) => {
       return;
     }
     let unsaved = 0;
+    const answers: Promise<[string, boolean | null]>[] = [];
     for (const { name, data, pack } of pictures) {
       const url = `${LOCAL_PREFIX}${name}`;
       if (!await packPut(url, data).catch(() => null)) { unsaved++; continue; }
+      // Listening before asking: the answer can't come first.
+      const id = `${dropIdBase}-${++dropSeq}`;
+      answers.push(dropAnswers.wait(id, DROP_ANSWER_MS)
+        .then((ok) => [pack.name, ok]));
       bus.post({ op: "installDropped", url, section: pack.section,
-                 inner: pack.name });
+                 inner: pack.name, id });
     }
+    // One note for the whole drop, as the tank says one for its own.
+    const results = await Promise.all(answers);
+    const named = (ok: boolean | null) =>
+      results.filter(([, got]) => got === ok).map(([n]) => n);
+    const added = named(true), failed = named(false), unheard = named(null);
+    const notes: string[] = [];
+    if (added.length) notes.push(`Added ${listOf(added)}.`);
+    if (failed.length) notes.push(`Couldn't add ${listOf(failed)}.`);
+    if (unheard.length)
+      notes.push(`The tank didn't answer about ${listOf(unheard)}. If it ` +
+        `quit, open Finsical and drop ${unheard.length > 1 ? "them"
+        : "it"} again.`);
     if (refused)
-      showNote(`Finsical can't use ${refused > 1 ? "those pictures"
+      notes.push(`Finsical can't use ${refused > 1 ? "those pictures"
         : "that picture"}. Drop a PICT or a 256-color BMP of at least ` +
         `${BACKDROP_MIN.w} by ${BACKDROP_MIN.h} pixels.`);
-    else if (unsaved)
-      showNote("Couldn't save the dropped picture. If storage is full, " +
-            "remove some add-ons to make room.");
+    if (unsaved)
+      notes.push(`Couldn't save ${unsaved > 1 ? "those pictures"
+        : "the dropped picture"}. If storage is full, remove some add-ons ` +
+        "to make room.");
+    if (notes.length)
+      showNote(notes.join(" "), failed.length || unheard.length || refused ||
+        unsaved ? "caution" : "note");
   })().catch((err) => console.warn("drop failed:", err));
 });
 

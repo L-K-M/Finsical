@@ -211,6 +211,35 @@ async function trimPacks(): Promise<void> {
   } catch { /* trimming is best-effort */ }
 }
 
+/** The dropped files the store holds (`local:` keys), each with when it
+ * was last written or read (0 when it has no stat), so the tank can
+ * sweep the ones no add-on owns. [] when the store can't be read. */
+export async function localPacks(): Promise<{ url: string; at: number }[]> {
+  try {
+    const tx = await transact(["packs", "meta"], "readonly");
+    if (!tx) return [];
+    return await new Promise((res) => {
+      const out: { url: string; at: number }[] = [];
+      const keys = tx.objectStore("packs").getAllKeys(
+        IDBKeyRange.bound(LOCAL_PREFIX, LOCAL_PREFIX + "\uffff"));
+      keys.onsuccess = () => {
+        const meta = tx.objectStore("meta");
+        for (const k of keys.result) {
+          if (typeof k !== "string" || !isLocalPack(k)) continue;
+          const stat = meta.get(STAT_PREFIX + k);
+          stat.onsuccess = () => {
+            const at = (stat.result as { at?: unknown } | undefined)?.at;
+            out.push({ url: k, at: typeof at === "number" ? at : 0 });
+          };
+        }
+      };
+      tx.oncomplete = () => res(out);
+      tx.onerror = (e) => { e.stopPropagation(); };
+      tx.onabort = () => res([]);
+    });
+  } catch { return []; }
+}
+
 export function packPut(url: string, data: Uint8Array): Promise<unknown> {
   askPersist();
   // Pack bytes and their trim stat commit in one transaction — a stat

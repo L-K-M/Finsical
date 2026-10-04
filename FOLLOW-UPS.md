@@ -161,9 +161,6 @@ in the GLM review comment on #267.
   real AquaZone bank has been checked for this.
 - **#225:** nothing tests that every machine name fits the 190 px
   Machine list.
-- **#429:** a drop on the Import Add-ons window that both refuses some
-  pictures and fails to store others shows only the refusal note. The
-  storage note shows only when nothing was refused.
 
 ### Optional ideas from closed PRs
 
@@ -282,15 +279,6 @@ descriptions of #161 and #162.
 - At launch the restore shows each installed backdrop as it lands and
   only then puts the chosen one back, a visible flicker with several
   backdrops installed.
-- A drop on the Import Add-ons window less than `TANK_QUIET_MS` after
-  the tank quit stores bytes that no add-on owns, and nothing deletes
-  them. A launch-time sweep of unowned `local:` keys would, if it can
-  avoid racing a second tank tab or a window drop in flight.
-- The tank's own drop path has the race `installDropped` now guards
-  against: a Remove landing while it awaits `packPut` deletes the new
-  bytes, and the drop then records an add-on that can't restore.
-- A picture dropped on the Import Add-ons window gets no result there:
-  the tank says "Added" or "Couldn't add" on its own glass.
 
 ### Alerts and Preferences
 

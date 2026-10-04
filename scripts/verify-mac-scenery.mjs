@@ -354,6 +354,48 @@ try {
   const RED = [200, 40, 40, 255], BLUE = [30, 60, 200, 255];
   const GREEN = [40, 160, 60, 255], CLEAR = [0, 0, 0, 0];
 
+  /** The Import Add-ons window, once the tank's state push says it is
+   * connected. */
+  const openWindow = async (browserContextId) => {
+    const page = await openPage("/addons.html", browserContextId);
+    await waitFor("document.readyState === 'complete'", page);
+    if (browserContextId) return page;
+    await evalJs(`window.__state = false;
+      new BroadcastChannel('finsical').onmessage = (e) => {
+        if (e.data?.op === 'state') window.__state = true; };`, page);
+    await waitFor("window.__state", page);
+    return page;
+  };
+  /** Bytes stored under `key` as the app stores them, last touched at
+   * `at` (ms). */
+  const seedStored = (key, bytes, at, sessionId) => evalJs(`
+    new Promise((done, fail) => {
+      const open = indexedDB.open('finsical');
+      open.onerror = () => fail(open.error);
+      open.onsuccess = () => {
+        const tx = open.result.transaction(['packs', 'meta'], 'readwrite');
+        tx.objectStore('packs').put(new Uint8Array(${JSON.stringify(bytes)}),
+                                    ${JSON.stringify(key)});
+        tx.objectStore('meta').put({ bytes: ${bytes.length}, at: ${at} },
+                                   'packstat:' + ${JSON.stringify(key)});
+        tx.oncomplete = () => { open.result.close(); done(true); };
+        tx.onerror = () => fail(tx.error);
+      };
+    })`, sessionId);
+  /** Wrap IndexedDB's put in a page: `body` runs after each put with
+   * `key`, `value`, the request `rq` and the store `os` in scope, and
+   * may return a value to store instead (checked before the put). */
+  const hookPut = (sessionId, { swap = "", after = "" }) => evalJs(`(() => {
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (value, key) {
+      const os = this;
+      ${swap}
+      const rq = put.call(this, value, key);
+      ${after}
+      return rq;
+    };
+  })()`, sessionId);
+
   await test("a PICT backdrop and a gravel fork install from the 7z", async () => {
     await install(items.moss, tank);
     await install(items.sand, tank);
@@ -446,14 +488,7 @@ try {
 
   await test("the Import Add-ons window's drop puts a picture in the tank",
     async () => {
-      const window2 = await openPage("/addons.html");
-      // The window calls the tank connected once a state push arrives:
-      // listen on the same channel for one.
-      await waitFor("document.readyState === 'complete'", window2);
-      await evalJs(`window.__state = false;
-        new BroadcastChannel('finsical').onmessage = (e) => {
-          if (e.data?.op === 'state') window.__state = true; };`, window2);
-      await waitFor("window.__state", window2);
+      const window2 = await openWindow();
       await drop([["Wall.pict", [...BLUE_BACKDROP]]], window2);
       await waitFor(`__probe.addons().includes('local:Wall.pict')`, tank);
       assert.equal((await evalJs("__probe.scenery()", tank)).backdrop,
@@ -465,8 +500,7 @@ try {
   await test("the Import Add-ons window stores nothing with no tank running",
     async () => {
       const { browserContextId } = await call("Target.createBrowserContext");
-      const lone = await openPage("/addons.html", browserContextId);
-      await waitFor("document.readyState === 'complete'", lone);
+      const lone = await openWindow(browserContextId);
       await drop([["Wall.pict", [...BLUE_BACKDROP]]], lone);
       await waitFor(`document.body.textContent.includes(
         "The tank isn't running")`, lone);
@@ -544,6 +578,67 @@ try {
     await waitStored("local:Shell", tank, 0);
     await sleep(100); // the request settles after its read
     assert.ok(!(await evalJs("__probe.addons()", tank)).includes("local:Shell"));
+  });
+
+  await test("the Import Add-ons window says how its drop went", async () => {
+    const window3 = await openWindow();
+    // Bad.pict's stored bytes turn to junk, so the tank can't add it.
+    await hookPut(window3, { swap:
+      "if (key === 'local:Bad.pict') value = new Uint8Array([1, 2, 3]);" });
+    await drop([["Wall3.pict", [...BLUE_BACKDROP]],
+                ["Bad.pict", [...RED_BACKDROP]]], window3);
+    await waitFor(`document.body.textContent.includes("Added Wall3") &&
+                   document.body.textContent.includes("Couldn't add Bad")`,
+                  window3);
+    await waitStored("local:Bad.pict", tank, 0);
+    await mutate("removeAddon", "local:Wall3.pict", tank);
+    await waitFor(`!__probe.addons().includes('local:Wall3.pict')`, tank);
+  });
+
+  await test("the Import Add-ons window names every problem with a drop",
+    async () => {
+      const window4 = await openWindow();
+      // Full.pict's write fails, as on a full disk.
+      await hookPut(window4, { after:
+        "if (key === 'local:Full.pict') os.transaction.abort();" });
+      await drop([["Tiny.pct", [...pict(40, 30, () => 1, true)]],
+                  ["Full.pict", [...BLUE_BACKDROP]]], window4);
+      await waitFor(`document.body.textContent.includes(
+                       "can't use that picture") &&
+                     document.body.textContent.includes("Couldn't save")`,
+                    window4);
+    });
+
+  await test("a Remove while the tank stores its own drop wins", async () => {
+    await drop([["Racer.pct", [...BLUE_BACKDROP]]], tank);
+    await waitFor(`__probe.addons().includes('local:Racer.pct')`, tank);
+    // The Remove lands right after the re-drop's write is asked for.
+    await evalJs("window.__race = true", tank);
+    await hookPut(tank, { after: `
+      if (key === 'local:Racer.pct' && window.__race) {
+        window.__race = false;
+        queueMicrotask(() => __probe.onBusMessage({ op: 'removeAddon',
+          url: 'local:Racer.pct', boot: __probe.boot }));
+      }` });
+    await drop([["Racer.pct", [...RED_BACKDROP]]], tank);
+    await waitStored("local:Racer.pct", tank, 0);
+    await sleep(200); // the drop settles after its write
+    assert.ok(!(await evalJs("__probe.addons()", tank)).includes("local:Racer.pct"));
+  });
+
+  await test("files no add-on owns leave the store at launch", async () => {
+    const hourAgo = Date.now() - 3_600_000;
+    await seedStored("local:Orphan.pct", [...BLUE_BACKDROP], hourAgo, tank);
+    // A window drop on its way: stored moments ago, not yet asked in.
+    await seedStored("local:Fresh.pct", [...BLUE_BACKDROP], Date.now(), tank);
+    await drop([["Kept.pct", [...RED_BACKDROP]]], tank);
+    await waitFor(`__probe.addons().includes('local:Kept.pct')`, tank);
+    await reload(tank);
+    await waitStored("local:Orphan.pct", tank, 0);
+    assert.equal(await stored("local:Fresh.pct", tank), BLUE_BACKDROP.length);
+    assert.equal(await stored("local:Kept.pct", tank), RED_BACKDROP.length);
+    await mutate("removeAddon", "local:Kept.pct", tank);
+    await waitFor(`!__probe.addons().includes('local:Kept.pct')`, tank);
   });
 
   await test("the tank keeps no bytes from a window drop it doesn't add",

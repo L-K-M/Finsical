@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A picture dropped on the Import Add-ons window now gets an answer
+  there: one note says which pictures went in and names every problem
+  with the drop, where the tank used to answer on its own glass only.
+  Dropped files that never made it into the tank no longer stay in
+  storage: the next launch deletes them.
 - A PICT file wrapped in MacBinary, BinHex or AppleSingle, as Mac files
   travel, now drops in as a bare one does. Its picture is in the data
   fork, which the drop used to skip past to the resource fork.
