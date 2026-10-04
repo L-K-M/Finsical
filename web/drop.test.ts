@@ -4,6 +4,7 @@ import { fshToSheets } from "../core/data/fsh.js";
 import { buildPict, rect } from "../core/data/pict.fixture.js";
 import { buildRsrc, wrapAppledouble, wrapBinhex, wrapMacbinary }
   from "../core/data/resfork.fixture.js";
+const NO_FORK = new Uint8Array(0);
 import { decodeDroppedPack, dropSection, isRefusedPicture, sortClientDrop }
   from "./drop.js";
 import type { DroppedPack } from "./drop.js";
@@ -216,6 +217,16 @@ describe("decodeDroppedPack with Mac pictures", () => {
     expect(decodeEach([[".pct", pict(320, 240, true)],
                        [".bmp", buildBmpImage(320, 240)]])
       .map((p) => p.name)).toEqual([".pct", ".bmp"]);
+  });
+
+  it("takes a PICT file wrapped in MacBinary as a backdrop", () => {
+    const got = decodeEach([["Reef.bin", wrapMacbinary(NO_FORK,
+                                                       pict(320, 240, true))]]);
+    expect(got.map((p) => [p.name, p.section, dims(p)]))
+      .toEqual([["Reef", "backgrounds", [[320, 240]]]]);
+    // Too small to show: still a picture, so the drop says why.
+    expect(isRefusedPicture(wrapMacbinary(NO_FORK, pict(40, 30, true))))
+      .toBe(true);
   });
 
   it("takes a gravel add-on's fork as its gravel strip", () => {

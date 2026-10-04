@@ -508,9 +508,12 @@ describe("decodePict: untrusted input", () => {
 
   it("throws only PictError, or decodes, on random bytes behind a valid header",
      () => {
+    // Each seed's own header: version 2, version 1, and a data-fork
+    // file's (512 bytes, then the picture's).
     const rnd = lcg(7);
-    for (let k = 0; k < 500; k++) {
-      const head = [...good.subarray(0, 40)];
+    for (let k = 0; k < 600; k++) {
+      const seed = seeds[k % 3]!;
+      const head = [...seed.subarray(0, seed === seeds[2] ? 552 : 40)];
       const tail = Array.from({ length: rnd() % 400 }, () => rnd() & 0xff);
       decodesSoundly(Uint8Array.from([...head, ...tail]));
     }

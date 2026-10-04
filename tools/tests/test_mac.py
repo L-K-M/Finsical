@@ -14,7 +14,8 @@ import tools.fetch
 from tools import azpack
 from tools.az.emit import emit_mac
 from tools.az.macpics import has_mac_pictures, mac_display_name, mac_pictures
-from tools.tests.fixtures import build_pict, build_rsrc, wrap_appledouble
+from tools.tests.fixtures import (build_pict, build_rsrc, wrap_appledouble,
+                                  wrap_applesingle, wrap_binhex, wrap_macbinary)
 
 CLUT = [(255, 255, 255), (40, 160, 60), (30, 60, 200)]
 
@@ -76,6 +77,20 @@ class TestMacPictures(unittest.TestCase):
         self.assertEqual([(k, rid, img[:2]) for k, rid, _, img in images],
                          [("BAPC 4020", 4020, (400, 60)),
                           ("BADP 4020", 4020, (64, 48))])
+
+    def test_a_pict_file_wrapped_for_the_trip(self):
+        # Its picture travels in the data fork.
+        pict = build_pict(320, 200, [1] * 64000, clut=CLUT, file=True)
+        for d in (wrap_macbinary(b"", data=pict), wrap_binhex(b"", data=pict),
+                  wrap_applesingle(b"", data=pict)):
+            gravel, images, failed = mac_pictures(d)
+            self.assertEqual([(k, img[:2]) for k, _, _, img in images],
+                             [("PICT", (320, 200))])
+            self.assertTrue(has_mac_pictures(d))
+        # And it emits as a PICT file does.
+        with tempfile.TemporaryDirectory() as out:
+            m = emit_mac(wrap_macbinary(b"", data=pict), out)
+        self.assertEqual([c["name"] for c in m["chunks"]], ["PICT"])
 
     def test_files_without_pictures(self):
         for d in (b"", b"\x01\x02\x03", bytes(4096),

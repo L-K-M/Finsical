@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A PICT file wrapped in MacBinary, BinHex or AppleSingle, as Mac files
+  travel, now drops in as a bare one does. Its picture is in the data
+  fork, which the drop used to skip past to the resource fork.
 - Import Add-ons lists AquaZone's Mac-only scenery from the main
   archive.org item: four backdrops under Backgrounds and five gravels
   (star sand, nebula, tatami, iron sand and moss carpet) under Gravel.

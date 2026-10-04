@@ -30,34 +30,48 @@ const u32be = (v: DataView, o: number): number => v.getUint32(o, false);
 
 // ---- transfer encodings --------------------------------------------
 
-function unwrapAppledouble(d: Uint8Array): Uint8Array {
-  if (d.length < 26) return d;
+/** The two forks a transfer encoding carries, null where it carries
+ * none. A Mac file keeps its document (a PICT file's picture) in the
+ * data fork and its resources in the resource fork. */
+interface Forks { data: Uint8Array | null; rsrc: Uint8Array | null }
+
+/** AppleSingle carries both forks, AppleDouble (the "._" companion)
+ * the resource fork alone, as entries: id 1 the data fork, id 2 the
+ * resource fork. */
+function appleForks(d: Uint8Array): Forks | null {
+  if (d.length < 26) return null;
   const v = new DataView(d.buffer, d.byteOffset, d.byteLength);
   const magic = u32be(v, 0);
-  if (magic !== 0x00051607 && magic !== 0x00051600) return d;
+  if (magic !== 0x00051607 && magic !== 0x00051600) return null;
+  const forks: Forks = { data: null, rsrc: null };
   const n = u16be(v, 24);
   for (let i = 0; i < n; i++) {
     const o = 26 + i * 12;
     if (o + 12 > d.length) break;
-    if (u32be(v, o) !== 2) continue; // entry id 2 = resource fork
-    const off = u32be(v, o + 4), len = u32be(v, o + 8);
-    if (off + len <= d.length) return d.subarray(off, off + len);
+    const id = u32be(v, o), off = u32be(v, o + 4), len = u32be(v, o + 8);
+    if (off + len > d.length) continue;
+    if (id === 1 && len && !forks.data) forks.data = d.subarray(off, off + len);
+    if (id === 2 && !forks.rsrc) forks.rsrc = d.subarray(off, off + len);
   }
-  return d;
+  return forks;
 }
 
-function unwrapMacbinary(d: Uint8Array): Uint8Array {
-  // Fixed-zero header fields + a 1..63 name length keep a raw fork
-  // (data offset 0x00000100 → name length 0) from matching.
-  if (d.length < 128 || d[0] !== 0 || d[74] !== 0) return d;
+function macbinaryForks(d: Uint8Array): Forks | null {
+  // Header bytes 0, 74 and 82, which every MacBinary version keeps
+  // zero, and a 1..63 name length keep a raw fork (data offset
+  // 0x00000100: name length 0) from matching.
+  if (d.length < 128 || d[0] !== 0 || d[74] !== 0 || d[82] !== 0)
+    return null;
   const nlen = d[1]!;
-  if (nlen < 1 || nlen > 63) return d;
+  if (nlen < 1 || nlen > 63) return null;
   const v = new DataView(d.buffer, d.byteOffset, d.byteLength);
   const dlen = u32be(v, 83), rlen = u32be(v, 87);
-  if (!rlen) return d;
   const roff = 128 + Math.ceil(dlen / 128) * 128;
-  if (roff + rlen > d.length) return d;
-  return d.subarray(roff, roff + rlen);
+  const data = dlen && 128 + dlen <= d.length
+    ? d.subarray(128, 128 + dlen) : null;
+  const rsrc = rlen && roff + rlen <= d.length
+    ? d.subarray(roff, roff + rlen) : null;
+  return data || rsrc ? { data, rsrc } : null;
 }
 
 const BINHEX_ALPHABET =
@@ -133,30 +147,40 @@ function binhexDecode(raw: Uint8Array): Uint8Array | null {
   return d.subarray(0, nd);
 }
 
-function unwrapBinhex(d: Uint8Array): Uint8Array {
+function binhexForks(d: Uint8Array): Forks | null {
   // Cheap gate: BinHex is text — a preamble line or a ':' first byte.
   const head = new TextDecoder("latin1").decode(d.subarray(0, 8192));
   if (!head.includes("This file must be converted with BinHex")) {
     const t = head.trimStart();
-    if (!t.startsWith(":")) return d;
+    if (!t.startsWith(":")) return null;
   }
   const dec = binhexDecode(d);
-  if (!dec || dec.length < 22) return d;
+  if (!dec || dec.length < 22) return null;
   const nlen = dec[0]!;
   // nlen + version byte + 20-byte header tail must fit before reads.
   if (nlen < 1 || nlen > 63 || dec.length < nlen + 22 ||
-      dec[1 + nlen] !== 0) return d;
+      dec[1 + nlen] !== 0) return null;
   const v = new DataView(dec.buffer, dec.byteOffset, dec.byteLength);
   // name + version + type(4) + creator(4) + flags(2) + dlen(4) + rlen(4)
   const dlen = u32be(v, 1 + nlen + 1 + 10), rlen = u32be(v, 1 + nlen + 1 + 14);
   const off = 1 + nlen + 1 + 18 + 2; // + header CRC
-  if (off + dlen + 2 + rlen > dec.length) return d;
-  return rlen ? dec.subarray(off + dlen + 2, off + dlen + 2 + rlen) : d;
+  if (off + dlen + 2 + rlen > dec.length) return null;
+  return { data: dlen ? dec.subarray(off, off + dlen) : null,
+           rsrc: rlen ? dec.subarray(off + dlen + 2, off + dlen + 2 + rlen)
+                      : null };
 }
 
-/** Peel transfer encodings; loops until stable (a .bin can hold an
- * AppleDouble file). Each unwrap returns its input when it can't peel,
- * so identity is the stable-point test. */
+/** Each unwrap returns its input when it can't peel: identity is
+ * unwrapContainer's stable-point test. */
+const unwrapAppledouble = (d: Uint8Array): Uint8Array =>
+  appleForks(d)?.rsrc ?? d;
+const unwrapMacbinary = (d: Uint8Array): Uint8Array =>
+  macbinaryForks(d)?.rsrc ?? d;
+const unwrapBinhex = (d: Uint8Array): Uint8Array =>
+  binhexForks(d)?.rsrc ?? d;
+
+/** Peel transfer encodings down to the resource fork; loops until
+ * stable (a .bin can hold an AppleDouble file). */
 export function unwrapContainer(d: Uint8Array): Uint8Array {
   for (let i = 0; i < 4; i++) {
     const out = unwrapBinhex(unwrapMacbinary(unwrapAppledouble(d)));
@@ -164,6 +188,14 @@ export function unwrapContainer(d: Uint8Array): Uint8Array {
     d = out;
   }
   return d;
+}
+
+/** The data fork a MacBinary, BinHex or AppleSingle file carries, or
+ * null when `d` is none of these or its data fork is empty. A PICT
+ * file wrapped for the trip keeps its picture there. */
+export function dataFork(d: Uint8Array): Uint8Array | null {
+  return (appleForks(d) ?? macbinaryForks(d) ?? binhexForks(d))?.data ??
+    null;
 }
 
 // ---- resource map ----------------------------------------------------

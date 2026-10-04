@@ -4,10 +4,10 @@ import tempfile
 import unittest
 from unittest import mock
 
-from tools.az.rsrc import (ResFile, unwrap_appledouble, unwrap_binhex,
-                           unwrap_container, unwrap_macbinary)
+from tools.az.rsrc import (ResFile, data_fork, unwrap_appledouble,
+                           unwrap_binhex, unwrap_container, unwrap_macbinary)
 from tools.tests.fixtures import (build_rsrc, wrap_appledouble,
-                                  binhex_text, wrap_binhex,
+                                  wrap_applesingle, binhex_text, wrap_binhex,
                                   wrap_macbinary)
 
 
@@ -189,6 +189,28 @@ class TestRsrc(unittest.TestCase):
         hqx = binhex_text(head + b"A" + b"\x90\xff" * pairs + b"\0\0")
         # assertTrue: a failing assertIs would print 64 MB.
         self.assertTrue(unwrap_binhex(hqx) is hqx)
+
+    def test_macbinary_needs_byte_82_zero(self):
+        # Every MacBinary version keeps byte 82 zero.
+        mb = bytearray(wrap_macbinary(build_rsrc({b"snd ": [(1, None, 0,
+                                                             b"x")]})))
+        mb[82] = 1
+        self.assertEqual(unwrap_macbinary(bytes(mb)), bytes(mb))
+
+    def test_data_fork_of_each_wrapping(self):
+        fork = build_rsrc({b"snd ": [(1, None, 0, b"x")]})
+        for d in (wrap_macbinary(fork, data=b"doc"),
+                  wrap_macbinary(b"", data=b"doc"),
+                  wrap_binhex(fork, data=b"doc"),
+                  wrap_applesingle(fork, data=b"doc")):
+            self.assertEqual(bytes(data_fork(d)), b"doc")
+        # The resource fork still peels beside it.
+        res = list(ResFile.from_bytes(wrap_applesingle(fork, b"doc"))
+                   .resources(b"snd "))
+        self.assertEqual(res[0][3], b"x")
+        for d in (fork, wrap_appledouble(fork), wrap_macbinary(fork),
+                  b"\x01\x02\x03", b""):
+            self.assertIsNone(data_fork(d))
 
     def test_macbinary_rejects_raw_fork(self):
         # A raw fork starts with its data offset (0x00000100): byte 1
