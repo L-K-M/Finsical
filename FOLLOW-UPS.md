@@ -365,9 +365,9 @@ images. The table lists the items with Mac content.
 | same | same folder: `macplants.sit` | StuffIt 5, method 15 | 41 plants, filed as accessories (`AqAc`) | By hand: extract with `unar`, then drop the `.rsrc` files on the tank | A StuffIt 5 reader |
 | same | same folder: `mactools.zip` | zip of StuffIt 5 archives | AquaZone's authoring tools (FisherMan, GravelMaker, PlantMaker, FishColor) and palettes | Not content | Nothing |
 | same | `AQUAZONE.iso` | ISO 9660 with an Apple partition map and an HFS volume | HFS `AQUAZONE/Items` and `Guppy Items`: 15 PICT backdrops, 5 gravels, 14 plants, 10 accessories, 12 tanks, fish and guppy forks, food, medicine | No | An HFS reader (below) |
-| same | `AQUAZONE.iso`, `Win/Items/data.z` | InstallShield 3 archive, 7.5 MB | The same items for Windows | No | InstallShield 3 and PKWARE DCL Implode readers |
-| `aquazone_1997_9003inc` | `AQUAZONE.ISO` | ISO 9660 with an Apple partition map and an HFS volume | HFS: 10 backdrops, 4 gravels, 4 plants, 4 accessories, 6 tanks, 4 fish. Windows: `WIN95/ITEMS/DATA.Z`, 3.7 MB | No | As for `AQUAZONE.iso` |
-| `aquazone-deluxe` | `AquazoneDeluxe.iso` | ISO 9660 with an Apple partition map and an HFS volume | HFS: 15 backdrops, 4 gravels, 5 plants, 7 accessories, 12 tanks, 6 fish. Windows: `WIN95/Items/data.z`, 6.7 MB | No | As for `AQUAZONE.iso` |
+| same | `AQUAZONE.iso`, `Win/Items/data.z` | InstallShield 3 archive, 7.5 MB | 65 Windows items: 15 backdrops (BMP), 5 gravels, 14 plants, 10 accessories, 12 tanks, 9 meds and foods | `fetch.py --archive AQUAZONE.iso --entries 'Win/Items/data.z'` | In the app: the same readers in TypeScript |
+| `aquazone_1997_9003inc` | `AQUAZONE.ISO` | ISO 9660 with an Apple partition map and an HFS volume | HFS: 10 backdrops, 4 gravels, 4 plants, 4 accessories, 6 tanks, 4 fish. Windows: `WIN95/ITEMS/DATA.Z`, 3.7 MB | `fetch.py --archive` | As for `AQUAZONE.iso` |
+| `aquazone-deluxe` | `AquazoneDeluxe.iso` | ISO 9660 with an Apple partition map and an HFS volume | HFS: 15 backdrops, 4 gravels, 5 plants, 7 accessories, 12 tanks, 6 fish. Windows: `WIN95/Items/data.z`, 6.7 MB | `fetch.py --archive` | As for `AQUAZONE.iso` |
 | `AZ_SEVEN_SEAS_DX_ISO` | `AZ_SEVEN_SEAS_DX.ISO` | ISO 9660 with an Apple partition map and an HFS volume | AquaZone Seven Seas Deluxe (2005, Allume): an installer app and trialware | No | Out of scope: a later product, its content inside an installer |
 | `aquazone-jpn-set` | `AQUAZONE (JPN) SET.zip`, `AQUAZONE Guide・Catalog.zip`: 19 `.hqx` files | BinHex of classic StuffIt and Compact Pro archives | Updaters, a shop item, and kits for The Tower | No | Not worth it: no scenery |
 
@@ -432,12 +432,18 @@ gravels.
 
 **InstallShield.** The hybrids' Windows items sit in InstallShield 3
 archives (`data.z`, 3.7 to 7.5 MB, signature `13 5D 65 8C`), which
-the archive view serves with CORS. Reading them takes the archive's
-directory and PKWARE DCL Implode; zlib's `contrib/blast` (zlib
-license) and deark (MIT) implement the latter. Whether they hold
-anything the Japanese set doesn't is unverified: a few of the HFS
-names match its files (Emerald, Garden, Milky Way, Wave, Golden,
-Stream), most don't.
+the archive view serves with CORS. `tools/az/is3.py` reads them, with
+a PKWARE DCL Implode decoder written from the format as zlib's
+`contrib/blast` documents it, and `fetch.py` harvests them. Each
+disc's cabinet holds the previous one's items and more: 35 on the
+1997 disc, 50 on Deluxe, 65 on Deluxe II. Most are reachable already.
+Three gravels are in `gravel.zip`, the option-disc plants and
+accessories in the Japanese set, and the backdrops, plants and
+accessories, at the same sizes, in the 7z's `ITEMS/` folder, which
+`COLLECTIONS` doesn't list yet. Only the cabinets hold the US retail
+tanks (the Japanese set has its own build of Eden) and the Anchor
+rock accessory. Listing those in Import Add-ons takes the same
+readers in TypeScript.
 
 **Mac plants.** Every picture in the plant forks (41 `ACPC`, 82
 `ACDP`) is a QuickTime picture in QuickTime's BMP codec (`WRLE`): 8-bit

@@ -387,3 +387,108 @@ def build_ops_pict(w, h, ops):
     if len(pic) & 1:
         pic.append(0)
     return bytes(pic + [0x00, 0xFF])
+
+
+def _dcl_codes(lengths):
+    """Canonical codes for DCL Implode's code lengths, as (code, length)
+    by symbol: shorter first, by symbol within a length."""
+    codes, code = [None] * len(lengths), 0
+    for length in range(1, max(lengths) + 1):
+        for sym, n in enumerate(lengths):
+            if n == length:
+                codes[sym] = (code, length)
+                code += 1
+        code <<= 1
+    return codes
+
+
+def implode(data, coded=False, low=6, window=64):
+    """A PKWARE DCL Implode stream of data, for tests: the longest match
+    of 2 to 518 bytes in the last `window` bytes, else a literal (Huffman
+    coded when `coded`). Codes go out inverted, most significant bit
+    first; everything is packed from each byte's low bit up."""
+    from tools.az.is3 import (_DIST_LENGTHS, _LEN_BASE, _LEN_EXTRA,
+                              _LEN_LENGTHS, _LIT_LENGTHS, _nibbles)
+    lit = _dcl_codes(_nibbles(_LIT_LENGTHS, 256))
+    lens = _dcl_codes(_nibbles(_LEN_LENGTHS, 16))
+    dists = _dcl_codes(_nibbles(_DIST_LENGTHS, 64))
+    out, acc, n = bytearray([1 if coded else 0, low]), 0, 0
+
+    def put(v, k):  # k bits of v, low bit first
+        nonlocal acc, n
+        acc |= v << n
+        n += k
+        while n >= 8:
+            out.append(acc & 0xFF)
+            acc >>= 8
+            n -= 8
+
+    def code(c):
+        value, k = c
+        for i in range(k):
+            put(((value >> (k - 1 - i)) & 1) ^ 1, 1)
+
+    def length(m):
+        sym = max(s for s in range(16) if _LEN_BASE[s] <= m and
+                  m - _LEN_BASE[s] < 1 << _LEN_EXTRA[s])
+        code(lens[sym])
+        put(m - _LEN_BASE[sym], _LEN_EXTRA[sym])
+
+    i = 0
+    while i < len(data):
+        best, at = 0, 0
+        for j in range(max(0, i - window), i):
+            k = 0
+            while i + k < len(data) and k < 518 and data[j + k] == data[i + k]:
+                k += 1
+            if k > best:
+                best, at = k, j
+        dist = i - at
+        extra = 2 if best == 2 else low
+        if best >= 2 and (dist - 1) >> extra < 64:
+            put(1, 1)
+            length(best)
+            code(dists[(dist - 1) >> extra])
+            put((dist - 1) & ((1 << extra) - 1), extra)
+            i += best
+        else:
+            put(0, 1)
+            code(lit[data[i]]) if coded else put(data[i], 8)
+            i += 1
+    put(1, 1)
+    length(519)  # the end code
+    if n:
+        out.append(acc & 0xFF)
+    return bytes(out)
+
+
+def build_is3(files, dirs=("Items",)):
+    """An InstallShield 3 archive (data.z) of files, each a tuple
+    (dir index, name, data, stored): stored members go in as they are,
+    the rest imploded. The layout tools/az/is3.py reads."""
+    body = bytearray(255)  # header, then zero padding up to the data
+    entries = []
+    for di, name, data, stored in files:
+        packed = data if stored else implode(data)
+        entries.append((di, name, len(data), len(packed), len(body), stored))
+        body += packed
+    dirpos = len(body)
+    for d in dirs:
+        nb = d.encode("cp1252")
+        body += struct.pack("<HHH", sum(1 for f in files if dirs[f[0]] == d),
+                            6 + len(nb), len(nb)) + nb
+    filepos = len(body)
+    for di, name, size, packed, offset, stored in entries:
+        nb = name.encode("cp1252")
+        body += (bytes([0]) + struct.pack("<HIIIII", di, size, packed, offset,
+                                          0, 0x80)
+                 + struct.pack("<H", 43 + len(nb))
+                 + bytes([0x10 if stored else 0, 0, 0, 0, len(nb)]) + nb
+                 + bytes(13))
+    struct.pack_into("<IIHHH", body, 0, 0x8C655D13, 0x0002013A, 0, 0,
+                     len(files))
+    struct.pack_into("<II", body, 18, len(body),
+                     sum(len(f[2]) for f in files))
+    struct.pack_into("<I", body, 41, dirpos)
+    struct.pack_into("<HI", body, 49, len(dirs), filepos)
+    return bytes(body)

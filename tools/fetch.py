@@ -9,10 +9,11 @@ what's inside into .azpack bundles.
         --entries 'Misc Macintosh files/'       # entries, one by one
 
 Nothing is committed to the repo — output lands in packs/ (gitignored).
-.ZIP is unpacked in memory; .ISO is walked via tools.az.iso9660; anything
-that looks like a pack (.fsh/.acc/.plt/.azn/.REZ), a Mac PICT picture or
-a resource fork with pictures or 'snd ' resources becomes an .azpack via
-the normal emitters.
+.ZIP is unpacked in memory; so is an InstallShield 3 cabinet (data.z, as
+the US discs keep their Windows items in) via tools.az.is3; .ISO is
+walked via tools.az.iso9660; anything that looks like a pack
+(.fsh/.acc/.plt/.azn/.REZ), a Mac PICT picture or a resource fork with
+pictures or 'snd ' resources becomes an .azpack via the normal emitters.
 
 --archive reads entries through archive.org's archive view, which
 serves the files inside a zip, 7z or ISO one at a time: for archives
@@ -39,6 +40,7 @@ from typing import Callable
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.az.emit import emit, emit_mac, emit_sounds
+from tools.az.is3 import Is3Error, is_is3, members, read_member
 from tools.az.iso9660 import Iso
 from tools.az.macpics import has_mac_pictures, mac_display_name
 from tools.az.pack import Pack, is_pack
@@ -263,40 +265,62 @@ def _harvest(name: str, data: bytes, outdir: str, depth: int = 0,
     if lower.endswith(IMPORTABLE) or _is_mac_file(name):
         out = _emit_source(name, data, outdir)
         return [out] if out else []
-    if lower.endswith(".zip") and depth < _MAX_ZIP_DEPTH:
-        made = []
+    if depth >= _MAX_ZIP_DEPTH:
+        return []
+    if lower.endswith(".zip"):
         try:
             zf = zipfile.ZipFile(io.BytesIO(data))
         except zipfile.BadZipFile:
             return []
-        for zi in zf.infolist():
-            entry = _entry_name(zi)
-            norm = entry.replace("\\", "/")
-            base = os.path.basename(norm)
-            if zi.is_dir() or not base:
-                continue
-            if zi.file_size > _ENTRY_CAP:
-                print(f"  {entry}: skipped, declares "
-                      f"{zi.file_size} bytes over cap", file=sys.stderr)
-                continue
-            if budget[0] <= 0:
-                print(f"  {entry}: skipped, total byte budget "
-                      "exhausted", file=sys.stderr)
-                continue
-            try:
-                blob = _read_capped(zf, zi, min(_ENTRY_CAP, budget[0]))
-                if blob is None:
-                    print(f"  {entry}: skipped, decompressed data "
-                          "over cap or remaining budget",
-                          file=sys.stderr)
-                    continue
-                budget[0] -= len(blob)
-                made += _harvest(base, blob, outdir, depth + 1, budget)
-            except Exception as e:
-                print(f"  {entry}: {type(e).__name__}: {e}",
-                      file=sys.stderr)
-        return made
+        return _harvest_members(
+            ((_entry_name(zi), zi.file_size,
+              lambda cap, zi=zi: _read_capped(zf, zi, cap))
+             for zi in zf.infolist() if not zi.is_dir()),
+            outdir, depth, budget)
+    if lower.endswith(".z") and is_is3(data):
+        try:
+            listed = members(data)
+        except Is3Error as e:
+            print(f"  {name}: {e}", file=sys.stderr)
+            return []
+        return _harvest_members(
+            ((m.path, m.size,
+              lambda cap, m=m: read_member(data, m) if m.size <= cap
+              else None) for m in listed),
+            outdir, depth, budget)
     return []
+
+
+def _harvest_members(entries, outdir: str, depth: int,
+                     budget: list[int]) -> list[str]:
+    """Harvest an archive's members, each (path, declared size, read),
+    where read(cap) gives the member's bytes, or None past cap. A
+    member over the per-entry cap or the remaining budget is skipped
+    with a note, and so is one that fails: it costs only itself."""
+    made = []
+    for entry, size, read in entries:
+        base = os.path.basename(entry.replace("\\", "/"))
+        if not base:
+            continue
+        if size > _ENTRY_CAP:
+            print(f"  {entry}: skipped, declares {size} bytes over cap",
+                  file=sys.stderr)
+            continue
+        if budget[0] <= 0:
+            print(f"  {entry}: skipped, total byte budget exhausted",
+                  file=sys.stderr)
+            continue
+        try:
+            blob = read(min(_ENTRY_CAP, budget[0]))
+            if blob is None:
+                print(f"  {entry}: skipped, decompressed data over cap or "
+                      "remaining budget", file=sys.stderr)
+                continue
+            budget[0] -= len(blob)
+            made += _harvest(base, blob, outdir, depth + 1, budget)
+        except Exception as e:
+            print(f"  {entry}: {type(e).__name__}: {e}", file=sys.stderr)
+    return made
 
 
 def _harvest_disc(iso, outdir: str) -> list[str]:
@@ -305,7 +329,8 @@ def _harvest_disc(iso, outdir: str) -> list[str]:
     budget = [_MAX_TOTAL_BYTES]  # one budget per disc
     for entry, rec in iso.walk():
         base = os.path.basename(entry)
-        if rec["dir"] or not base.lower().endswith(IMPORTABLE + (".zip",)):
+        if rec["dir"] or not base.lower().endswith(
+                IMPORTABLE + (".zip", ".z")):
             continue
         if rec["size"] > _MAX_ARCHIVE_BYTES:
             print(f"  {entry}: skipped, {rec['size']} bytes over cap",
@@ -390,7 +415,7 @@ def fetch_entries(ident: str, archive: str, outdir: str,
                 os.remove(path)
                 raise ValueError("archive.org served 0 bytes (its listing "
                                  "may name the wrong folder)")
-            if name.lower().endswith(".zip"):
+            if name.lower().endswith((".zip", ".z")):
                 made += _harvest(os.path.basename(name), blob, outdir)
             else:
                 out = _emit_source(name, blob, outdir, strict=True)

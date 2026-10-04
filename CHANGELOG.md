@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `tools/fetch.py` reads the InstallShield cabinets (`data.z`) the US
+  AquaZone discs keep their Windows items in, which brings the US
+  retail tanks and the Anchor rock accessory. For Deluxe II's:
+  `python3 tools/fetch.py --archive AQUAZONE.iso --entries
+  'Win/Items/data.z'`.
 - The 41 Mac plants in the archive's `macplants.sit` stand on the tank's
   floor once you extract them with `unar` and drop their `.rsrc` files
   on the tank or the Import Add-ons window. AquaZone files them as

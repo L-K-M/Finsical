@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(
 import tools.fetch  # noqa: E402
 from tools.fetch import (_MAX_ZIP_DEPTH, _emit_source,  # noqa: E402
                          _harvest)
-from tools.tests.fixtures import build_rsrc  # noqa: E402
+from tools.tests.fixtures import build_is3, build_rsrc  # noqa: E402
 
 
 def _fails_midway(_payload, dst):
@@ -177,6 +177,33 @@ class TestHarvest(unittest.TestCase):
         made = _harvest("z.zip", buf.getvalue(), self.out,
                         depth=0, budget=[len(one)])
         self.assertEqual(len(made), 1)
+
+    def test_installshield_cabinet_recurses(self):
+        # The US discs keep their Windows items in data.z, an
+        # InstallShield 3 cabinet: its packs come out as bundles.
+        cab = build_is3([(0, "Eden.azn", fake_pack(bmp_8bit()), False),
+                         (0, "Wall.bmp", bmp_8bit(), True),
+                         (0, "Anchor rock.acc", fake_pack(bmp_8bit()), False)])
+        made = _harvest("DATA.Z", cab, self.out)
+        self.assertEqual(sorted(os.path.basename(p) for p in made),
+                         ["Anchor rock.azpack", "Eden.azpack"])
+        # One whose tables are cut off costs only itself.
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(_harvest("data.z", cab[:300], self.out), [])
+
+    def test_disc_walk_opens_installshield_cabinets(self):
+        cab = build_is3([(0, "Eden.azn", fake_pack(bmp_8bit()), False)])
+
+        class FakeIso:
+            def walk(self):
+                yield "/WIN95/ITEMS/DATA.Z", {"dir": False, "size": len(cab),
+                                              "name": "DATA.Z"}
+
+            def read_file(self, rec):
+                return cab
+
+        made = tools.fetch._harvest_disc(FakeIso(), self.out)
+        self.assertEqual([os.path.basename(p) for p in made], ["Eden.azpack"])
 
     def test_disc_budget_exhaustion_breaks_iso_loop(self):
         one = fake_pack(bmp_8bit())
