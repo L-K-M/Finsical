@@ -122,4 +122,11 @@ describe("CRT configure", () => {
     expect(second).not.toEqual(first);
     expect(upload(a)).toEqual(first);
   });
+
+  it("clamps values a caller passes out of range", () => {
+    const f = fixture();
+    f.crt.configure({ ...sanitizeCrtConfig(null), scanlines: 2, bloom: -1 });
+    expect(Object.fromEntries(f.uniform1f.mock.calls))
+      .toMatchObject({ uScan: 1, uBloom: 0 });
+  });
 });

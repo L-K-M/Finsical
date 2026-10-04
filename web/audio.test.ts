@@ -396,6 +396,23 @@ describe("TankAudio install feedback", () => {
     expect(fade[0]![1]).toBeLessThan(ac.currentTime + FEEDBACK_MAX_S);
   });
 
+  it("drops the cue and samples while muted, at volume 0 or hidden",
+     async () => {
+    const { audio, ac } = await tank({ a: 1, side: 1 });
+    audio.setMuted(true);
+    audio.playImported("a");
+    audio.tap(10, 100, 320, 200);
+    audio.setMuted(false);
+    audio.setVolume(0);
+    audio.playImported("a");
+    audio.tap(10, 100, 320, 200);
+    audio.setVolume(0.5);
+    audio.setHidden(true);
+    audio.playImported("a");
+    audio.tap(10, 100, 320, 200);
+    expect(ac.sources).toHaveLength(0);
+  });
+
   it("stays silent while the context is locked", async () => {
     const { audio, ac } = await tank({ a: 1 });
     ac.state = "suspended";

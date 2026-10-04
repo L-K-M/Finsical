@@ -1,14 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 import { decodeBmp } from "../core/data/bmp.js";
+import { fshToSheets } from "../core/data/fsh.js";
 import { decodeDroppedPack, dropSection } from "./drop.js";
 import type { DroppedPack } from "./drop.js";
 import { buildBmp8, buildChunkPack, cat, PAL, u16le, u32le }
   from "../core/data/fsh.fixture.js";
 
-// The real decoder, wrapped so one test can make a call throw.
+// The real decoders, wrapped so a test can make one call throw.
 vi.mock("../core/data/bmp.js", async (importOriginal) => {
   const m = await importOriginal<typeof import("../core/data/bmp.js")>();
   return { ...m, decodeBmp: vi.fn(m.decodeBmp) };
+});
+vi.mock("../core/data/fsh.js", async (importOriginal) => {
+  const m = await importOriginal<typeof import("../core/data/fsh.js")>();
+  return { ...m, fshToSheets: vi.fn(m.fshToSheets) };
 });
 
 /** 8-bit BMP with real pixel rows — packImages decodes it. */
@@ -78,6 +83,14 @@ describe("decodeDroppedPack", () => {
     expect(decodeDroppedPack("corrupt.fsh", truncated)).toBeNull();
   });
 
+  it("skips a pack whose decode throws and keeps the rest", () => {
+    vi.mocked(fshToSheets).mockImplementationOnce(() => {
+      throw new RangeError("offset is out of bounds");
+    });
+    const packs = decodeEach([["Bad.fsh", packA], ["Guppy.fsh", packB]]);
+    expect(packs.map((p) => p.name)).toEqual(["Guppy"]);
+  });
+
   it("skips non-pack files and pack containers with no sprites", () => {
     const empty = buildChunkPack(buildBmp8(PAL));
     const packs = decodeEach([
@@ -144,6 +157,7 @@ describe("decodeDroppedPack with pictures", () => {
     ]);
     expect([pic!.name, pic!.section, pic!.sheets.size])
       .toEqual(["MyBackdrop", "backgrounds", 0]);
+    expect([...pic!.images.keys()]).toEqual(["MyBackdrop.bmp"]);
     expect([...pic!.images.values()].map((i) => [i.w, i.h]))
       .toEqual([[640, 480]]);
     expect([bare!.name, bare!.section, bare!.images.size])
