@@ -247,13 +247,13 @@ function skipRows(r: Reader, rowBytes: number, rows: number): void {
     r.skip(rowBytes < 8 ? rowBytes : rowBytes > 250 ? r.u16() : r.u8());
 }
 
-/** BkPixPat, PnPixPat, FillPixPat: patType, the 8x8 1-bit pattern,
- * then an RGB color (ditherPat, 2) or a whole pixel map (1). */
+/** BkPixPat, PnPixPat, FillPixPat (Listing A-1): patType, the 8x8
+ * 1-bit pattern, then an RGB color for ditherPat (2) or else a whole
+ * pixel map with its color table and rows. */
 function skipPixPat(r: Reader): void {
   const type = r.u16();
   r.skip(8);
   if (type === 2) return r.skip(6);
-  if (type !== 1) throw new PictError(`unknown pattern type ${type}`);
   const rowBytes = r.u16() & 0x3fff;
   const b = r.rect();
   r.skip(36); // pmVersion through pmReserved; no baseAddr
@@ -282,7 +282,9 @@ function readColorTable(r: Reader, depth: number): Uint32Array {
 }
 
 /** A mask region: its bounding box, then (unless it is just that box)
- * scanlines of inversion points, each list ending in 7FFF. */
+ * scanlines of inversion points, each list ending in 7FFF. Apple never
+ * documented a region's inside; this is the form QuickDraw is known
+ * to write. */
 interface Region { box: Rect; rows: { y: number; xs: number[] }[] | null }
 
 function readRegion(r: Reader): Region {
@@ -381,17 +383,17 @@ function drawBits(r: Reader, op: number, page: Page): void {
 
   // How rows are stored. BitsRect rows, and any row under 8 bytes, are
   // the pixel map's own rows (32-bit ones xRGB, whatever the
-  // packType). packType 1 stores rows as they are too, packType 2 as
-  // RGB without the pad byte. Everything else is PackBits, one row
-  // after its byte count (a word once rowBytes passes 250): 16-bit
-  // pixels by the word, packType 4 by the byte over the row's
-  // components laid out one after another.
+  // packType). packType 1 stores rows as they are too, and packType 2
+  // drops each pixel's pad byte: three quarters of rowBytes. The rest
+  // is PackBits, one row after its byte count (a word once rowBytes
+  // passes 250): 16-bit pixels by the word, packType 4 by the byte
+  // over the row's components laid out one after another.
   let read = layout, len = rowBytes, packed = false;
   if (op <= 0x91 || rowBytes < 8) {
     if (layout.kind === "planar" || layout.kind === "rgb")
       read = { kind: "xrgb" };
   } else if (layout.kind === "rgb") {
-    len = bw * 3;
+    len = Math.floor(rowBytes * 3 / 4);
   } else if (layout.kind === "planar") {
     len = bw * layout.cmpCount;
     packed = true;
@@ -450,6 +452,10 @@ function indexedTable(r: Reader, depth: number): Uint32Array {
   return readColorTable(r, depth);
 }
 
+/** packType 0 means "the default packing" (3 for 16-bit pixels, 4 for
+ * 32-bit). Apple's notes say a picture records the packing it used
+ * and that other values draw nothing; a picture with 0 is read with
+ * the default it names, as other readers do. */
 function directLayout(depth: number, packType: number,
                       cmpCount: number): Layout {
   if (depth === 16) {

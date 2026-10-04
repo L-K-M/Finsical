@@ -196,9 +196,15 @@ function bitsOp(op: IndexedBits | MonoBits | DirectBits, v2: boolean):
     };
     const all = (f: (y: number) => number[]) =>
       Array.from({ length: op.h }, (_, y) => f(y)).flat();
+    // packType 2 keeps three bytes of every four, padding included.
+    const rgb = (y: number) => {
+      const out = new Array<number>(Math.floor(rowBytes * 3 / 4)).fill(0);
+      line(y).forEach((c, x) => out.splice(3 * x, 3, c >> 16 & 255,
+                                            c >> 8 & 255, c & 255));
+      return out;
+    };
     const pixels = rowBytes < 8 || pt === 1 ? all(own)
-      : pt === 2 ? all((y) => line(y).flatMap((c) =>
-                         [c >> 16 & 255, c >> 8 & 255, c & 255]))
+      : pt === 2 ? all(rgb)
       : op.depth === 16 ? rows(op, rowBytes, true, own, 2)
       : rows(op, rowBytes, true, planar);
     return [...be16(op.rgn ? 0x9b : 0x9a), ...be32(0xff),

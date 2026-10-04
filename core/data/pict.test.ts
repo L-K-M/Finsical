@@ -161,6 +161,14 @@ describe("decodePict: direct pixel maps", () => {
       }
   });
 
+  it("reads three quarters of rowBytes a row for packType 2", () => {
+    // Padded rows: 3 pixels in 16 rowBytes leave 12 stored bytes a row.
+    const img = decode({ frame: rect(0, 0, 2, 3), ops: [
+      { kind: "direct", depth: 32, packType: 2, w: 3, h: 2, rowBytes: 16,
+        px: [RED, GREEN, BLUE, 0x123456, WHITE, BLACK] }] });
+    expect(colors(img)).toEqual([RED, GREEN, BLUE, 0x123456, WHITE, BLACK]);
+  });
+
   it("decodes 16-bit pixels, widening 5 bits to 8", () => {
     const five = (c: number) => {
       const w = (v: number) => (v << 3) | (v >> 2);
@@ -372,6 +380,7 @@ describe("decodePict: opcodes around the bitmap", () => {
       { kind: "raw", bytes: [0x00, 0x24, ...be16(3), 9, 9, 9] }, // reserved
       { kind: "raw", bytes: pixPat(1) },
       { kind: "raw", bytes: pixPat(2) },
+      { kind: "raw", bytes: pixPat(0) }, // not ditherPat: a pixel map
       { kind: "raw", bytes: [0x00, 0x30, 0, 0, 0, 0, 0, 1, 0, 1] }, // frameRect
       { kind: "raw", bytes: [0x00, 0x38] },                    // frameSameRect
       { kind: "raw", bytes: [0x00, 0x60, ...new Array(12).fill(0)] }, // arc
