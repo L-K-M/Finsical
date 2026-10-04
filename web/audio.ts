@@ -415,7 +415,7 @@ export class TankAudio {
    * muted or hidden, there is nothing a click would let you hear. */
   get blocked(): boolean {
     return this.ctx !== null && this.ctx.state === "suspended" &&
-      !this.hidden && this.level() > 0;
+      this.shouldRun();
   }
 
   /** Glide the live master to the current level: a hard step in the
@@ -593,7 +593,7 @@ export class TankAudio {
     // gesture retry. Without an activation (a remote relay, a drop
     // whose walk outlasted the gesture) resume() rejects quietly and
     // the cue drops rather than firing long after the install.
-    if (!buf || !this.ctx || this.hidden || this.level() === 0) return;
+    if (!buf || !this.ctx || !this.shouldRun()) return;
     if (this.ctx.state === "suspended") {
       // A live gesture always starts a fresh resume — a parked one
       // (a gesture-less unlock() can stay pending forever on an
@@ -691,7 +691,7 @@ export class TankAudio {
     // Hidden or silent (muted/volume 0): drop the sound rather than
     // resume() the device below for one nobody would hear. A wanted
     // ambient loop restarts from setHidden(false) / syncSleep.
-    if (this.hidden || this.level() === 0) return null;
+    if (!this.shouldRun()) return null;
     if (this.ctx.state === "suspended" && retry) {
       // Only the ambient loop and a sound answering the gesture in
       // progress wait out the lock. Anything else (bubbles from a
