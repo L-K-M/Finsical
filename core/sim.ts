@@ -1,7 +1,7 @@
 import { makeRng } from "./rng.js";
 import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
   from "./tuning.js";
-import { demoLight, DUSK_LIGHT } from "./light.js";
+import { demoLight, DUSK_LIGHT, MINUTES_PER_DAY } from "./light.js";
 import { Aquarium } from "./aquarium/aquarium.js";
 import type { Resident } from "./aquarium/aquarium.js";
 import { hungerOf, newLife, randInt, rescaleStomach, stomachSize, vigorOf }
@@ -422,6 +422,8 @@ export const DAY_TICKS = 24000;
  * fluttering between states. Exported for the sleep test. */
 export const SLEEP_LIGHT = DUSK_LIGHT;
 export const WAKE_LIGHT = 0.6;
+const AQUARIUM_STREAM_SALT = 0x5eed;
+const PLANT_UNIT_AREA = 1000;
 /** Breeding on tank time, as the original's Start_Coupling paces it:
  * once a tank day each species with a pair of breeding age rolls
  * BREED_ODDS in 100 to couple, and a coupling takes 50% of the time,
@@ -430,9 +432,6 @@ export const WAKE_LIGHT = 0.6;
  * original: health at least 0.75 of its maximum) and not sick.
  * FRY_SCALE is the juvenile minimum addFish clamps to, so a newborn
  * reads visibly smaller than its parents and grows up on its meals. */
-const MINUTES_PER_DAY = 24 * 60;
-const AQUARIUM_STREAM_SALT = 0x5eed;
-const PLANT_UNIT_AREA = 1000;
 const BREED_ODDS = 15;
 const CONCEIVE_ODDS = 50;
 const BREED_HEALTH = 75;
