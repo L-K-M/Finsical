@@ -179,13 +179,11 @@ export function mixIn(w: Water, fresh: Water, fraction: number):
   const before = { temp: w.temp, pH: w.pH, gH: w.gH };
   setTemp(w, w.temp * (1 - f) + fresh.temp * f);
   const changes = {} as Record<Element, number>;
-  for (const e of ELEMENTS) {
-    const share = fresh[e] / fresh.litres * w.litres * f;
-    const old = w[e];
-    const hi = e === "o2" ? o2Saturation(w.temp) : CEILING[e];
-    w[e] = clamp(old * (1 - f) + share, 0, hi * w.litres);
-    changes[e] = w[e] - old;
-  }
+  for (const e of ELEMENTS)
+    changes[e] = setElement(w, e,
+      w[e] * (1 - f) + fresh[e] / fresh.litres * w.litres * f);
+  // setElement updates gH and pH as it goes; take both from the final
+  // totals so they don't depend on the order of ELEMENTS.
   w.gH = hardness(w.calcium, w.magnesium, w.litres);
   w.pH = acidity(w.gH, w.co2 / w.litres);
   return { ...changes, temp: w.temp - before.temp, pH: w.pH - before.pH,
