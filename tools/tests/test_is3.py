@@ -9,6 +9,14 @@ PACK = struct.pack("<I", 0x100) + bytes(range(256)) * 3
 
 
 class TestExplode(unittest.TestCase):
+    def test_decodes_blasts_documented_example(self):
+        # The example zlib's contrib/blast gives for the format: raw
+        # literals, 4 distance bits, a match and the end code. The
+        # round trips below share this reader's conventions; this one
+        # comes from outside it.
+        self.assertEqual(explode(bytes.fromhex("00048224258f807f"), 13),
+                         b"AIAIAIAIAIAIA")
+
     def test_round_trips_each_form(self):
         # Raw and coded literals, every distance width, overlapping
         # copies ("ab" over and over) and a length 2 match, whose
@@ -91,11 +99,14 @@ class TestArchive(unittest.TestCase):
         for bad in (split, past):
             with self.assertRaises(Is3Error):
                 members(bytes(bad))
-        # A member too big to allocate.
+        # A member too big to allocate: listed, but not read.
         huge = bytearray(good)
         struct.pack_into("<I", huge, filepos + 3, MAX_MEMBER_BYTES + 1)
+        m = members(bytes(huge))[0]
         with self.assertRaises(Is3Error):
-            read_member(bytes(huge), members(bytes(huge))[0])
+            read_member(bytes(huge), m)
+        with self.assertRaisesRegex(Is3Error, "over the cap"):
+            explode(implode(b""), MAX_MEMBER_BYTES + 1)
 
     def test_raises_only_is3_error_on_damage(self):
         good = build_is3([(0, "Eden.azn", PACK, False),

@@ -191,6 +191,15 @@ class TestHarvest(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(_harvest("data.z", cab[:300], self.out), [])
 
+    def test_cabinets_within_cabinets_stop_at_the_depth_cap(self):
+        inner = build_is3([(0, "Eden.azn", fake_pack(bmp_8bit()), False)])
+        outer = build_is3([(0, "DATA.Z", inner, False)])
+        made = _harvest("data.z", outer, self.out)
+        self.assertEqual([os.path.basename(p) for p in made], ["Eden.azpack"])
+        tools.fetch._EMITTED.clear()
+        self.assertEqual(_harvest("data.z", outer, self.out,
+                                  depth=_MAX_ZIP_DEPTH), [])
+
     def test_disc_walk_opens_installshield_cabinets(self):
         cab = build_is3([(0, "Eden.azn", fake_pack(bmp_8bit()), False)])
 

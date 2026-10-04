@@ -173,6 +173,8 @@ def explode(src, size):
     """Decompress a DCL Implode stream to exactly `size` bytes. Raises
     Is3Error for a stream that is malformed, truncated, or doesn't come
     to `size` bytes at its end code."""
+    if size > MAX_MEMBER_BYTES:
+        raise Is3Error(f"{size} bytes is over the cap")
     if len(src) < 2:
         raise Is3Error("imploded data is truncated")
     coded, low = src[0], src[1]
