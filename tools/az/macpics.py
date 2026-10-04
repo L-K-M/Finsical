@@ -7,8 +7,10 @@ wrapping rsrc.py peels. Stdlib only.
 AquaZone files its pictures under its own resource types. A gravel
 add-on carries, all as id 4020, the strip the tank draws (BAPC), the
 picture the item catalog shows (BADP) and the floor's geometry (Grvl):
-the Windows .grv packs carry the same three. 'PICT' is the Mac's own
-picture resource.
+the Windows .grv packs carry the same three. An accessory add-on (the
+Mac set files its plants as accessories too) carries its art as ACPC,
+beside records the engine requires (AccI, AcVe) and catalog pictures
+(ACDP). 'PICT' is the Mac's own picture resource.
 """
 import re
 from itertools import islice
@@ -17,7 +19,7 @@ from .pict import PictError, decode_pict, is_pict
 from .rsrc import MAX_WRAPPINGS, ResFile, RsrcError, data_fork
 
 # In-tank art first, so it leads the images' order.
-PICTURE_TYPES = (b"BAPC", b"BADP", b"PICT")
+PICTURE_TYPES = (b"BAPC", b"BADP", b"ACPC", b"PICT")
 # Most pictures decoded from one file, as in core/data/macpics.ts: an
 # application's fork holds hundreds of interface PICTs.
 MAX_FILE_PICTURES = 16
@@ -38,11 +40,12 @@ def _open_fork(data):
 
 
 def mac_pictures(data):
-    """The pictures in data as (gravel, images, failed), or None when it
+    """The pictures in data as (kind, images, failed), or None when it
     has none. images lists (key, rid, payload, (w, h, palette, idx))
     with key "TYPE id", or "PICT" and rid None for a data-fork file;
-    failed lists "TYPE id: why" for pictures that didn't decode. gravel
-    is whether a Grvl record marks a gravel add-on's fork."""
+    failed lists "TYPE id: why" for pictures that didn't decode. kind
+    is "gravel" for a gravel add-on's fork (it carries Grvl),
+    "accessory" for an accessory add-on's (AccI), else "picture"."""
     fork = _open_fork(data)
     res = []
     if fork is not None:
@@ -51,7 +54,9 @@ def mac_pictures(data):
                     in _resources(fork, t, MAX_FILE_PICTURES)]
         res = res[:MAX_FILE_PICTURES]
     if res:
-        gravel = bool(_resources(fork, b"Grvl", 1))
+        kind = ("gravel" if _resources(fork, b"Grvl", 1)
+                else "accessory" if _resources(fork, b"AccI", 1)
+                else "picture")
         # Keyed as the TypeScript Map is: an id a crafted map lists twice
         # keeps its first place and its last picture.
         images, failed = {}, []
@@ -61,14 +66,14 @@ def mac_pictures(data):
                 images[key] = (key, rid, blob, decode_pict(blob))
             except PictError as e:
                 failed.append(f"{key}: {e}")
-        return gravel, list(images.values()), failed
+        return kind, list(images.values()), failed
     file = _pict_file(data)
     if file is None:
         return None
     try:
-        return False, [("PICT", None, file, decode_pict(file))], []
+        return "picture", [("PICT", None, file, decode_pict(file))], []
     except PictError as e:
-        return False, [], [f"PICT: {e}"]
+        return "picture", [], [f"PICT: {e}"]
 
 
 def _pict_file(data):

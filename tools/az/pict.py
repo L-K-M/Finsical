@@ -132,7 +132,7 @@ class _Page:
         self.h = frame.bottom - frame.top
         self.rgb = None
         self.work = 0
-        self.quick_time = False
+        self.skipped = None  # why the last QuickTime image wasn't drawn
         self.clip = None
 
 
@@ -163,12 +163,12 @@ def decode_pict(d):
             break
         if op in BITS_OPS:
             _draw_bits(r, op, page)
+        elif op == 0x8200 and not v1:
+            _draw_quick_time(r, page)
         else:
             _skip_op(r, op, v1, page)
     if page.rgb is None:
-        raise PictError(
-            "picture is QuickTime-compressed, which Finsical can't read"
-            if page.quick_time else "picture has no bitmap")
+        raise PictError(page.skipped or "picture has no bitmap")
     return _quantize(page.rgb, page.w, page.h)
 
 
@@ -237,9 +237,107 @@ def _skip_op(r, op, v1, page):
         return r.skip((op >> 8) * 2)  # 0C00 HeaderOp is 24
     if op < 0x8100:
         return
-    if op in (0x8200, 0x8201):
-        page.quick_time = True
+    if op == 0x8201:
+        page.skipped = QT_UNREADABLE
     r.skip(r.u32())
+
+
+# QuickTime's codec for BMP data, the one codec Finsical draws: see
+# drawQuickTime in core/data/pict.ts.
+QT_BMP = b"WRLE"
+QT_UNREADABLE = "picture is QuickTime-compressed, which Finsical can't read"
+QT_HEAD = 68  # 8200's data before its image description
+QT_DESC = 86  # an image description before its color table
+
+
+def _draw_quick_time(r, page):
+    """CompressedQuickTime (8200). An image it can't draw is skipped,
+    and its reason kept for when no other bitmap draws."""
+    size = r.u32()
+    q = _Reader(r.d, r.p, min(r.p + size, r.end))
+    r.skip(size)
+    why = _quick_time_image(q, page)
+    if why:
+        page.skipped = why
+
+
+def _quick_time_image(q, page):
+    """Draw the image in 8200's data, or say why not: QuickTime's BMP
+    codec only, 8-bit pixels through the image's own color table, the
+    bottom row first and each row padded to four bytes."""
+    desc = q.p + QT_HEAD
+    if q.end - desc < QT_DESC or q.d[desc + 4:desc + 8] != QT_BMP:
+        return QT_UNREADABLE
+    q.skip(2)  # version
+    m = [q.u32() for _ in range(9)]
+    # MatrixRecord: Fixed 1.0 on the diagonal and Fract 1.0 in the
+    # corner leave the image as it is; a whole-pixel translation only
+    # moves it.
+    if (m[0] != 0x10000 or m[1] or m[2] or m[3] or m[4] != 0x10000 or m[5]
+            or m[8] != 0x40000000 or m[6] & 0xFFFF or m[7] & 0xFFFF):
+        return ("QuickTime image is scaled, turned or moved by part of a "
+                "pixel, which Finsical can't draw")
+    dx = (m[6] >> 16) - (0x10000 if m[6] >= 0x80000000 else 0)
+    dy = (m[7] >> 16) - (0x10000 if m[7] >= 0x80000000 else 0)
+    matte_size = q.u32()
+    q.skip(10)  # matteRect, transfer mode
+    src = q.rect()
+    q.skip(4)  # accuracy
+    if matte_size or q.u32():
+        return "QuickTime image has a matte or mask, which Finsical can't draw"
+    id_size = q.u32()
+    q.skip(28)  # cType, then resvd1 through spatialQuality
+    w, h = q.u16(), q.u16()
+    q.skip(8)  # hRes, vRes
+    data_size = q.u32()
+    q.skip(34)  # frameCount, name
+    depth, clut_id = q.i16(), q.i16()
+    if depth != 8:
+        return f"QuickTime BMP image is {depth}-bit, which Finsical can't draw"
+    if clut_id != 0:
+        return ("QuickTime BMP image has no color table of its own, which "
+                "Finsical can't draw")
+    _check_size(w, h, "QuickTime image")
+    lut = _read_color_table(q, 8)
+    if desc + id_size < q.p:
+        raise PictError("bad image description")
+    q.skip(desc + id_size - q.p)  # the codec's own atoms
+    stride = (w + 3) & ~3
+    if data_size != stride * h:
+        return "QuickTime BMP image is compressed, which Finsical can't draw"
+    data = q.take(data_size)
+
+    # srcRect, moved by the matrix, clipped as _draw_bits clips.
+    frame = page.frame
+    cb = page.clip.box if page.clip else frame
+    x0 = max(src.left + dx, frame.left, cb.left)
+    x1 = min(src.right + dx, frame.right, cb.right)
+    y0 = max(src.top + dy, frame.top, cb.top)
+    y1 = min(src.bottom + dy, frame.bottom, cb.bottom)
+    draws = x1 > x0 and y1 > y0
+    cost = w * h + ((x1 - x0) * (y1 - y0) if draws else 0)
+    if page.work + cost > MAX_WORK:
+        raise PictError("picture asks for too much drawing")
+    page.work += cost
+    if page.rgb is None:
+        page.rgb = [WHITE] * (page.w * page.h)
+    if not draws:
+        return None
+    rgb = page.rgb
+    c = (_Mask(page.clip, x0, x1)
+         if page.clip and page.clip.rows else None)
+    for y in range(y0, y1):
+        clipped = c.row(y) if c else None
+        sy = y - dy
+        if not 0 <= sy < h:
+            continue
+        row = (h - 1 - sy) * stride
+        out = (y - frame.top) * page.w - frame.left
+        for x in range(x0, x1):
+            sx = x - dx
+            if 0 <= sx < w and (clipped is None or clipped[x - x0]):
+                rgb[out + x] = lut[data[row + sx]]
+    return None
 
 
 def _skip_color_table(r):

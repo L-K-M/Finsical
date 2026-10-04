@@ -62,6 +62,39 @@ function pict(w, h, rowColor, file = false) {
     ...out]);
 }
 
+const ascii = (s) => [...s].map((c) => c.charCodeAt(0));
+
+/** A QuickTime picture (opcode 8200) in QuickTime's BMP codec, as the
+ * Mac plant add-ons hold their art: the image description and its
+ * color table, then a BMP's rows, bottom row first and each padded to
+ * four bytes. `colorAt(x, y)` indexes the white/red/green/blue table. */
+function qtPict(w, h, colorAt) {
+  const clut = [[255, 255, 255], [200, 40, 40], [40, 160, 60], [30, 60, 200]];
+  const stride = (w + 3) & ~3;
+  const rows = [];
+  for (let y = h - 1; y >= 0; y--)
+    for (let x = 0; x < stride; x++) rows.push(x < w ? colorAt(x, y) : 0);
+  const desc = [...be32(0), ...ascii("WRLE"), ...new Array(12).fill(0),
+    ...ascii("appl"), ...be32(0), ...be32(0x400), ...be16(w), ...be16(h),
+    ...be32(72 << 16), ...be32(72 << 16), ...be32(stride * h), ...be16(1),
+    3, ...ascii("BMP"), ...new Array(28).fill(0), ...be16(8), ...be16(0),
+    ...be32(0), ...be16(0), ...be16(clut.length - 1),
+    ...clut.flatMap(([r, g, b], i) =>
+      [...be16(i), ...be16(r * 257), ...be16(g * 257), ...be16(b * 257)]),
+    ...be32(0)];
+  desc.splice(0, 4, ...be32(desc.length));
+  const body = [...be16(0), ...be32(0x10000), ...new Array(12).fill(0),
+    ...be32(0x10000), ...new Array(12).fill(0), ...be32(0x40000000),
+    ...new Array(12).fill(0), ...be16(0x40), 0, 0, 0, 0, ...be16(h),
+    ...be16(w), ...be32(0x300), ...be32(0), ...desc, ...rows];
+  const out = [...be16(0), 0, 0, 0, 0, ...be16(h), ...be16(w),
+               0x00, 0x11, 0x02, 0xff, 0x0c, 0x00, ...new Array(24).fill(0),
+               0x82, 0x00, ...be32(body.length), ...body];
+  if (out.length & 1) out.push(0);
+  out.push(0x00, 0xff);
+  return Uint8Array.from(out);
+}
+
 /** A resource fork holding `types`: { 'BAPC': [[id, bytes]] }. */
 function fork(types) {
   const data = [], refs = [], list = [];
@@ -101,6 +134,14 @@ const GRAVEL = appleDouble(fork({
   Grvl: [[4020, [0, 53, 0, 52, 0, 0, 0, 0]]],
   BADP: [[4020, pict(373, 209, () => 3)]],
   BAPC: [[4020, pict(400, 60, (y) => y < 20 ? 0 : 2)]],
+}));
+
+// A Mac plant add-on (an accessory to the engine): a green plant on
+// white, which the tank keys out, and the records the engine wants.
+const PLANT = appleDouble(fork({
+  AccI: [[200, new Array(16).fill(0)]],
+  ACPC: [[200, qtPict(16, 40, (x, y) => x >= 2 && x < 14 && y >= 4 ? 2 : 0)]],
+  AcVe: [[200, [0, 150]]],
 }));
 
 const ITEM = "https://archive.org/download/aquazonewithguppiesandaddons";
@@ -162,6 +203,15 @@ window.__probe = {
             [...c.getImageData(5, gravelCv.height - 1, 1, 1).data]];
   },
   dropText: () => document.getElementById('dropmsg').textContent,
+  decors: () => decors.map((d) => d.pack),
+  // A decor piece's art: its top-left corner, then its bottom middle.
+  decorPixels: (url) => {
+    const cv = decors.find((d) => d.pack === url)?.frames[0];
+    if (!cv) return null;
+    const c = cv.getContext('2d');
+    return [[...c.getImageData(0, 0, 1, 1).data],
+            [...c.getImageData(cv.width >> 1, cv.height - 1, 1, 1).data]];
+  },
 };`;
 const contents = await readFile(join(WEB, "main.ts"), "utf8");
 const bundle = buildSync({
@@ -619,6 +669,30 @@ try {
     await sleep(100); // the request settles after its read
     assert.ok(!(await evalJs("__probe.addons()", tank)).includes("local:Shell"));
   });
+
+  await test("a Mac plant's fork stands on the floor, dropped on either window",
+    async () => {
+      await drop([["Chara.rsrc", [...PLANT]]], tank);
+      await waitFor(`__probe.decors().includes('local:Chara.rsrc')`, tank);
+      const rec = (await evalJs("__probe.records()", tank))
+        .find((r) => r.url === "local:Chara.rsrc");
+      assert.deepEqual([rec.section, rec.inner], ["accessories", "Chara"]);
+      // The white around the plant keyed out, the plant kept.
+      assert.deepEqual(await evalJs("__probe.decorPixels('local:Chara.rsrc')",
+                                    tank), [CLEAR, GREEN]);
+      await reload(tank);
+      assert.ok((await evalJs("__probe.decors()", tank))
+        .includes("local:Chara.rsrc"));
+      // The Import Add-ons window's drop asks the tank, which adds it.
+      const window5 = await openWindow();
+      await drop([["Grass", [...PLANT]]], window5);
+      await waitFor(`document.body.textContent.includes("Added Grass")`,
+                    window5);
+      assert.ok((await evalJs("__probe.decors()", tank)).includes("local:Grass"));
+      for (const url of ["local:Chara.rsrc", "local:Grass"])
+        await mutate("removeAddon", url, tank);
+      await waitFor(`__probe.decors().length === 0`, tank);
+    });
 
   await test("the Import Add-ons window says how its drop went", async () => {
     const window3 = await openWindow();

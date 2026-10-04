@@ -362,7 +362,7 @@ images. The table lists the items with Mac content.
 | `aquazonewithguppiesandaddons` | `Missing addons Aquazone.7z`, `Spare interesting things/Misc Macintosh files/`: 4 files without extensions | PICT files in a 7z | 4 backdrops | Import Add-ons, drops, `fetch.py --archive` | Done |
 | same | same folder, 5 `._` files | AppleDouble forks | 5 gravels | Import Add-ons, drops, `fetch.py --archive` | Done |
 | same | same folder: `GRAVEL1.sit`, `GRAVEL2.sit`, `Kawajya.sit`, `Raked_Gravel.sit`, `Tsouki.sit`, `bamboo.sit` | StuffIt 5, method 13 (the first two) or 15 | 13 gravels: black, black2, ghyll, red, red2, glassie, goishi, green-mos, marble, Kawajya, Raked Gravel, Tsouki, Bamboo Mat | By hand: extract with `unar`, then drop the `.rsrc` files or run `azpack.py` on them | A StuffIt 5 reader |
-| same | same folder: `macplants.sit` | StuffIt 5, method 15 | 41 plants, filed as accessories (`AqAc`) | No | A StuffIt 5 reader, QuickTime `WRLE` pictures, and the plants' `AccH` and `AccI` records |
+| same | same folder: `macplants.sit` | StuffIt 5, method 15 | 41 plants, filed as accessories (`AqAc`) | By hand: extract with `unar`, then drop the `.rsrc` files on the tank | A StuffIt 5 reader |
 | same | same folder: `mactools.zip` | zip of StuffIt 5 archives | AquaZone's authoring tools (FisherMan, GravelMaker, PlantMaker, FishColor) and palettes | Not content | Nothing |
 | same | `AQUAZONE.iso` | ISO 9660 with an Apple partition map and an HFS volume | HFS `AQUAZONE/Items` and `Guppy Items`: 15 PICT backdrops, 5 gravels, 14 plants, 10 accessories, 12 tanks, fish and guppy forks, food, medicine | No | An HFS reader (below) |
 | same | `AQUAZONE.iso`, `Win/Items/data.z` | InstallShield 3 archive, 7.5 MB | The same items for Windows | No | InstallShield 3 and PKWARE DCL Implode readers |
@@ -440,11 +440,20 @@ names match its files (Emerald, Garden, Milky Way, Wave, Golden,
 Stream), most don't.
 
 **Mac plants.** Every picture in the plant forks (41 `ACPC`, 82
-`ACDP`) is an 8-bit QuickTime-compressed PICT with the `WRLE` codec,
-which is Windows BMP data, and `core/data/bmp.ts` already decodes that.
-The PICT decoder refuses QuickTime pictures today; reading `WRLE`
-takes the `$8200` opcode's image description and color table. Placing
-the plants also needs their `AccH` and `AccI` records worked out.
+`ACDP`) is a QuickTime picture in QuickTime's BMP codec (`WRLE`): 8-bit
+pixels behind an image description that carries the color table, laid
+out as a BMP lays them out, bottom row first and each row padded to
+four bytes. Both PICT decoders draw them now, and a plant's fork
+dropped on the tank or the Import Add-ons window stands its art
+(`ACPC`) on the floor as an accessory, as the engine files it. Still
+open:
+
+- `azpack.py` turns the forks down. Bundles carry no decor, and the
+  tank's bundle loader would take the art for a backdrop.
+- The records go unread. `AccH` starts with the name the item catalog
+  shows; a drop names the add-on after its file instead.
+- The catalog pictures (`ACDP` 200, and 201, the piece seen from
+  above) go unused, as the Windows packs' do.
 
 ### Tooling and tests
 

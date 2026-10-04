@@ -135,7 +135,8 @@ interface Page {
   h: number;
   rgb: Uint32Array | null;
   work: number;
-  quickTime: boolean;
+  /** Why the last QuickTime image wasn't drawn, when one wasn't. */
+  skipped: string | null;
   /** The picture's clip region (opcode 0001), when it set one. */
   clip: Region | null;
 }
@@ -150,7 +151,7 @@ export function decodePict(d: Uint8Array): IndexedImage {
   const frame = r.rect();
   const page: Page = { frame, w: frame.right - frame.left,
                        h: frame.bottom - frame.top, rgb: null, work: 0,
-                       quickTime: false, clip: null };
+                       skipped: null, clip: null };
   checkSize(page.w, page.h, "picture");
   r.skip(v1 ? 2 : 4); // the version opcode pictStart matched
   for (let n = 0; ; n++) {
@@ -162,12 +163,10 @@ export function decodePict(d: Uint8Array): IndexedImage {
     const op = v1 ? r.u8() : r.u16();
     if (op === 0x00ff) break;
     if (BITS_OPS.has(op)) drawBits(r, op, page);
+    else if (op === 0x8200 && !v1) drawQuickTime(r, page);
     else skipOp(r, op, v1, page);
   }
-  if (!page.rgb)
-    throw new PictError(page.quickTime
-      ? "picture is QuickTime-compressed, which Finsical can't read"
-      : "picture has no bitmap");
+  if (!page.rgb) throw new PictError(page.skipped ?? "picture has no bitmap");
   return quantize(page.rgb, page.w, page.h);
 }
 
@@ -225,8 +224,110 @@ function skipOp(r: Reader, op: number, v1: boolean, page: Page): void {
   }
   if (op < 0x8000) return r.skip((op >> 8) * 2); // 0C00 HeaderOp is 24
   if (op < 0x8100) return;
-  if (op === 0x8200 || op === 0x8201) page.quickTime = true;
+  if (op === 0x8201) page.skipped = QT_UNREADABLE;
   r.skip(r.u32());
+}
+
+/** QuickTime's codec for BMP data, the one codec Finsical draws: the
+ * Mac plant add-ons hold their art in it. */
+const QT_BMP = "WRLE";
+const QT_UNREADABLE =
+  "picture is QuickTime-compressed, which Finsical can't read";
+/** 8200's data before its image description: version, matrix, matte
+ * size and rectangle, transfer mode, srcRect, accuracy, mask size. */
+const QT_HEAD = 68;
+/** An image description before its color table. */
+const QT_DESC = 86;
+
+const ascii = (b: Uint8Array): string => String.fromCharCode(...b);
+
+/** CompressedQuickTime (8200): an image QuickTime compressed, with the
+ * matrix that places it, the part of it to draw and its image
+ * description (Inside Macintosh: QuickTime). An image it can't draw
+ * is skipped, as before QuickTime was read at all, and its reason
+ * kept for when no other bitmap draws. */
+function drawQuickTime(r: Reader, page: Page): void {
+  const size = r.u32();
+  const q = new Reader(r.d, r.p, Math.min(r.p + size, r.end));
+  r.skip(size);
+  const why = quickTimeImage(q, page);
+  if (why) page.skipped = why;
+}
+
+/** Draw the image in 8200's data, or say why not. Only QuickTime's
+ * BMP codec draws: 8-bit pixels through the image's own color table,
+ * stored as a BMP stores them, bottom row first and each row padded
+ * to four bytes. */
+function quickTimeImage(q: Reader, page: Page): string | null {
+  const desc = q.p + QT_HEAD;
+  if (q.end - desc < QT_DESC ||
+      ascii(q.d.subarray(desc + 4, desc + 8)) !== QT_BMP)
+    return QT_UNREADABLE;
+  q.skip(2); // version
+  const m = Array.from({ length: 9 }, () => q.u32());
+  // MatrixRecord: Fixed 1.0 on the diagonal and Fract 1.0 in the
+  // corner leave the image as it is; a whole-pixel translation only
+  // moves it.
+  if (m[0] !== 0x10000 || m[1] || m[2] || m[3] || m[4] !== 0x10000 ||
+      m[5] || m[8] !== 0x40000000 || m[6]! & 0xffff || m[7]! & 0xffff)
+    return "QuickTime image is scaled, turned or moved by part of a " +
+      "pixel, which Finsical can't draw";
+  const dx = (m[6]! | 0) >> 16, dy = (m[7]! | 0) >> 16;
+  const matteSize = q.u32();
+  q.skip(10); // matteRect, transfer mode
+  const src = q.rect();
+  q.skip(4); // accuracy
+  if (matteSize || q.u32())
+    return "QuickTime image has a matte or mask, which Finsical can't draw";
+  const idSize = q.u32();
+  q.skip(28); // cType, then resvd1 through spatialQuality
+  const w = q.u16(), h = q.u16();
+  q.skip(8); // hRes, vRes
+  const dataSize = q.u32();
+  q.skip(34); // frameCount, name
+  const depth = q.i16(), clutID = q.i16();
+  if (depth !== 8)
+    return `QuickTime BMP image is ${depth}-bit, which Finsical can't draw`;
+  if (clutID !== 0)
+    return "QuickTime BMP image has no color table of its own, which " +
+      "Finsical can't draw";
+  checkSize(w, h, "QuickTime image");
+  const lut = readColorTable(q, 8);
+  if (desc + idSize < q.p) throw new PictError("bad image description");
+  q.skip(desc + idSize - q.p); // the codec's own atoms
+  const stride = (w + 3) & ~3;
+  if (dataSize !== stride * h)
+    return "QuickTime BMP image is compressed, which Finsical can't draw";
+  const data = q.bytes(dataSize);
+
+  // srcRect, moved by the matrix, clipped as drawBits clips.
+  const { frame } = page;
+  const cb = page.clip?.box ?? frame;
+  const x0 = Math.max(src.left + dx, frame.left, cb.left);
+  const x1 = Math.min(src.right + dx, frame.right, cb.right);
+  const y0 = Math.max(src.top + dy, frame.top, cb.top);
+  const y1 = Math.min(src.bottom + dy, frame.bottom, cb.bottom);
+  const draws = x1 > x0 && y1 > y0;
+  const cost = w * h + (draws ? (x1 - x0) * (y1 - y0) : 0);
+  if (page.work + cost > MAX_WORK)
+    throw new PictError("picture asks for too much drawing");
+  page.work += cost;
+  page.rgb ??= new Uint32Array(page.w * page.h).fill(WHITE);
+  if (!draws) return null;
+  const rgb = page.rgb;
+  const c = page.clip?.rows ? new Mask(page.clip, x0, x1) : null;
+  for (let y = y0; y < y1; y++) {
+    const clipped = c?.row(y), sy = y - dy;
+    if (sy < 0 || sy >= h) continue;
+    const row = (h - 1 - sy) * stride;
+    const out = (y - frame.top) * page.w - frame.left;
+    for (let x = x0; x < x1; x++) {
+      const sx = x - dx;
+      if (sx >= 0 && sx < w && (!clipped || clipped[x - x0]))
+        rgb[out + x] = lut[data[row + sx]!]!;
+    }
+  }
+  return null;
 }
 
 const hex = (op: number): string =>

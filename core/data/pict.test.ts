@@ -454,6 +454,52 @@ describe("decodePict: opcodes around the bitmap", () => {
   });
 });
 
+describe("decodePict: QuickTime BMP images", () => {
+  // Two rows of three: each row padded to four bytes, bottom row first.
+  const PX = [1, 2, 3, 3, 2, 1];
+  const qt = (more: Partial<Extract<Op, { kind: "quicktime" }>> = {},
+              frame = rect(0, 0, 2, 3)): PictSpec =>
+    ({ frame, ops: [{ kind: "quicktime", w: 3, h: 2, px: PX, clut: CLUT,
+                      ...more }] });
+
+  it("draws the rows bottom row first, through the image's color table",
+     () => {
+    expect(colors(decode(qt()))).toEqual([RED, GREEN, BLUE, BLUE, GREEN, RED]);
+  });
+
+  it("draws srcRect only, moved by the matrix", () => {
+    const img = decode(qt({ src: rect(0, 1, 1, 3), dx: 1, dy: 1 },
+                          rect(0, 0, 3, 4)));
+    expect(colors(img)).toEqual([WHITE, WHITE, WHITE, WHITE,
+                                 WHITE, WHITE, GREEN, BLUE,
+                                 WHITE, WHITE, WHITE, WHITE]);
+  });
+
+  it("draws inside the clip region only", () => {
+    const spec = qt();
+    spec.ops.unshift({ kind: "raw",
+                       bytes: [0x00, 0x01, ...be16(10), 0, 0, 0, 0, 0, 1, 0, 3] });
+    expect(colors(decode(spec))).toEqual([RED, GREEN, BLUE, WHITE, WHITE, WHITE]);
+  });
+
+  it("says why it can't draw an image, and draws a later bitmap", () => {
+    const cases: [Partial<Extract<Op, { kind: "quicktime" }>>, RegExp][] = [
+      [{ codec: "jpeg" }, /QuickTime-compressed/],
+      [{ depth: 16 }, /16-bit/],
+      [{ dataSize: 6 }, /compressed/],
+      [{ matteSize: 4 }, /matte/],
+      [{ matrix: [0x20000, 0, 0, 0, 0x20000, 0, 0, 0, 0x40000000] }, /scaled/],
+      [{ dx: 0.5 }, /scaled/],
+    ];
+    for (const [more, why] of cases) {
+      expect(() => decode(qt(more))).toThrow(why);
+      const spec = qt(more);
+      spec.ops.push({ kind: "indexed", depth: 8, w: 3, h: 2, px: PX, clut: CLUT });
+      expect(colors(decode(spec))).toEqual([RED, GREEN, BLUE, BLUE, GREEN, RED]);
+    }
+  });
+});
+
 describe("decodePict: untrusted input", () => {
   const good = buildPict({ frame: rect(0, 0, 4, 9), ops: [
     { kind: "raw", bytes: [0x00, 0xa1, 0, 0, ...be16(3), 1, 2, 3] },
@@ -474,6 +520,9 @@ describe("decodePict: untrusted input", () => {
     buildPict({ file: true, frame: rect(0, 0, 2, 3), ops: [
       { kind: "direct", depth: 32, packType: 1, w: 3, h: 2,
         px: [RED, BLUE, RED, BLUE, RED, BLUE] }] }),
+    buildPict({ frame: rect(0, 0, 2, 5), ops: [
+      { kind: "quicktime", w: 5, h: 2, px: [0, 1, 2, 3, 1, 3, 2, 1, 0, 2],
+        clut: CLUT }] }),
   ];
   /** Decoding `d` either throws a PictError or gives a sound image. */
   const decodesSoundly = (d: Uint8Array) => {
@@ -486,7 +535,7 @@ describe("decodePict: untrusted input", () => {
   };
 
   it("decodes the fuzz seeds", () => {
-    expect(seeds.map((d) => decodePict(d).w)).toEqual([9, 70, 3]);
+    expect(seeds.map((d) => decodePict(d).w)).toEqual([9, 70, 3, 5]);
   });
 
   it("throws only PictError for every truncation", () => {

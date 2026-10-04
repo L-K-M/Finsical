@@ -15,7 +15,8 @@ import tools.fetch
 from tools import azpack
 from tools.az.emit import emit_mac
 from tools.az.macpics import has_mac_pictures, mac_display_name, mac_pictures
-from tools.tests.fixtures import (build_pict, build_rsrc, wrap_appledouble,
+from tools.tests.fixtures import (build_ops_pict, build_pict, build_rsrc,
+                                  quicktime_op, wrap_appledouble,
                                   wrap_applesingle, wrap_binhex, wrap_macbinary)
 
 CLUT = [(255, 255, 255), (40, 160, 60), (30, 60, 200)]
@@ -32,6 +33,20 @@ def snd():
     body = struct.pack(">HHHHHI", 2, 0, 1, 0x8050, 0, 14)
     hdr = struct.pack(">IIIIIBB", 0, 1, 11025 << 16, 0, 0, 0, 60)
     return body + hdr + bytes([128, 140, 120])
+
+
+def plant_fork():
+    """A Mac plant add-on's fork (an accessory to the engine): its records,
+    a catalog picture (ACDP) and its art (ACPC), QuickTime BMP pictures."""
+    def qt(w, h):
+        return build_ops_pict(w, h, [quicktime_op(
+            w, h, [0 if x < 2 else 1 for _ in range(h) for x in range(w)],
+            CLUT)])
+    return wrap_appledouble(build_rsrc({
+        b"AccI": [(200, None, 0, bytes(16))],
+        b"ACDP": [(200, None, 0, qt(8, 9))],
+        b"ACPC": [(200, None, 0, qt(12, 30))],
+        b"AcVe": [(200, None, 0, bytes([0, 150]))]}))
 
 
 def gravel_fork(with_sound=False):
@@ -69,12 +84,12 @@ def png_indices(path, w, h):
 
 class TestMacPictures(unittest.TestCase):
     def test_a_pict_file_and_a_gravel_fork(self):
-        gravel, images, failed = mac_pictures(build_pict(320, 200, [1] * 64000,
-                                                         clut=CLUT, file=True))
-        self.assertEqual((gravel, [i[0] for i in images], failed),
-                         (False, ["PICT"], []))
-        gravel, images, failed = mac_pictures(gravel_fork())
-        self.assertTrue(gravel)
+        kind, images, failed = mac_pictures(build_pict(320, 200, [1] * 64000,
+                                                       clut=CLUT, file=True))
+        self.assertEqual((kind, [i[0] for i in images], failed),
+                         ("picture", ["PICT"], []))
+        kind, images, failed = mac_pictures(gravel_fork())
+        self.assertEqual(kind, "gravel")
         self.assertEqual([(k, rid, img[:2]) for k, rid, _, img in images],
                          [("BAPC 4020", 4020, (400, 60)),
                           ("BADP 4020", 4020, (64, 48))])
@@ -120,6 +135,13 @@ class TestMacPictures(unittest.TestCase):
         # (and cp932) decodes it, Python's shift_jis doesn't.
         self.assertEqual(mac_display_name("Ì@"), "纊")
 
+    def test_an_accessory_fork_s_art(self):
+        # Its ACPC pictures; the catalog picture (ACDP) stays out.
+        kind, images, failed = mac_pictures(plant_fork())
+        self.assertEqual((kind, [(k, img[:2]) for k, _, _, img in images],
+                          failed), ("accessory", [("ACPC 200", (12, 30))], []))
+        self.assertTrue(has_mac_pictures(plant_fork()))
+
     def test_a_type_count_past_the_map_keeps_the_types_before_it(self):
         # As core/data/resfork.ts reads it: BAPC is listed first, then
         # the count runs off the end of the file.
@@ -128,8 +150,8 @@ class TestMacPictures(unittest.TestCase):
         mo = struct.unpack_from(">I", fork, 4)[0]
         tbase = mo + struct.unpack_from(">H", fork, mo + 24)[0]
         struct.pack_into(">H", fork, tbase, 500)
-        gravel, images, _ = mac_pictures(bytes(fork))
-        self.assertTrue(gravel)  # Grvl, the second type, still counts
+        kind, images, _ = mac_pictures(bytes(fork))
+        self.assertEqual(kind, "gravel")  # Grvl, the second type, still counts
         self.assertEqual([k for k, *_ in images], ["BAPC 4020"])
 
     def test_an_id_listed_twice_is_one_picture(self):
@@ -201,6 +223,12 @@ class TestEmitMac(unittest.TestCase):
         m = emit_mac(wrap_appledouble(build_rsrc(types)), self.out)
         self.assertEqual([c["name"] for c in m["chunks"] if "image" in c],
                          ["BAPC 4020"])
+
+    def test_refuses_an_accessory_fork(self):
+        # Bundles carry no decor: the tank would take its art for a
+        # backdrop.
+        with self.assertRaisesRegex(ValueError, "decor"):
+            emit_mac(plant_fork(), self.out)
 
     def test_refuses_pictures_the_app_refuses(self):
         # A strip under 100 pixels tall outside a gravel fork, and icons:

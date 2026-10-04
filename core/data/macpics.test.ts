@@ -22,22 +22,49 @@ const gravelFork = () => buildRsrc(new Map<string, Entry[]>([
   ["BAPC", [[4020, null, 0, pict(400, 60)]]],
 ]));
 
+/** A QuickTime BMP picture, as the Mac plant add-ons hold their art. */
+const qtPict = (w: number, h: number) => buildPict({
+  frame: rect(0, 0, h, w),
+  ops: [{ kind: "quicktime", w, h, clut: CLUT,
+          px: Array.from({ length: w * h }, (_, i) => i % w < 2 ? 0 : 1) }],
+});
+
+/** A Mac plant add-on's fork (Finder type AqAc, an accessory): its
+ * records, its catalog and top-view pictures (ACDP) and two frames of
+ * art (ACPC). */
+const plantFork = () => buildRsrc(new Map<string, Entry[]>([
+  ["AccH", [[200, null, 0, new Uint8Array(546)]]],
+  ["AccI", [[200, null, 0, Uint8Array.of(0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                         0, 1, 0, 0, 0, 0)]]],
+  ["ACDP", [[200, null, 0, qtPict(8, 9)], [201, null, 0, qtPict(12, 4)]]],
+  ["ACPC", [[200, null, 0, qtPict(12, 30)], [201, null, 0, qtPict(12, 30)]]],
+  ["AcVe", [[200, null, 0, Uint8Array.of(0, 150)]]],
+]));
+
 const sizes = (m: ReturnType<typeof macPictures>) =>
   m && [...m.images].map(([k, v]) => [k, v.w, v.h]);
 
 describe("macPictures", () => {
   it("reads a data-fork PICT file past its 512-byte header", () => {
     const m = macPictures(pict(320, 200, true));
-    expect(m?.gravel).toBe(false);
+    expect(m?.kind).toBe("picture");
     expect(sizes(m)).toEqual([["PICT", 320, 200]]);
     expect(m?.failed).toEqual([]);
   });
 
   it("reads a gravel add-on's strip and catalog picture", () => {
     const m = macPictures(gravelFork());
-    expect(m?.gravel).toBe(true);
+    expect(m?.kind).toBe("gravel");
     expect(sizes(m)).toEqual([["BAPC 4020", 400, 60],
                               ["BADP 4020", 64, 48]]);
+  });
+
+  it("reads an accessory add-on's art, its ACPC pictures", () => {
+    const m = macPictures(wrapAppledouble(plantFork()));
+    expect(m?.kind).toBe("accessory");
+    // The catalog and top-view pictures (ACDP) stay out.
+    expect(sizes(m)).toEqual([["ACPC 200", 12, 30], ["ACPC 201", 12, 30]]);
+    expect(hasMacPictures(plantFork())).toBe(true);
   });
 
   it("reads the fork in every wrapping it travels in", () => {
@@ -54,7 +81,7 @@ describe("macPictures", () => {
       ["snd ", [[1, "tap", 0, Uint8Array.of(1, 2, 3)]]],
     ]));
     const m = macPictures(fork);
-    expect(m?.gravel).toBe(false);
+    expect(m?.kind).toBe("picture");
     expect(sizes(m)).toEqual([["PICT 128", 320, 240], ["PICT 129", 8, 8]]);
   });
 
