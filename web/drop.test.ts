@@ -209,6 +209,15 @@ describe("decodeDroppedPack with Mac pictures", () => {
     ]);
   });
 
+  it("names a picture after its file name when that is all extension",
+     () => {
+    // An empty name fails the tank's install checks after the Import
+    // Add-ons window has stored the bytes.
+    expect(decodeEach([[".pct", pict(320, 240, true)],
+                       [".bmp", buildBmpImage(320, 240)]])
+      .map((p) => p.name)).toEqual([".pct", ".bmp"]);
+  });
+
   it("takes a gravel add-on's fork as its gravel strip", () => {
     const p = decodeDroppedPack("._星砂- star sand",
                                 wrapAppledouble(gravelFork()));

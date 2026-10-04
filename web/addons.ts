@@ -79,7 +79,9 @@ window.addEventListener("drop", (e) => {
       }
     }
     // A picture stored with no tank to take it in would stay in the
-    // store, owned by no add-on.
+    // store, owned by no add-on. tankConnected trusts a state push up
+    // to TANK_QUIET_MS old, so a tank that quit within that time still
+    // leaves the bytes behind.
     if (pictures.length && !tankConnected()) {
       showNote("The tank isn't running, so the picture wasn't added. " +
             "Open Finsical and drop it again.");

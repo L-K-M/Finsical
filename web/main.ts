@@ -2034,8 +2034,11 @@ function useScenery(url: string): void {
 /** Uninstall an add-on: drops it from the saved list (it won't restore
  * next launch) and clears this session's contributions — its fish, its
  * decor, and gravel/backdrop it supplied. Sprite sheets stay loaded so
- * other fish's sheetIdx bindings don't shift. */
-function removeAddon(url: string, opts: { persist?: boolean } = {}): void {
+ * other fish's sheetIdx bindings don't shift. `keepBytes` leaves a
+ * dropped add-on's stored file alone, for a drop that replaced it. */
+function removeAddon(url: string,
+                     opts: { persist?: boolean; keepBytes?: boolean } = {}):
+    void {
   const persist = opts.persist !== false;
   const gone = installedAddons.filter((a) => a.url === url);
   // Unknown add-on — no teardown or persist, but push fresh state so a
@@ -2095,7 +2098,7 @@ function removeAddon(url: string, opts: { persist?: boolean } = {}): void {
   wholePackUrls.delete(url);
   // A dropped pack's stored bytes are the only copy — uninstall
   // deletes them (archive packs keep their cache entries).
-  if (isLocalPack(url)) void packDelete(url)
+  if (isLocalPack(url) && !opts.keepBytes) void packDelete(url)
     .catch((e) => console.warn("pack delete failed:", e));
   // Drop thumb state that can only rot: this pack's own memo and any
   // queued ask, plus entries for fish that no longer exist anywhere.
@@ -2153,28 +2156,52 @@ async function remoteInstall(it: Importable, again: boolean): Promise<void> {
  * this way; the window sends no packs. */
 async function installDropped(url: unknown, section: unknown,
                               inner: unknown): Promise<void> {
-  if (typeof url !== "string" || !isLocalPack(url) ||
-      (section !== "backgrounds" && section !== "gravel") ||
-      typeof inner !== "string" || !inner.trim()) {
-    console.warn("installDropped: invalid request", url, section);
+  if (typeof url !== "string" || !isLocalPack(url)) {
+    console.warn("installDropped: invalid request", url);
     return;
   }
-  const epoch = tankEpoch;
+  let added = false;
   try {
-    const usable = usablePacks(await importAddon(url), section);
-    if (epoch !== tankEpoch) return; // emptied while decoding
-    if (!usable.length) throw new Error(usableProblem(section));
-    for (const r of usable)
-      handleImages(r.images.values(), url, section, true);
-    recordInstall({ section, inner, url });
-    dropSay(`Added ${inner}.`);
-  } catch (e) {
-    console.warn(`installDropped: ${url}:`, e);
-    dropSay(`Couldn't add ${inner}.`);
-    // Bytes no add-on owns would stay in the store for good.
-    if (!installedAddons.some((a) => a.url === url))
+    if ((section !== "backgrounds" && section !== "gravel") ||
+        typeof inner !== "string" || !inner.trim()) {
+      console.warn("installDropped: invalid request", url, section);
+      return;
+    }
+    const epoch = tankEpoch;
+    // An earlier drop under this name may be installed. A Remove of it
+    // while this one decodes deleted these bytes too, and wins.
+    const listed = installedAddons.some((a) => a.url === url);
+    try {
+      const usable = usablePacks(await importAddon(url), section);
+      if (epoch !== tankEpoch) return; // emptied while decoding
+      if (listed && !installedAddons.some((a) => a.url === url)) return;
+      if (!usable.length) throw new Error(usableProblem(section));
+      replaceOtherKind(url, section);
+      for (const r of usable)
+        handleImages(r.images.values(), url, section, true);
+      recordInstall({ section, inner, url });
+      added = true;
+      dropSay(`Added ${inner}.`);
+    } catch (e) {
+      console.warn(`installDropped: ${url}:`, e);
+      dropSay(`Couldn't add ${inner}.`);
+    }
+  } finally {
+    // The window stored the bytes before asking: whatever kept them
+    // from an add-on, nothing else would ever delete them.
+    if (!added && !installedAddons.some((a) => a.url === url))
       void packDelete(url).catch(() => {});
   }
+}
+
+/** A drop under the name of an installed add-on replaces it: its
+ * stored bytes are already the new file's. A file of another kind (an
+ * extensionless Mac file can be a gravel one day and a backdrop the
+ * next) takes the old add-on out first, as Remove would, or the old
+ * record would restore the new bytes as the wrong kind. */
+function replaceOtherKind(url: string, section: string): void {
+  if (installedAddons.some((a) => a.url === url && a.section !== section))
+    removeAddon(url, { keepBytes: true });
 }
 
 /** Add an add-on to the tank: the one install path for the Import
@@ -3484,6 +3511,8 @@ window.addEventListener("drop", (e) => {
             buttons: [{ title: "OK", default: true, cancel: true }] });
         }
       }
+      const section = p.sheets.size ? "fish" : p.section;
+      if (stored) replaceOtherKind(url, section);
       // The archive install path: handleSheets binds the sheet to the
       // url and spawns the fish; scenery keys by url so Overview's
       // Remove clears it.
@@ -3496,9 +3525,7 @@ window.addEventListener("drop", (e) => {
       // Only when the bytes persisted — a dangling record would throw
       // "stored pack missing" on every launch. A pack with fish records
       // as fish (a .REZ's scenery then stays session-only).
-      if (stored)
-        recordInstall({ section: p.sheets.size ? "fish" : p.section,
-                        inner: p.name, url });
+      if (stored) recordInstall({ section, inner: p.name, url });
       imported++;
       if (!packName) packName = p.name || name;
       console.info(`${name}: pack imported${stored ? "" : " (session only)"}`);

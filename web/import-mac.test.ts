@@ -13,8 +13,8 @@ vi.mock("./store.js", async (orig) => ({
   metaGet: async () => null,
   metaPut: async () => true,
 }));
-const { importAddon, listAddons, loadProblem, macDisplayName, usablePacks } =
-  await import("./import.js");
+const { importAddon, listAddons, loadProblem, macDisplayName, sceneryFix,
+        usablePacks } = await import("./import.js");
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -121,13 +121,40 @@ describe("the 7z's Mac scenery", () => {
     expect(rs[0]!.sounds).toEqual([]);
   });
 
-  it("says when the pictures can't be read", async () => {
+  it("says when the pictures can't be read, sounds or not", async () => {
     const broken = wrapAppledouble(buildRsrc(new Map<string, Entry[]>([
       ["BAPC", [[4020, null, 0, Uint8Array.of(1, 2, 3)]]]])));
     serve({ [served("._broken")]: broken });
     const e = await importAddon(served("._broken")).catch((x: unknown) => x);
     expect(String(e)).toMatch(/unreadable picture/);
     expect(loadProblem(e)).toBe("Finsical can't read this add-on's pictures.");
+    // A fork with sounds too is still a picture add-on: listed as
+    // scenery, it doesn't install as sounds alone.
+    const noisy = wrapAppledouble(buildRsrc(new Map<string, Entry[]>([
+      ["BAPC", [[4020, null, 0, Uint8Array.of(1, 2, 3)]]],
+      ["snd ", [[1, "tap", 0, snd([128, 140, 120])]]]])));
+    serve({ [served("._noisy")]: noisy });
+    expect(String(await importAddon(served("._noisy"))
+      .catch((x: unknown) => x))).toMatch(/unreadable picture/);
+  });
+
+  it("never takes an audio file for a picture", async () => {
+    // Bytes that sniff as a PICT but don't decode, under an audio name.
+    const odd = buildPict({ frame: rect(0, 0, 2, 2), file: true, ops: [
+      { kind: "raw", bytes: [0x82, 0x00, 0, 0, 0, 2, 1, 2] }] });
+    serve({ [`${ITEM}/odd.wav`]: odd });
+    const rs = await importAddon(`${ITEM}/odd.wav`);
+    expect(rs.map((r) => r.sounds.map((s) => s.name))).toEqual([["odd"]]);
+  });
+});
+
+describe("sceneryFix", () => {
+  it("leaves a dropped file's section alone: its content decided it",
+     () => {
+    // A Mac gravel fork that happens to be named like a plant pack.
+    for (const url of ["local:bed.plt", "local:._bed.acc"])
+      expect(sceneryFix({ section: "gravel", inner: "bed", url }).section)
+        .toBe("gravel");
   });
 });
 
@@ -160,6 +187,13 @@ describe("macDisplayName", () => {
 
   it("leaves other names alone", () => {
     for (const n of ["青のグラデーション", "Astral Hill", "Café", "ÉSUMÉ"])
+      expect(macDisplayName(n)).toBe(n);
+  });
+
+  it("leaves accented Latin names that happen to decode alone", () => {
+    // Each decodes as Shift-JIS without error, to kanji among letters.
+    for (const n of ["Réal", "Noël", "Crème brûlée", "Smörgåsbord",
+                     "Ångström"])
       expect(macDisplayName(n)).toBe(n);
   });
 });

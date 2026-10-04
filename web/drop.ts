@@ -61,7 +61,10 @@ export function decodeDroppedPack(name: string, data: Uint8Array):
     DroppedPack | null {
   // The same extension dropSection reads: never across a slash. An
   // AppleDouble companion ("._name") is named for the file it belongs to.
-  const stem = name.replace(/(^|\/)\._/, "$1").replace(/\.[^./]+$/, "");
+  // A name that is all extension (".pct") keeps it: an add-on needs a
+  // name.
+  const stem = name.replace(/(^|\/)\._/, "$1").replace(/\.[^./]+$/, "") ||
+    name;
   // A picture is known by its content, not its name: classic Mac
   // files often carry no extension. AquaZone took 256-color BMPs
   // only, as decodeBmp does.

@@ -266,6 +266,28 @@ descriptions of #161 and #162.
 - The machine previews in Preferences (`previewMarkup` in
   `web/machines.ts`) still draw the old rectangle fish, with no
   waterline or air strip.
+- Of the 40 Windows gravel strips, 36 put their white sky at palette
+  index 0, the color the tank keys out of a strip. Jewelstone, moss2
+  and whitesand put black at 0 and white at 255, so the tank drops
+  their black pixels and paints their sky. Keying white would fix
+  them.
+- A gravel's `Grvl` record holds two numbers, its front-face height h
+  and its floor's depth span s. AquaZone's DLL stands an object at
+  depth d (0 to 400) at `bottom - h - s + d * s / 400`. The tank's
+  floor line ignores the record, so decor sits at the same height on
+  every gravel.
+- At launch the restore shows each installed backdrop as it lands and
+  only then puts the chosen one back, a visible flicker with several
+  backdrops installed.
+- A drop on the Import Add-ons window less than `TANK_QUIET_MS` after
+  the tank quit stores bytes that no add-on owns, and nothing deletes
+  them. A launch-time sweep of unowned `local:` keys would, if it can
+  avoid racing a second tank tab or a window drop in flight.
+- The tank's own drop path has the race `installDropped` now guards
+  against: a Remove landing while it awaits `packPut` deletes the new
+  bytes, and the drop then records an add-on that can't restore.
+- A picture dropped on the Import Add-ons window gets no result there:
+  the tank says "Added" or "Couldn't add" on its own glass.
 
 ### Alerts and Preferences
 

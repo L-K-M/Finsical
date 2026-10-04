@@ -18,7 +18,8 @@ import { packSpeciesCare } from "../core/data/species.js";
 import type { SpeciesCare } from "../core/data/species.js";
 import { decodeBmp, isBmp } from "../core/data/bmp.js";
 import { macPictures } from "../core/data/macpics.js";
-import { AUDIO_FILE_EXT, fileSoundRecords } from "../core/data/snd.js";
+import { AUDIO_FILE_EXT, fileSoundRecords, isAudioFileName }
+  from "../core/data/snd.js";
 import { bankSounds } from "../core/data/sndbank.js";
 import { isLocalPack, metaGet, metaPut, packDelete, packGet, packPut }
   from "./store.js";
@@ -532,13 +533,17 @@ async function listCollection(col: Collection): Promise<Importable[]> {
 /** Mac Roman's upper half by character: macDisplayName encodes names
  * back to the bytes a Mac wrote. */
 let macRomanBytes: Map<string, number> | null = null;
+const JAPANESE = /[\u3040-\u30ff\u4e00-\u9fff]/;
+const LATIN_TOUCHING = new RegExp(`[A-Za-z]${JAPANESE.source}|` +
+                                  `${JAPANESE.source}[A-Za-z]`);
 
 /** A Mac file's name for the add-on list: without an AppleDouble
  * companion's "._", and read back as Japanese where an archiver took
  * Shift-JIS bytes for Mac Roman (the 7z stores "苔" as "ë€"). The
  * repair is a heuristic: it applies only when the name's bytes decode
- * as Shift-JIS without error and the result holds kana or kanji, so
- * only the Mac collections use it. */
+ * as Shift-JIS without error, and the result holds kana or kanji with
+ * no ASCII letter right next to one. An accented Latin name can decode
+ * too, but its kanji land among its letters ("Noël" reads "No鼠"). */
 export function macDisplayName(name: string): string {
   const base = name.startsWith("._") ? name.slice(2) : name;
   return shiftJisFromMacRoman(base) ?? base;
@@ -558,7 +563,7 @@ function shiftJisFromMacRoman(s: string): string | null {
     }
     const out = new TextDecoder("shift_jis", { fatal: true })
       .decode(Uint8Array.from(bytes));
-    return /[\u3040-\u30ff\u4e00-\u9fff]/.test(out) ? out : null;
+    return JAPANESE.test(out) && !LATIN_TOUCHING.test(out) ? out : null;
   } catch { return null; } // an encoding this engine lacks, or not Shift-JIS
 }
 
@@ -727,9 +732,13 @@ const SCENERY_BY_EXT: ReadonlyMap<string, PackSection> = new Map([
  * Before each Mekasia collection took only its own kind of pack,
  * mekaccs.zip's G_Debris.grv listed and installed as an accessory, a
  * big textured block in the tank; its record restores as the gravel it
- * is. Fish, sounds and non-scenery records pass through unchanged. */
+ * is. Fish, sounds and non-scenery records pass through unchanged, and
+ * so do dropped files: a dropped pack's section came from these same
+ * extensions, and a picture's from its content (a Mac gravel named
+ * "bed.plt" is still a gravel). */
 export function sceneryFix(it: Importable): Importable {
-  if (![...SCENERY_BY_EXT.values()].includes(it.section)) return it;
+  if (isLocalPack(it.url) ||
+      ![...SCENERY_BY_EXT.values()].includes(it.section)) return it;
   const ext = /\.([a-z]+)$/i.exec(it.url)?.[1]?.toLowerCase();
   const section = ext ? SCENERY_BY_EXT.get(ext) : undefined;
   return section && section !== it.section ? { ...it, section } : it;
@@ -826,15 +835,17 @@ export async function importAddon(url: string): Promise<PackResult[]> {
                          images: new Map([[url, img]]) });
     } else {
       // A Mac file: a PICT, or a fork whose resources hold pictures. Its
-      // pictures make it scenery and its sounds, if any, stay out: one
-      // kind of content per add-on, as for a pack with art.
-      const pics = macPictures(b.data);
-      if (pics?.images.size) {
-        out.push({ entry: b.name, sheets: new Map(), sounds: [],
-                   images: keyedImages(url, pics.images) });
+      // pictures make it scenery, even when none decodes, and its
+      // sounds, if any, stay out: one kind of content per add-on, as
+      // for a pack with art. A file named as audio is never a picture.
+      const pics = isAudioFileName(b.name) ? null : macPictures(b.data);
+      if (pics) {
+        if (pics.images.size)
+          out.push({ entry: b.name, sheets: new Map(), sounds: [],
+                     images: keyedImages(url, pics.images) });
+        else badPictures = true;
         continue;
       }
-      if (pics) badPictures = true;
       const sounds = fileSoundRecords(b.name, b.data);
       if (sounds.length)
         out.push({ entry: b.name, sheets: new Map(), images: new Map(),

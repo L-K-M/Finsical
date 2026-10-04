@@ -124,7 +124,7 @@ let settled = false;
 const openAudio = audio.open.bind(audio);
 audio.open = (...args) => { settled = true; return openAudio(...args); };
 window.__probe = {
-  onBusMessage, boot, settled: () => settled,
+  onBusMessage, boot, packPut, settled: () => settled,
   addons: () => installedAddons.map(a => a.url),
   records: () => installedAddons,
   scenery: () => ({ backdrop: backdropSrc, gravel: gravelSrc,
@@ -290,15 +290,32 @@ try {
     window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt,
       bubbles: true, cancelable: true }));
   })()`, sessionId);
-  const stored = (key, sessionId) => evalJs(`new Promise((done) => {
-    const open = indexedDB.open('finsical');
-    open.onsuccess = () => {
-      const get = open.result.transaction('packs').objectStore('packs')
-        .get(${JSON.stringify(key)});
-      get.onsuccess = () => { done(get.result ? get.result.byteLength : 0);
-                              open.result.close(); };
-    };
-  })`, sessionId);
+  /** The bytes stored under `key`, 0 when none; opening no database a
+   * page hasn't made itself. */
+  const stored = (key, sessionId) => evalJs(`(async () => {
+    const dbs = await indexedDB.databases();
+    if (!dbs.some((d) => d.name === 'finsical')) return 0;
+    return new Promise((done) => {
+      const open = indexedDB.open('finsical');
+      open.onsuccess = () => {
+        const get = open.result.transaction('packs').objectStore('packs')
+          .get(${JSON.stringify(key)});
+        get.onsuccess = () => { done(get.result ? get.result.byteLength : 0);
+                                open.result.close(); };
+      };
+    });
+  })()`, sessionId);
+  /** Store bytes as the Import Add-ons window does, then ask the tank
+   * to put them in; `then` runs in the same task, before the tank has
+   * read them back. */
+  const putAndAsk = (url, bytes, inner, sessionId, then = "") => evalJs(`
+    __probe.packPut(${JSON.stringify(url)},
+                    new Uint8Array(${JSON.stringify(bytes)})).then(() => {
+      __probe.onBusMessage({ op: 'installDropped', url: ${JSON.stringify(url)},
+                             section: 'backgrounds',
+                             inner: ${JSON.stringify(inner)} });
+      ${then}
+    })`, sessionId);
 
   const tank = await openPage("/");
   await waitFor("!!window.__probe && __probe.settled()", tank);
@@ -408,6 +425,62 @@ try {
                    "local:Wall.pict");
       await mutate("removeAddon", "local:Wall.pict", tank);
       await waitFor(`!__probe.addons().includes('local:Wall.pict')`, tank);
+    });
+
+  await test("the Import Add-ons window stores nothing with no tank running",
+    async () => {
+      const { browserContextId } = await call("Target.createBrowserContext");
+      const lone = await openPage("/addons.html", browserContextId);
+      await waitFor("document.readyState === 'complete'", lone);
+      await drop([["Wall.pict", [...BLUE_BACKDROP]]], lone);
+      await waitFor(`document.body.textContent.includes(
+        "The tank isn't running")`, lone);
+      assert.equal(await stored("local:Wall.pict", lone), 0);
+    });
+
+  await test("a picture of another kind under the same name replaces it",
+    async () => {
+      // An extensionless Mac file can be a gravel one day and a
+      // backdrop the next.
+      await drop([["Ocean", [...GRAVEL]]], tank);
+      await waitFor(`__probe.scenery().gravel === 'local:Ocean'`, tank);
+      await drop([["Ocean", [...BLUE_BACKDROP]]], tank);
+      await waitFor(`__probe.scenery().backdrop === 'local:Ocean'`, tank);
+      const ocean = async () => (await evalJs("__probe.records()", tank))
+        .filter((r) => r.url === "local:Ocean").map((r) => r.section);
+      assert.deepEqual(await ocean(), ["backgrounds"]);
+      assert.notEqual((await evalJs("__probe.scenery()", tank)).gravel,
+                      "local:Ocean");
+      await reload(tank);
+      const back = await evalJs("__probe.scenery()", tank);
+      assert.deepEqual([back.backdrop === "local:Ocean",
+                        back.gravel === "local:Ocean"], [true, false]);
+      await mutate("removeAddon", "local:Ocean", tank);
+      await waitFor(`!__probe.addons().includes('local:Ocean')`, tank);
+    });
+
+  await test("a Remove while the tank reads a re-drop wins", async () => {
+    await putAndAsk("local:Shell", [...BLUE_BACKDROP], "Shell", tank);
+    await waitFor(`__probe.addons().includes('local:Shell')`, tank);
+    await putAndAsk("local:Shell", [...RED_BACKDROP], "Shell", tank,
+      "__probe.onBusMessage({ op: 'removeAddon', url: 'local:Shell', " +
+      "boot: __probe.boot });");
+    await sleep(500);
+    assert.ok(!(await evalJs("__probe.addons()", tank)).includes("local:Shell"));
+    assert.equal(await stored("local:Shell", tank), 0);
+  });
+
+  await test("the tank keeps no bytes from a window drop it doesn't add",
+    async () => {
+      await putAndAsk("local:Junk", [1, 2, 3], "Junk", tank);
+      await putAndAsk("local:Nameless", [...BLUE_BACKDROP], "", tank);
+      // Last: Empty Tank lands while the tank reads the bytes.
+      await putAndAsk("local:Gone", [...BLUE_BACKDROP], "Gone", tank,
+        "__probe.onBusMessage({ op: 'emptyTank', boot: __probe.boot });");
+      await sleep(500);
+      for (const key of ["local:Junk", "local:Nameless", "local:Gone"])
+        assert.equal(await stored(key, tank), 0, key);
+      assert.deepEqual(await evalJs("__probe.addons()", tank), []);
     });
 } finally {
   await chrome?.close();
