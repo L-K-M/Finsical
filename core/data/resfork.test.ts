@@ -39,6 +39,21 @@ describe("openFork", () => {
       expect(read(wrapped, "BAPC")).toEqual([[4020, null, [4, 5, 6, 7]]]);
   });
 
+  it("reads a fork whose wrapping sits in another wrapping's data fork",
+     () => {
+    // A MacBinary file sent on as BinHex from a machine that kept it as
+    // one plain file: the outer wrapping's data fork is the inner one.
+    const fork = gravel(), none = new Uint8Array(0);
+    for (const wrapped of [wrapBinhex(none, wrapMacbinary(fork)),
+                           wrapApplesingle(none, wrapBinhex(fork)),
+                           wrapMacbinary(none, wrapApplesingle(fork))])
+      expect(read(wrapped, "BAPC")).toEqual([[4020, null, [4, 5, 6, 7]]]);
+    // Peeling stops after four wrappings, as for resource forks.
+    let deep = wrapMacbinary(fork);
+    for (let i = 0; i < 4; i++) deep = wrapMacbinary(none, deep);
+    expect(read(deep, "BAPC") ?? []).toEqual([]);
+  });
+
   it("keeps names, ids and map order", () => {
     const fork = buildRsrc(new Map<string, Entry[]>([
       ["PICT", [[128, "Splash", 0, bytes(1)], [-200, null, 0x20, bytes(2)],

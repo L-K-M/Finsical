@@ -13,7 +13,7 @@
  */
 import type { IndexedImage } from "./azpack.js";
 import { decodePict, isPict } from "./pict.js";
-import { dataFork, openFork } from "./resfork.js";
+import { dataFork, MAX_WRAPPINGS, openFork } from "./resfork.js";
 import type { Fork } from "./resfork.js";
 
 export interface MacPictures {
@@ -70,11 +70,16 @@ export function macPictures(d: Uint8Array): MacPictures | null {
   }
 }
 
-/** A PICT file `d` is, or carries in its data fork, or null. */
+/** A PICT file `d` is, or carries in its data fork, or null. The data
+ * fork can be a wrapping in turn (a MacBinary file sent on as BinHex),
+ * so it is peeled as unwrapContainer peels resource forks. */
 function pictFile(d: Uint8Array): Uint8Array | null {
-  if (isPict(d)) return d;
-  const data = dataFork(d);
-  return data && isPict(data) ? data : null;
+  let at: Uint8Array | null = d;
+  for (let i = 0; at && i <= MAX_WRAPPINGS; i++) {
+    if (isPict(at)) return at;
+    at = dataFork(at);
+  }
+  return null;
 }
 
 /** Whether `d` is a PICT file, bare or wrapped in MacBinary, BinHex or

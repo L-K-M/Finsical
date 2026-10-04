@@ -88,6 +88,10 @@ class TestMacPictures(unittest.TestCase):
             self.assertEqual([(k, img[:2]) for k, _, _, img in images],
                              [("PICT", (320, 200))])
             self.assertTrue(has_mac_pictures(d))
+        # Wrapped twice: a MacBinary file sent on as BinHex.
+        twice = wrap_binhex(b"", data=wrap_macbinary(b"", data=pict))
+        self.assertEqual([k for k, _, _, _ in mac_pictures(twice)[1]], ["PICT"])
+        self.assertTrue(has_mac_pictures(twice))
         # And it emits as a PICT file does.
         with tempfile.TemporaryDirectory() as out:
             m = emit_mac(wrap_macbinary(b"", data=pict), out)

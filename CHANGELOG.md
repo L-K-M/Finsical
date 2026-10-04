@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A Mac file wrapped twice for the trip, such as a MacBinary file sent
+  on as BinHex, now drops in as a file wrapped once does, whether it
+  is a PICT file or a gravel add-on's fork.
 - The Jewelstone, moss2 and whitesand gravels now show their stones
   whole under a clear sky. The tank keyed out their black stones and
   painted their white sky, where every other gravel's sky is clear.

@@ -14,7 +14,7 @@ import re
 from itertools import islice
 
 from .pict import PictError, decode_pict, is_pict
-from .rsrc import ResFile, RsrcError, data_fork
+from .rsrc import MAX_WRAPPINGS, ResFile, RsrcError, data_fork
 
 # In-tank art first, so it leads the images' order.
 PICTURE_TYPES = (b"BAPC", b"BADP", b"PICT")
@@ -72,11 +72,16 @@ def mac_pictures(data):
 
 
 def _pict_file(data):
-    """The PICT file data is, or carries in its data fork, or None."""
-    if is_pict(data):
-        return data
-    inner = data_fork(data)
-    return inner if inner is not None and is_pict(inner) else None
+    """The PICT file data is, or carries in its data fork, or None. The
+    data fork can be a wrapping in turn (a MacBinary file sent on as
+    BinHex), so it is peeled as unwrap_container peels forks."""
+    for _ in range(MAX_WRAPPINGS + 1):
+        if data is None:
+            return None
+        if is_pict(data):
+            return data
+        data = data_fork(data)
+    return None
 
 
 def has_mac_pictures(data):
