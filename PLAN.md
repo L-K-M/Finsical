@@ -32,7 +32,6 @@ tools/     Python (stdlib only) asset pipeline
   sit/     StuffIt archives (via bundled unar)
   rsrc.py  resource fork reader (raw, AppleDouble, MacBinary, BinHex)
   snd.py   'snd ' resources -> WAV (raw u8/s16, MACE 3:1, extSH)
-  pict.py  PICT v2 -> PNG (PackBits, clut, 1/4/8/16/32bpp)
   pack.py  9003inc container (.fsh/.acc/.plt/.azn/.REZ) -> chunks
   emit.py  -> .azpack (JSON manifest + PNG atlases + params)
 core/      TypeScript engine (no DOM deps — testable in node)

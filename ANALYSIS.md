@@ -637,7 +637,8 @@ water. Browser check: snapshot → Empty Tank → Revert → fish are back.
 - **W-22 Grab a fish — animated picture on the Scrapboard** (M): the
   fish's sprite ring as an animated PICT on `NSPasteboard`, browser
   fallback `ClipboardItem`. Needs D-09's PICT writer; reduced scope
-  before that.
+  before that. The PICT reader that could serve as its round-trip
+  oracle (`tools/az/pict.py`) was removed; restore it from a2825dd.
 - **W-23 Rewind** (M/L): run the seeded sim backwards from a brass
   slider, confirmed by an alert quoting the original's own "time
   cannot be turned back" / "not really being true to the AQUAZONE
