@@ -161,12 +161,13 @@ in the GLM review comment on #267.
   real AquaZone bank has been checked for this.
 - **#225:** nothing tests that every machine name fits the 190 px
   Machine list.
-- **#427:** `unwrapMacbinary` doesn't check that byte 82, MacBinary's
-  version byte, is zero, which would turn away more files that only
-  look like MacBinary. A test in `core/data/resfork.test.ts` patches
-  its fixture through `new DataView(single.buffer)`, ignoring
-  `byteOffset`; that works only while the fixture returns a fresh
-  array.
+- **#427:** `unwrapMacbinary` doesn't check that byte 82 is zero. It
+  is a zero fill that MacBinary I, II and III all keep zero (their
+  version bytes are 122 and 123), so the check would turn away more
+  files that only look like MacBinary and no real ones. A test in
+  `core/data/resfork.test.ts` patches its fixture through
+  `new DataView(single.buffer)`, ignoring `byteOffset`; that works
+  only while the fixture returns a fresh array.
 - **#428:** the fuzz test of random bytes behind a valid header still
   takes its header from the version 2 seed, so the version 1 and
   data-fork header paths aren't fuzzed that way.
