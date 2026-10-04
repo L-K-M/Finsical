@@ -227,3 +227,105 @@ def binhex_text(rle: bytes) -> bytes:
                      for s in (18, 12, 6, 0)[:n])
     return (b"(This file must be converted with BinHex 4.0)\r\n:"
             + bytes(enc) + b":")
+
+
+# ---- QuickDraw pictures (tools/az/pict.py), after core/data/pict.fixture.ts
+
+def _be16(v):
+    return [(v >> 8) & 0xFF, v & 0xFF]
+
+
+def _be32(v):
+    return [(v >> 24) & 0xFF, (v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF]
+
+
+def _rect(r):
+    return sum((_be16(v) for v in r), [])
+
+
+def pack_bits(src, unit=1):
+    """PackBits, as QuickDraw writes it: runs of three units or more
+    repeat, the rest go literal."""
+    n = len(src) // unit
+    at = lambda i: list(src[i * unit:i * unit + unit])  # noqa: E731
+    out, i = [], 0
+    while i < n:
+        run = 1
+        while i + run < n and run < 128 and at(i + run) == at(i):
+            run += 1
+        if run >= 3:
+            out += [257 - run] + at(i)
+            i += run
+            continue
+        j = i
+        while j < n and j - i < 128:
+            if j + 2 < n and at(j) == at(j + 1) == at(j + 2):
+                break
+            j += 1
+        out.append(j - i - 1)
+        for k in range(i, j):
+            out += at(k)
+        i = j
+    return out
+
+
+def build_pict(w, h, px, depth=8, clut=None, file=False, direct=None,
+               pack_type=4):
+    """A version 2 picture of one bitmap filling its w x h frame. With a
+    color table, px holds pixel values; with direct=16 or 32, px holds
+    0xRRGGBB colors (packType 4 by default, 3 for 16-bit). `file` adds
+    a data-fork file's 512-byte header."""
+    pic = _be16(0) + _rect((0, 0, h, w)) + [0x00, 0x11, 0x02, 0xFF,
+                                            0x0C, 0x00] + [0] * 24
+    bounds = _rect((0, 0, h, w))
+    fields = lambda pt, d, ptype, cmp_, csize: (  # noqa: E731
+        _be16(0) + _be16(pt) + _be32(0) + _be32(72 << 16) + _be32(72 << 16)
+        + _be16(ptype) + _be16(d) + _be16(cmp_) + _be16(csize) + [0] * 12)
+    place = bounds + bounds + _be16(0)
+
+    def rows(row_of, row_bytes, unit=1):
+        out = []
+        for y in range(h):
+            raw = row_of(y)
+            if row_bytes < 8:
+                out += raw
+                continue
+            enc = pack_bits(raw, unit)
+            out += (_be16(len(enc)) if row_bytes > 250 else [len(enc)]) + enc
+        return out
+
+    if direct == 32:
+        row_bytes = w * 4
+        planes = lambda y: [c >> s & 0xFF for s in (16, 8, 0)  # noqa: E731
+                            for c in px[y * w:(y + 1) * w]]
+        pic += ([0x00, 0x9A] + _be32(0xFF) + _be16(row_bytes | 0x8000) + bounds
+                + fields(pack_type, 32, 16, 3, 8) + place + rows(planes, row_bytes))
+    elif direct == 16:
+        row_bytes = w * 2
+        words = lambda y: sum((_be16(((c >> 19) & 31) << 10  # noqa: E731
+                                     | ((c >> 11) & 31) << 5 | ((c >> 3) & 31))
+                               for c in px[y * w:(y + 1) * w]), [])
+        pic += ([0x00, 0x9A] + _be32(0xFF) + _be16(row_bytes | 0x8000) + bounds
+                + fields(3, 16, 16, 3, 5) + place + rows(words, row_bytes, 2))
+    else:
+        clut = clut or [(255, 255, 255), (0, 0, 0)]
+        row_bytes = -(-w * depth // 8)
+        row_bytes += row_bytes & 1
+
+        def bits(y):
+            row = [0] * row_bytes
+            for x in range(w):
+                v = px[y * w + x] & ((1 << depth) - 1)
+                bit = x * depth
+                row[bit >> 3] |= v << (8 - depth - (bit & 7))
+            return row
+        table = (_be32(0) + _be16(0x8000) + _be16(len(clut) - 1)
+                 + sum((_be16(0) + _be16(r * 257) + _be16(g * 257)
+                        + _be16(b * 257) for r, g, b in clut), []))
+        pic += ([0x00, 0x98] + _be16(row_bytes | 0x8000) + bounds
+                + fields(0, depth, 0, 1, depth) + table + place
+                + rows(bits, row_bytes))
+    if len(pic) & 1:
+        pic.append(0)
+    pic += [0x00, 0xFF]
+    return bytes(([0] * 512 if file else []) + pic)

@@ -522,11 +522,17 @@ Finsical-<version>-android.apk` on the unsigned release APK.
 
 `tools/fetch.py` downloads AquaZone archives from archive.org (by default
 the [`aquazonewithguppiesandaddons`](https://archive.org/details/aquazonewithguppiesandaddons)
-item, or pass another identifier) and converts every pack and sound resource
-inside into `.azpack` bundles in `packs/`. `tools/azpack.py` converts local
-`.fsh`, `.acc`, `.plt`, `.azn` or `.REZ` files:
+item, or pass another identifier) and converts every pack, Mac picture and
+sound resource inside into `.azpack` bundles in `packs/`. With `--archive`, it
+takes single files from one archive in the item through archive.org's archive
+view, which also reaches the archives it can't open itself. For the Mac-only
+backdrops and gravels in the main item's 7z, run
+`python3 tools/fetch.py --archive 'Missing addons Aquazone.7z' --entries 'Misc Macintosh files/'`.
+`tools/azpack.py` converts local `.fsh`, `.acc`, `.plt`, `.azn` or `.REZ` files,
+PICT files and Mac resource forks (`.rsrc`, MacBinary, BinHex or AppleDouble):
 `python3 tools/azpack.py NeonTetra.fsh -o NeonTetra.azpack`. Drag the output
-folder onto the tank, or put it in `web/pack/`. Both need Python 3.9 or later
+folder onto the tank, or put it in `web/pack/`. A bundle's PICT pictures become
+the tank's backdrop or gravel. Both tools need Python 3.9 or later
 and nothing beyond the standard library; run either with `--help` for
 options.
 

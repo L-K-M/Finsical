@@ -13,6 +13,10 @@
   a Mac file's resource fork (.rsrc, MacBinary, BinHex or AppleDouble),
   and a Mac gravel add-on's fork brings its gravel. The Import Add-ons
   window takes these pictures too.
+- The asset tools turn PICT files and Mac forks with pictures into
+  .azpack bundles whose backdrop or gravel the tank shows.
+  `tools/fetch.py --archive` takes single files from an archive through
+  archive.org's archive view, which reaches the 7z's Mac scenery.
 - Preferences settings start at the top of each pane. Tank Stats opens
   30 pixels shorter, with its tabs, care hints and controls still visible.
 - A fish from an add-on that holds several packs now keeps its own

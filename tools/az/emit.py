@@ -2,15 +2,18 @@
 
 A bundle is:
   manifest.json   — pack metadata + per-chunk records (id, kind, file)
-  images/         — BMP chunks converted to PNG
+  images/         — BMP chunks converted to PNG; Mac PICT pictures
+                    (emit_mac) as indexed PNG
   sprites/        — decoded sprite-stream chunks as PNG sheets
   chunks/         — every chunk's raw payload (id-named), for later decoding
 """
 import json
 import os
+import sys
 
 from .fsh import is_sprite_stream, iter_frames
 from .img import bmp_palette, read_bmp, save_indexed_png, write_png
+from .macpics import mac_pictures
 from .pack import Pack
 from .snd import sounds_from_rsrc
 
@@ -139,6 +142,60 @@ def emit_sounds(data: bytes, outdir: str) -> dict:
     decoded = list(sounds_from_rsrc(data))
     if not decoded:
         raise ValueError("snd resources present but none decodable")
+    manifest = {"format": "azpack/1", "tag": "", "version": 0,
+                "names": [], "sounds": _write_sounds(decoded, outdir),
+                "chunks": []}
+    with open(os.path.join(outdir, "manifest.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(manifest, f, indent=1)
+    return manifest
+
+
+def emit_mac(data: bytes, outdir: str) -> dict:
+    """Emit an .azpack of a Mac file's pictures: a PICT file, or a fork
+    carrying pictures (see macpics.py), with the fork's sounds if it has
+    any. Each picture keeps its payload under chunks/; the ones the tank
+    shows get an indexed PNG under images/, which the tank's bundle
+    loader reads as backdrop or gravel art by shape. A gravel add-on's
+    catalog picture (BADP) gets no image: it is no backdrop. White is
+    palette index 0, the color the tank keys out of a gravel strip."""
+    found = mac_pictures(data)
+    if found is None:
+        raise ValueError("no pictures found")
+    gravel, images, failed = found
+    if not images:
+        raise ValueError("no picture decodes: " + "; ".join(failed))
+    for f in failed:
+        print(f"  skipping picture {f}", file=sys.stderr)
+    for sub in ("images", "chunks"):
+        os.makedirs(os.path.join(outdir, sub), exist_ok=True)
+    records = []
+    for key, rid, payload, (w, h, palette, idx) in images:
+        safe = key.replace(" ", "_")
+        raw = f"chunks/{safe}.bin"
+        with open(os.path.join(outdir, raw), "wb") as f:
+            f.write(payload)
+        rec = {"file": raw, "size": len(payload), "resId": rid, "sub": None,
+               "name": key}
+        if not (gravel and key.startswith("BADP")):
+            img = f"images/{safe}.png"
+            save_indexed_png(os.path.join(outdir, img), w, h, idx, palette)
+            rec.update(image=img, w=w, h=h)
+        records.append(rec)
+    manifest = {"format": "azpack/1", "tag": "", "version": 0, "names": [],
+                "chunks": records}
+    decoded = list(sounds_from_rsrc(data))
+    if decoded:
+        manifest["sounds"] = _write_sounds(decoded, outdir)
+    with open(os.path.join(outdir, "manifest.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(manifest, f, indent=1)
+    return manifest
+
+
+def _write_sounds(decoded, outdir: str) -> list:
+    """Write decoded (name, wav) pairs under sounds/, one file name per
+    record, and return their manifest records."""
     os.makedirs(os.path.join(outdir, "sounds"), exist_ok=True)
     records = []
     used: set[str] = set()
@@ -155,9 +212,4 @@ def emit_sounds(data: bytes, outdir: str) -> dict:
         with open(os.path.join(outdir, path), "wb") as f:
             f.write(wav)
         records.append({"name": name, "file": path})
-    manifest = {"format": "azpack/1", "tag": "", "version": 0,
-                "names": [], "sounds": records, "chunks": []}
-    with open(os.path.join(outdir, "manifest.json"), "w",
-              encoding="utf-8") as f:
-        json.dump(manifest, f, indent=1)
-    return manifest
+    return records

@@ -1,0 +1,233 @@
+"""Mac pictures through the CLI: emit_mac, azpack.py and fetch.py's
+--archive mode, with pictures and forks built here."""
+import contextlib
+import io
+import json
+import os
+import struct
+import tempfile
+import unittest
+import zlib
+from unittest import mock
+
+import tools.fetch
+from tools import azpack
+from tools.az.emit import emit_mac
+from tools.az.macpics import has_mac_pictures, mac_display_name, mac_pictures
+from tools.tests.fixtures import build_pict, build_rsrc, wrap_appledouble
+
+CLUT = [(255, 255, 255), (40, 160, 60), (30, 60, 200)]
+
+
+def strip(w=400, h=60):
+    """A gravel strip: white sky rows over green stones."""
+    return build_pict(w, h, [0 if i < w * 2 else 1 for i in range(w * h)],
+                      clut=CLUT)
+
+
+def snd():
+    """A playable 'snd ': format 2, one bufferCmd, 8-bit samples."""
+    body = struct.pack(">HHHHHI", 2, 0, 1, 0x8050, 0, 14)
+    hdr = struct.pack(">IIIIIBB", 0, 1, 11025 << 16, 0, 0, 0, 60)
+    return body + hdr + bytes([128, 140, 120])
+
+
+def gravel_fork(with_sound=False):
+    types = {b"Grvl": [(4020, None, 0, bytes([0, 53, 0, 52, 0, 0, 0, 0]))],
+             b"BADP": [(4020, None, 0, build_pict(64, 48, [2] * 64 * 48,
+                                                  clut=CLUT))],
+             b"BAPC": [(4020, None, 0, strip())]}
+    if with_sound:
+        types[b"snd "] = [(1, "crunch", 0, snd())]
+    return wrap_appledouble(build_rsrc(types))
+
+
+def png_header(path):
+    """(w, h, bit depth, color type, interlace) of a PNG file."""
+    with open(path, "rb") as f:
+        d = f.read()
+    assert d[:8] == b"\x89PNG\r\n\x1a\n"
+    return struct.unpack(">IIBBBBB", d[16:29])[:3] + \
+        (d[25], d[28])
+
+
+def png_indices(path, w, h):
+    """The palette indices of an 8-bit indexed PNG with filter 0 rows."""
+    with open(path, "rb") as f:
+        d = f.read()
+    p, idat = 8, b""
+    while p < len(d):
+        n = struct.unpack(">I", d[p:p + 4])[0]
+        if d[p + 4:p + 8] == b"IDAT":
+            idat += d[p + 8:p + 8 + n]
+        p += 12 + n
+    raw = zlib.decompress(idat)
+    return b"".join(raw[y * (w + 1) + 1:(y + 1) * (w + 1)] for y in range(h))
+
+
+class TestMacPictures(unittest.TestCase):
+    def test_a_pict_file_and_a_gravel_fork(self):
+        gravel, images, failed = mac_pictures(build_pict(320, 200, [1] * 64000,
+                                                         clut=CLUT, file=True))
+        self.assertEqual((gravel, [i[0] for i in images], failed),
+                         (False, ["PICT"], []))
+        gravel, images, failed = mac_pictures(gravel_fork())
+        self.assertTrue(gravel)
+        self.assertEqual([(k, rid, img[:2]) for k, rid, _, img in images],
+                         [("BAPC 4020", 4020, (400, 60)),
+                          ("BADP 4020", 4020, (64, 48))])
+
+    def test_files_without_pictures(self):
+        for d in (b"", b"\x01\x02\x03", bytes(4096),
+                  build_rsrc({b"snd ": [(1, None, 0, snd())]})):
+            self.assertIsNone(mac_pictures(d))
+            self.assertFalse(has_mac_pictures(d))
+        self.assertTrue(has_mac_pictures(gravel_fork()))
+
+    def test_display_names(self):
+        self.assertEqual(mac_display_name("ë€"), "苔")
+        self.assertEqual(mac_display_name("._星砂- star sand"), "星砂- star sand")
+        self.assertEqual(mac_display_name("Café"), "Café")
+
+
+class TestEmitMac(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.out = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_a_backdrop_becomes_an_indexed_png(self):
+        px = [1 if (x + y) % 2 else 2 for y in range(200) for x in range(320)]
+        m = emit_mac(build_pict(320, 200, px, clut=CLUT, file=True), self.out)
+        (rec,) = m["chunks"]
+        self.assertEqual((rec["image"], rec["w"], rec["h"], rec["resId"]),
+                         ("images/PICT.png", 320, 200, None))
+        png = os.path.join(self.out, rec["image"])
+        # What core/data/azpack.ts's decodeIndexedPng reads: 8-bit,
+        # palette (color type 3), not interlaced.
+        self.assertEqual(png_header(png), (320, 200, 8, 3, 0))
+        # White is index 0; the colors follow in first-seen order: the
+        # first pixel's (value 2) is index 1.
+        self.assertEqual(png_indices(png, 320, 200)[:4], bytes([1, 2, 1, 2]))
+
+    def test_a_gravel_fork_keeps_its_catalog_picture_raw(self):
+        m = emit_mac(gravel_fork(with_sound=True), self.out)
+        self.assertEqual([(c["name"], "image" in c) for c in m["chunks"]],
+                         [("BAPC 4020", True), ("BADP 4020", False)])
+        self.assertEqual(png_indices(os.path.join(self.out,
+                                                  "images/BAPC_4020.png"),
+                                     400, 60)[:400], bytes(400))
+        self.assertEqual([s["name"] for s in m["sounds"]], ["crunch"])
+        with open(os.path.join(self.out, "manifest.json"), encoding="utf-8") as f:
+            self.assertEqual(json.load(f), m)
+
+    def test_refuses_files_without_pictures(self):
+        with self.assertRaises(ValueError):
+            emit_mac(b"not a picture", self.out)
+
+
+class TestAzpackCli(unittest.TestCase):
+    def test_takes_a_pict_and_a_fork(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = []
+            for name, data in (("Reef.pct", build_pict(320, 200, [1] * 64000,
+                                                       clut=CLUT, file=True)),
+                               ("._Pebbles", gravel_fork())):
+                src.append(os.path.join(tmp, name))
+                with open(src[-1], "wb") as f:
+                    f.write(data)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = azpack.main(src + ["-o", os.path.join(tmp, "out")])
+            self.assertEqual(rc, 0)
+            self.assertIn("1 pictures", out.getvalue())
+            # The companion's bundle isn't hidden behind its "._".
+            for name in ("Reef", "Pebbles"):
+                self.assertTrue(os.path.exists(os.path.join(
+                    tmp, "out", name, "manifest.json")))
+
+
+class TestArchiveEntries(unittest.TestCase):
+    ITEM = "aquazonewithguppiesandaddons"
+    SEVEN_Z = "Missing addons Aquazone.7z"
+    FOLDER = "Spare interesting things/Misc Macintosh files/"
+
+    def setUp(self):
+        tools.fetch._EMITTED.clear()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.out = os.path.join(self.tmp.name, "packs")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def listing(self, *names):
+        """The archive view's rows: each entry under the folder the
+        listing gets wrong, its whole path in one encoded segment."""
+        from urllib.parse import quote
+        rows = "".join(
+            f'<tr><td><a href="//archive.org/download/{self.ITEM}/'
+            f'{quote(self.SEVEN_Z)}/{quote("addons Aquazone/" + self.FOLDER + n, safe="")}">'
+            f"{n}</a></td></tr>\n" for n in names)
+        return f"<table>{rows}</table>".encode()
+
+    def serve(self, files):
+        """A stand-in for fetch.py's _get, keyed by entry name."""
+        from urllib.parse import unquote
+        calls = []
+
+        def fake_get(url, out=None, max_bytes=None):
+            calls.append(url)
+            if url.endswith(".7z/"):
+                body = self.listing(*files)
+            else:
+                body = files[unquote(url).rsplit("/", 1)[1]]
+            if out is None:
+                return body
+            with open(out, "wb") as f:
+                f.write(body)
+        return calls, mock.patch.object(tools.fetch, "_get", fake_get)
+
+    def test_lists_entries_under_the_stored_folder(self):
+        calls, patch = self.serve({"ë€": b"x", "._星雲- nebula": b"y"})
+        with patch:
+            names = tools.fetch._archive_entries(self.ITEM, self.SEVEN_Z)
+        self.assertEqual(names, ["Missing addons Aquazone/" + self.FOLDER + "ë€",
+                                 "Missing addons Aquazone/" + self.FOLDER
+                                 + "._星雲- nebula"])
+
+    def test_emits_mac_bundles_under_readable_names(self):
+        calls, patch = self.serve({
+            "ë€": build_pict(320, 200, [1] * 64000, clut=CLUT, file=True),
+            "._星雲- nebula": gravel_fork(),
+            "GRAVEL1.sit": b"StuffIt (c)1997-",
+        })
+        err = io.StringIO()
+        with patch, contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(err):
+            made, failed = tools.fetch.fetch_entries(
+                self.ITEM, self.SEVEN_Z, self.out,
+                tools.fetch.re.compile("Misc Macintosh"),
+                os.path.join(self.tmp.name, "dl"))
+        self.assertEqual(failed, 0)
+        self.assertEqual(sorted(os.path.basename(p) for p in made),
+                         ["星雲- nebula.azpack", "苔.azpack"])
+        # Entries are fetched where archive.org stores them.
+        self.assertTrue(all("Missing%20addons%20Aquazone%2F" in u
+                            for u in calls[1:]))
+
+    def test_an_empty_answer_fails_and_is_not_kept(self):
+        calls, patch = self.serve({"ë€": b""})
+        dl = os.path.join(self.tmp.name, "dl")
+        with patch, contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()):
+            made, failed = tools.fetch.fetch_entries(
+                self.ITEM, self.SEVEN_Z, self.out,
+                tools.fetch.re.compile(""), dl)
+        self.assertEqual((made, failed), ([], 1))
+        self.assertEqual(os.listdir(dl), [])
+
+
+if __name__ == "__main__":
+    unittest.main()
