@@ -12,8 +12,6 @@ export interface Ripple {
 }
 
 export interface Splash {
-  x: number;
-  y: number;
   age: number;
   /** 1px droplets launched upward, gravity pulls them back. */
   drops: { x: number; y: number; vx: number; vy: number }[];
@@ -44,7 +42,7 @@ export function newSplash(x: number, y: number): Splash {
     vx: i * 0.45,
     vy: -0.95 + Math.abs(i) * 0.4,
   }));
-  return { x, y, age: 0, drops };
+  return { age: 0, drops };
 }
 
 export function tickSplashes(ss: Splash[]): void {
