@@ -133,9 +133,10 @@ def _item_props(item: Item) -> dict[str, GLib.Variant]:
     return props
 
 
-def build_tree(source: MenuSource) -> tuple[_Node, dict[int, _Node]]:
-    """The menu bar from logic.MENU_BAR. Ids follow the table's order,
-    so they stay the same from one build to the next."""
+def build_tree(source: MenuSource) -> dict[int, _Node]:
+    """The menu bar from logic.MENU_BAR by id, the root at _ROOT_ID. Ids
+    follow the table's order, so they stay the same from one build to
+    the next."""
     nodes: dict[int, _Node] = {}
     next_id = _ROOT_ID + 1
     menus = []
@@ -173,7 +174,7 @@ def build_tree(source: MenuSource) -> tuple[_Node, dict[int, _Node]]:
         menus,
     )
     nodes[_ROOT_ID] = root
-    return root, nodes
+    return nodes
 
 
 def _filtered(
@@ -198,7 +199,7 @@ def _layout(node: _Node, depth: int, names: list[str]) -> GLib.Variant:
 
 
 class MenuExporter:
-    """Serves the menu bar on `connection` until unexport()."""
+    """Serves the menu bar on `connection` for the process's life."""
 
     def __init__(
         self,
@@ -212,7 +213,7 @@ class MenuExporter:
         self._revision = 1
         self._snapshot = self._props_snapshot()
         info = Gio.DBusNodeInfo.new_for_xml(_XML).interfaces[0]
-        self._registration = connection.register_object(
+        connection.register_object(
             OBJECT_PATH, info, self._on_call, self._on_get_property, None
         )
 
@@ -223,11 +224,6 @@ class MenuExporter:
     @property
     def bus_name(self) -> str:
         return self._connection.get_unique_name()
-
-    def unexport(self) -> None:
-        if self._registration:
-            self._connection.unregister_object(self._registration)
-            self._registration = 0
 
     def refresh(self) -> None:
         """Tell the reader to fetch the layout again if anything shown
@@ -250,7 +246,7 @@ class MenuExporter:
             log.info("global menu update not sent: %s", e.message)
 
     def _props_snapshot(self) -> list[tuple[int, str]]:
-        _root, nodes = build_tree(self._source)
+        nodes = build_tree(self._source)
         return [
             (i, str(sorted((k, v.print_(False)) for k, v in n.props.items())))
             for i, n in sorted(nodes.items())
@@ -285,8 +281,8 @@ class MenuExporter:
         # timeout.
         try:
             args = params.unpack()
-            root, nodes = build_tree(self._source)
-            reply = self._dispatch(method, args, root, nodes)
+            nodes = build_tree(self._source)
+            reply = self._dispatch(method, args, nodes)
         except KeyError as e:
             invocation.return_dbus_error(
                 "com.canonical.dbusmenu.Error.InvalidId", f"no item {e}"
@@ -309,7 +305,6 @@ class MenuExporter:
         self,
         method: str,
         args: Any,
-        root: _Node,
         nodes: dict[int, _Node],
     ) -> Optional[GLib.Variant]:
         if method == "GetLayout":
