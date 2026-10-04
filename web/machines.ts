@@ -55,8 +55,6 @@ export interface Machine {
                             // lets front and rear both stay visible
   backplatePad?: number;    // hole pad override for #screenback;
                             // defaults to SCREENBACK_HOLE_PAD
-  svg: string;              // inner markup for the shell <svg>
-                            // (empty for image machines)
 }
 
 /** The glass aperture in viewBox units: the hole, or the tank's own
@@ -90,17 +88,18 @@ export function rasterInGlass(m: Machine): RasterBox {
  * anchor the window's edges. Both trade uniform pixels for water edge
  * to edge. */
 export function rasterZoom(m: Machine, k: number, dpr: number): number {
-  if (m.rasterFit === "fill" || (!m.image && !m.svg)) return k;
+  if (m.rasterFit === "fill" || !m.image) return k;
   const dev = Math.floor(k * dpr);
   return k >= 1 && dev >= 1 ? dev / dpr : k;
 }
 
-/** The shell svg's inner markup — vector art, or the raster image
- * stretched to the viewBox. preserveAspectRatio="none" matters: the
- * native mask stretches the same image to the window, so both must
- * use identical (stretch) semantics or silhouette and art misalign. */
+/** The shell svg's inner markup: the raster image stretched to the
+ * viewBox, or "" for a machine without one (Bare).
+ * preserveAspectRatio="none" matters: the native mask stretches the
+ * same image to the window, so both must use identical (stretch)
+ * semantics or silhouette and art misalign. */
 export function shellMarkup(m: Machine): string {
-  if (!m.image) return m.svg;
+  if (!m.image) return "";
   const img = `<image href="${m.image}" x="0" y="0" ` +
     `width="${m.vbW}" height="${m.vbH}" ` +
     `preserveAspectRatio="none"/>`;
@@ -211,7 +210,6 @@ const plus: Machine = {
   sx: 110, sy: 167, sw: 602, sh: 376,
   image: "assets/macintosh-plus.png",
   shape: [{ x: 0, y: 0, w: 821, h: 1059, r: 0 }],
-  svg: "",
 };
 
 const performa: Machine = {
@@ -222,7 +220,6 @@ const performa: Machine = {
   sx: 135, sy: 137, sw: 745, sh: 466,
   image: "assets/performa-450.png",
   shape: [{ x: 0, y: 0, w: 1013, h: 1013, r: 0 }],
-  svg: "",
 };
 
 const performa2: Machine = {
@@ -233,7 +230,6 @@ const performa2: Machine = {
   sx: 294, sy: 167, sw: 688, sh: 430,
   image: "assets/performa-450-2.png",
   shape: [{ x: 0, y: 0, w: 1132, h: 1010, r: 0 }],
-  svg: "",
 };
 
 const performa5200: Machine = {
@@ -244,7 +240,6 @@ const performa5200: Machine = {
   sx: 111, sy: 154, sw: 614, sh: 384,
   image: "assets/performa-5200.png",
   shape: [{ x: 0, y: 0, w: 1002, h: 918, r: 0 }],
-  svg: "",
 };
 
 const performa5200Black: Machine = {
@@ -255,7 +250,6 @@ const performa5200Black: Machine = {
   sx: 113, sy: 156, sw: 611, sh: 382,
   image: "assets/performa-5200-black.png",
   shape: [{ x: 0, y: 0, w: 1005, h: 920, r: 0 }],
-  svg: "",
 };
 
 const tam: Machine = {
@@ -266,7 +260,6 @@ const tam: Machine = {
   sx: 274, sy: 93, sw: 614, sh: 384,
   image: "assets/tam.png",
   shape: [{ x: 0, y: 0, w: 1161, h: 1161, r: 0 }],
-  svg: "",
 };
 
 const bondi: Machine = {
@@ -278,7 +271,6 @@ const bondi: Machine = {
   sx: 387, sy: 235, sw: 669, sh: 418,
   image: "assets/imac-bondi.png",
   shape: [{ x: 0, y: 0, w: 1241, h: 1035, r: 0 }],
-  svg: "",
 };
 
 const bondi2: Machine = {
@@ -290,7 +282,6 @@ const bondi2: Machine = {
   sx: 193, sy: 242, sw: 649, sh: 406,
   image: "assets/imac-bondi-2.png",
   shape: [{ x: 0, y: 0, w: 1245, h: 1037, r: 0 }],
-  svg: "",
 };
 
 const strawberry: Machine = {
@@ -302,7 +293,6 @@ const strawberry: Machine = {
   sx: 365, sy: 223, sw: 659, sh: 412,
   image: "assets/imac-strawberry.png",
   shape: [{ x: 0, y: 0, w: 1189, h: 1003, r: 0 }],
-  svg: "",
 };
 
 const strawberry2: Machine = {
@@ -314,7 +304,6 @@ const strawberry2: Machine = {
   sx: 172, sy: 226, sw: 659, sh: 412,
   image: "assets/imac-strawberry-2.png",
   shape: [{ x: 0, y: 0, w: 1207, h: 1013, r: 0 }],
-  svg: "",
 };
 
 const flowerPower: Machine = {
@@ -325,7 +314,6 @@ const flowerPower: Machine = {
   sx: 358, sy: 234, sw: 663, sh: 414,
   image: "assets/imac-flower-power.png",
   shape: [{ x: 0, y: 0, w: 1190, h: 1009, r: 0 }],
-  svg: "",
 };
 
 const flowerPower2: Machine = {
@@ -336,7 +324,6 @@ const flowerPower2: Machine = {
   sx: 176, sy: 242, sw: 657, sh: 411,
   image: "assets/imac-flower-power-2.png",
   shape: [{ x: 0, y: 0, w: 1203, h: 1025, r: 0 }],
-  svg: "",
 };
 
 const powerbookG3: Machine = {
@@ -347,7 +334,6 @@ const powerbookG3: Machine = {
   sx: 317, sy: 89, sw: 705, sh: 441,
   image: "assets/powerbook-g3.png",
   shape: [{ x: 0, y: 0, w: 1072, h: 994, r: 0 }],
-  svg: "",
 };
 
 const ibook: Machine = {
@@ -358,7 +344,6 @@ const ibook: Machine = {
   sx: 423, sy: 144, sw: 714, sh: 446,
   image: "assets/ibook-tangerine.png",
   shape: [{ x: 0, y: 0, w: 1284, h: 1161, r: 0 }],
-  svg: "",
 };
 
 const imacg4: Machine = {
@@ -369,7 +354,6 @@ const imacg4: Machine = {
   sx: 99, sy: 106, sw: 825, sh: 516,
   image: "assets/imac-g4.png",
   shape: [{ x: 0, y: 0, w: 1022, h: 1246, r: 0 }],
-  svg: "",
 };
 
 const AQUARIUM_BODY: ShapeRect = { x: 0, y: 0, w: 1151, h: 903, r: 0 };
@@ -391,7 +375,6 @@ const aquarium: Machine = {
   maskImage: "assets/aquarium-mask.png",
   backplatePad: 0,
   shape: [AQUARIUM_BODY],
-  svg: "",
 };
 
 const bare: Machine = {
@@ -399,7 +382,6 @@ const bare: Machine = {
   blurb: "No case — just the water, edge to edge.",
   vbW: 320, vbH: 200, sx: 0, sy: 0, sw: 320, sh: 200,
   shape: [{ x: 0, y: 0, w: 320, h: 200, r: 0 }],
-  svg: "",
 };
 
 export const MACHINES: readonly Machine[] =
