@@ -112,6 +112,7 @@ const ARCHIVE = new Map([
   [entry("ë€"), RED_BACKDROP],
   [entry("青のグラデーション"), BLUE_BACKDROP],
   [entry("._星砂- star sand"), GRAVEL],
+  [entry("._星雲- nebula"), GRAVEL],
 ]);
 const items = {
   moss: { section: "backgrounds", inner: "苔", url: entry("ë€") },
@@ -119,6 +120,8 @@ const items = {
           url: entry("青のグラデーション") },
   sand: { section: "gravel", inner: "星砂- star sand",
           url: entry("._星砂- star sand") },
+  nebula: { section: "gravel", inner: "星雲- nebula",
+            url: entry("._星雲- nebula") },
 };
 
 // ---- the tank page, instrumented --------------------------------------
@@ -129,13 +132,17 @@ const probe = `
 let settled = false;
 const openAudio = audio.open.bind(audio);
 audio.open = (...args) => { settled = true; return openAudio(...args); };
-// Every backdrop the tank has shown since this launch, sampled a frame
-// at a time: art that never lasts a frame never shows either.
-const shownBackdrops = [];
-(function sample() {
+// Every backdrop and gravel the tank has put up since this launch:
+// noted at each frame and at each paint it asks for, so art put up and
+// taken down within one frame counts too.
+const shownBackdrops = [], shownGravels = [];
+const noteShown = () => {
   if (shownBackdrops.at(-1) !== backdropSrc) shownBackdrops.push(backdropSrc);
-  requestAnimationFrame(sample);
-})();
+  if (shownGravels.at(-1) !== gravelSrc) shownGravels.push(gravelSrc);
+};
+const paint = requestPaint;
+requestPaint = () => { noteShown(); paint(); };
+(function sample() { noteShown(); requestAnimationFrame(sample); })();
 window.__probe = {
   onBusMessage, boot, packPut, recordInstall, settled: () => settled,
   addons: () => installedAddons.map(a => a.url),
@@ -143,6 +150,7 @@ window.__probe = {
   scenery: () => ({ backdrop: backdropSrc, gravel: gravelSrc,
                     choice: { ...sceneryChoice } }),
   shownBackdrops: () => shownBackdrops,
+  shownGravels: () => shownGravels,
   // The fitted art the tank blits: a backdrop pixel, and the gravel's
   // top and bottom rows (transparent sky, then stones).
   backdropPixel: () => backdropCv && [...backdropCv.getContext('2d')
@@ -447,10 +455,32 @@ try {
       // lands after moss, and used to show until the last add-on was in.
       assert.equal((await evalJs("__probe.scenery()", tank)).backdrop,
                    items.moss.url);
-      assert.ok(!(await evalJs("__probe.shownBackdrops()", tank))
-        .includes(items.blue.url));
+      const shown = await evalJs("__probe.shownBackdrops()", tank);
+      assert.ok(!shown.includes(items.blue.url),
+                `blue showed during the restore: ${shown.join(", ")}`);
       assert.deepEqual(await evalJs("__probe.backdropPixel()", tank), RED);
     });
+
+  await test("the restore holds back an unchosen gravel too", async () => {
+    await install(items.nebula, tank);
+    try {
+      await waitFor(`__probe.scenery().gravel === ${JSON.stringify(items.nebula.url)}`,
+                    tank);
+      await mutate("useAddon", items.sand.url, tank);
+      await reload(tank);
+      assert.equal((await evalJs("__probe.scenery()", tank)).gravel,
+                   items.sand.url);
+      const shown = await evalJs("__probe.shownGravels()", tank);
+      assert.ok(!shown.includes(items.nebula.url),
+                `nebula showed during the restore: ${shown.join(", ")}`);
+    } finally {
+      // The scenarios after this one count on star sand as the only
+      // gravel, whether or not this one passed.
+      await mutate("removeAddon", items.nebula.url, tank);
+      await waitFor(`!__probe.addons().includes(${JSON.stringify(items.nebula.url)})`,
+                    tank);
+    }
+  });
 
   await test("Remove takes the scenery and its record away for good", async () => {
     await mutate("removeAddon", items.moss.url, tank);
