@@ -1702,7 +1702,7 @@ function aquariumState(): Record<string, unknown> {
     litres: L, temp: w.temp, pH: w.pH, gH: w.gH,
     o2: w.o2 / L, co2: w.co2 / L, nitrate: w.nitrate / L,
     ammonia: w.ammonia / L, chlorine: w.chlorine / L,
-    organics: a.organics(), oxygenSat: 1 - a.oxygenDeficit(),
+    oxygenSat: 1 - a.oxygenDeficit(),
     heaterTarget: a.heater.target, heaterMin: a.heater.min,
     heaterMax: a.heater.max, filterDirt: a.filter.dirt,
     doses: a.doses.map((d) => ({ id: d.medicine, ml: d.ml })),
@@ -1767,7 +1767,7 @@ function sendState(): void {
          // leave when real fish arrive.
          ...(placeholderIds.has(id) ? { standIn: true } : {}),
          ...(pack !== undefined ? { pack } : {}),
-         ...(life ? { health: life.health, ageDays: life.age / 1440,
+         ...(life ? { health: life.health,
                       sick: life.sick?.disease ?? null,
                       dead: life.dead?.cause ?? null } : {}) })),
     waterQuality: sim.waterQuality,
@@ -1777,10 +1777,8 @@ function sendState(): void {
     // its own guidance (e.g. settled pellets foul the water as they rot).
     food: sim.food.length,
     foodSettled: sim.food.reduce((n, f) => n + (f.settled > 0 ? 1 : 0), 0),
-    bubbles: sim.bubbles.length,
     light: sim.light,
     lighting,
-    autoFeed,
     // Preferences window reads this — `on`/`available` reflect the
     // live GL state (a lost context reports off/unavailable even if
     // the stored preference says on).
@@ -2101,7 +2099,6 @@ function removeAddon(url: string, opts: { persist?: boolean } = {}): void {
   pendingThumbs.delete(`a:${url}`);
   sweepThumbs();
   if (persist) saveTank(); // persists and pushes fresh state to the panel
-  bus.post({ op: "uninstalled", url });
   requestPaint(); // removed fish and decor vanish at once
 }
 
