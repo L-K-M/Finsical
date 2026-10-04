@@ -301,4 +301,24 @@ describe("sortClientDrop", () => {
     expect(got.sounds.map((r) => r.name)).toEqual(["crunch", "Ding"]);
     expect(got.refused).toBe(1);
   });
+
+  it("takes no sounds from a picture file, whatever its name", () => {
+    // As on the tank: a PICT or BMP is a picture, even named like audio.
+    const got = sortClientDrop([
+      { name: "Reef.wav", data: pict(320, 240, true) },
+      { name: "Wall.mp3", data: buildBmpImage(320, 200) },
+    ]);
+    expect(got.pictures.map((x) => x.name)).toEqual(["Reef.wav", "Wall.mp3"]);
+    expect(got.sounds).toEqual([]);
+  });
+
+  it("keeps the last of the pictures that share a name", () => {
+    // One name is one stored file: on the tank too, the last one wins.
+    const got = sortClientDrop([
+      { name: "Ocean", data: pict(320, 240, true) },
+      { name: "Ocean", data: pict(640, 480, true) },
+    ]);
+    expect(got.pictures.map((x) => [...x.pack.images.values()]
+      .map((i) => [i.w, i.h]))).toEqual([[[640, 480]]]);
+  });
 });

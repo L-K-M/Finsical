@@ -146,9 +146,14 @@ export function sortClientDrop(files: { name: string; data: Uint8Array }[]):
       const pack = decodeDroppedPack(name, data);
       if (pack) pictures.push({ name, data, pack });
       else if (isRefusedPicture(data)) refused++;
+      // A picture file carries no sounds, whatever its name; a fork can.
+      if (isBmp(data) || isPict(data)) continue;
     }
     try { sounds.push(...fileSoundRecords(name, data)); }
     catch (e) { console.warn("drop: no sounds in", name, e); }
   }
-  return { sounds, pictures, refused };
+  // A name is one stored file, so the last picture under a name
+  // replaces the others, as on the tank.
+  const byName = new Map(pictures.map((p) => [p.name, p]));
+  return { sounds, pictures: [...byName.values()], refused };
 }

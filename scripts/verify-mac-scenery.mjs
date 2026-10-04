@@ -124,7 +124,7 @@ let settled = false;
 const openAudio = audio.open.bind(audio);
 audio.open = (...args) => { settled = true; return openAudio(...args); };
 window.__probe = {
-  onBusMessage, boot, packPut, settled: () => settled,
+  onBusMessage, boot, packPut, recordInstall, settled: () => settled,
   addons: () => installedAddons.map(a => a.url),
   records: () => installedAddons,
   scenery: () => ({ backdrop: backdropSrc, gravel: gravelSrc,
@@ -259,8 +259,10 @@ try {
       await sleep(25);
     }
   };
-  const openPage = async (path) => {
-    const { targetId } = await call("Target.createTarget", { url: "about:blank" });
+  /** A page at `path`; `browserContextId` gives it a profile of its own. */
+  const openPage = async (path, browserContextId) => {
+    const { targetId } = await call("Target.createTarget", {
+      url: "about:blank", ...browserContextId ? { browserContextId } : {} });
     const { sessionId } = await call("Target.attachToTarget",
       { targetId, flatten: true });
     await call("Runtime.enable", {}, sessionId);
@@ -308,11 +310,12 @@ try {
   /** Store bytes as the Import Add-ons window does, then ask the tank
    * to put them in; `then` runs in the same task, before the tank has
    * read them back. */
-  const putAndAsk = (url, bytes, inner, sessionId, then = "") => evalJs(`
+  const putAndAsk = (url, bytes, inner, sessionId, then = "",
+                     section = "backgrounds") => evalJs(`
     __probe.packPut(${JSON.stringify(url)},
                     new Uint8Array(${JSON.stringify(bytes)})).then(() => {
       __probe.onBusMessage({ op: 'installDropped', url: ${JSON.stringify(url)},
-                             section: 'backgrounds',
+                             section: ${JSON.stringify(section)},
                              inner: ${JSON.stringify(inner)} });
       ${then}
     })`, sessionId);
@@ -458,6 +461,47 @@ try {
       await mutate("removeAddon", "local:Ocean", tank);
       await waitFor(`!__probe.addons().includes('local:Ocean')`, tank);
     });
+
+  await test("a window drop of another kind under the same name replaces it",
+    async () => {
+      await putAndAsk("local:Tide", [...BLUE_BACKDROP], "Tide", tank);
+      await waitFor(`__probe.scenery().backdrop === 'local:Tide'`, tank);
+      await putAndAsk("local:Tide", [...GRAVEL], "Tide", tank, "", "gravel");
+      await waitFor(`__probe.scenery().gravel === 'local:Tide'`, tank);
+      assert.deepEqual((await evalJs("__probe.records()", tank))
+        .filter((r) => r.url === "local:Tide").map((r) => r.section),
+                       ["gravel"]);
+      assert.notEqual((await evalJs("__probe.scenery()", tank)).backdrop,
+                      "local:Tide");
+      await mutate("removeAddon", "local:Tide", tank);
+      await waitFor(`!__probe.addons().includes('local:Tide')`, tank);
+    });
+
+  await test("two requests for one name keep the bytes the second reads",
+    async () => {
+      // The first fails (backdrop bytes asked in as gravel); its cleanup
+      // must leave the bytes to the second, already queued.
+      await putAndAsk("local:Twin", [...BLUE_BACKDROP], "Twin", tank,
+        "__probe.onBusMessage({ op: 'installDropped', url: 'local:Twin', " +
+        "section: 'backgrounds', inner: 'Twin' });", "gravel");
+      await waitFor(`__probe.addons().includes('local:Twin')`, tank);
+      await sleep(300);
+      assert.equal(await stored("local:Twin", tank), BLUE_BACKDROP.length);
+      await mutate("removeAddon", "local:Twin", tank);
+      await waitFor(`!__probe.addons().includes('local:Twin')`, tank);
+    });
+
+  await test("a Remove of a record made while the tank reads wins", async () => {
+    // The add-on appears and is removed while the request's read is in
+    // flight: the Remove deleted the bytes it read.
+    await putAndAsk("local:Late", [...BLUE_BACKDROP], "Late", tank,
+      "__probe.recordInstall({ section: 'backgrounds', inner: 'Late', " +
+      "url: 'local:Late' }); __probe.onBusMessage({ op: 'removeAddon', " +
+      "url: 'local:Late', boot: __probe.boot });");
+    await sleep(500);
+    assert.ok(!(await evalJs("__probe.addons()", tank)).includes("local:Late"));
+    assert.equal(await stored("local:Late", tank), 0);
+  });
 
   await test("a Remove while the tank reads a re-drop wins", async () => {
     await putAndAsk("local:Shell", [...BLUE_BACKDROP], "Shell", tank);

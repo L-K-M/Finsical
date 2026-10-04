@@ -2031,6 +2031,12 @@ function useScenery(url: string): void {
   saveTank(); // also retags the panel's row now, not on the next tick
 }
 
+/** installDropped requests in flight, by url. */
+const droppedInFlight = new Map<string, number>();
+/** How often Remove has deleted a dropped file's bytes, by url: an
+ * install that read them before the delete must not record them. */
+const bytesDeleted = new Map<string, number>();
+
 /** Uninstall an add-on: drops it from the saved list (it won't restore
  * next launch) and clears this session's contributions — its fish, its
  * decor, and gravel/backdrop it supplied. Sprite sheets stay loaded so
@@ -2098,8 +2104,10 @@ function removeAddon(url: string,
   wholePackUrls.delete(url);
   // A dropped pack's stored bytes are the only copy — uninstall
   // deletes them (archive packs keep their cache entries).
-  if (isLocalPack(url) && !opts.keepBytes) void packDelete(url)
-    .catch((e) => console.warn("pack delete failed:", e));
+  if (isLocalPack(url) && !opts.keepBytes) {
+    bytesDeleted.set(url, (bytesDeleted.get(url) ?? 0) + 1);
+    void packDelete(url).catch((e) => console.warn("pack delete failed:", e));
+  }
   // Drop thumb state that can only rot: this pack's own memo and any
   // queued ask, plus entries for fish that no longer exist anywhere.
   thumbMemo.delete(`a:${url}`);
@@ -2161,6 +2169,7 @@ async function installDropped(url: unknown, section: unknown,
     return;
   }
   let added = false;
+  droppedInFlight.set(url, (droppedInFlight.get(url) ?? 0) + 1);
   try {
     if ((section !== "backgrounds" && section !== "gravel") ||
         typeof inner !== "string" || !inner.trim()) {
@@ -2168,13 +2177,12 @@ async function installDropped(url: unknown, section: unknown,
       return;
     }
     const epoch = tankEpoch;
-    // An earlier drop under this name may be installed. A Remove of it
-    // while this one decodes deleted these bytes too, and wins.
-    const listed = installedAddons.some((a) => a.url === url);
+    const deletions = bytesDeleted.get(url) ?? 0;
     try {
       const usable = usablePacks(await importAddon(url), section);
       if (epoch !== tankEpoch) return; // emptied while decoding
-      if (listed && !installedAddons.some((a) => a.url === url)) return;
+      // A Remove while decoding deleted the bytes just read, and wins.
+      if ((bytesDeleted.get(url) ?? 0) !== deletions) return;
       if (!usable.length) throw new Error(usableProblem(section));
       replaceOtherKind(url, section);
       for (const r of usable)
@@ -2188,8 +2196,12 @@ async function installDropped(url: unknown, section: unknown,
     }
   } finally {
     // The window stored the bytes before asking: whatever kept them
-    // from an add-on, nothing else would ever delete them.
-    if (!added && !installedAddons.some((a) => a.url === url))
+    // from an add-on, nothing else would ever delete them, unless a
+    // request for the same name still waits to read them.
+    const waiting = droppedInFlight.get(url)! - 1;
+    if (waiting) droppedInFlight.set(url, waiting);
+    else droppedInFlight.delete(url);
+    if (!added && !waiting && !installedAddons.some((a) => a.url === url))
       void packDelete(url).catch(() => {});
   }
 }
