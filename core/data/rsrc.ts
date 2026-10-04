@@ -8,6 +8,10 @@
  * `FsTI`, medicines `DrgI`, diseases `SicI` — so the simulation data
  * can only be found through this map.
  *
+ * The pack header also carries a kind tag at offset 0x10, stored
+ * byte-reversed like the type tags below (AqDr medicine, AqFd food),
+ * or zero when the pack has none.
+ *
  * Layout (offsets from the map start `m = u32@4`):
  *   m+26 u16  name-list offset (from m)
  *   m+28 u16  type count - 1
@@ -102,11 +106,4 @@ export function packResources(d: Uint8Array): PackResource[] {
     for (let j = 0; j < t.count; j++)
       seq.push({ type: t.tag, id: -1, name: null, payload: chunks[k++]!.payload });
   return seq;
-}
-
-/** The pack's kind tag from its header (AqDr medicine, AqFd food, …),
- * or null when it carries none. */
-export function packKind(d: Uint8Array): string | null {
-  if (d.length < 0x14 || u32(d, 0x10) === 0) return null;
-  return tagAt(d, 0x10);
 }

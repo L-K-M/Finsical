@@ -7,7 +7,7 @@ export interface Res { type: string; id: number; name?: string;
  * other than 12 imitates the third-party packs whose refs don't line
  * up with the standard layout. */
 export function buildPack(
-    res: Res[], opts: { kind?: string; refSize?: number } = {}):
+    res: Res[], opts: { refSize?: number } = {}):
     Uint8Array {
   const refSize = opts.refSize ?? 12;
   const bytes: number[] = new Array(0x100).fill(0);
@@ -18,8 +18,6 @@ export function buildPack(
     bytes[o] = v & 0xff; bytes[o + 1] = (v >> 8) & 0xff;
   };
   put32(0, 0x100);
-  if (opts.kind)
-    for (let i = 0; i < 4; i++) bytes[0x10 + i] = opts.kind.charCodeAt(3 - i);
   const offsets: number[] = [];
   for (const r of res) {
     offsets.push(bytes.length - 0x100);
