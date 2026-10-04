@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ownBytes } from "./bytes.js";
+import { MAX_FILE_SOUNDS } from "./sndbank.js";
 import { fileSoundRecords, mace3Decode, parseSnd,
          qualifySoundNames, soundsFromRsrc, unwrapContainer, wavBytes }
   from "./snd.js";
@@ -466,6 +467,87 @@ describe("soundsFromRsrc", () => {
     expect(soundsFromRsrc(buildRsrc(new Map([["PICT", [[1, null, 0, snd]]]]))))
       .toEqual([]);
     expect(soundsFromRsrc(new Uint8Array([1, 2, 3]))).toEqual([]);
+  });
+
+  // The fork's map: type list and reference list offsets, as the
+  // pinning tests below patch them.
+  const mapOf = (fork: Uint8Array) => {
+    const dv = new DataView(fork.buffer, fork.byteOffset, fork.byteLength);
+    const map = dv.getUint32(4);
+    const types = map + dv.getUint16(map + 24);
+    return { dv, map, types, refs: types + dv.getUint16(types + 2 + 6),
+             names: map + dv.getUint16(map + 26) };
+  };
+
+  it("keeps an empty name as the empty string", () => {
+    // Only a missing name (offset -1) falls back to snd_<id>.
+    const fork = buildRsrc(new Map([["snd ", [[7, "", 0, snd]]]]));
+    expect(soundsFromRsrc(fork).map((s) => s.name)).toEqual([""]);
+  });
+
+  it("decodes names as Mac Roman", () => {
+    const fork = buildRsrc(new Map([["snd ", [[7, "x", 0, snd]]]]));
+    fork[mapOf(fork).names + 1] = 0x8e; // é
+    expect(soundsFromRsrc(fork).map((s) => s.name)).toEqual(["é"]);
+  });
+
+  it("finds nothing in a fork too short for its header or map", () => {
+    const fork = buildRsrc(new Map([["snd ", [[1, "a", 0, snd]]]]));
+    expect(soundsFromRsrc(fork.subarray(0, 15))).toEqual([]);
+    // The map lives after the data. A cut before the end of the
+    // reference finds nothing; one that only loses the name list keeps
+    // the sound, nameless.
+    const { map, refs, names } = mapOf(fork);
+    expect(names).toBe(refs + 12);
+    for (let n = 0; n < fork.length; n++)
+      expect(soundsFromRsrc(fork.subarray(0, n)).map((s) => s.name))
+        .toEqual(n < refs + 12 ? [] : ["snd_1"]);
+    const mapPast = fork.slice();
+    new DataView(mapPast.buffer).setUint32(4, fork.length - 27);
+    expect(soundsFromRsrc(mapPast)).toEqual([]);
+    const typesPast = fork.slice();
+    new DataView(typesPast.buffer).setUint16(map + 24, fork.length - map - 1);
+    expect(soundsFromRsrc(typesPast)).toEqual([]);
+  });
+
+  it("skips references whose payload or length runs past the end", () => {
+    const fork = buildRsrc(new Map([["snd ", [[1, "a", 0, snd],
+                                              [2, "b", 0, snd],
+                                              [3, "c", 0, snd]]]]));
+    const { dv, refs } = mapOf(fork);
+    // a: data offset past the end; b: a length past the end.
+    dv.setUint32(refs + 4, 0x00ffffff);
+    const bAt = 256 + (dv.getUint32(refs + 12 + 4) & 0xffffff);
+    dv.setUint32(bAt, 0x7fffffff);
+    expect(soundsFromRsrc(fork).map((s) => s.name)).toEqual(["c"]);
+  });
+
+  it("stops at a reference list that runs past the end", () => {
+    const fork = buildRsrc(new Map([["snd ", [[1, "a", 0, snd]]]]));
+    const { dv, types } = mapOf(fork);
+    dv.setUint16(types + 2 + 4, 999); // 1000 references claimed
+    expect(soundsFromRsrc(fork).map((s) => s.name)).toEqual(["a"]);
+  });
+
+  it("names a resource nameless when its name runs past the end", () => {
+    const fork = buildRsrc(new Map([["snd ", [[9, "abc", 0, snd]]]]));
+    fork[mapOf(fork).names] = 200; // a 200-byte name in a short file
+    expect(soundsFromRsrc(fork).map((s) => s.name)).toEqual(["snd_9"]);
+  });
+
+  it("reads at most MAX_FILE_SOUNDS resources, decodable or not", () => {
+    const many = (n: number, body: (i: number) => Uint8Array) =>
+      buildRsrc(new Map([["snd ", Array.from({ length: n },
+        (_, i): [number, string | null, number, Uint8Array] =>
+          [i, null, 0, body(i)])]]));
+    const ok = (i: number) => sndFmt1U8(Uint8Array.of(i & 0xff, 0x80));
+    expect(soundsFromRsrc(many(MAX_FILE_SOUNDS + 6, ok)))
+      .toHaveLength(MAX_FILE_SOUNDS);
+    // The cap counts resources read: a decodable one past 1024
+    // undecodable ones is never reached.
+    const bad = Uint8Array.from([0, 99, ...new Array(20).fill(0)]);
+    expect(soundsFromRsrc(many(MAX_FILE_SOUNDS + 1, (i) =>
+      i < MAX_FILE_SOUNDS ? bad.slice() : ok(i)))).toEqual([]);
   });
 
   it("rejects truncated binhex headers without throwing", () => {
