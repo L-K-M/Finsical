@@ -980,6 +980,15 @@ describe("TankAudio.setFlyback", () => {
     expect(live(ac)).toHaveLength(2);
   });
 
+  it("builds one pair however often it is switched on", async () => {
+    // The tank page re-sends the switch on every Sound pane change.
+    const { audio, ac } = await tank({ tone: 1 });
+    audio.setFlyback(true);
+    audio.setFlyback(true);
+    expect(live(ac)).toHaveLength(2);
+    expect(ac.oscs).toHaveLength(2);
+  });
+
   it("is off unless asked for, whatever the tank plays", async () => {
     const { audio, ac } = await tank({ [LOOP]: 30, bubble: 1 });
     audio.open();
@@ -1505,6 +1514,167 @@ describe("Fish music", () => {
     expect(sanitizeSoundConfig({ music: "yes" }).music).toBe(false);
     // A save written before the switch existed keeps it off.
     expect(loadSoundConfig({ volume: 0.5 }).music).toBe(false);
+  });
+});
+
+describe("TankAudio synthesized sounds", () => {
+  /** What each node on the way to the master is, from `n` to "master".
+   * Every node on the path must have exactly one output, so a stray
+   * extra edge (a full-level bypass of the envelope) fails here. */
+  const path = (n: FakeNode, master: FakeGain): string[] => {
+    const kinds: string[] = [];
+    for (let at = n; ; at = at.out[0]!) {
+      if (at === master) return [...kinds, "master"];
+      kinds.push(at instanceof FakeOsc ? "osc"
+        : at instanceof FakeSource ? "src"
+        : at instanceof FakePanner ? "panner"
+        : at instanceof FakeFilter ? "filter"
+        : at instanceof FakeGain ? "gain" : "?");
+      expect(at.out).toHaveLength(1);
+    }
+  };
+
+  it("wires every sound through one chain, panned only off-centre",
+     async () => {
+    const { audio, ac, master } = await tank({ [LOOP]: 30, side: 1,
+                                               center: 2 });
+    audio.setOptions({ music: true });
+    audio.tap(10, 100, 320, 200);
+    audio.tap(160, 100, 320, 200);
+    expect(path(ac.sources[0]!, master))
+      .toEqual(["src", "panner", "gain", "master"]);
+    expect(path(ac.sources[1]!, master)).toEqual(["src", "gain", "master"]);
+
+    audio.pop(-0.5);
+    audio.bubble(0.6);
+    audio.pop(0);
+    audio.bubble(0);
+    const [pop, bloop, popC, bloopC] = ac.oscs;
+    expect(path(pop!, master)).toEqual(["osc", "panner", "gain", "master"]);
+    expect(path(bloop!, master))
+      .toEqual(["osc", "panner", "gain", "master"]);
+    expect(path(popC!, master)).toEqual(["osc", "gain", "master"]);
+    expect(path(bloopC!, master)).toEqual(["osc", "gain", "master"]);
+
+    // A note's partial joins the body at the shared envelope, and only
+    // the envelope is panned.
+    audio.note(440, -0.5);
+    const [body, partial] = ac.oscs.slice(4);
+    const env = body!.out[0]!;
+    expect(path(body!, master))
+      .toEqual(["osc", "gain", "panner", "master"]);
+    expect(path(partial!, master))
+      .toEqual(["osc", "gain", "gain", "panner", "master"]);
+    expect(partial!.out[0]!.out[0]).toBe(env);
+    audio.note(440, 0);
+    expect(path(ac.oscs[6]!, master)).toEqual(["osc", "gain", "master"]);
+    expect(path(ac.oscs[7]!, master))
+      .toEqual(["osc", "gain", "gain", "master"]);
+  });
+
+  it("keeps the direct path where the WebView has no StereoPanner",
+     async () => {
+    const { audio, ac, master } = await tank({ [LOOP]: 30, side: 1 });
+    (ac as unknown as { createStereoPanner?: unknown })
+      .createStereoPanner = undefined;
+    audio.setOptions({ music: true });
+    audio.tap(10, 100, 320, 200);
+    audio.pop(-0.5);
+    audio.bubble(0.6);
+    audio.note(440, 0.3);
+    expect(ac.panners).toHaveLength(0);
+    expect(path(ac.sources[0]!, master)).toEqual(["src", "gain", "master"]);
+    expect(path(ac.oscs[0]!, master)).toEqual(["osc", "gain", "master"]);
+    expect(path(ac.oscs[1]!, master)).toEqual(["osc", "gain", "master"]);
+    expect(path(ac.oscs[2]!, master)).toEqual(["osc", "gain", "master"]);
+    expect(path(ac.oscs[3]!, master))
+      .toEqual(["osc", "gain", "gain", "master"]);
+  });
+
+  it("schedules the plip, bloop and note exactly", async () => {
+    const { audio, ac } = await tank({ [LOOP]: 30 });
+    audio.setOptions({ music: true });
+    const t = ac.currentTime;
+    const gainOf = (o: FakeOsc): FakeParam => {
+      let n: FakeNode = o.out[0]!;
+      while (!(n instanceof FakeGain)) n = n.out[0]!;
+      return n.gain;
+    };
+
+    audio.pop(0.2);
+    const pop = ac.oscs[0]!;
+    expect(pop.type).toBe("sine");
+    expect(pop.frequency.points).toEqual([[700, t], [1600, t + 0.06 / 2]]);
+    expect(gainOf(pop).points)
+      .toEqual([[0.0001, t], [0.25, t + 0.004], [0.0001, t + 0.06]]);
+    expect(pop.starts).toBe(1);
+    expect(pop.stops).toEqual([t + 0.06 + 0.01]);
+
+    // One draw picks the bloop's pitch: 500 + 0.25 * (1300 - 500).
+    const rnd = vi.spyOn(Math, "random").mockReturnValue(0.25);
+    audio.bubble();
+    expect(rnd).toHaveBeenCalledTimes(1);
+    const bloop = ac.oscs[1]!;
+    expect(bloop.type).toBe("sine");
+    expect(bloop.frequency.points).toEqual([[700, t], [1050, t + 0.09]]);
+    expect(gainOf(bloop).points)
+      .toEqual([[0.0001, t], [0.12, t + 0.004], [0.0001, t + 0.09]]);
+    expect(bloop.starts).toBe(1);
+    expect(bloop.stops).toEqual([t + 0.09 + 0.01]);
+
+    audio.note(440);
+    const [body, partial] = ac.oscs.slice(2);
+    expect(gainOf(body!).points)
+      .toEqual([[0.0001, t], [0.16, t + 0.005], [0.0001, t + 1.2]]);
+    expect(body!.stops).toEqual([t + 1.2 + 0.01]);
+    expect(partial!.stops).toEqual([t + 1.2 + 0.01]);
+
+    // No running device, no draw: the bloop never reaches its pitch.
+    rnd.mockClear();
+    ac.state = "suspended";
+    audio.bubble();
+    new TankAudio().bubble();
+    expect(rnd).not.toHaveBeenCalled();
+    expect(ac.oscs).toHaveLength(4);
+  });
+
+  it("degausses only on a running, audible, visible device", async () => {
+    const { audio, ac, master } = await tank({ [LOOP]: 30 });
+    audio.setHidden(true);
+    audio.degauss();
+    audio.setHidden(false);
+    await flush();
+    ac.state = "suspended";
+    audio.degauss();
+    ac.state = "running";
+    audio.setMuted(true);
+    audio.degauss();
+    audio.setMuted(false);
+    audio.setVolume(0);
+    audio.degauss();
+    audio.setVolume(0.5);
+    expect(ac.oscs).toHaveLength(0);
+    new TankAudio().degauss(); // no context yet — never creates one
+    expect(FakeContext.last).toBe(ac);
+
+    const t = ac.currentTime;
+    audio.degauss();
+    const [thump, whine] = ac.oscs;
+    expect(ac.oscs).toHaveLength(2);
+    expect(path(thump!, master)).toEqual(["osc", "gain", "master"]);
+    expect(thump!.frequency.value).toBe(55);
+    expect((thump!.out[0] as FakeGain).gain.points)
+      .toEqual([[0.5, t], [0.001, t + 0.25]]);
+    expect(thump!.stops).toEqual([t + 0.3]);
+    expect(path(whine!, master))
+      .toEqual(["osc", "filter", "gain", "master"]);
+    expect(whine!.type).toBe("sawtooth");
+    expect(whine!.frequency.points).toEqual([[900, t], [300, t + 0.5]]);
+    const lp = whine!.out[0] as FakeFilter;
+    expect(lp.frequency.value).toBe(300);
+    expect((lp.out[0] as FakeGain).gain.points)
+      .toEqual([[0.12, t], [0.001, t + 0.6]]);
+    expect(whine!.stops).toEqual([t + 0.7]);
   });
 });
 
