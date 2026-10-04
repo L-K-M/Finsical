@@ -598,13 +598,19 @@ export class Sim {
       // A new fish arrives young: a little before adulthood. Its
       // stomach starts as full as its hunger says, so a fish from a
       // save that predates the life model keeps its appetite.
-      const l = newLife(this.rand, care,
-                        care.adultAge * (0.4 + this.rand() * 0.5));
-      l.stomach = stomachSize(this.weightOf(f));
-      l.ate = Math.round(l.stomach * (1 - Math.min(1, Math.max(0, f.hunger))));
-      f.life = l;
+      f.life = this.newLifeFor(f, care,
+                               care.adultAge * (0.4 + this.rand() * 0.5));
     }
     return f.life;
+  }
+
+  /** A new life for `f` at `age`, its stomach sized by its weight and
+   * as full as its hunger says. */
+  private newLifeFor(f: Fish, care: SpeciesCare, age: number): FishLife {
+    const l = newLife(this.rand, care, age);
+    l.stomach = stomachSize(this.weightOf(f));
+    l.ate = Math.round(l.stomach * (1 - Math.min(1, Math.max(0, f.hunger))));
+    return l;
   }
 
   /** Fish whose sickness has already fired a "sick" event — the life
@@ -1632,11 +1638,7 @@ export class Sim {
       });
       // Born today: a fry starts its life at age 0, not as the young
       // adult a newly bought fish arrives as.
-      const care = this.careOf(fry);
-      const life = newLife(this.rand, care, 0);
-      life.stomach = stomachSize(this.weightOf(fry));
-      life.ate = Math.round(life.stomach * 0.7);
-      fry.life = life;
+      fry.life = this.newLifeFor(fry, this.careOf(fry), 0);
       this.events.push({ type: "birth", fish: fry });
     }
   }
