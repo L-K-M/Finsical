@@ -89,20 +89,6 @@ class Pack:
                 i += 1
         return out
 
-    # --- payload classification ---
-
-    def images(self):
-        return [c for c in self.chunks if c.is_bmp]
-
     def names(self):
         return [(c.res_id, c.name) for c in self.chunks
                 if c.name and c.res_id is not None]
-
-    def blobs(self):
-        """Non-BMP payloads — RLE sprite frames / scripts / params."""
-        return [c for c in self.chunks if not c.is_bmp]
-
-
-def load(path):
-    with open(path, "rb") as f:
-        return Pack(f.read())
