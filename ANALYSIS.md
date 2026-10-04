@@ -331,6 +331,23 @@ simultaneous tanks.
 travel with a portable export; explicit replacement is recoverable and never
 overwritten by old unload handlers. Keep frozen speed with each saved tank.
 
+### F-42 Your own picture as the backdrop
+
+M. The PICT decoder (`core/data/pict.ts`) already reduces 16- and 32-bit
+pictures to 256 colors: four of the five Mac gravels on archive.org (nebula,
+tatami, iron sand, moss carpet) draw their strips in 32-bit color, so
+rejecting direct pixels would lose them. It keeps up to 255 colors besides
+white exactly, cuts more by median cut over the exact colors (5-bit bins past
+65,536), pins white to index 0 and does not dither. On AquaZone's art that is
+near-lossless: nebula's 294 colors change 0.34% of its pixels, by 2 levels at
+most. F-42's photo path is still open: PNG, JPEG and GIF drops through
+`createImageBitmap`, a smoothed cover-crop to 320 x 200, then the Mac palette
+with a 4 x 4 Bayer dither (see `ANALYSIS-HISTORY.md`).
+**Slice:** when it lands, decide whether direct-color PICTs take its dithered
+quantizer instead. Dithering suits photos; median cut keeps pixel art exact.
+**Acceptance:** whichever quantizer a direct PICT takes keeps white at index 0,
+which the tank keys out of gravel, and keeps AquaZone's strips as close.
+
 ### A-02/V-05 Match display hardware and expose the fill tradeoff
 
 M. RT-13. Plus displays color, and LCD cases accept curved RGB CRT output.
