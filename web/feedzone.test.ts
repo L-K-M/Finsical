@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { makeRng } from "../core/rng.js";
 import { SURFACE } from "../core/sim.js";
+import { TANK_SIZE } from "../core/tuning.js";
 import { containPoint, isFeedZone, tankMap } from "./feedzone.js";
 
 const TANK = { width: 320, height: 200 };
@@ -103,6 +105,33 @@ describe("tankMap", () => {
                                 host.top + m.oy + y * m.s, canvas, TANK);
       expect(back!.x).toBeCloseTo(x, 9);
       expect(back!.y).toBeCloseTo(y, 9);
+    }
+  });
+
+  it("lands exactly where the inline contain formula does", () => {
+    // tankToClient's forward letterbox math, written out: the map must
+    // reproduce it to the last bit (toBe compares with Object.is), or
+    // tags and the Get Info card would drift from the picture.
+    const rand = makeRng(11);
+    const rects = [
+      { left: 12.3, top: 7.75, width: 701.1, height: 333.3 },
+      { left: 0.5, top: 41.2, width: 319.7, height: 610.9 },
+      { left: 1234.56, top: 0.1, width: 0, height: 0 }, // hidden canvas
+      ...Array.from({ length: 200 }, () => ({
+        left: rand() * 2000 - 500, top: rand() * 1500 - 300,
+        width: rand() * 1600, height: rand() * 1200 })),
+    ];
+    for (const r of rects) {
+      const m = tankMap(r, { left: 0, top: 0 }, TANK_SIZE);
+      const s = Math.min(r.width / TANK_SIZE.width,
+                         r.height / TANK_SIZE.height);
+      for (const [x, y] of [[0, 0], [17.25, 199.5], [160.1, 99.9],
+                            [319, 3.3]] as const) {
+        expect(m.ox + x * m.s)
+          .toBe(r.left + (r.width - TANK_SIZE.width * s) / 2 + x * s);
+        expect(m.oy + y * m.s)
+          .toBe(r.top + (r.height - TANK_SIZE.height * s) / 2 + y * s);
+      }
     }
   });
 });
