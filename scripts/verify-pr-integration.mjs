@@ -53,6 +53,15 @@ window.__probe = {
     c.onmessage = e => { if (e.data.op === 'state') messages.push(e.data); };
     window.__states = messages;
   },
+  // The startup preference reads, and what each sanitizer makes of
+  // nothing stored.
+  startupPrefs: () => ({
+    bootEnabled, scoldOn, hintsOn, paused, namesOn, autoFeed, waterChangeCfg,
+    lighting, soundCfg, effects, crtCfg,
+    defaults: { lighting: sanitizeLighting(null),
+      soundCfg: loadSoundConfig(null), effects: sanitizeEffects(null),
+      crtCfg: sanitizeCrtConfig(null), heater: sim.aquarium.heater.target },
+  }),
 };`;
 const contents = await readFile(join(WEB, "main.ts"), "utf8");
 const bundle = buildSync({
@@ -423,9 +432,66 @@ try {
       }
     });
 
+  await test("startup falls back to defaults on unreadable or corrupt preferences",
+    async () => {
+      // Page-local storage faults, installed before fixture.js and the
+      // bundle run: the shared profile and the owner page stay intact.
+      const junk = {
+        "finsical:lighting": "{bad", "finsical:sound": "[",
+        "finsical:effects": "nope", "finsical:crt-cfg": '{"a":',
+        "finsical:waterChange": "{{", "finsical:boot": "OFF",
+        "finsical:scoldSign": "0", "finsical:hints": "1",
+        "finsical:paused": "true", "finsical:names": "on",
+        "finsical:autofeed": "yes",
+      };
+      const faults = {
+        // Every read throws, as where storage is blocked. The seed flag
+        // and the tank lease stay readable, so this page spectates
+        // rather than taking the tank from the owner page.
+        unreadable: `key => {
+          if (key === '__fixture' || key === 'finsical:tank-owner')
+            return null;
+          throw new DOMException('blocked', 'SecurityError');
+        }`,
+        // Corrupt JSON, and flag strings that are neither on nor off.
+        corrupt: `key => (${JSON.stringify(junk)})[key] ?? null`,
+      };
+      for (const [fault, read] of Object.entries(faults)) {
+        const page = await openPage(false);
+        try {
+          await waitFor("!!window.__probe", page.sessionId);
+          const seen = errors.length;
+          await call("Page.enable", {}, page.sessionId);
+          await call("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
+            window.__fault = ${JSON.stringify(fault)};
+            const get = Storage.prototype.getItem, fault = ${read};
+            Storage.prototype.getItem = function (key) {
+              return fault(key) ?? get.call(this, key);
+            };
+          })();` }, page.sessionId);
+          await call("Page.navigate", { url }, page.sessionId);
+          await waitFor(`window.__fault === ${JSON.stringify(fault)} && ` +
+                        "!!window.__probe", page.sessionId);
+          const { defaults, ...prefs } =
+            await evalJs("__probe.startupPrefs()", page.sessionId);
+          assert.deepEqual(prefs, {
+            bootEnabled: true, scoldOn: true, hintsOn: false, paused: false,
+            namesOn: false, autoFeed: false,
+            waterChangeCfg: { fraction: 0.2, temp: defaults.heater },
+            lighting: defaults.lighting, soundCfg: defaults.soundCfg,
+            effects: defaults.effects, crtCfg: defaults.crtCfg,
+          }, fault);
+          assert.deepEqual(errors.slice(seen), [], fault + " page errors");
+        } finally {
+          await call("Target.closeTarget", { targetId: page.targetId })
+            .catch(() => {});
+        }
+      }
+    });
+
   assert.deepEqual(errors, [], "page errors");
   assert.deepEqual(failures, [], failures.join("\n"));
-  assert.equal(passed.length, 9, "Missing checks");
+  assert.equal(passed.length, 10, "Missing checks");
   console.log(`${passed.length} live integration scenarios passed`);
 } finally {
   if (child && child.exitCode === null) {
