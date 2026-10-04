@@ -9,6 +9,7 @@ import { browserGeometry, chooseStartSection, DECOR_COPIES_MAX,
   from "./import.js";
 import type { Importable, PackResult } from "./import.js";
 import type { IndexedImage, SpriteSheet } from "../core/data/azpack.js";
+import { buildIs3 } from "../core/data/is3.fixture.js";
 
 const enc = new TextEncoder();
 
@@ -109,10 +110,27 @@ const mixedZip = buildZip([
   { name: "FOSSIL1.ACC", data: LEGACY_BLOB },
   { name: "ok.fsh", data: PACK_BLOB }]);
 
+/** The US Deluxe II disc's InstallShield cabinet, in miniature: a
+ * tank, an accessory, a backdrop, and a med no section takes. */
+const BMP_BLOB = (() => {
+  const d = new Uint8Array(54 + 1024 + 4);
+  const v = new DataView(d.buffer);
+  d[0] = 0x42; d[1] = 0x4d;
+  v.setUint32(2, d.length, true); v.setUint32(10, 54 + 1024, true);
+  v.setUint32(14, 40, true); v.setInt32(18, 2, true); v.setInt32(22, 2, true);
+  v.setUint16(26, 1, true); v.setUint16(28, 8, true);
+  return d;
+})();
+const cabinet = buildIs3([[0, "Eden.azn", PACK_BLOB, false],
+                          [0, "Anchor rock.acc", PACK_BLOB, false],
+                          [0, "Wall.bmp", BMP_BLOB, true],
+                          [0, "AZ_water.med", PACK_BLOB, false]]);
+
 vi.stubGlobal("fetch", async (u: string | URL) => {
   const s = String(u);
   const zip = s.endsWith("legacy.zip") ? legacyZip
-            : s.endsWith("mixed.zip") ? mixedZip : null;
+            : s.endsWith("mixed.zip") ? mixedZip
+            : s.endsWith("/data.z") ? cabinet : null;
   if (zip)
     return { ok: true,
              arrayBuffer: async () =>
@@ -188,6 +206,24 @@ describe("archive.org nested collections", () => {
     const rs = await importAddon(snd.url);
     expect(rs).toHaveLength(1);
     expect(rs[0]!.sounds).toEqual([{ name: "Macinfish", wav: MP3_BYTES }]);
+  });
+
+  it("lists the US disc's cabinet by section and reads its members",
+     async () => {
+    const items = (await listAddons()).filter((i) => i.url.includes("data.z"));
+    // In section order; the med has no section, so it isn't listed.
+    expect(items.map((i) => [i.section, i.inner])).toEqual([
+      ["accessories", "Anchor rock"], ["backgrounds", "Wall"],
+      ["tanks", "Eden"]]);
+    const eden = items.find((i) => i.inner === "Eden")!;
+    expect(eden.url).toBe("https://archive.org/download/" +
+      "aquazonewithguppiesandaddons/AQUAZONE.iso/Win/Items/data.z" +
+      "#Items/Eden.azn");
+    // The member comes back as the add-on, on install and restore.
+    expect((await importAddon(eden.url)).map((r) => r.entry))
+      .toEqual(["Items/Eden.azn"]);
+    await expect(importAddon(eden.url.replace("Eden", "Gone")))
+      .rejects.toThrow("entry missing");
   });
 
   it("a zip of only legacy-format accessories reads as unreadable",

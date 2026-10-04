@@ -12,6 +12,7 @@
  */
 import { ownBytes } from "../core/data/bytes.js";
 import { zipEntries, zipRead } from "../core/data/zip.js";
+import { is3Members, isIs3, readIs3Member } from "../core/data/is3.js";
 import { fshToSheets, isLegacyPack, isPack, packImages }
   from "../core/data/fsh.js";
 import { packSpeciesCare } from "../core/data/species.js";
@@ -57,6 +58,10 @@ const MISSING_RENAME = { listed: "addons Aquazone/", stored: MISSING_ROOT };
  * shape places each in its section; its content decodes it. */
 const MAC_FILES = MISSING_ROOT +
   "Spare interesting things/Misc Macintosh files/";
+/** The US Deluxe II disc's Windows items: an InstallShield cabinet the
+ * archive view serves whole, enumerated locally as a nested zip is.
+ * The 1997 and Deluxe discs' cabinets hold subsets of it. */
+const US_CABINET = "AQUAZONE.iso/Win/Items/data.z";
 
 export interface Collection {
   section: PackSection;
@@ -131,6 +136,13 @@ export const COLLECTIONS: Collection[] = [
     exts: /\/[^/.]+$/, rename: MISSING_RENAME, mac: true },
   { section: "gravel", outer: MISSING_7Z, prefix: MAC_FILES,
     exts: /\/\._[^/]+$/, rename: MISSING_RENAME, mac: true },
+  // The US retail library: its tanks and Anchor rock are nowhere else.
+  // Its meds and foods have no section.
+  { section: "backgrounds", outer: US_CABINET, exts: /\.bmp$/i },
+  { section: "tanks", outer: US_CABINET, exts: /\.azn$/i },
+  { section: "plants", outer: US_CABINET, exts: /\.plt$/i },
+  { section: "accessories", outer: US_CABINET, exts: /\.acc$/i },
+  { section: "gravel", outer: US_CABINET, exts: /\.grv$/i },
 ];
 
 const PACK_EXT = /\.(fsh|grv|plt|acc|azn|rez)$/i;
@@ -457,6 +469,13 @@ async function listCollection(col: Collection): Promise<Importable[]> {
       used.add(inner);
       out.push({ section: "", inner, url });
     };
+    if (isIs3(z)) {
+      // An InstallShield cabinet: its members, flat under the
+      // cabinet's own directories, addressed as a zip's entries are.
+      for (const m of is3Members(z))
+        if (exts.test(m.path)) push(m.path, `${zipUrl}#${fragEncode(m.path)}`);
+      return out;
+    }
     for (const e of zipEntries(z)) {
       if (e.name.endsWith("/")) continue; // directory entry
       if (exts.test(e.name) && (col.deep || !e.name.includes("/"))) {
@@ -583,7 +602,8 @@ export const fragDecode = (frag: string): string =>
 /** Fetch an add-on's raw file bytes. URL fragments chain: "{zip}#{entry}"
  * addresses one entry inside a nested collection zip, and a fragment
  * that is itself a zip entry descends another level ("{zip}#{a.zip}
- * #{dir/file.mp3}") — archive.org can't serve entries that deep. */
+ * #{dir/file.mp3}") — archive.org can't serve entries that deep. An
+ * InstallShield cabinet takes the zip's place, one level only. */
 async function fetchInnerBlobs(url: string): Promise<RawBlob[]> {
   const [zipUrl, ...frags] = url.split("#");
   if (!frags.length && !/\.zip$/i.test(zipUrl!)) {
@@ -602,6 +622,14 @@ async function fetchInnerBlobs(url: string): Promise<RawBlob[]> {
     // working.
     const frag = frags[i]!;
     const decoded = fragDecode(frag);
+    if (isIs3(z)) {
+      // An InstallShield cabinet's member: it holds no archives.
+      const m = is3Members(z)
+        .find((x) => x.path === frag || x.path === decoded);
+      if (!m || i !== frags.length - 1)
+        throw new Error(`${url}: entry missing`);
+      return [{ name: m.path, data: readIs3Member(z, m) }];
+    }
     const e = zipEntries(z)
       .find((x) => x.name === frag || x.name === decoded);
     if (!e) throw new Error(`${url}: entry missing`);

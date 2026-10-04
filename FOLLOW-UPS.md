@@ -365,7 +365,7 @@ images. The table lists the items with Mac content.
 | same | same folder: `macplants.sit` | StuffIt 5, method 15 | 41 plants, filed as accessories (`AqAc`) | By hand: extract with `unar`, then drop the `.rsrc` files on the tank | A StuffIt 5 reader |
 | same | same folder: `mactools.zip` | zip of StuffIt 5 archives | AquaZone's authoring tools (FisherMan, GravelMaker, PlantMaker, FishColor) and palettes | Not content | Nothing |
 | same | `AQUAZONE.iso` | ISO 9660 with an Apple partition map and an HFS volume | HFS `AQUAZONE/Items` and `Guppy Items`: 15 PICT backdrops, 5 gravels, 14 plants, 10 accessories, 12 tanks, fish and guppy forks, food, medicine | No | An HFS reader (below) |
-| same | `AQUAZONE.iso`, `Win/Items/data.z` | InstallShield 3 archive, 7.5 MB | 65 Windows items: 15 backdrops (BMP), 5 gravels, 14 plants, 10 accessories, 12 tanks, 9 meds and foods | `fetch.py --archive AQUAZONE.iso --entries 'Win/Items/data.z'` | In the app: the same readers in TypeScript |
+| same | `AQUAZONE.iso`, `Win/Items/data.z` | InstallShield 3 archive, 7.5 MB | 65 Windows items: 15 backdrops (BMP), 5 gravels, 14 plants, 10 accessories, 12 tanks, 9 meds and foods | Import Add-ons, `fetch.py --archive AQUAZONE.iso --entries 'Win/Items/data.z'` | Done |
 | `aquazone_1997_9003inc` | `AQUAZONE.ISO` | ISO 9660 with an Apple partition map and an HFS volume | HFS: 10 backdrops, 4 gravels, 4 plants, 4 accessories, 6 tanks, 4 fish. Windows: `WIN95/ITEMS/DATA.Z`, 3.7 MB | `fetch.py --archive` | As for `AQUAZONE.iso` |
 | `aquazone-deluxe` | `AquazoneDeluxe.iso` | ISO 9660 with an Apple partition map and an HFS volume | HFS: 15 backdrops, 4 gravels, 5 plants, 7 accessories, 12 tanks, 6 fish. Windows: `WIN95/Items/data.z`, 6.7 MB | `fetch.py --archive` | As for `AQUAZONE.iso` |
 | `AZ_SEVEN_SEAS_DX_ISO` | `AZ_SEVEN_SEAS_DX.ISO` | ISO 9660 with an Apple partition map and an HFS volume | AquaZone Seven Seas Deluxe (2005, Allume): an installer app and trialware | No | Out of scope: a later product, its content inside an installer |
@@ -403,7 +403,11 @@ images. The table lists the items with Mac content.
 **HFS.** The three hybrids keep the Mac items as plain files on their
 HFS sides. Their backdrops and gravels decode with the current code
 (Astral Hill and the Aqua gravel, read by Range, do); plants,
-accessories, tanks and fish need more.
+accessories, tanks and fish need more. On each disc, the Windows
+cabinet below holds as many backdrops, gravels, plants, accessories
+and tanks as the HFS side, category by category: very likely the same
+items in their Windows form, though the names weren't compared. The
+fish and guppy forks are on the HFS sides alone.
 
 - Command line first: an HFS reader in `tools/az/` (Apple partition
   map, master directory block, catalog B*-tree, extents overflow),
@@ -440,10 +444,11 @@ disc's cabinet holds the previous one's items and more: 35 on the
 Three gravels are in `gravel.zip`, the option-disc plants and
 accessories in the Japanese set, and the backdrops, plants and
 accessories, at the same sizes, in the 7z's `ITEMS/` folder, which
-`COLLECTIONS` doesn't list yet. Only the cabinets hold the US retail
+`COLLECTIONS` doesn't list. Only the cabinets hold the US retail
 tanks (the Japanese set has its own build of Eden) and the Anchor
-rock accessory. Listing those in Import Add-ons takes the same
-readers in TypeScript.
+rock accessory. Import Add-ons lists Deluxe II's cabinet in five
+sections, through `core/data/is3.ts`; the other two discs' cabinets
+hold subsets of it.
 
 **Mac plants.** Every picture in the plant forks (41 `ACPC`, 82
 `ACDP`) is a QuickTime picture in QuickTime's BMP codec (`WRLE`): 8-bit
