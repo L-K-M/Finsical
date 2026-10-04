@@ -15,11 +15,12 @@
  *   0098 PackBitsRect, 0099 PackBitsRgn      PackBits rows
  *   009A DirectBitsRect, 009B DirectBitsRgn  16- and 32-bit pixels
  *
- * Every other opcode (lines, text, comments, the clip) is skipped by
- * its documented length. Each bitmap is copied from its srcRect to its
- * dstRect, scaled nearest-neighbor as CopyBits does, clipped to
- * picFrame and, in the Rgn forms, to the mask region, onto a white
- * page: QuickDraw's default background. Transfer modes are not
+ * Every other opcode (lines, text, comments) is skipped by its
+ * documented length, except the clip region, which the bitmaps after
+ * it obey. Each bitmap is copied from its srcRect to its dstRect,
+ * scaled nearest-neighbor as CopyBits does, clipped to picFrame, to
+ * the clip region and, in the Rgn forms, to the mask region, onto a
+ * white page: QuickDraw's default background. Transfer modes are not
  * modelled; image pictures copy with srcCopy (or ditherCopy, which
  * only differs on a screen of fewer colors).
  *
@@ -135,6 +136,8 @@ interface Page {
   rgb: Uint32Array | null;
   work: number;
   quickTime: boolean;
+  /** The picture's clip region (opcode 0001), when it set one. */
+  clip: Region | null;
 }
 
 /** Decode a picture to an indexed image the size of its picFrame.
@@ -147,7 +150,7 @@ export function decodePict(d: Uint8Array): IndexedImage {
   const frame = r.rect();
   const page: Page = { frame, w: frame.right - frame.left,
                        h: frame.bottom - frame.top, rgb: null, work: 0,
-                       quickTime: false };
+                       quickTime: false, clip: null };
   checkSize(page.w, page.h, "picture");
   r.skip(v1 ? 2 : 4); // the version opcode pictStart matched
   for (let n = 0; ; n++) {
@@ -179,7 +182,7 @@ function skipOp(r: Reader, op: number, v1: boolean, page: Page): void {
     switch (op) {
       case 0x00: case 0x17: case 0x18: case 0x19: case 0x1c: case 0x1e:
         return;
-      case 0x01: return skipRegion(r);
+      case 0x01: page.clip = readRegion(r); return;
       case 0x04: return r.skip(1);
       case 0x03: case 0x05: case 0x08: case 0x0d: case 0x15: case 0x16:
       case 0x23: case 0xa0:
@@ -207,10 +210,11 @@ function skipOp(r: Reader, op: number, v1: boolean, page: Page): void {
       return same ? undefined : r.skip(8);
     }
     if (op >= 0x70 && op <= 0x8f) {
-      // Polygons and regions: size word (counting itself) then data.
+      // Polygons and regions: size word (counting itself), bounding
+      // box, then points: 10 bytes at least.
       if ((op & 0x0f) >= 8) return;
       const size = r.u16();
-      if (size < 2) throw new PictError(`bad shape size in opcode ${hex(op)}`);
+      if (size < 10) throw new PictError(`bad shape size in opcode ${hex(op)}`);
       return r.skip(size - 2);
     }
     if (op >= 0x92 && op <= 0xaf) return word();
@@ -227,12 +231,6 @@ function skipOp(r: Reader, op: number, v1: boolean, page: Page): void {
 
 const hex = (op: number): string =>
   op.toString(16).toUpperCase().padStart(4, "0");
-
-function skipRegion(r: Reader): void {
-  const size = r.u16();
-  if (size < 10) throw new PictError("bad region size");
-  r.skip(size - 2);
-}
 
 function skipColorTable(r: Reader): void {
   r.skip(6); // ctSeed, ctFlags
@@ -402,10 +400,14 @@ function drawBits(r: Reader, op: number, page: Page): void {
   }
   const unit = layout.kind === "rgb16" ? 2 : 1;
 
-  // The destination, clipped to the page; source columns per column.
+  // The destination, clipped to the page and the clip region's box;
+  // source columns per column.
   const { frame } = page;
-  const x0 = Math.max(dst.left, frame.left), x1 = Math.min(dst.right, frame.right);
-  const y0 = Math.max(dst.top, frame.top), y1 = Math.min(dst.bottom, frame.bottom);
+  const cb = page.clip?.box ?? frame;
+  const x0 = Math.max(dst.left, frame.left, cb.left);
+  const x1 = Math.min(dst.right, frame.right, cb.right);
+  const y0 = Math.max(dst.top, frame.top, cb.top);
+  const y1 = Math.min(dst.bottom, frame.bottom, cb.bottom);
   const sw = src.right - src.left, sh = src.bottom - src.top;
   const dw = dst.right - dst.left, dh = dst.bottom - dst.top;
   const draws = x1 > x0 && y1 > y0 && sw > 0 && sh > 0 && dw > 0 && dh > 0;
@@ -423,6 +425,7 @@ function drawBits(r: Reader, op: number, page: Page): void {
     cols[i] = sx >= 0 && sx < bw ? sx : -1;
   }
   const m = mask && draws ? new Mask(mask, x0, x1) : null;
+  const c = page.clip?.rows && draws ? new Mask(page.clip, x0, x1) : null;
   const row = new Uint8Array(len);
   const line = new Uint32Array(bw);
   let y = y0;
@@ -436,11 +439,12 @@ function drawBits(r: Reader, op: number, page: Page): void {
       const sy = src.top + Math.floor((y - dst.top) * sh / dh);
       if (sy > by) break;
       if (sy < by) continue; // above the bitmap's bounds
-      const inside = m?.row(y);
+      const inside = m?.row(y), clipped = c?.row(y);
       const out = (y - frame.top) * page.w - frame.left;
       for (let i = 0; i < cols.length; i++) {
         const sx = cols[i]!;
-        if (sx >= 0 && (!inside || inside[i])) rgb[out + x0 + i] = line[sx]!;
+        if (sx >= 0 && (!inside || inside[i]) && (!clipped || clipped[i]))
+          rgb[out + x0 + i] = line[sx]!;
       }
     }
   }

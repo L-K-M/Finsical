@@ -30,7 +30,8 @@ interface Placed {
 export interface IndexedBits extends Placed {
   kind: "indexed";
   packed?: boolean;
-  depth: 1 | 2 | 4 | 8;
+  /** 1, 2, 4 or 8; others write formats QuickDraw doesn't. */
+  depth: number;
   w: number;
   h: number;
   /** Row-major pixel values. */
@@ -56,9 +57,10 @@ export interface MonoBits extends Placed {
 /** A direct-color pixel map (009A/009B). */
 export interface DirectBits extends Placed {
   kind: "direct";
-  depth: 16 | 32;
-  packType: 0 | 1 | 2 | 3 | 4;
-  cmpCount?: 3 | 4;
+  /** 16 or 32; others write formats QuickDraw doesn't. */
+  depth: number;
+  packType: number;
+  cmpCount?: number;
   w: number;
   h: number;
   /** Row-major 0xRRGGBB; 16-bit keeps the top 5 bits per channel. */

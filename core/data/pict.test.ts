@@ -356,6 +356,38 @@ describe("decodePict: placement", () => {
   });
 });
 
+describe("decodePict: the clip region", () => {
+  const four = { kind: "indexed" as const, depth: 8 as const, w: 2, h: 2,
+                 px: [1, 2, 3, 1], clut: CLUT };
+
+  it("draws bitmaps only inside it", () => {
+    const img = decode({ frame: rect(0, 0, 2, 2), ops: [
+      { kind: "raw", bytes: [0x00, 0x01, ...be16(10), 0, 0, 0, 0, 0, 1, 0, 1] },
+      four] });
+    expect(colors(img)).toEqual([RED, WHITE, WHITE, WHITE]);
+  });
+
+  /** A Clip opcode for a region: its box, then inversion points. */
+  const clip = (box: number[], rows: [number, number[]][] = []) => {
+    const body = rows.flatMap(([y, xs]) =>
+      [...be16(y), ...xs.flatMap(be16), ...be16(0x7fff)]);
+    if (rows.length) body.push(...be16(0x7fff));
+    return { kind: "raw" as const,
+             bytes: [0x00, 0x01, ...be16(10 + body.length),
+                     ...box.flatMap(be16), ...body] };
+  };
+
+  it("follows an inversion-point clip, and a later clip replaces it", () => {
+    // The diagonal: row 0 inside [0,1), row 1 inside [1,2).
+    const diagonal = clip([0, 0, 2, 2], [[0, [0, 1]], [1, [0, 2]], [2, [1, 2]]]);
+    expect(colors(decode({ frame: rect(0, 0, 2, 2), ops: [diagonal, four] })))
+      .toEqual([RED, WHITE, WHITE, RED]);
+    expect(colors(decode({ frame: rect(0, 0, 2, 2), ops: [
+      clip([0, 0, 1, 1]), clip([0, 0, 2, 2]), four] })))
+      .toEqual([RED, GREEN, BLUE, RED]);
+  });
+});
+
 describe("decodePict: opcodes around the bitmap", () => {
   it("skips every kind of opcode by its documented length", () => {
     const longComment = [0x00, 0xa1, 0x01, 0xf2, ...be16(5), 1, 2, 3, 4, 5];
@@ -515,6 +547,45 @@ describe("decodePict: untrusted input", () => {
       .toThrow(PictError);
   });
 
+  it("rejects shapes and regions shorter than their 10-byte head", () => {
+    for (const op of [0x70, 0x80, 0x84])
+      expect(() => decodePict(buildPict({ frame: rect(0, 0, 1, 2), ops: [
+        { kind: "raw", bytes: [0x00, op, ...be16(4), 0, 0] },
+        { kind: "indexed", depth: 8, w: 2, h: 1, px: [1, 2], clut: CLUT }] })))
+        .toThrow(/bad shape size/);
+  });
+
+  it("rejects a picture that stops before its end opcode", () => {
+    expect(() => decodePict(buildPict({ ...indexed(2, 1, [1, 2]),
+                                        noEnd: true })))
+      .toThrow(/ends before its end opcode/);
+  });
+
+  it("rejects direct formats outside Appendix A's table", () => {
+    const one = (o: Partial<Extract<Op, { kind: "direct" }>>) => () =>
+      decodePict(buildPict({ frame: rect(0, 0, 1, 2), ops: [
+        { kind: "direct", depth: 32, packType: 4, w: 2, h: 1,
+          px: [RED, BLUE], ...o }] }));
+    expect(one({ cmpCount: 2 })).toThrow(/component count 2/);
+    expect(one({ packType: 5 })).toThrow(/packType 5/);
+    expect(one({ depth: 24 })).toThrow(/direct pixel size 24/);
+  });
+
+  it("refuses 16-bit pixels under PackBitsRect, where QuickDraw never puts them",
+     () => {
+    // Appendix A: direct pixels are recorded with DirectBitsRect.
+    expect(() => decode(indexed(2, 1, [1, 2], { depth: 16, rowBytes: 4 })))
+      .toThrow(/pixel size 16 with a color table/);
+  });
+
+  it("ignores packType for pixels with a color table", () => {
+    // packType only matters for direct pixels: rows of 8 bytes or more
+    // are PackBits whatever an indexed map says.
+    const px = Array.from({ length: 24 }, (_, i) => i % 4);
+    expect(colors(decode(indexed(12, 2, px, { packType: 1 }))))
+      .toEqual(px.map((v) => CLUT_RGB[v]));
+  });
+
   it("stops after too many opcodes", () => {
     const nops = new Array<number>(2 * 140_000).fill(0);
     expect(() => decodePict(buildPict({ frame: rect(0, 0, 1, 2), ops: [
@@ -540,8 +611,10 @@ describe("isPict", () => {
     expect(isPict(pic)).toBe(true);
     expect(isPict(buildPict({ ...indexed(2, 1, [1, 2]), file: true })))
       .toBe(true);
-    expect(isPict(buildPict({ version: 1, frame: rect(0, 0, 1, 8), ops: [
-      { kind: "mono", w: 8, h: 1, px: new Array(8).fill(1) }] }))).toBe(true);
+    for (const file of [false, true])
+      expect(isPict(buildPict({ version: 1, frame: rect(0, 0, 1, 8), file,
+        ops: [{ kind: "mono", w: 8, h: 1, px: new Array(8).fill(1) }] })))
+        .toBe(true);
   });
 
   it("refuses other data", () => {
