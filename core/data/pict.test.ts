@@ -448,7 +448,7 @@ describe("decodePict: untrusted input", () => {
         const img = decodePict(d);
         expect(img.idx.length).toBe(img.w * img.h);
         expect(img.palette.length).toBeLessThanOrEqual(256);
-        expect(Math.max(...img.idx)).toBeLessThan(img.palette.length);
+        expect(img.idx.every((k) => k < img.palette.length)).toBe(true);
       } catch (e) {
         expect(e).toBeInstanceOf(PictError);
       }
