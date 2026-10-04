@@ -2,12 +2,14 @@
 // and gravel forks from the main item's 7z install, draw, persist,
 // restore offline from the cache, switch with Use and leave with
 // Remove; dropped Mac pictures do the same through the tank and the
-// Import Add-ons window. archive.org is never contacted: CDP answers
-// its URLs with pictures this script builds, so no AquaZone art is
+// Import Add-ons window, and the bundles tools/azpack.py makes of them
+// show in the tank. archive.org is never contacted: CDP answers its
+// URLs with pictures this script builds, so no AquaZone art is
 // involved. Set FINSICAL_CHROMIUM to a Chrome/Chromium binary, as for
-// the other verify scripts.
+// the other verify scripts; the azpack step needs python3.
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -169,12 +171,22 @@ assert.notEqual(indexHtml.indexOf("fixture.js"), -1,
 
 const types = { ".html": "text/html", ".css": "text/css",
   ".js": "text/javascript", ".png": "image/png", ".svg": "image/svg+xml" };
+// The .azpack the tank loads from pack/ at launch: none, unless a
+// scenario puts an azpack.py bundle there.
+let packDir = null;
 const server = createServer(async (request, response) => {
   const pathname = new URL(request.url, "http://localhost").pathname;
   response.setHeader("Cache-Control", "no-store");
   const send = (type, body) => {
     response.setHeader("Content-Type", type); response.end(body);
   };
+  if (pathname.startsWith("/pack/")) {
+    const file = packDir && resolve(packDir, "." + pathname.slice(5));
+    try {
+      if (!file?.startsWith(packDir + "/")) throw new Error("outside");
+      return send("application/octet-stream", await readFile(file));
+    } catch { response.writeHead(404); response.end(); return; }
+  }
   if (pathname === "/bundle.js") return send("text/javascript", bundle);
   if (pathname === "/addons.js") return send("text/javascript", addonsBundle);
   if (pathname === "/fixture.js") return send("text/javascript", fixture);
@@ -540,6 +552,30 @@ try {
       for (const key of ["local:Junk", "local:Nameless", "local:Gone"])
         await waitStored(key, tank, 0);
       assert.deepEqual(await evalJs("__probe.addons()", tank), []);
+    });
+
+  await test("azpack.py's bundles of the same files show in the tank",
+    async () => {
+      const cli = join(temp, "cli");
+      mkdirSync(cli);
+      writeFileSync(join(cli, "Reef.pct"), RED_BACKDROP);
+      writeFileSync(join(cli, "._Pebbles"), GRAVEL);
+      execFileSync("python3", [join(ROOT, "tools", "azpack.py"),
+                               join(cli, "Reef.pct"), join(cli, "._Pebbles"),
+                               "-o", join(cli, "out")]);
+      // A profile of its own, which the other scenarios' add-ons don't
+      // restore into.
+      const { browserContextId } = await call("Target.createBrowserContext");
+      packDir = join(cli, "out", "Reef");
+      const page = await openPage("/", browserContextId);
+      await waitFor("!!window.__probe && __probe.settled()", page);
+      assert.deepEqual(await evalJs("__probe.backdropPixel()", page), RED);
+      packDir = join(cli, "out", "Pebbles");
+      await reload(page);
+      assert.deepEqual(await evalJs("__probe.gravelPixels()", page),
+                       [CLEAR, GREEN]);
+      // The fork's catalog picture, backdrop-sized, didn't become one.
+      assert.equal(await evalJs("__probe.backdropPixel()", page), null);
     });
 } finally {
   await chrome?.close();
