@@ -8,17 +8,24 @@
  * add-on (Finder type AqGr) carries, all as id 4020, the strip the
  * tank draws (BAPC), the picture the item catalog shows (BADP) and the
  * floor's geometry (Grvl): the Windows .grv packs carry the same
- * three, which is how their roles were confirmed. 'PICT' is the Mac's
- * own picture resource.
+ * three, which is how their roles were confirmed. An accessory add-on
+ * (AqAc; the Mac set files its plants as accessories too) carries its
+ * art as ACPC, one picture a frame from id 200, beside records the
+ * engine requires (AccI, AcVe) and catalog pictures (ACDP). 'PICT' is
+ * the Mac's own picture resource.
  */
 import type { IndexedImage } from "./azpack.js";
 import { decodePict, isPict } from "./pict.js";
 import { dataFork, MAX_WRAPPINGS, openFork } from "./resfork.js";
 import type { Fork } from "./resfork.js";
 
+/** What a file's pictures are: a gravel add-on's strips (its fork
+ * carries Grvl), an accessory add-on's art (AccI), or pictures of any
+ * other kind. */
+export type MacKind = "gravel" | "accessory" | "picture";
+
 export interface MacPictures {
-  /** The fork is a gravel add-on's: it carries a Grvl record. */
-  gravel: boolean;
+  kind: MacKind;
   /** Decoded pictures by "TYPE id", or "PICT" for a data-fork file. */
   images: Map<string, IndexedImage>;
   /** Pictures that didn't decode, each as "TYPE id: why". */
@@ -26,7 +33,7 @@ export interface MacPictures {
 }
 
 /** In-tank art first, so it leads the images' order. */
-const PICTURE_TYPES = ["BAPC", "BADP", "PICT"] as const;
+const PICTURE_TYPES = ["BAPC", "BADP", "ACPC", "PICT"] as const;
 
 /** Most pictures decoded from one file. AquaZone's add-ons hold one
  * or two; an application's fork holds hundreds of interface PICTs,
@@ -51,8 +58,9 @@ export function macPictures(d: Uint8Array): MacPictures | null {
   const fork = openFork(d);
   const res = fork ? forkPictures(fork) : [];
   if (res.length) {
-    const out: MacPictures = { gravel: fork!.resources("Grvl", 1).length > 0,
-                               images: new Map(), failed: [] };
+    const kind: MacKind = fork!.resources("Grvl", 1).length ? "gravel"
+      : fork!.resources("AccI", 1).length ? "accessory" : "picture";
+    const out: MacPictures = { kind, images: new Map(), failed: [] };
     for (const { type, id, data } of res) {
       try { out.images.set(`${type} ${id}`, decodePict(data)); }
       catch (e) { out.failed.push(`${type} ${id}: ${message(e)}`); }
@@ -62,10 +70,10 @@ export function macPictures(d: Uint8Array): MacPictures | null {
   const file = pictFile(d);
   if (!file) return null;
   try {
-    return { gravel: false, images: new Map([["PICT", decodePict(file)]]),
-             failed: [] };
+    return { kind: "picture",
+             images: new Map([["PICT", decodePict(file)]]), failed: [] };
   } catch (e) {
-    return { gravel: false, images: new Map(),
+    return { kind: "picture", images: new Map(),
              failed: [`PICT: ${message(e)}`] };
   }
 }

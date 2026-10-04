@@ -103,32 +103,38 @@ export function decodeDroppedPack(name: string, data: Uint8Array):
 /** A Mac picture as a dropped add-on: a PICT file, or the pictures in
  * a resource fork. A gravel add-on's fork (it carries Grvl) goes to
  * the gravel and keeps only its strips: its catalog picture is no
- * backdrop. Anything else is yours to show, as a BMP is, at the same
- * minimum size. Null when nothing in it is usable. */
+ * backdrop. An accessory add-on's fork (AccI) stands its art on the
+ * floor, as a Windows .acc pack does. Anything else is yours to show,
+ * as a BMP is, at the same minimum size. Null when nothing in it is
+ * usable. */
 function macPicture(name: string, stem: string, data: Uint8Array):
     DroppedPack | null {
   const pics = macPictures(data);
   if (!pics) return null;
   for (const f of pics.failed)
     console.warn(`drop: ${name}: skipping picture ${f}`);
-  const images = new Map([...pics.images].filter(([, img]) => pics.gravel
-    ? isGravelImage(img, TANK_SIZE.width)
-    : img.w >= BACKDROP_MIN.w && img.h >= BACKDROP_MIN.h)
+  const usable = (img: IndexedImage): boolean =>
+    pics.kind === "gravel" ? isGravelImage(img, TANK_SIZE.width)
+    : pics.kind === "accessory" ||
+      img.w >= BACKDROP_MIN.w && img.h >= BACKDROP_MIN.h;
+  const images = new Map([...pics.images].filter(([, img]) => usable(img))
     .map(([k, img]) => [`${name}#${k}`, img]));
   if (!images.size) return null;
-  return { name: stem, section: pics.gravel ? "gravel" : "backgrounds",
-           sheets: new Map(), images, care: null };
+  const section = pics.kind === "gravel" ? "gravel"
+    : pics.kind === "accessory" ? "accessories" : "backgrounds";
+  return { name: stem, section, sheets: new Map(), images, care: null };
 }
 
 /** Whether a file decodeDroppedPack turned down is a picture the tank
  * can't use, which the drop explains: a BMP, a PICT file (bare or
- * wrapped), or a fork carrying AquaZone's own pictures (BAPC, BADP). A fork's 'PICT'
- * resources alone don't count: most forks have a preview or icons. */
+ * wrapped), or a fork carrying AquaZone's own pictures (BAPC, BADP,
+ * ACPC). A fork's 'PICT' resources alone don't count: most forks have
+ * a preview or icons. */
 export function isRefusedPicture(data: Uint8Array): boolean {
   if (isBmp(data) || isPictFile(data)) return true;
   const fork = openFork(data);
-  return !!fork && (fork.resources("BAPC", 1).length > 0 ||
-                    fork.resources("BADP", 1).length > 0);
+  return !!fork && ["BAPC", "BADP", "ACPC"].some((type) =>
+    fork.resources(type, 1).length > 0);
 }
 
 /** A drop on the Import Add-ons window, sorted: the sound records it

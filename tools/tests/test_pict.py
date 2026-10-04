@@ -2,7 +2,7 @@ import hashlib
 import unittest
 
 from tools.az.pict import PictError, decode_pict, is_pict
-from tools.tests.fixtures import build_pict
+from tools.tests.fixtures import build_ops_pict, build_pict, quicktime_op
 
 WHITE, RED, GREEN, BLUE = 0xFFFFFF, 0xFF0000, 0x00FF00, 0x0000FF
 CLUT = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255)]
@@ -93,11 +93,71 @@ class TestDecode(unittest.TestCase):
             except PictError:
                 pass
 
+    def test_untrusted_quicktime_images_raise_pict_error_only(self):
+        good = build_ops_pict(5, 2, [quicktime_op(
+            5, 2, [0, 1, 2, 3, 1, 3, 2, 1, 0, 2], CLUT)])
+        self.assertEqual(decode_pict(good)[:2], (5, 2))
+        for n in range(len(good)):
+            with self.assertRaises(PictError):
+                decode_pict(good[:n])
+        seed = 7
+        for _ in range(1500):
+            d = bytearray(good)
+            for _ in range(1 + seed % 4):
+                seed = (seed * 1664525 + 1013904223) & 0xFFFFFFFF
+                at = seed % len(d)
+                seed = (seed * 1664525 + 1013904223) & 0xFFFFFFFF
+                d[at] = seed & 0xFF
+            try:
+                w, h, palette, idx = decode_pict(bytes(d))
+                self.assertEqual(len(idx), w * h)
+                self.assertTrue(all(k < len(palette) for k in idx))
+            except PictError:
+                pass
+
     def test_refuses_what_is_not_a_picture(self):
         for d in (b"", bytes(600), b"BM" + bytes(60)):
             self.assertFalse(is_pict(d))
             with self.assertRaises(PictError):
                 decode_pict(d)
+
+
+class TestQuickTime(unittest.TestCase):
+    """QuickTime BMP images, as core/data/pict.test.ts has them."""
+    PX = [1, 2, 3, 3, 2, 1]
+
+    def test_rows_bottom_row_first_through_the_color_table(self):
+        img = decode_pict(build_ops_pict(3, 2, [quicktime_op(3, 2, self.PX,
+                                                             CLUT)]))
+        self.assertEqual(colors(img), [RED, GREEN, BLUE, BLUE, GREEN, RED])
+
+    def test_src_rect_only_moved_by_the_matrix(self):
+        op = quicktime_op(3, 2, self.PX, CLUT, src=(0, 1, 1, 3), dx=1, dy=1)
+        self.assertEqual(colors(decode_pict(build_ops_pict(4, 3, [op]))),
+                         [WHITE] * 6 + [GREEN, BLUE] + [WHITE] * 4)
+
+    def test_inside_the_clip_region_only(self):
+        clip = [0x00, 0x01, 0, 10, 0, 0, 0, 0, 0, 1, 0, 3]
+        op = quicktime_op(3, 2, self.PX, CLUT)
+        self.assertEqual(colors(decode_pict(build_ops_pict(3, 2, [clip, op]))),
+                         [RED, GREEN, BLUE, WHITE, WHITE, WHITE])
+
+    def test_says_why_and_draws_a_later_bitmap(self):
+        bitmap = list(build_pict(3, 2, self.PX, clut=CLUT)[40:-2])
+        cases = [
+            (dict(codec=b"jpeg"), "QuickTime-compressed"),
+            (dict(depth=16), "16-bit"),
+            (dict(data_size=6), "compressed"),
+            (dict(matte_size=4), "matte"),
+            (dict(matrix=[0x20000, 0, 0, 0, 0x20000, 0, 0, 0, 0x40000000]),
+             "scaled"),
+        ]
+        for more, why in cases:
+            op = quicktime_op(3, 2, self.PX, CLUT, **more)
+            with self.assertRaisesRegex(PictError, why):
+                decode_pict(build_ops_pict(3, 2, [op]))
+            img = decode_pict(build_ops_pict(3, 2, [op, bitmap]))
+            self.assertEqual(colors(img), [RED, GREEN, BLUE, BLUE, GREEN, RED])
 
 
 if __name__ == "__main__":

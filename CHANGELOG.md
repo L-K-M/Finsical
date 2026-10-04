@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The 41 Mac plants in the archive's `macplants.sit` stand on the tank's
+  floor once you extract them with `unar` and drop their `.rsrc` files
+  on the tank or the Import Add-ons window. AquaZone files them as
+  accessories, and so does Finsical. It now reads the QuickTime
+  pictures their art is in.
 - A Mac file wrapped twice for the trip, such as a MacBinary file sent
   on as BinHex, now drops in as a file wrapped once does, whether it
   is a PICT file or a gravel add-on's fork.

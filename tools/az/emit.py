@@ -180,7 +180,13 @@ def emit_mac(data: bytes, outdir: str) -> dict:
     found = mac_pictures(data)
     if found is None:
         raise ValueError("no pictures found")
-    gravel, images, failed = found
+    kind, images, failed = found
+    if kind == "accessory":
+        # The tank's bundle loader reads backdrop and gravel art only,
+        # by shape: an accessory's art would come back as a backdrop.
+        raise ValueError("an accessory's art: bundles carry no decor, so "
+                         "drop the file on the tank instead")
+    gravel = kind == "gravel"
     if not images:
         raise ValueError("no picture decodes: " + "; ".join(failed))
     if not any(_shown(gravel, w, h) for _k, _r, _b, (w, h, _p, _i) in images):

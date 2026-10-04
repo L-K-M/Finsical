@@ -2193,9 +2193,18 @@ async function installDropped(url: unknown, section: unknown,
   let added = false;
   droppedInFlight.set(url, (droppedInFlight.get(url) ?? 0) + 1);
   try {
-    if ((section !== "backgrounds" && section !== "gravel") ||
+    // The sections a dropped Mac picture can be: see macPicture in
+    // drop.ts.
+    if ((section !== "backgrounds" && section !== "gravel" &&
+         section !== "accessories") ||
         typeof inner !== "string" || !inner.trim()) {
       console.warn("installDropped: invalid request", url, section);
+      return;
+    }
+    // A full set of copies takes no more, as the tank's own drop says.
+    const refusal = decorRefusal(decors, { section, url });
+    if (refusal) {
+      dropSay(refusal);
       return;
     }
     const epoch = tankEpoch;

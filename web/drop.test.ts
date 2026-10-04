@@ -198,6 +198,16 @@ const gravelFork = (stripW = 500, stripH = 60) => buildRsrc(
   ]));
 const dims = (p: DroppedPack) =>
   [...p.images.values()].map((i) => [i.w, i.h]);
+/** A Mac plant add-on's fork (an accessory, AqAc): its records and its
+ * art (ACPC), a QuickTime BMP picture. */
+const plantFork = (acpc = buildPict({ frame: rect(0, 0, 40, 16), ops: [
+  { kind: "quicktime", w: 16, h: 40, clut: CLUT,
+    px: Array.from({ length: 640 }, (_, i) => i % 16 < 4 ? 0 : 1) }] })) =>
+  buildRsrc(new Map<string, Entry[]>([
+    ["AccI", [[200, null, 0, new Uint8Array(16)]]],
+    ["ACPC", [[200, null, 0, acpc]]],
+    ["AcVe", [[200, null, 0, Uint8Array.of(0, 150)]]],
+  ]));
 
 describe("decodeDroppedPack with Mac pictures", () => {
   it("takes a PICT file as a backdrop by its content, extension or not",
@@ -235,6 +245,17 @@ describe("decodeDroppedPack with Mac pictures", () => {
     // The catalog picture stays out: it is no backdrop.
     expect(p && [p.name, p.section, dims(p)])
       .toEqual(["星砂- star sand", "gravel", [[500, 60]]]);
+  });
+
+  it("takes an accessory add-on's fork as decor", () => {
+    // Plants among them: the Mac set files its plants as accessories.
+    const p = decodeDroppedPack("Chara.rsrc", wrapAppledouble(plantFork()));
+    expect(p && [p.name, p.section, dims(p)])
+      .toEqual(["Chara", "accessories", [[16, 40]]]);
+    // Art that won't decode is a picture the drop explains.
+    const broken = wrapAppledouble(plantFork(Uint8Array.of(1, 2, 3)));
+    expect(decodeDroppedPack("Chara.rsrc", broken)).toBeNull();
+    expect(isRefusedPicture(broken)).toBe(true);
   });
 
   it("reads picture resources from every fork wrapping", () => {

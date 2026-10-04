@@ -71,7 +71,32 @@ export interface DirectBits extends Placed {
  * its data. */
 export interface RawOp { kind: "raw"; bytes: number[] }
 
-export type Op = IndexedBits | MonoBits | DirectBits | RawOp;
+/** A QuickTime-compressed image (8200, version 2 only) in QuickTime's
+ * BMP codec, laid out as the Mac plant add-ons' art is: a BMP's pixel
+ * array, the bottom row first and each row padded to four bytes,
+ * behind an image description that carries the color table. */
+export interface QuickTimeBits {
+  kind: "quicktime";
+  w: number;
+  h: number;
+  /** Row-major pixel values, top row first. */
+  px: number[];
+  /** 8-bit colors in table order. */
+  clut: [number, number, number][];
+  /** The part of the image drawn; defaults to all of it. */
+  src?: Rect;
+  /** The matrix's translation in whole pixels. */
+  dx?: number;
+  dy?: number;
+  /** Overrides, for what the decoder refuses. */
+  codec?: string;
+  depth?: number;
+  matrix?: number[];
+  matteSize?: number;
+  dataSize?: number;
+}
+
+export type Op = IndexedBits | MonoBits | DirectBits | RawOp | QuickTimeBits;
 
 const be16 = (v: number): number[] => [(v >> 8) & 0xff, v & 0xff];
 const be32 = (v: number): number[] =>
@@ -237,6 +262,39 @@ function bitsOp(op: IndexedBits | MonoBits | DirectBits, v2: boolean):
           ...placement(op), ...pixels];
 }
 
+const ascii = (s: string): number[] => [...s].map((c) => c.charCodeAt(0));
+
+function quickTimeOp(op: QuickTimeBits): number[] {
+  const { w, h } = op;
+  const stride = (w + 3) & ~3;
+  const rows: number[] = [];
+  for (let y = h - 1; y >= 0; y--)
+    for (let x = 0; x < stride; x++)
+      rows.push(x < w ? op.px[y * w + x]! : 0xff);
+  const table = op.clut.flatMap(([r, g, b], i) =>
+    [...be16(i), ...be16(r * 257), ...be16(g * 257), ...be16(b * 257)]);
+  // The codec's own atoms as the plant forks carry them, then their end.
+  const atoms = [...be32(12), ...ascii("bmp "), ...be32(0),
+                 ...be32(9), ...ascii("bmp1"), 1, ...be32(0)];
+  const name = [3, ...ascii("BMP"), ...new Array<number>(28).fill(0)];
+  const desc = [...be32(0), ...ascii(op.codec ?? "WRLE"), ...be32(0),
+    ...be16(0), ...be16(0), ...be16(0), ...be16(0), ...ascii("appl"),
+    ...be32(0), ...be32(0x400), ...be16(w), ...be16(h),
+    ...be32(72 << 16), ...be32(72 << 16), ...be32(op.dataSize ?? stride * h),
+    ...be16(1), ...name, ...be16(op.depth ?? 8), ...be16(0),
+    ...be32(0), ...be16(0), ...be16((op.clut.length - 1) & 0xffff),
+    ...table, ...atoms];
+  desc.splice(0, 4, ...be32(desc.length));
+  const matrix = op.matrix ?? [0x10000, 0, 0, 0, 0x10000, 0,
+    (op.dx ?? 0) * 0x10000, (op.dy ?? 0) * 0x10000, 0x40000000];
+  const head = [...be16(0), ...matrix.flatMap(be32), ...be32(op.matteSize ?? 0),
+    ...rectBytes(rect(0, 0, 0, 0)), ...be16(0x40),
+    ...rectBytes(op.src ?? rect(0, 0, h, w)), ...be32(0x300), ...be32(0)];
+  // The plant forks' opcodes count a pad byte past the pixels.
+  const body = [...head, ...desc, ...rows, 0];
+  return [0x82, 0x00, ...be32(body.length), ...body];
+}
+
 export interface PictSpec {
   version?: 1 | 2;
   frame: Rect;
@@ -262,7 +320,9 @@ export function buildPict(spec: PictSpec): Uint8Array {
     align();
     // A loop, not push(...): a long run of raw NOPs would pass more
     // arguments than a call takes.
-    for (const b of op.kind === "raw" ? op.bytes : bitsOp(op, v2)) pic.push(b);
+    const bytes = op.kind === "raw" ? op.bytes
+      : op.kind === "quicktime" ? quickTimeOp(op) : bitsOp(op, v2);
+    for (const b of bytes) pic.push(b);
   }
   if (!spec.noEnd) { align(); pic.push(...(v2 ? [0x00, 0xff] : [0xff])); }
   const size = pic.length;

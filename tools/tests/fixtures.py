@@ -339,3 +339,51 @@ def build_pict(w, h, px, depth=8, clut=None, file=False, direct=None,
         pic.append(0)
     pic += [0x00, 0xFF]
     return bytes(([0] * 512 if file else []) + pic)
+
+
+def quicktime_op(w, h, px, clut, src=None, dx=0, dy=0, codec=b"WRLE",
+                 depth=8, matrix=None, matte_size=0, data_size=None):
+    """8200 in QuickTime's BMP codec, laid out as the Mac plant add-ons
+    hold their art (the quicktime op of core/data/pict.fixture.ts): a
+    BMP's pixel rows, bottom row first, each padded to four bytes,
+    behind an image description carrying the color table. px holds
+    pixel values, top row first."""
+    stride = (w + 3) & ~3
+    rows = []
+    for y in range(h - 1, -1, -1):
+        rows += [px[y * w + x] if x < w else 0xFF for x in range(stride)]
+    table = sum((_be16(i) + _be16(r * 257) + _be16(g * 257) + _be16(b * 257)
+                 for i, (r, g, b) in enumerate(clut)), [])
+    # The codec's own atoms as the plant forks carry them, then their end.
+    atoms = (_be32(12) + list(b"bmp ") + _be32(0) + _be32(9) + list(b"bmp1")
+             + [1] + _be32(0))
+    desc = (_be32(0) + list(codec) + _be32(0) + _be16(0) * 4 + list(b"appl")
+            + _be32(0) + _be32(0x400) + _be16(w) + _be16(h)
+            + _be32(72 << 16) * 2
+            + _be32(stride * h if data_size is None else data_size)
+            + _be16(1) + [3] + list(b"BMP") + [0] * 28 + _be16(depth)
+            + _be16(0) + _be32(0) + _be16(0) + _be16(len(clut) - 1) + table
+            + atoms)
+    desc[0:4] = _be32(len(desc))
+    m = matrix or [0x10000, 0, 0, 0, 0x10000, 0, (dx << 16) & 0xFFFFFFFF,
+                   (dy << 16) & 0xFFFFFFFF, 0x40000000]
+    head = (_be16(0) + sum((_be32(v) for v in m), []) + _be32(matte_size)
+            + _rect((0, 0, 0, 0)) + _be16(0x40) + _rect(src or (0, 0, h, w))
+            + _be32(0x300) + _be32(0))
+    # The plant forks' opcodes count a pad byte past the pixels.
+    body = head + desc + rows + [0]
+    return [0x82, 0x00] + _be32(len(body)) + body
+
+
+def build_ops_pict(w, h, ops):
+    """A version 2 picture with a w x h frame and the given opcodes,
+    each starting word-aligned."""
+    pic = (_be16(0) + _rect((0, 0, h, w)) + [0x00, 0x11, 0x02, 0xFF,
+                                             0x0C, 0x00] + [0] * 24)
+    for op in ops:
+        if len(pic) & 1:
+            pic.append(0)
+        pic += op
+    if len(pic) & 1:
+        pic.append(0)
+    return bytes(pic + [0x00, 0xFF])
