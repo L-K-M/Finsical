@@ -461,6 +461,13 @@ describe("soundsFromRsrc", () => {
     expect(soundsFromRsrc(fork).map((s) => s.name)).toEqual(["a"]);
   });
 
+  it("finds nothing in a fork without a 'snd ' type, or in junk", () => {
+    // A playable payload under another type is not a sound.
+    expect(soundsFromRsrc(buildRsrc(new Map([["PICT", [[1, null, 0, snd]]]]))))
+      .toEqual([]);
+    expect(soundsFromRsrc(new Uint8Array([1, 2, 3]))).toEqual([]);
+  });
+
   it("hasSounds gates on 'snd ' presence", () => {
     expect(hasSounds(buildRsrc(new Map([["snd ", [[1, null, 0, snd]]]]))))
       .toBe(true);
