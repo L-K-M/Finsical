@@ -275,18 +275,13 @@ body.crt canvas#tank { opacity: 0; }
   position: relative; flex: 1; min-width: 0;
   border-left: 1px solid #000; box-shadow: inset 1px 0 #fff;
 }
-/* The pane fills the window between its top margin and the caption
-   area, the way Overview's list and Stats's tabs fill theirs — the
-   machine list and preview well stretch with it, and the group-box
-   panes centre so a taller-than-designed window (a browser tab, a
-   phone) shows no dead gray band above the captions. `safe center`
-   falls back to `flex-start` where it is unsupported — not `center`,
-   which would overflow above the pane's top on a short window. */
+/* Panes fill the area above the captions. The machine list and preview
+   stretch; settings stay at the top so shorter panes share the same
+   starting edge instead of drifting down in taller windows. */
 .pfpane {
   position: absolute; left: 14px; right: 14px; top: 12px; bottom: 74px;
   display: flex; flex-direction: column;
   justify-content: flex-start;
-  justify-content: safe center;
 }
 .pfpane[hidden] { display: none; }
 

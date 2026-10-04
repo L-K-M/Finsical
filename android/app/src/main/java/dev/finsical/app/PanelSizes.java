@@ -54,7 +54,7 @@ final class PanelSizes {
         sizes.put("prefs.html", new Size(565, 518));
         sizes.put("overview.html", new Size(521, 381));
         sizes.put("addons.html", new Size(621, 441));
-        sizes.put("stats.html", new Size(380, 360));
+        sizes.put("stats.html", new Size(380, 330));
         PAGE_SIZES_DP = Collections.unmodifiableMap(sizes);
     }
 

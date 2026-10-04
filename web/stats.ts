@@ -342,7 +342,7 @@ mountTabs(tabsEl, {
 // than scroll).
 hostWindow(win, {
   title: "Tank Stats",
-  zoom: { standard: { w: 380, h: 360 } },
+  zoom: { standard: { w: 380, h: 330 } },
   // Match the native minimum: below it the care hints and Keeping
   // controls clip without a scroll path.
   grow: { min: { w: 340, h: 330 } },
