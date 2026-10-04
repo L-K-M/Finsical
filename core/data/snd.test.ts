@@ -379,7 +379,8 @@ describe("soundsFromRsrc", () => {
     const { map, refs, names } = mapOf(fork);
     expect(names).toBe(refs + 12);
     for (let n = 0; n < fork.length; n++)
-      expect(soundsFromRsrc(fork.subarray(0, n)).map((s) => s.name))
+      expect(soundsFromRsrc(fork.subarray(0, n)).map((s) => s.name),
+             `fork cut to ${n} bytes`)
         .toEqual(n < refs + 12 ? [] : ["snd_1"]);
     const mapPast = fork.slice();
     new DataView(mapPast.buffer).setUint32(4, fork.length - 27);

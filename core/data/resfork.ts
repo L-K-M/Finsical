@@ -65,45 +65,72 @@ const BINHEX_ALPHABET =
 const BINHEX_LUT = new Map<string, number>(
   [...BINHEX_ALPHABET].map((c, i) => [c, i]));
 
+/** Most bytes a BinHex stream may decode to. Its run-length code
+ * repeats a byte up to 254 more times for every two bytes in, so a
+ * crafted half megabyte of text could otherwise ask for gigabytes;
+ * real files decode to a few megabytes. */
+const MAX_BINHEX_BYTES = 64 << 20;
+
 function binhexDecode(raw: Uint8Array): Uint8Array | null {
   // 6-bit packed text between ':' markers; 0x90 is the RLE marker.
   const text = new TextDecoder("latin1").decode(raw);
   const start = text.indexOf(":");
   if (start < 0) return null;
-  const vals: number[] = [];
+  const vals = new Uint8Array(text.length - start);
+  let nv = 0;
   for (let i = start + 1; i < text.length; i++) {
     const v = BINHEX_LUT.get(text[i]!);
-    if (v !== undefined) vals.push(v);
-    else if (text[i] === ":" && vals.length > 64) break;
+    if (v !== undefined) vals[nv++] = v;
+    else if (text[i] === ":" && nv > 64) break;
   }
-  const out: number[] = [];
-  let i = 0;
-  for (; i + 4 <= vals.length; i += 4) {
+  const out = new Uint8Array(Math.floor(nv / 4) * 3 + 2);
+  let no = 0, i = 0;
+  for (; i + 4 <= nv; i += 4) {
     const acc = vals[i]! << 18 | vals[i + 1]! << 12 |
                 vals[i + 2]! << 6 | vals[i + 3]!;
-    out.push(acc >> 16 & 0xFF, acc >> 8 & 0xFF, acc & 0xFF);
+    out[no++] = acc >> 16 & 0xFF;
+    out[no++] = acc >> 8 & 0xFF;
+    out[no++] = acc & 0xFF;
   }
-  const tail = vals.length - i;
+  const tail = nv - i;
   if (tail) {
     let acc = 0;
     for (let j = 0; j < tail; j++) acc |= vals[i + j]! << (18 - j * 6);
-    if (tail > 1) out.push(acc >> 16 & 0xFF);
-    if (tail > 2) out.push(acc >> 8 & 0xFF);
+    if (tail > 1) out[no++] = acc >> 16 & 0xFF;
+    if (tail > 2) out[no++] = acc >> 8 & 0xFF;
   }
   // De-RLE: 0x90 0x00 = literal 0x90; 0x90 n = prior byte × n total.
-  const d: number[] = [];
-  for (i = 0; i < out.length; i++) {
+  let d = new Uint8Array(Math.min(2 * no + 16, MAX_BINHEX_BYTES));
+  let nd = 0;
+  const room = (n: number): boolean => {
+    if (nd + n > MAX_BINHEX_BYTES) return false;
+    if (nd + n > d.length) {
+      const bigger = new Uint8Array(
+        Math.min(MAX_BINHEX_BYTES, Math.max(nd + n, 2 * d.length)));
+      bigger.set(d.subarray(0, nd));
+      d = bigger;
+    }
+    return true;
+  };
+  for (i = 0; i < no; i++) {
     const b = out[i]!;
-    if (b === 0x90 && i + 1 < out.length) {
+    if (b === 0x90 && i + 1 < no) {
       const n = out[++i]!;
-      if (n === 0) { d.push(0x90); continue; }
-      if (!d.length) return null;
-      for (let k = 0; k < n - 1; k++) d.push(d[d.length - 1]!);
+      if (n === 0) {
+        if (!room(1)) return null;
+        d[nd++] = 0x90;
+        continue;
+      }
+      if (!nd) return null;
+      if (!room(n - 1)) return null;
+      d.fill(d[nd - 1]!, nd, nd + n - 1);
+      nd += n - 1;
       continue;
     }
-    d.push(b);
+    if (!room(1)) return null;
+    d[nd++] = b;
   }
-  return new Uint8Array(d);
+  return d.subarray(0, nd);
 }
 
 function unwrapBinhex(d: Uint8Array): Uint8Array {
@@ -144,6 +171,7 @@ export function unwrapContainer(d: Uint8Array): Uint8Array {
 export interface ForkResource {
   id: number;
   name: string | null;
+  /** A view into the fork's bytes, not a copy: it changes if they do. */
   data: Uint8Array;
 }
 
@@ -177,7 +205,7 @@ export function openFork(d: Uint8Array): Fork | null {
   const ntypes = u16be(v, tbase) + 1;
   return { resources(type: string, max: number): ForkResource[] {
     if (type.length !== 4) throw new Error(`type code "${type}" isn't 4 characters`);
-    const code = [...type].map((c) => c.charCodeAt(0));
+    const code = [0, 1, 2, 3].map((k) => type.charCodeAt(k));
     for (let i = 0; i < ntypes; i++) {
       const e = tbase + 2 + i * 8;
       if (e + 8 > r.length) break;

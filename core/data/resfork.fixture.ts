@@ -109,18 +109,25 @@ export const wrapBinhex = (rsrc: Uint8Array, data = new Uint8Array(0),
     else if (run >= 4) { rle.push(b, 0x90, run); i += run; }
     else { for (let k = 0; k < run; k++) rle.push(b); i += run; }
   }
-  const enc: number[] = [];
+  return binhexText(rle);
+};
+
+/** BinHex 4.0 text for a stream already run-length coded (0x90 runs),
+ * between the preamble line and the closing colon. */
+export const binhexText = (rle: ArrayLike<number>): Uint8Array => {
+  const enc = new Uint8Array(Math.ceil(rle.length / 3) * 4);
+  let n = 0;
   for (let i = 0; i < rle.length; i += 3) {
-    const c = rle.slice(i, i + 3);
-    const acc = (c[0]! << 16) | ((c[1] ?? 0) << 8) | (c[2] ?? 0);
-    const n = c.length === 3 ? 4 : c.length + 1;
-    for (const s of [18, 12, 6, 0].slice(0, n))
-      enc.push(BINHEX_ALPHABET.charCodeAt(acc >>> s & 63));
+    const left = Math.min(3, rle.length - i);
+    const acc = (rle[i]! << 16) | ((left > 1 ? rle[i + 1]! : 0) << 8) |
+      (left > 2 ? rle[i + 2]! : 0);
+    for (const s of [18, 12, 6, 0].slice(0, left + 1))
+      enc[n++] = BINHEX_ALPHABET.charCodeAt(acc >>> s & 63);
   }
   const pre = new TextEncoder().encode(
     "(This file must be converted with BinHex 4.0)\r\n:");
-  const out = new Uint8Array(pre.length + enc.length + 1);
-  out.set(pre); out.set(Uint8Array.from(enc), pre.length);
+  const out = new Uint8Array(pre.length + n + 1);
+  out.set(pre); out.set(enc.subarray(0, n), pre.length);
   out[out.length - 1] = 0x3A;
   return out;
 };

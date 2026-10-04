@@ -7,7 +7,8 @@ from unittest import mock
 from tools.az.rsrc import (ResFile, unwrap_appledouble, unwrap_binhex,
                            unwrap_container, unwrap_macbinary)
 from tools.tests.fixtures import (build_rsrc, wrap_appledouble,
-                                  wrap_binhex, wrap_macbinary)
+                                  binhex_text, wrap_binhex,
+                                  wrap_macbinary)
 
 
 def _write(tmp, blob):
@@ -174,6 +175,20 @@ class TestRsrc(unittest.TestCase):
         cut = bh[:60]
         self.assertIs(unwrap_binhex(cut), cut)
         self.assertIs(unwrap_container(cut), cut)
+
+    def test_binhex_caps_run_expansion(self):
+        # A valid header announcing a huge resource fork, then one byte
+        # and 0x90 0xFF pairs, each repeating it 254 more times: half a
+        # megabyte of text asks for over 64 MB. Like core/data/resfork.ts,
+        # the decode gives up and the input passes through.
+        pairs = 264_300
+        rlen = 1 + 254 * pairs
+        head = (b"\x01x\x00APPL9003" + struct.pack(">HII", 0, 0, rlen)
+                + b"\0\0")
+        self.assertNotIn(0x90, head)
+        hqx = binhex_text(head + b"A" + b"\x90\xff" * pairs + b"\0\0")
+        # assertTrue: a failing assertIs would print 64 MB.
+        self.assertTrue(unwrap_binhex(hqx) is hqx)
 
     def test_macbinary_rejects_raw_fork(self):
         # A raw fork starts with its data offset (0x00000100): byte 1

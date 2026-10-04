@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { openFork } from "./resfork.js";
-import { buildRsrc, wrapAppledouble, wrapBinhex, wrapMacbinary }
+import { openFork, unwrapContainer } from "./resfork.js";
+import { binhexText, buildRsrc, wrapAppledouble, wrapBinhex, wrapMacbinary }
   from "./resfork.fixture.js";
 
 const bytes = (...b: number[]) => Uint8Array.from(b);
@@ -79,5 +79,33 @@ describe("openFork", () => {
     for (let n = 0; n < fork.length; n++)
       expect(() => openFork(fork.subarray(0, n))?.resources("BAPC", 9))
         .not.toThrow();
+  });
+});
+
+describe("unwrapContainer", () => {
+  it("refuses BinHex whose runs would decode past 64 MB", () => {
+    // A valid header announcing a huge resource fork, then one byte and
+    // 0x90 0xFF pairs: each pair repeats it 254 more times, so 0.5 MB
+    // of text asks for 64 MB and more.
+    const pairs = 264_300, rlen = 1 + 254 * pairs;
+    const head = [1, 0x78, 0, ...[0x41, 0x50, 0x50, 0x4c, 0x39, 0x30, 0x30, 0x33],
+                  0, 0, 0, 0, 0, 0,
+                  rlen >>> 24, rlen >>> 16 & 255, rlen >>> 8 & 255, rlen & 255,
+                  0, 0, 0, 0];
+    expect(head).not.toContain(0x90);
+    const rle = new Uint8Array(head.length + 1 + 2 * pairs + 2);
+    rle.set(head);
+    rle[head.length] = 0x41;
+    for (let i = 0; i < pairs; i++)
+      rle.set([0x90, 0xff], head.length + 1 + 2 * i);
+    const hqx = binhexText(rle);
+    expect(unwrapContainer(hqx)).toBe(hqx);
+    expect(openFork(hqx)?.resources("PICT", 1) ?? []).toEqual([]);
+  });
+
+  it("peels AppleSingle as it peels AppleDouble", () => {
+    const single = wrapAppledouble(gravel());
+    new DataView(single.buffer).setUint32(0, 0x00051600);
+    expect(read(single, "BAPC")).toEqual([[4020, null, [4, 5, 6, 7]]]);
   });
 });
