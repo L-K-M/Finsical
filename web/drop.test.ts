@@ -1,48 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { decodeBmp } from "../core/data/bmp.js";
 import { decodeDroppedPacks, dropSection } from "./drop.js";
+import { buildBmp8, buildChunkPack, cat, PAL, u16le, u32le }
+  from "../core/data/fsh.fixture.js";
 
 // The real decoder, wrapped so one test can make a call throw.
 vi.mock("../core/data/bmp.js", async (importOriginal) => {
   const m = await importOriginal<typeof import("../core/data/bmp.js")>();
   return { ...m, decodeBmp: vi.fn(m.decodeBmp) };
 });
-
-const PAL: [number, number, number][] =
-  [[0, 0, 0], [255, 0, 0], [0, 0, 255], [0, 255, 0]];
-
-function u32le(n: number): Uint8Array {
-  const b = new Uint8Array(4);
-  new DataView(b.buffer).setUint32(0, n, true);
-  return b;
-}
-function u16le(n: number): Uint8Array {
-  const b = new Uint8Array(2);
-  new DataView(b.buffer).setUint16(0, n, true);
-  return b;
-}
-const cat = (...parts: Uint8Array[]) => {
-  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
-  let o = 0;
-  for (const p of parts) { out.set(p, o); o += p.length; }
-  return out;
-};
-
-/** Minimal 8-bit BMP — only the palette region needs to be valid. */
-function buildBmp8(pal: [number, number, number][]): Uint8Array {
-  const pxOff = 14 + 40 + 256 * 4;
-  const hdr = new Uint8Array(pxOff);
-  hdr[0] = 0x42; hdr[1] = 0x4d; // "BM"
-  const v = new DataView(hdr.buffer);
-  v.setUint32(2, pxOff + 4, true);
-  v.setUint32(10, pxOff, true);
-  v.setUint32(14, 40, true);
-  v.setUint16(26, 1, true);
-  v.setUint16(28, 8, true);
-  v.setUint32(46, pal.length, true);
-  pal.forEach(([r, g, b], i) => hdr.set([b, g, r, 0], 14 + 40 + i * 4));
-  return hdr;
-}
 
 /** 8-bit BMP with real pixel rows — packImages decodes it. */
 function buildBmpImage(w: number, h: number): Uint8Array {
@@ -67,20 +33,8 @@ function spriteChunk(w: number, h: number, color: number): Uint8Array {
   );
 }
 
-function buildPack(...chunks: Uint8Array[]): Uint8Array {
-  const body: Uint8Array[] = [new Uint8Array(0x100)];
-  for (const pl of chunks) body.push(u32le(pl.length), pl);
-  const dirOff = body.reduce((n, p) => n + p.length, 0);
-  const hdr = cat(u32le(0x00000100), u32le(dirOff),
-                  u32le(dirOff - 0x100), u32le(0x104));
-  const out = cat(...body);
-  const full = cat(out, hdr);
-  full.set(hdr, 0);
-  return full;
-}
-
-const packA = buildPack(buildBmp8(PAL), spriteChunk(4, 4, 1));
-const packB = buildPack(buildBmp8(PAL), spriteChunk(6, 3, 2));
+const packA = buildChunkPack(buildBmp8(PAL), spriteChunk(4, 4, 1));
+const packB = buildChunkPack(buildBmp8(PAL), spriteChunk(6, 3, 2));
 
 describe("decodeDroppedPacks", () => {
   it("decodes every pack in a multi-file drop, in order", () => {
@@ -116,7 +70,7 @@ describe("decodeDroppedPacks", () => {
   });
 
   it("skips non-pack files and pack containers with no sprites", () => {
-    const empty = buildPack(buildBmp8(PAL));
+    const empty = buildChunkPack(buildBmp8(PAL));
     const packs = decodeDroppedPacks([
       ["notes.txt", new Uint8Array([1, 2, 3])],
       ["empty.fsh", empty],
@@ -128,10 +82,10 @@ describe("decodeDroppedPacks", () => {
   it("classifies by extension: fish add no scenery, scenery no fish", () => {
     const art = buildBmpImage(8, 4);
     const [fish, gravel, tank, rez] = decodeDroppedPacks([
-      ["Guppy.fsh", buildPack(art, spriteChunk(4, 4, 1))],
-      ["Sand.grv", buildPack(art)],
-      ["Reef.azn", buildPack(art, spriteChunk(4, 4, 1))],
-      ["ANGEL.REZ", buildPack(art, spriteChunk(4, 4, 1))],
+      ["Guppy.fsh", buildChunkPack(art, spriteChunk(4, 4, 1))],
+      ["Sand.grv", buildChunkPack(art)],
+      ["Reef.azn", buildChunkPack(art, spriteChunk(4, 4, 1))],
+      ["ANGEL.REZ", buildChunkPack(art, spriteChunk(4, 4, 1))],
     ]);
     expect([fish!.section, fish!.sheets.size, fish!.images.size])
       .toEqual(["fish", 1, 0]);
