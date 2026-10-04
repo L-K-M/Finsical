@@ -8,6 +8,7 @@ import { FISH_CAP, HUNGER_SEEK, QUALITY_SEEK, SPAWN_HUNGER }
 import { CLOCK_NIGHT_LIGHT } from "./light.js";
 import { pitch } from "./pose.js";
 import { DEFAULT_CARE } from "./data/species.js";
+import { stomachSize } from "./aquarium/life.js";
 
 // States a fish may be in when it's not seeking food.
 const IDLE_STATES = ["drift", "turn"];
@@ -1516,6 +1517,25 @@ describe("lifecycle", () => {
     expect(sim.fish[2]!.entry).toBe("guppy-b.fsh");
   });
 
+  it("a fry is born at age 0 with its stomach as full as its hunger says",
+     () => {
+    const sim = new Sim({ width: 320, height: 200 }, 42);
+    breedingPair(sim);
+    for (let days = 0; days < 200 && sim.fish.length < 3; days++) {
+      for (const f of sim.fish) f.life!.ate = f.life!.stomach;
+      sim.advanceLife(24 * 3600);
+      for (const f of sim.fish.slice(0, 2)) f.life!.health = 100;
+    }
+    expect(sim.fish.length).toBe(3);
+    const baby = sim.fish[2]!;
+    const life = baby.life!;
+    expect(baby.hunger).toBe(0.3);
+    expect(life.age).toBe(0);
+    const weight = sim.residents().find((r) => r.id === baby.id)!.weight;
+    expect(life.stomach).toBe(stomachSize(weight));
+    expect(life.ate).toBe(Math.round(life.stomach * 0.7));
+  });
+
   it("never breeds on the swim clock, however long the tank is watched",
      () => {
     const sim = new Sim({ width: 320, height: 200 }, 42);
@@ -1800,6 +1820,22 @@ describe("Clean Up", () => {
     sim.cleanUp();
     for (let t = 0; t < Sim.FORMATION_TICKS - 1; t++) sim.tick();
     expect(Math.max(...gaps(sim))).toBeLessThanOrEqual(24);
+  });
+
+  it("starts every fish on a fresh stroke toward its place", () => {
+    // Caught mid-hover and mid-stroke, with strokes already spent.
+    const sim = new Sim(TANK, 7);
+    for (let i = 0; i < 6; i++)
+      sim.addFish({ x: 10 + (i * 37) % 300, y: 40 + (i * 53) % 140 });
+    for (const f of sim.fish) {
+      f.hover = 4_000;
+      f.phase = 5;
+      f.latch = 2;
+      f.strokes = 3;
+    }
+    sim.cleanUp();
+    for (const f of sim.fish)
+      expect([f.phase, f.latch, f.strokes, f.hover]).toEqual([0, -1, 0, 0]);
   });
 
   it("refunds the stroke budget on arrival", () => {
