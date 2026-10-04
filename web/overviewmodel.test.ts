@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { fishThumbKey } from "./bus.js";
 import { isCurrentTankAction, itemsOf, sortItems,
          summary } from "./overviewmodel.js";
 import type { TankState } from "./overviewmodel.js";
@@ -64,6 +65,19 @@ describe("itemsOf", () => {
                state: "drift", standIn: true }] });
     expect(items.slice(0, 3).map((i) => i.name))
       .toEqual(["Wanda (Guppy)", "Blob", "Mo (stand-in)"]);
+  });
+
+  it("keys rows by the thumbnail keys the tank serves", () => {
+    // Fish rows are "f:<id>:<pack or species>", add-on rows "a:<url>";
+    // the bound clown.fsh and Angelfish packs list only as their fish,
+    // so the header counts two add-ons.
+    const items = itemsOf(STATE);
+    expect(items.map((i) => i.key)).toEqual(
+      ["f:1:u:clown", "f:2:Angelfish", "a:u:tang", "a:u:blue"]);
+    expect(items.slice(0, 2).map((i) => i.key))
+      .toEqual(STATE.fish!.map(fishThumbKey));
+    expect(items.map((i) => i.fishId)).toEqual([1, 2, undefined, undefined]);
+    expect(items.filter((i) => i.remove.op === "removeAddon")).toHaveLength(2);
   });
 
   it("removes each line the way the tank expects", () => {
