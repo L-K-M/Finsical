@@ -123,11 +123,6 @@ export function acidity(gH: number, co2PerLitre: number): number {
   return clamp((v0 + (row(r1) - v0) * fr) * 0.01, 5, 9);
 }
 
-/** Per-litre concentration of an element (mg/L). */
-export function perLitre(w: Water, e: Element): number {
-  return w[e] / w.litres;
-}
-
 /** Set an element's tank total, with the original clamp and knock-on
  * effects. Returns the change actually applied. */
 export function setElement(w: Water, e: Element, total: number): number {
