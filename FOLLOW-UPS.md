@@ -161,6 +161,19 @@ in the GLM review comment on #267.
   real AquaZone bank has been checked for this.
 - **#225:** nothing tests that every machine name fits the 190 px
   Machine list.
+- **#427:** `unwrapMacbinary` doesn't check that byte 82 is zero. It
+  is a zero fill that MacBinary I, II and III all keep zero (their
+  version bytes are 122 and 123), so the check would turn away more
+  files that only look like MacBinary and no real ones. A test in
+  `core/data/resfork.test.ts` patches its fixture through
+  `new DataView(single.buffer)`, ignoring `byteOffset`; that works
+  only while the fixture returns a fresh array.
+- **#428:** the fuzz test of random bytes behind a valid header still
+  takes its header from the version 2 seed, so the version 1 and
+  data-fork header paths aren't fuzzed that way.
+- **#429:** a drop on the Import Add-ons window that both refuses some
+  pictures and fails to store others shows only the refusal note. The
+  storage note shows only when nothing was refused.
 
 ### Optional ideas from closed PRs
 
@@ -366,6 +379,101 @@ descriptions of #161 and #162.
   tank shows the "already open in another window" view-only notice
   until the lease runs out, then takes over. No data is lost, but the
   notice is wrong.
+
+### Mac content on archive.org
+
+Surveyed on 2026-10-04 with archive.org's advancedsearch and metadata
+APIs, the archive view's listings, and HTTP Range reads of the disc
+images. The table lists the items with Mac content.
+
+| Item | Path | Container | Contents | Reachable today | What it would take |
+| --- | --- | --- | --- | --- | --- |
+| `aquazonewithguppiesandaddons` | `Missing addons Aquazone.7z`, `Spare interesting things/Misc Macintosh files/`: 4 files without extensions | PICT files in a 7z | 4 backdrops | Import Add-ons, drops, `fetch.py --archive` | Done |
+| same | same folder, 5 `._` files | AppleDouble forks | 5 gravels | Import Add-ons, drops, `fetch.py --archive` | Done |
+| same | same folder: `GRAVEL1.sit`, `GRAVEL2.sit`, `Kawajya.sit`, `Raked_Gravel.sit`, `Tsouki.sit`, `bamboo.sit` | StuffIt 5, method 13 (the first two) or 15 | 13 gravels: black, black2, ghyll, red, red2, glassie, goishi, green-mos, marble, Kawajya, Raked Gravel, Tsouki, Bamboo Mat | By hand: extract with `unar`, then drop the `.rsrc` files or run `azpack.py` on them | A StuffIt 5 reader |
+| same | same folder: `macplants.sit` | StuffIt 5, method 15 | 41 plants, filed as accessories (`AqAc`) | No | A StuffIt 5 reader, QuickTime `WRLE` pictures, and the plants' `AccH` and `AccI` records |
+| same | same folder: `mactools.zip` | zip of StuffIt 5 archives | AquaZone's authoring tools (FisherMan, GravelMaker, PlantMaker, FishColor) and palettes | Not content | Nothing |
+| same | `AQUAZONE.iso` | ISO 9660 with an Apple partition map and an HFS volume | HFS `AQUAZONE/Items` and `Guppy Items`: 15 PICT backdrops, 5 gravels, 14 plants, 10 accessories, 12 tanks, fish and guppy forks, food, medicine | No | An HFS reader (below) |
+| same | `AQUAZONE.iso`, `Win/Items/data.z` | InstallShield 3 archive, 7.5 MB | The same items for Windows | No | InstallShield 3 and PKWARE DCL Implode readers |
+| `aquazone_1997_9003inc` | `AQUAZONE.ISO` | ISO 9660 with an Apple partition map and an HFS volume | HFS: 10 backdrops, 4 gravels, 4 plants, 4 accessories, 6 tanks, 4 fish. Windows: `WIN95/ITEMS/DATA.Z`, 3.7 MB | No | As for `AQUAZONE.iso` |
+| `aquazone-deluxe` | `AquazoneDeluxe.iso` | ISO 9660 with an Apple partition map and an HFS volume | HFS: 15 backdrops, 4 gravels, 5 plants, 7 accessories, 12 tanks, 6 fish. Windows: `WIN95/Items/data.z`, 6.7 MB | No | As for `AQUAZONE.iso` |
+| `AZ_SEVEN_SEAS_DX_ISO` | `AZ_SEVEN_SEAS_DX.ISO` | ISO 9660 with an Apple partition map and an HFS volume | AquaZone Seven Seas Deluxe (2005, Allume): an installer app and trialware | No | Out of scope: a later product, its content inside an installer |
+| `aquazone-jpn-set` | `AQUAZONE (JPN) SET.zip`, `AQUAZONE Guide・Catalog.zip`: 19 `.hqx` files | BinHex of classic StuffIt and Compact Pro archives | Updaters, a shop item, and kits for The Tower | No | Not worth it: no scenery |
+
+- The Deluxe II image is on archive.org four times: `AQUAZONE.iso`,
+  `AQUAZONE_BACKUP.ISO`, the `AQUAZONE.iso` inside
+  `Aquazone-Deluxe-II-…-WinMac-Hybrid.zip`, and the `Aquazone.iso`
+  inside `aquazone-iiguppies/AquazoneIIguppies.zip` have the same size
+  (541,442,048 bytes) and CRC-32 (`76769523`). The unzipped copy
+  serves Range requests, so a reader never needs the zips.
+- These have no Mac side (no partition map and no HFS master directory
+  block): the JT&M image that `AquazoneJTM`,
+  `aqua-zone-virtual-aquarium`, `aquazone-jt-m_202107`,
+  `aquazone-jt-m_20210730` and `AQUAZONE` all hold (one MD5),
+  `aquazone-virtual-aquarium`'s raw dump,
+  `aquazone-turtles-jellies-more`, `azax-spbox-2` and `score52cd`.
+- Not found on archive.org: Redump's Mac list names nine Japanese
+  AquaZone discs (Aquazone Compact and its rerelease, Aquazone Deluxe
+  (Japan) and six iMacinfish option discs), but `apple_macintosh` and
+  `apple-macintosh-redump-2` hold none of them. PLAN.md's `AQUA179.sit`
+  (the Mac app 1.7.9) is in no surveyed item, and advancedsearch finds
+  nothing for it. `AquazoneROM` holds only a torrent, and
+  `warc-aquazone_frankism_net` is a Super Soaker fan site.
+- Range and CORS, checked on 2026-10-04 with an `Origin` header: a
+  whole-file download redirects to a data node that honors `Range`
+  (206 with `Content-Range`) but sends no `Access-Control-Allow-Origin`
+  for ISO, zip, 7z or raw `.bin` files, and answers a preflight
+  `OPTIONS` with 405. Text files do get CORS. The archive view
+  (`/download/<item>/<archive>/<entry>`) sends CORS for the entries of
+  a zip, 7z or ISO, but ignores `Range` (asked for 16 bytes, it sent
+  all 121,616) and lists only an ISO's ISO 9660 side. A page can't
+  read a disc image, whole or in part, and can't see an HFS side.
+
+**HFS.** The three hybrids keep the Mac items as plain files on their
+HFS sides. Their backdrops and gravels decode with the current code
+(Astral Hill and the Aqua gravel, read by Range, do); plants,
+accessories, tanks and fish need more.
+
+- Command line first: an HFS reader in `tools/az/` (Apple partition
+  map, master directory block, catalog B*-tree, extents overflow),
+  written from Inside Macintosh: Files (chapter 2) and Inside
+  Macintosh: Devices, with `fetch.py` reading the image through a
+  cached Range reader. About 300 lines, plus fixtures that build small
+  HFS volumes. Deluxe II's 20 backdrops and gravels come to 4.7 MB of
+  its 541 MB. Apple's documentation keeps it license-clean; `hfsutils`
+  and `libhfs` are GPL. deark (MIT) has an experimental HFS module to
+  compare against.
+- In the app, only for a disc image you drop, read through
+  `Blob.slice` so the 541 MB never loads at once: a TypeScript twin of
+  about 300 lines. Fetching from archive.org fails on CORS, above.
+
+**StuffIt.** All seven `.sit` files are StuffIt 5 archives. Neither
+of their methods, 13 (LZ and Huffman) and 15 (Arsenic), has a public
+specification. The one open implementation, XADMaster (The
+Unarchiver's engine), is LGPL-2.1, so its code can't be copied or
+ported, and deark (MIT) reads only the old StuffIt format. A
+clean-room reader would need a specification written by someone who
+hasn't read that code, so it isn't recommended. Instead, the README
+points to `unar -k visible`, which writes each resource fork as an
+AppleDouble `.rsrc` file that drops and `azpack.py` read. Checked with
+unar 1.10.1: all 13 gravels from the six gravel archives come out as
+gravels.
+
+**InstallShield.** The hybrids' Windows items sit in InstallShield 3
+archives (`data.z`, 3.7 to 7.5 MB, signature `13 5D 65 8C`), which
+the archive view serves with CORS. Reading them takes the archive's
+directory and PKWARE DCL Implode; zlib's `contrib/blast` (zlib
+license) and deark (MIT) implement the latter. Whether they hold
+anything the Japanese set doesn't is unverified: a few of the HFS
+names match its files (Emerald, Garden, Milky Way, Wave, Golden,
+Stream), most don't.
+
+**Mac plants.** Every picture in the plant forks (41 `ACPC`, 82
+`ACDP`) is an 8-bit QuickTime-compressed PICT with the `WRLE` codec,
+which is Windows BMP data, and `core/data/bmp.ts` already decodes that.
+The PICT decoder refuses QuickTime pictures today; reading `WRLE`
+takes the `$8200` opcode's image description and color table. Placing
+the plants also needs their `AccH` and `AccI` records worked out.
 
 ### Tooling and tests
 
