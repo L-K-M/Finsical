@@ -151,22 +151,50 @@ def emit_sounds(data: bytes, outdir: str) -> dict:
     return manifest
 
 
+# The tank's width, and the smallest picture a drop may show: the
+# rules web/drop.ts applies (isGravelImage in web/render.ts and
+# BACKDROP_MIN), so a bundle shows what the same file shows in the app.
+TANK_WIDTH = 320
+BACKDROP_MIN = (160, 100)
+
+
+def _shown(gravel: bool, w: int, h: int) -> bool:
+    """Whether the app shows a w x h picture from this file: a gravel
+    fork's strips, or any other file's pictures of BACKDROP_MIN or
+    more."""
+    if gravel:
+        return w >= h * 4 and w >= TANK_WIDTH / 2
+    return w >= BACKDROP_MIN[0] and h >= BACKDROP_MIN[1]
+
+
 def emit_mac(data: bytes, outdir: str) -> dict:
     """Emit an .azpack of a Mac file's pictures: a PICT file, or a fork
     carrying pictures (see macpics.py), with the fork's sounds if it has
-    any. Each picture keeps its payload under chunks/; the ones the tank
-    shows get an indexed PNG under images/, which the tank's bundle
-    loader reads as backdrop or gravel art by shape. A gravel add-on's
-    catalog picture (BADP) gets no image: it is no backdrop. White is
-    palette index 0, the color the tank keys out of a gravel strip."""
+    any. Each picture keeps its payload under chunks/; the ones the app
+    would show (_shown) get an indexed PNG under images/, which the
+    tank's bundle loader reads as backdrop or gravel art by shape. So a
+    gravel add-on's catalog picture (BADP), the size of a backdrop,
+    gets none. White is palette index 0, the color the tank keys out of
+    a gravel strip."""
     found = mac_pictures(data)
     if found is None:
         raise ValueError("no pictures found")
     gravel, images, failed = found
     if not images:
         raise ValueError("no picture decodes: " + "; ".join(failed))
+    if not any(_shown(gravel, w, h) for _k, _r, _b, (w, h, _p, _i) in images):
+        raise ValueError("no picture the tank can show")
     for f in failed:
         print(f"  skipping picture {f}", file=sys.stderr)
+    # A PICT file carries no sounds; a fork may. They are read before
+    # anything is written, so a map the walker trips on costs only the
+    # sounds, not a half-written bundle.
+    decoded = []
+    if images[0][1] is not None:
+        try:
+            decoded = list(sounds_from_rsrc(data))
+        except Exception as e:  # struct.error and kin from a broken map
+            print(f"  skipping sounds: {e}", file=sys.stderr)
     for sub in ("images", "chunks"):
         os.makedirs(os.path.join(outdir, sub), exist_ok=True)
     records = []
@@ -177,14 +205,13 @@ def emit_mac(data: bytes, outdir: str) -> dict:
             f.write(payload)
         rec = {"file": raw, "size": len(payload), "resId": rid, "sub": None,
                "name": key}
-        if not (gravel and key.startswith("BADP")):
+        if _shown(gravel, w, h):
             img = f"images/{safe}.png"
             save_indexed_png(os.path.join(outdir, img), w, h, idx, palette)
             rec.update(image=img, w=w, h=h)
         records.append(rec)
     manifest = {"format": "azpack/1", "tag": "", "version": 0, "names": [],
                 "chunks": records}
-    decoded = list(sounds_from_rsrc(data))
     if decoded:
         manifest["sounds"] = _write_sounds(decoded, outdir)
     with open(os.path.join(outdir, "manifest.json"), "w",

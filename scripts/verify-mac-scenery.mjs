@@ -32,7 +32,8 @@ const be32 = (v) => [v >>> 24, (v >> 16) & 255, (v >> 8) & 255, v & 255];
 
 /** An 8-bit PICT (version 2, one PackBitsRect, literal rows) of w x h
  * whose rows take `rowColor(y)`, an index into the white/red/green/blue
- * table. `file` adds a data-fork file's 512-byte header. */
+ * table. `file` adds a data-fork file's 512-byte header, which an app
+ * fills as it likes: this one starts with text. */
 function pict(w, h, rowColor, file = false) {
   const clut = [[255, 255, 255], [200, 40, 40], [40, 160, 60], [30, 60, 200]];
   const out = [...be16(0), 0, 0, 0, 0, ...be16(h), ...be16(w),
@@ -55,7 +56,10 @@ function pict(w, h, rowColor, file = false) {
   }
   if (out.length & 1) out.push(0);
   out.push(0x00, 0xff);
-  return Uint8Array.from([...(file ? new Array(512).fill(0) : []), ...out]);
+  const header = [..."Finsical test PICT"].map((c) => c.charCodeAt(0));
+  return Uint8Array.from([
+    ...(file ? [...header, ...new Array(512 - header.length).fill(0)] : []),
+    ...out]);
 }
 
 /** A resource fork holding `types`: { 'BAPC': [[id, bytes]] }. */
@@ -575,7 +579,7 @@ try {
       assert.deepEqual(await evalJs("__probe.gravelPixels()", page),
                        [CLEAR, GREEN]);
       // The fork's catalog picture, backdrop-sized, didn't become one.
-      assert.equal(await evalJs("__probe.backdropPixel()", page), null);
+      assert.strictEqual(await evalJs("__probe.backdropPixel()", page), null);
     });
 } finally {
   await chrome?.close();

@@ -106,8 +106,11 @@ def _list_item(ident: str) -> list[dict]:
     return meta.get("files", [])
 
 
-def _emit_source(name: str, data: bytes, outdir: str) -> str | None:
-    """If data is importable, emit an .azpack under outdir; return path."""
+def _emit_source(name: str, data: bytes, outdir: str,
+                 strict: bool = False) -> str | None:
+    """If data is importable, emit an .azpack under outdir; return path.
+    A failed emit is reported and returns None, or raises when strict,
+    so a caller can count it as failed rather than not importable."""
     base = os.path.splitext(mac_display_name(os.path.basename(name)))[0]
     out = os.path.join(outdir, base + ".azpack")
     n = 2
@@ -145,6 +148,8 @@ def _emit_source(name: str, data: bytes, outdir: str) -> str | None:
             _install_emitted(lambda dst: emit_sounds(data, dst), out)
             return finish()
     except Exception as e:
+        if strict:
+            raise
         print(f"  {name}: {type(e).__name__}: {e}", file=sys.stderr)
     return None
 
@@ -311,19 +316,29 @@ def _harvest_disc(iso, outdir: str) -> list[str]:
 
 def _archive_entries(ident: str, archive: str) -> list[str]:
     """Entry paths an archive's archive view lists, as stored: a known
-    listing quirk (LISTING_RENAMES) is put right."""
-    page = _get(ARCHIVE_VIEW.format(
-        ident=ident, archive=urllib.parse.quote(archive)))
-    text = page.decode("utf-8", "replace")
-    marker = f"/download/{ident}/{archive}/"
+    listing quirk (LISTING_RENAMES) is put right. Links are read as
+    web/import.ts reads them: resolved against the page, https on
+    archive.org only, matched on the decoded path."""
+    page_url = ARCHIVE_VIEW.format(ident=ident,
+                                   archive=urllib.parse.quote(archive))
+    text = _get(page_url).decode("utf-8", "replace")
+    prefix = f"/download/{ident}/{archive}/"
     listed, stored = LISTING_RENAMES.get((ident, archive), ("", ""))
     out: list[str] = []
     for href in re.findall(r'href="([^"]+)"', text):
-        path = urllib.parse.unquote(html.unescape(href))
-        at = path.find(marker)
-        if at < 0:
+        try:
+            u = urllib.parse.urlsplit(
+                urllib.parse.urljoin(page_url, html.unescape(href)))
+        except ValueError:
+            continue  # a malformed href: no entry link
+        host = u.hostname or ""
+        if u.scheme != "https" or not (host == "archive.org" or
+                                       host.endswith(".archive.org")):
             continue
-        rel = path[at + len(marker):]
+        path = urllib.parse.unquote(u.path)
+        if not path.startswith(prefix):
+            continue
+        rel = path[len(prefix):]
         if not rel or rel.endswith("/"):
             continue
         if listed and rel.startswith(listed):
@@ -368,7 +383,7 @@ def fetch_entries(ident: str, archive: str, outdir: str,
             if name.lower().endswith(".zip"):
                 made += _harvest(os.path.basename(name), blob, outdir)
             else:
-                out = _emit_source(name, blob, outdir)
+                out = _emit_source(name, blob, outdir, strict=True)
                 if out:
                     made.append(out)
         except Exception as e:
@@ -455,6 +470,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="with --archive: regex over entry paths "
                          "(default: all)")
     args = ap.parse_args(argv)
+    if args.entries.pattern and not args.archive:
+        ap.error("--entries needs --archive")
 
     try:
         if args.archive:

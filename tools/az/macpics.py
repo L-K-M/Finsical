@@ -54,13 +54,16 @@ def mac_pictures(data):
         res = res[:MAX_FILE_PICTURES]
     if res:
         gravel = bool(_resources(fork, b"Grvl", 1))
-        images, failed = [], []
+        # Keyed as the TypeScript Map is: an id a crafted map lists twice
+        # keeps its first place and its last picture.
+        images, failed = {}, []
         for t, rid, blob in res:
+            key = f"{t} {rid}"
             try:
-                images.append((f"{t} {rid}", rid, blob, decode_pict(blob)))
+                images[key] = (key, rid, blob, decode_pict(blob))
             except PictError as e:
-                failed.append(f"{t} {rid}: {e}")
-        return gravel, images, failed
+                failed.append(f"{key}: {e}")
+        return gravel, list(images.values()), failed
     if not is_pict(data):
         return None
     try:
@@ -89,7 +92,9 @@ def mac_display_name(name):
     if all(ord(c) < 0x80 for c in base):
         return base
     try:
-        fixed = base.encode("mac_roman").decode("shift_jis")
+        # cp932 is the Shift-JIS a browser's TextDecoder("shift_jis")
+        # reads, extension kanji included.
+        fixed = base.encode("mac_roman").decode("cp932")
     except (UnicodeEncodeError, UnicodeDecodeError):
         return base
     if re.search(_JAPANESE, fixed) and not _LATIN_TOUCHING.search(fixed):

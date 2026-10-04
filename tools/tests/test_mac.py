@@ -95,6 +95,30 @@ class TestMacPictures(unittest.TestCase):
         for n in ("Réal", "Noël", "Crème brûlée", "Smörgåsbord", "Ångström"):
             self.assertEqual(mac_display_name(n), n)
 
+    def test_extension_kanji_read_as_the_browser_reads_them(self):
+        # 0xED40 is 纊, an NEC-selected IBM kanji: a browser's Shift-JIS
+        # (and cp932) decodes it, Python's shift_jis doesn't.
+        self.assertEqual(mac_display_name("Ì@"), "纊")
+
+    def test_a_type_count_past_the_map_keeps_the_types_before_it(self):
+        # As core/data/resfork.ts reads it: BAPC is listed first, then
+        # the count runs off the end of the file.
+        fork = bytearray(build_rsrc({b"BAPC": [(4020, None, 0, strip())],
+                                     b"Grvl": [(4020, None, 0, bytes(8))]}))
+        mo = struct.unpack_from(">I", fork, 4)[0]
+        tbase = mo + struct.unpack_from(">H", fork, mo + 24)[0]
+        struct.pack_into(">H", fork, tbase, 500)
+        gravel, images, _ = mac_pictures(bytes(fork))
+        self.assertEqual([k for k, *_ in images], ["BAPC 4020"])
+
+    def test_an_id_listed_twice_is_one_picture(self):
+        # The TypeScript Map keeps the first place and the last picture.
+        fork = build_rsrc({b"BAPC": [(4020, None, 0, strip(400, 60)),
+                                     (4020, None, 0, strip(800, 60))]})
+        _, images, _ = mac_pictures(fork)
+        self.assertEqual([(k, img[:2]) for k, _, _, img in images],
+                         [("BAPC 4020", (800, 60))])
+
 
 class TestEmitMac(unittest.TestCase):
     def setUp(self):
@@ -103,6 +127,19 @@ class TestEmitMac(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def test_any_pict_file_is_a_picture_without_sounds(self):
+        # A bare PICT and a file whose 512-byte header isn't zero: no
+        # fork, so nothing to look for sounds in.
+        bare = build_pict(320, 200, [1] * 64000, clut=CLUT)
+        named = bytearray(build_pict(320, 200, [1] * 64000, clut=CLUT,
+                                     file=True))
+        named[:16] = b"Photoshop PICT  "
+        for i, d in enumerate((bare, bytes(named))):
+            out = os.path.join(self.out, str(i))
+            m = emit_mac(d, out)
+            self.assertEqual([c["name"] for c in m["chunks"]], ["PICT"])
+            self.assertNotIn("sounds", m)
 
     def test_a_backdrop_becomes_an_indexed_png(self):
         px = [1 if (x + y) % 2 else 2 for y in range(200) for x in range(320)]
@@ -132,6 +169,25 @@ class TestEmitMac(unittest.TestCase):
     def test_refuses_files_without_pictures(self):
         with self.assertRaises(ValueError):
             emit_mac(b"not a picture", self.out)
+
+    def test_shows_what_the_app_shows(self):
+        # A gravel fork's other pictures stay raw, even a backdrop-sized
+        # one: the app takes only its strip.
+        types = {b"Grvl": [(4020, None, 0, bytes([0, 53, 0, 52, 0, 0, 0, 0]))],
+                 b"BAPC": [(4020, None, 0, strip())],
+                 b"PICT": [(128, None, 0, build_pict(320, 200, [1] * 64000,
+                                                     clut=CLUT))]}
+        m = emit_mac(wrap_appledouble(build_rsrc(types)), self.out)
+        self.assertEqual([c["name"] for c in m["chunks"] if "image" in c],
+                         ["BAPC 4020"])
+
+    def test_refuses_pictures_the_app_refuses(self):
+        # A strip under 100 pixels tall outside a gravel fork, and icons:
+        # the app turns both files away, so no bundle either.
+        for i, d in enumerate((build_pict(640, 60, [1] * 38400, clut=CLUT),
+                               build_pict(64, 48, [1] * 3072, clut=CLUT))):
+            with self.assertRaises(ValueError):
+                emit_mac(d, os.path.join(self.out, str(i)))
 
 
 class TestAzpackCli(unittest.TestCase):
@@ -222,6 +278,49 @@ class TestArchiveEntries(unittest.TestCase):
         # Entries are fetched where archive.org stores them.
         self.assertTrue(all("Missing%20addons%20Aquazone%2F" in u
                             for u in calls[1:]))
+
+    def test_reads_links_as_the_app_does(self):
+        # Absolute, page-relative and query links count; links off
+        # archive.org, over http or outside the archive don't.
+        from urllib.parse import quote
+        entry = quote("Missing addons Aquazone/" + self.FOLDER, safe="")
+        base = f"/download/{self.ITEM}/{quote(self.SEVEN_Z)}/"
+        page = "".join(f'<a href="{h}">x</a>' for h in (
+            f"https://archive.org{base}{entry}a",
+            f"{entry}b",
+            f"//archive.org{base}{entry}c?download=1",
+            f"//archive.org{base}{entry}c",
+            f"https://example.com{base}{entry}d",
+            f"http://archive.org{base}{entry}e",
+            f"//archive.org/download/{self.ITEM}/other.zip/f",
+        ))
+        with mock.patch.object(tools.fetch, "_get",
+                               lambda url, out=None, max_bytes=None:
+                               page.encode()):
+            names = tools.fetch._archive_entries(self.ITEM, self.SEVEN_Z)
+        self.assertEqual([n.rsplit("/", 1)[1] for n in names],
+                         ["a", "b", "c"])
+
+    def test_a_picture_that_fails_to_emit_counts_as_failed(self):
+        # Sniffs as a PICT, decodes to nothing: an error, not a skip.
+        broken = build_pict(320, 200, [1] * 64000, clut=CLUT, file=True)[:600]
+        calls, patch = self.serve({"ë€": broken})
+        with patch, contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()):
+            made, failed = tools.fetch.fetch_entries(
+                self.ITEM, self.SEVEN_Z, self.out,
+                tools.fetch.re.compile(""), os.path.join(self.tmp.name, "dl"))
+        self.assertEqual((made, failed), ([], 1))
+
+    def test_entries_need_an_archive(self):
+        # Both fetches are stubbed: without the check, main would start
+        # the default item's whole download.
+        with mock.patch.object(tools.fetch, "fetch", return_value=([], 0)), \
+                mock.patch.object(tools.fetch, "fetch_entries",
+                                  return_value=([], 0)), \
+                contextlib.redirect_stderr(io.StringIO()), \
+                self.assertRaises(SystemExit):
+            tools.fetch.main(["--entries", "Misc"])
 
     def test_an_empty_answer_fails_and_is_not_kept(self):
         calls, patch = self.serve({"ë€": b""})
