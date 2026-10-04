@@ -13,8 +13,8 @@ vi.mock("./store.js", async (orig) => ({
   metaGet: async () => null,
   metaPut: async () => true,
 }));
-const { importAddon, listAddons, loadProblem, macDisplayName, sceneryFix,
-        usablePacks } = await import("./import.js");
+const { importAddon, installProblem, listAddons, loadProblem, macDisplayName,
+        sceneryFix, usablePacks } = await import("./import.js");
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -172,6 +172,16 @@ describe("dropped Mac pictures at launch", () => {
     const rs = await importAddon("local:._Aqua");
     expect(rs[0]!.images.size).toBe(2);
     expect(rs[0]!.sounds).toEqual([]);
+  });
+
+  it("say plainly when a stored picture can't be read", async () => {
+    // Sniffs as a PICT, decodes to nothing: the same words as for an
+    // archive.org picture, not a connection problem.
+    stored.set("local:Broken.pct", buildPict({ frame: rect(0, 0, 2, 2),
+      file: true, ops: [{ kind: "raw", bytes: [0x82, 0x00, 0, 0, 0, 2, 1, 2] }] }));
+    const e = await importAddon("local:Broken.pct").catch((x: unknown) => x);
+    expect(String(e)).toMatch(/unreadable picture/);
+    expect(installProblem(e)).toBe("Finsical can't read this add-on's pictures.");
   });
 });
 

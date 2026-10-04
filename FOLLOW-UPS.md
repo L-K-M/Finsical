@@ -288,6 +288,10 @@ descriptions of #161 and #162.
   bytes, and the drop then records an add-on that can't restore.
 - A picture dropped on the Import Add-ons window gets no result there:
   the tank says "Added" or "Couldn't add" on its own glass.
+- A PICT file wrapped in MacBinary or BinHex keeps its picture in the
+  data fork, which `core/data/resfork.ts` peels away to reach the
+  resource fork, so such a drop shows nothing. Reading the data fork
+  too would take it.
 
 ### Alerts and Preferences
 

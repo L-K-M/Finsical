@@ -807,7 +807,9 @@ export async function importAddon(url: string): Promise<PackResult[]> {
       if (pics?.images.size)
         return [{ entry: url, sheets: new Map(), sounds: [],
                   images: keyedImages(url, pics.images) }];
-      throw new Error(pics ? `${url}: stored picture can't be read`
+      // A stored picture that won't decode reads as the archive.org
+      // case does: the words installProblem shows plainly.
+      throw new Error(pics ? "unreadable picture"
                            : `${url}: stored data is not a pack`);
     }
     // Same shape as the remote isPack branch: a pack blob yields no

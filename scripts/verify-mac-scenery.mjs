@@ -297,16 +297,29 @@ try {
   const stored = (key, sessionId) => evalJs(`(async () => {
     const dbs = await indexedDB.databases();
     if (!dbs.some((d) => d.name === 'finsical')) return 0;
-    return new Promise((done) => {
+    return new Promise((done, fail) => {
       const open = indexedDB.open('finsical');
+      open.onerror = () => fail(open.error);
       open.onsuccess = () => {
-        const get = open.result.transaction('packs').objectStore('packs')
-          .get(${JSON.stringify(key)});
-        get.onsuccess = () => { done(get.result ? get.result.byteLength : 0);
-                                open.result.close(); };
+        try {
+          const get = open.result.transaction('packs').objectStore('packs')
+            .get(${JSON.stringify(key)});
+          get.onsuccess = () => { done(get.result ? get.result.byteLength : 0);
+                                  open.result.close(); };
+          get.onerror = () => fail(get.error);
+        } catch (error) { fail(error); }
       };
     });
   })()`, sessionId);
+  /** Wait until `key` holds `want` bytes: deletes land asynchronously. */
+  const waitStored = async (key, sessionId, want) => {
+    const deadline = Date.now() + BROWSER_TIMEOUT_MS;
+    while (await stored(key, sessionId) !== want) {
+      if (Date.now() > deadline)
+        throw new Error(`timed out waiting for ${key} to hold ${want} bytes`);
+      await sleep(25);
+    }
+  };
   /** Store bytes as the Import Add-ons window does, then ask the tank
    * to put them in; `then` runs in the same task, before the tank has
    * read them back. */
@@ -342,15 +355,16 @@ try {
   await test("both come back after a reload, offline, from the cache", async () => {
     offline = true;
     const before = fetched.length;
-    await reload(tank);
-    const back = await evalJs("__probe.scenery()", tank);
-    assert.deepEqual([back.backdrop, back.gravel],
-                     [items.moss.url, items.sand.url]);
-    assert.deepEqual(await evalJs("__probe.backdropPixel()", tank), RED);
-    // Nothing reached archive.org: listing pages aside, every request
-    // since the reload was refused, and the art still came back.
-    assert.ok(fetched.slice(before).every((f) => f.offline));
-    offline = false;
+    try {
+      await reload(tank);
+      const back = await evalJs("__probe.scenery()", tank);
+      assert.deepEqual([back.backdrop, back.gravel],
+                       [items.moss.url, items.sand.url]);
+      assert.deepEqual(await evalJs("__probe.backdropPixel()", tank), RED);
+      // Nothing reached archive.org: listing pages aside, every request
+      // since the reload was refused, and the art still came back.
+      assert.ok(fetched.slice(before).every((f) => f.offline));
+    } finally { offline = false; } // a failure mustn't cut off the rest
   });
 
   await test("Use switches between installed backdrops and the choice persists",
@@ -404,9 +418,8 @@ try {
       await mutate("removeAddon", "local:Reef.pct", tank);
       await mutate("removeAddon", "local:._Pebbles", tank);
       await waitFor(`!__probe.addons().some(u => u.startsWith('local:'))`, tank);
-      await sleep(200);
-      assert.equal(await stored("local:Reef.pct", tank), 0);
-      assert.equal(await stored("local:._Pebbles", tank), 0);
+      await waitStored("local:Reef.pct", tank, 0);
+      await waitStored("local:._Pebbles", tank, 0);
     });
 
   await test("a picture the tank can't use earns the drop's note", async () => {
@@ -418,10 +431,13 @@ try {
   await test("the Import Add-ons window's drop puts a picture in the tank",
     async () => {
       const window2 = await openPage("/addons.html");
-      // The window waits for a state push before it calls the tank
-      // connected.
+      // The window calls the tank connected once a state push arrives:
+      // listen on the same channel for one.
       await waitFor("document.readyState === 'complete'", window2);
-      await sleep(1500);
+      await evalJs(`window.__state = false;
+        new BroadcastChannel('finsical').onmessage = (e) => {
+          if (e.data?.op === 'state') window.__state = true; };`, window2);
+      await waitFor("window.__state", window2);
       await drop([["Wall.pict", [...BLUE_BACKDROP]]], window2);
       await waitFor(`__probe.addons().includes('local:Wall.pict')`, tank);
       assert.equal((await evalJs("__probe.scenery()", tank)).backdrop,
@@ -485,7 +501,7 @@ try {
         "__probe.onBusMessage({ op: 'installDropped', url: 'local:Twin', " +
         "section: 'backgrounds', inner: 'Twin' });", "gravel");
       await waitFor(`__probe.addons().includes('local:Twin')`, tank);
-      await sleep(300);
+      await sleep(300); // the failed request's cleanup has run by now
       assert.equal(await stored("local:Twin", tank), BLUE_BACKDROP.length);
       await mutate("removeAddon", "local:Twin", tank);
       await waitFor(`!__probe.addons().includes('local:Twin')`, tank);
@@ -498,9 +514,9 @@ try {
       "__probe.recordInstall({ section: 'backgrounds', inner: 'Late', " +
       "url: 'local:Late' }); __probe.onBusMessage({ op: 'removeAddon', " +
       "url: 'local:Late', boot: __probe.boot });");
-    await sleep(500);
+    await waitStored("local:Late", tank, 0);
+    await sleep(100); // the request settles after its read
     assert.ok(!(await evalJs("__probe.addons()", tank)).includes("local:Late"));
-    assert.equal(await stored("local:Late", tank), 0);
   });
 
   await test("a Remove while the tank reads a re-drop wins", async () => {
@@ -509,9 +525,9 @@ try {
     await putAndAsk("local:Shell", [...RED_BACKDROP], "Shell", tank,
       "__probe.onBusMessage({ op: 'removeAddon', url: 'local:Shell', " +
       "boot: __probe.boot });");
-    await sleep(500);
+    await waitStored("local:Shell", tank, 0);
+    await sleep(100); // the request settles after its read
     assert.ok(!(await evalJs("__probe.addons()", tank)).includes("local:Shell"));
-    assert.equal(await stored("local:Shell", tank), 0);
   });
 
   await test("the tank keeps no bytes from a window drop it doesn't add",
@@ -521,9 +537,8 @@ try {
       // Last: Empty Tank lands while the tank reads the bytes.
       await putAndAsk("local:Gone", [...BLUE_BACKDROP], "Gone", tank,
         "__probe.onBusMessage({ op: 'emptyTank', boot: __probe.boot });");
-      await sleep(500);
       for (const key of ["local:Junk", "local:Nameless", "local:Gone"])
-        assert.equal(await stored(key, tank), 0, key);
+        await waitStored(key, tank, 0);
       assert.deepEqual(await evalJs("__probe.addons()", tank), []);
     });
 } finally {

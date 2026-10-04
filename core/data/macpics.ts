@@ -69,7 +69,9 @@ export function macPictures(d: Uint8Array): MacPictures | null {
 }
 
 /** Whether `d` carries pictures macPictures would try, without
- * decoding any: a cheap test for sorting dropped files. */
+ * decoding any of them: a test for sorting dropped files. It still
+ * peels the file's wrapping (a BinHex file decodes in full), which
+ * macPictures then does again. */
 export function hasMacPictures(d: Uint8Array): boolean {
   const fork = openFork(d);
   return (fork !== null && forkPictures(fork).length > 0) || isPict(d);
