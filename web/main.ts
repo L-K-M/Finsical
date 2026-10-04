@@ -13,7 +13,7 @@ import { conditionLabel, eventText, noticeText } from "./lifecopy.js";
 import { decodeIndexedPng, loadAzpack, SpriteSheet } from "../core/data/azpack.js";
 import { isPack } from "../core/data/fsh.js";
 import { isBmp } from "../core/data/bmp.js";
-import { BACKDROP_MIN, decodeDroppedPacks } from "./drop.js";
+import { BACKDROP_MIN, decodeDroppedPack } from "./drop.js";
 import { decorFrame, decorPhase, decorPhaseFrac }
   from "../core/data/decor.js";
 import { decorDepth, drawOrder } from "../core/depth.js";
@@ -3390,7 +3390,7 @@ window.addEventListener("drop", (e) => {
       else notes.push("Couldn't save the sounds.");
     }
     // Not an .azpack folder — every dropped pack file imports, not
-    // just the first (web/drop.ts, tested there). One file at a time:
+    // just the first. One file at a time (web/drop.ts decodes each):
     // an unreadable file costs only itself, and a folder drop never
     // holds every pack's bytes at once. Sections come from the
     // extension like remote installs' collections: a .fsh fish adds
@@ -3406,7 +3406,7 @@ window.addEventListener("drop", (e) => {
         console.warn(`drop: skipping unreadable ${name}:`, e);
         continue;
       }
-      const [p] = decodeDroppedPacks([[name, data]]);
+      const p = decodeDroppedPack(name, data);
       if (!p && isBmp(data)) {
         console.warn(`drop: ${name}: not a 256-color BMP of at least ` +
           `${BACKDROP_MIN.w} x ${BACKDROP_MIN.h}`);

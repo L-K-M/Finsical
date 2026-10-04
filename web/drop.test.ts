@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { decodeBmp } from "../core/data/bmp.js";
-import { decodeDroppedPacks, dropSection } from "./drop.js";
+import { decodeDroppedPack, dropSection } from "./drop.js";
+import type { DroppedPack } from "./drop.js";
 import { buildBmp8, buildChunkPack, cat, PAL, u16le, u32le }
   from "../core/data/fsh.fixture.js";
 
@@ -36,9 +37,16 @@ function spriteChunk(w: number, h: number, color: number): Uint8Array {
 const packA = buildChunkPack(buildBmp8(PAL), spriteChunk(4, 4, 1));
 const packB = buildChunkPack(buildBmp8(PAL), spriteChunk(6, 3, 2));
 
-describe("decodeDroppedPacks", () => {
+/** A multi-file drop, each file decoded on its own and in order, the
+ * skipped ones (null) left out. */
+function decodeEach(entries: [string, Uint8Array][]): DroppedPack[] {
+  return entries.map(([name, data]) => decodeDroppedPack(name, data))
+    .filter((p): p is DroppedPack => p !== null);
+}
+
+describe("decodeDroppedPack", () => {
   it("decodes every pack in a multi-file drop, in order", () => {
-    const packs = decodeDroppedPacks([
+    const packs = decodeEach([
       ["NeonTetra.fsh", packA],
       ["Guppy.fsh", packB],
     ]);
@@ -48,13 +56,13 @@ describe("decodeDroppedPacks", () => {
   });
 
   it("strips the extension for the display name", () => {
-    const packs = decodeDroppedPacks([["a/b/ANGEL.REZ", packA]]);
+    const packs = decodeEach([["a/b/ANGEL.REZ", packA]]);
     expect(packs[0]!.name).toBe("a/b/ANGEL");
   });
 
   it("keeps a dotted folder name when the file has no extension", () => {
     // Only the file's own extension goes, as dropSection reads it.
-    const packs = decodeDroppedPacks([["backup.v2/Guppy", packA]]);
+    const packs = decodeEach([["backup.v2/Guppy", packA]]);
     expect(packs[0]!.name).toBe("backup.v2/Guppy");
   });
 
@@ -62,16 +70,17 @@ describe("decodeDroppedPacks", () => {
     // Truncated mid-directory: isPack still sees the magic, decoding
     // must not take the healthy sibling down with it.
     const truncated = packA.slice(0, 0x120);
-    const packs = decodeDroppedPacks([
+    const packs = decodeEach([
       ["corrupt.fsh", truncated],
       ["Guppy.fsh", packB],
     ]);
     expect(packs.map((p) => p.name)).toEqual(["Guppy"]);
+    expect(decodeDroppedPack("corrupt.fsh", truncated)).toBeNull();
   });
 
   it("skips non-pack files and pack containers with no sprites", () => {
     const empty = buildChunkPack(buildBmp8(PAL));
-    const packs = decodeDroppedPacks([
+    const packs = decodeEach([
       ["notes.txt", new Uint8Array([1, 2, 3])],
       ["empty.fsh", empty],
       ["Guppy.fsh", packB],
@@ -81,7 +90,7 @@ describe("decodeDroppedPacks", () => {
 
   it("classifies by extension: fish add no scenery, scenery no fish", () => {
     const art = buildBmpImage(8, 4);
-    const [fish, gravel, tank, rez] = decodeDroppedPacks([
+    const [fish, gravel, tank, rez] = decodeEach([
       ["Guppy.fsh", buildChunkPack(art, spriteChunk(4, 4, 1))],
       ["Sand.grv", buildChunkPack(art)],
       ["Reef.azn", buildChunkPack(art, spriteChunk(4, 4, 1))],
@@ -109,22 +118,26 @@ describe("decodeDroppedPacks", () => {
   });
 });
 
-describe("decodeDroppedPacks with pictures", () => {
+describe("decodeDroppedPack with pictures", () => {
   it("skips a picture whose decode throws and keeps the rest", () => {
     // decodeBmp allocates from header-controlled dimensions; a throw
     // there must cost only that file, as a throwing pack does.
-    vi.mocked(decodeBmp).mockImplementationOnce(() => {
+    const boom = (): never => {
       throw new RangeError("Array buffer allocation failed");
-    });
-    const got = decodeDroppedPacks([
+    };
+    vi.mocked(decodeBmp).mockImplementationOnce(boom);
+    const got = decodeEach([
       ["Broken.bmp", buildBmpImage(640, 480)],
       ["Fine.bmp", buildBmpImage(320, 200)],
     ]);
     expect(got.map((p) => p.name)).toEqual(["Fine"]);
+    vi.mocked(decodeBmp).mockImplementationOnce(boom);
+    expect(decodeDroppedPack("Broken.bmp", buildBmpImage(640, 480)))
+      .toBeNull();
   });
 
   it("takes a 256-color BMP as a backdrop, by its content", () => {
-    const [pic, bare] = decodeDroppedPacks([
+    const [pic, bare] = decodeEach([
       ["MyBackdrop.bmp", buildBmpImage(640, 480)],
       // A classic Mac file can carry no extension at all.
       ["Reef", buildBmpImage(160, 100)],
@@ -140,7 +153,7 @@ describe("decodeDroppedPacks with pictures", () => {
   it("skips pictures the tank can't show", () => {
     const deep = buildBmpImage(640, 480);
     new DataView(deep.buffer).setUint16(28, 24, true); // 24-bit
-    expect(decodeDroppedPacks([
+    expect(decodeEach([
       ["Photo.bmp", deep],
       ["Tiny.bmp", buildBmpImage(64, 40)],
       ["Narrow.bmp", buildBmpImage(159, 100)],
