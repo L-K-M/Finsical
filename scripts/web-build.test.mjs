@@ -115,4 +115,23 @@ describe("standalone web build", () => {
       expect(js, f).toContain("Laszlo Torok");
     }
   });
+
+  it("keeps the deark notice in every bundle that ships the DCL tables", () => {
+    // core/data/is3.ts carries deark's PKWARE DCL code-length tables
+    // (MIT); its /*! comment is their notice inside the bundles. Keyed
+    // on the table itself, read from the source, as the MACE check is.
+    const is3Src = readFileSync(join(root, "core/data/is3.ts"), "utf8");
+    const dclMark = /LIT_LENGTHS = hex\(\s*"([0-9a-f]{16})/.exec(is3Src)?.[1];
+    expect(dclMark, "LIT_LENGTHS marker in is3.ts").toBeTruthy();
+    const dist = join(fixture, "dist");
+    const withTables = readdirSync(dist)
+      .filter((f) => /\.[cm]?js$/.test(f))
+      .filter((f) => readFileSync(join(dist, f), "utf8").includes(dclMark));
+    expect(withTables.sort()).toEqual(["addons.js", "bundle.js"]);
+    for (const f of withTables) {
+      const js = readFileSync(join(dist, f), "utf8");
+      expect(js, f).toContain("deark");
+      expect(js, f).toContain("Copyright (C) 2016-2026 Jason Summers");
+    }
+  });
 });
