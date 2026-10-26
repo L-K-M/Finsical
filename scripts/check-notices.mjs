@@ -9,8 +9,8 @@
 // and checks them against what actually goes in:
 // - each npm package compiled into a bundle, or copied by
 //   `npm run build`, needs a "## <name>" section in
-//   THIRD_PARTY_NOTICES.md that quotes its LICENSE/COPYING/NOTICE files
-//   verbatim in a ```text block, and a "Files: node_modules/<name>/*"
+//   THIRD_PARTY_NOTICES.md that quotes its LICENSE, UNLICENSE,
+//   COPYING, COPYRIGHT and NOTICE files verbatim in a ```text block, and a "Files: node_modules/<name>/*"
 //   paragraph in linux/copyright.in;
 // - each bundled repository file with a /*! legal comment (third-party
 //   code such as core/data/mace.ts) must be named in both.
@@ -28,16 +28,34 @@ const COPYRIGHT = "linux/copyright.in";
 // no notice. Their license field is still checked: a relicensed release
 // must not pass unnoticed.
 const OWN_PACKAGES = new Map([["osmium-ui", "Unlicense"]]);
-const LICENSE_FILE = /^(LICEN[CS]E|COPYING|NOTICE)/i;
+const LICENSE_FILE = /^(?:(?:UN)?LICEN[CS]E|COPY(?:ING|RIGHT)|NOTICE)/i;
 
 const failures = [];
 
 // The entry points and copied files come from the build script itself,
 // so a new bundle or copied file is covered without editing this list.
+// esbuild takes options as --name or --name=value, so its other
+// arguments are entry points. An option the in-memory build below does
+// not mirror fails the check rather than leaving a bundle unchecked.
+const MIRRORED_OPTION = /^--(?:bundle|format=iife|outfile=\S+)$/;
 const buildScript = JSON.parse(read("package.json")).scripts.build;
-const entryPoints = [...buildScript.matchAll(/esbuild (\S+) --bundle/g)]
-  .map((m) => m[1]);
+const entryPoints = [];
+for (const command of buildScript.split(/&&|\|\|?|;/)) {
+  const args = command.trim().split(/\s+/);
+  const at = args.findIndex((arg) => /(?:^|\/)esbuild$/.test(arg));
+  if (at < 0) continue;
+  const options = args.slice(at + 1).filter((arg) => arg.startsWith("-"));
+  const unmirrored = options.filter((arg) => !MIRRORED_OPTION.test(arg));
+  if (!options.includes("--bundle") || unmirrored.length > 0) {
+    failures.push(`The build script's "${command.trim()}" is not a ` +
+      `--bundle command with only the options this check mirrors ` +
+      `(${MIRRORED_OPTION}); update scripts/check-notices.mjs.`);
+    continue;
+  }
+  entryPoints.push(...args.slice(at + 1).filter((arg) => !arg.startsWith("-")));
+}
 if (entryPoints.length === 0) {
+  for (const failure of failures) console.error(failure);
   console.error("No esbuild entry points found in package.json's build script.");
   process.exit(1);
 }
@@ -71,7 +89,7 @@ for (const path of shipped) {
   const dir = packageDir(path);
   if (dir) packageDirs.add(dir);
 }
-for (const m of buildScript.matchAll(/node_modules\/(?:@[^/]+\/)?[^/'"\s]+\//g))
+for (const m of buildScript.matchAll(/node_modules\/(?!\.bin\/)(?:@[^/]+\/)?[^/'"\s]+\//g))
   packageDirs.add(packageDir(m[0]));
 
 const notices = read(NOTICES);
@@ -101,10 +119,12 @@ for (const dir of [...packageDirs].sort()) {
   }
 
   thirdParty += 1;
-  const files = readdirSync(join(root, dir)).filter((f) => LICENSE_FILE.test(f));
+  const files = readdirSync(join(root, dir), { withFileTypes: true })
+    .filter((f) => f.isFile() && LICENSE_FILE.test(f.name))
+    .map((f) => f.name);
   if (files.length === 0)
-    failures.push(`${pkg.name}: ${dir} has no LICENSE, COPYING or NOTICE ` +
-      `file; quote its license text from upstream in ${NOTICES}.`);
+    failures.push(`${pkg.name}: ${dir} has no LICENSE, UNLICENSE, COPYING, ` +
+      `COPYRIGHT or NOTICE file; quote its license text from upstream in ${NOTICES}.`);
   const text = section(pkg.name);
   if (text === null) {
     failures.push(`${pkg.name} (${pkg.license}) is bundled but ${NOTICES} ` +
