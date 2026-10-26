@@ -27,6 +27,9 @@ jobs:
       # must name the same version; scripts/release.sh bumps all three.
       - run: node scripts/check-version.mjs
       - run: npm ci
+      # THIRD_PARTY_NOTICES.md and linux/copyright.in must cover every
+      # third-party package and legal-comment file the bundles ship.
+      - run: node scripts/check-notices.mjs
       - run: npm run typecheck
       - run: npm test
       - run: npm run verify:sound-store

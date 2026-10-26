@@ -91,6 +91,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             lintian desktop-file-utils appstream python3-gi gir1.2-gdkpixbuf-2.0
       - run: npm ci
+      # The notices every artifact ships cover what the bundles hold
+      # (as in ci.yml's core-linux).
+      - run: node scripts/check-notices.mjs
       - name: Build
         env:
           VERSION: ${{ needs.verify.outputs.version }}
