@@ -24,6 +24,16 @@ License: Expat
 Comment: fflate, an npm dependency, is compiled into
  /usr/share/finsical/web/bundle.js and addons.js.
 
+Files: core/data/is3.ts tools/az/is3.py
+Copyright: 2026 Finsical contributors
+           2016-2026 Jason Summers
+License: Unlicense and Expat
+Comment: The PKWARE DCL code-length tables in these files come from
+ deark's src/fmtutil-lzh.c (Expat, Jason Summers); the rest is
+ Finsical's own code. is3.ts is compiled into
+ /usr/share/finsical/web/bundle.js and addons.js. See
+ /usr/share/doc/finsical/THIRD_PARTY_NOTICES.md.
+
 License: LGPL-2.1+
  This library is free software; you can redistribute it and/or
  modify it under the terms of the GNU Lesser General Public

@@ -110,6 +110,14 @@ export function readIs3Member(d: Uint8Array, m: Is3Member): Uint8Array {
 
 const hex = (s: string): Uint8Array =>
   Uint8Array.from(s.match(/../g)!, (h) => parseInt(h, 16));
+/*!
+ * PKWARE DCL code lengths (LIT_LENGTHS, LEN_LENGTHS, DIST_LENGTHS) from
+ * deark's src/fmtutil-lzh.c, Copyright (C) 2016-2026 Jason Summers,
+ * under the MIT license; see THIRD_PARTY_NOTICES.md at
+ * https://github.com/L-K-M/Finsical.
+ */
+// A "/*!" legal comment: esbuild keeps it in the bundles this file is
+// compiled into (bundle.js, addons.js), as it does mace.ts's.
 const LIT_LENGTHS = hex(
   "bcccccccc87cc7ccccccccccccdccccc4a8caca87789767876777787788cb79b" +
   "c676657886b967667b66679899b8b9c8c566656665b756556a55558788abbccc" +
