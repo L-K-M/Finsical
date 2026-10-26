@@ -67,6 +67,9 @@ its `/usr/share/doc/finsical/copyright` states the license and points
 to the system's copy of the license text,
 `/usr/share/common-licenses/LGPL-2.1`. The Linux tarball ships it at
 `share/finsical/core/data/mace.ts` with the license text at
-`LICENSES/LGPL-2.1.txt` next to `LICENSE`. The Android app ships it at
-`core/data/mace.ts` in the APK's assets, with the license text at
-`licenses/LGPL-2.1.txt`.
+`share/doc/finsical/LICENSES/LGPL-2.1.txt`. The Flatpak ships it at
+`/app/share/finsical/core/data/mace.ts` with the license text at
+`/app/share/doc/finsical/LICENSES/LGPL-2.1.txt` and
+`/app/share/licenses/dev.finsical.app/LGPL-2.1.txt`. The Android app
+ships it at `core/data/mace.ts` in the APK's assets, with the license
+text at `licenses/LGPL-2.1.txt`.

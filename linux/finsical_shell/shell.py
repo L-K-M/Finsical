@@ -33,19 +33,14 @@ CREDITS = (
     "Fish, plants and scenery add-ons from the Internet Archive.\n"
     "Mac OS 8 windows by the Osmium UI library."
 )
-LICENSE_NOTE = (
-    "Finsical is free and unencumbered software released into "
-    "the public domain (the Unlicense).\n\n"
-    "Its MACE sound decoder is ported from FFmpeg and is "
-    "licensed under the GNU Lesser General Public License, "
-    "version 2.1 or later. See /usr/share/doc/finsical/copyright."
-)
 
 
 @dataclass(frozen=True)
 class ShellConfig:
     web_root: logic.WebRoot
     version: str
+    # Where About says the notices are (logic.find_notice_dir).
+    notice_dir: str
     data_dir: str
     cache_dir: str
     config_dir: str
@@ -614,7 +609,7 @@ class FinsicalApp(Gtk.Application):
             comments=CREDITS,
             website=logic.HOMEPAGE_URL,
             license_type=Gtk.License.CUSTOM,
-            license=LICENSE_NOTE,
+            license=logic.license_note(self._config.notice_dir),
             wrap_license=True,
         )
         if self.tank is not None:
@@ -634,11 +629,14 @@ class FinsicalApp(Gtk.Application):
             )
 
 
-def default_config(web_root: logic.WebRoot, version: str) -> ShellConfig:
+def default_config(
+    web_root: logic.WebRoot, version: str, notice_dir: str
+) -> ShellConfig:
     """Storage in the user's XDG directories."""
     return ShellConfig(
         web_root=web_root,
         version=version,
+        notice_dir=notice_dir,
         data_dir=os.path.join(GLib.get_user_data_dir(), "finsical"),
         cache_dir=os.path.join(GLib.get_user_cache_dir(), "finsical"),
         config_dir=os.path.join(GLib.get_user_config_dir(), "finsical"),
