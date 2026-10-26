@@ -100,6 +100,16 @@ jobs:
           mkdir -p release
           mv "out/Finsical-$VERSION-linux.deb" release/
           mv "out/Finsical-$VERSION-linux.tar.gz" release/
+      # The notices inside what users download (see ci.yml).
+      - name: Check the packages' notices
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          tarball="release/Finsical-$VERSION-linux.tar.gz"
+          doc="Finsical-$VERSION-linux/share/doc/finsical"
+          tar -xzOf "$tarball" "$doc/LICENSE" | grep -q 'unencumbered'
+          tar -xzOf "$tarball" "$doc/LICENSES/LGPL-2.1.txt" | grep -q 'LESSER GENERAL PUBLIC LICENSE'
+          tar -xzOf "$tarball" "$doc/THIRD_PARTY_NOTICES.md" | grep -q 'Laszlo Torok'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-linux
@@ -133,6 +143,17 @@ jobs:
           linux/build-flatpak.sh
           mkdir -p release
           mv "out/Finsical-$VERSION-linux.flatpak" release/
+      # flatpak-builder's build directory holds the /app the bundle was
+      # exported from (see ci.yml).
+      - name: Check the Flatpak's notices
+        run: |
+          app=out/flatpak/build/files
+          test -s "$app/share/doc/finsical/LICENSE"
+          test -s "$app/share/doc/finsical/LICENSES/LGPL-2.1.txt"
+          grep -q 'Laszlo Torok' "$app/share/doc/finsical/THIRD_PARTY_NOTICES.md"
+          test -s "$app/share/licenses/dev.finsical.app/LICENSE"
+          test -s "$app/share/licenses/dev.finsical.app/LGPL-2.1.txt"
+          grep -q 'Laszlo Torok' "$app/share/licenses/dev.finsical.app/THIRD_PARTY_NOTICES.md"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-flatpak

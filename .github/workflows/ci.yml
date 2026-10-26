@@ -79,6 +79,14 @@ jobs:
       - run: |
           mkdir tarball && tar -xzf out/Finsical-*-linux.tar.gz -C tarball
           xvfb-run -a ./tarball/Finsical-*-linux/bin/finsical --smoke-test
+      # About names share/doc/finsical next to share/finsical
+      # (logic.find_notice_dir), so --strip-components=1 into a prefix
+      # keeps the notices out of its top level.
+      - name: Check the tarball's notices
+        run: |
+          test -s tarball/Finsical-*-linux/share/doc/finsical/LICENSE
+          test -s tarball/Finsical-*-linux/share/doc/finsical/LICENSES/LGPL-2.1.txt
+          grep -q 'Laszlo Torok' tarball/Finsical-*-linux/share/doc/finsical/THIRD_PARTY_NOTICES.md
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: finsical-linux
@@ -114,6 +122,18 @@ jobs:
         env:
           LANG: xx_XX.UTF-8
           FINSICAL_CI_TEXT: Öffentlich
+      # The installed bundle's files: About names /app/share/doc/finsical
+      # (logic.find_notice_dir); the manifest also copies the notices to
+      # Flatpak's own /app/share/licenses/dev.finsical.app.
+      - name: Check the Flatpak's notices
+        run: |
+          app="$(flatpak info --user --show-location dev.finsical.app)/files"
+          test -s "$app/share/doc/finsical/LICENSE"
+          test -s "$app/share/doc/finsical/LICENSES/LGPL-2.1.txt"
+          grep -q 'Laszlo Torok' "$app/share/doc/finsical/THIRD_PARTY_NOTICES.md"
+          test -s "$app/share/licenses/dev.finsical.app/LICENSE"
+          test -s "$app/share/licenses/dev.finsical.app/LGPL-2.1.txt"
+          grep -q 'Laszlo Torok' "$app/share/licenses/dev.finsical.app/THIRD_PARTY_NOTICES.md"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: finsical-flatpak
