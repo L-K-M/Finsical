@@ -37,6 +37,44 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## deark
+
+- Files: the PKWARE DCL code-length tables (`LIT_LENGTHS`,
+  `LEN_LENGTHS` and `DIST_LENGTHS`) in `core/data/is3.ts`, which
+  `npm run build` compiles into `bundle.js` and `addons.js`, and the
+  same tables in `tools/az/is3.py`.
+- Source: deark `src/fmtutil-lzh.c`
+  (https://github.com/jsummers/deark/blob/master/src/fmtutil-lzh.c)
+- License: MIT (Expat). Copyright (C) 2016-2026 Jason Summers.
+
+Its license notice, from deark's `COPYING`:
+
+```text
+Deark is distributed under the following MIT-style license. See the "Terms of
+use" section of the "readme.md" file for details and exceptions.
+
+Copyright (C) 2016-2026 Jason Summers
+<jason1@pobox.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
 ## FFmpeg MACE decoder
 
 - Files: `core/data/mace.ts`, `tools/az/mace.py`, `tools/az/mace_tab.bin`,
@@ -67,6 +105,9 @@ its `/usr/share/doc/finsical/copyright` states the license and points
 to the system's copy of the license text,
 `/usr/share/common-licenses/LGPL-2.1`. The Linux tarball ships it at
 `share/finsical/core/data/mace.ts` with the license text at
-`LICENSES/LGPL-2.1.txt` next to `LICENSE`. The Android app ships it at
-`core/data/mace.ts` in the APK's assets, with the license text at
-`licenses/LGPL-2.1.txt`.
+`share/doc/finsical/LICENSES/LGPL-2.1.txt`. The Flatpak ships it at
+`/app/share/finsical/core/data/mace.ts` with the license text at
+`/app/share/doc/finsical/LICENSES/LGPL-2.1.txt` and
+`/app/share/licenses/dev.finsical.app/LGPL-2.1.txt`. The Android app
+ships it at `core/data/mace.ts` in the APK's assets, with the license
+text at `licenses/LGPL-2.1.txt`.

@@ -27,6 +27,7 @@ readonly WEB_FILES=(index.html overview.html addons.html prefs.html stats.html
                     bundle.js overview.js addons.js prefs.js stats.js
                     app.css osmium.css icon.svg)
 readonly MACE_SOURCE=core/data/mace.ts
+readonly DOC_DIR="share/doc/$PACKAGE"
 
 die() {
   echo "build-tarball.sh: $*" >&2
@@ -104,10 +105,13 @@ sed -e '/<!-- Template:/d' -e "s|@VERSION@|$VERSION|" -e "s|@DATE@|$RELEASE_DAY|
 # The man page's @VERSION@/@DATE@ get the same fill-in as build-deb.sh.
 sed -e '/^\.\\" Template:/d' -e "s|@VERSION@|$VERSION|" -e "s|@DATE@|$RELEASE_DAY|" \
   "$SCRIPT_DIR/$PACKAGE.6" | gzip -9n > "$TOP/share/man/man6/$PACKAGE.6.gz"
-install -m 0644 THIRD_PARTY_NOTICES.md LICENSE "$TOP/"
-# The LGPL decoder's license text, as the macOS/Android builds ship it
-# (the .deb can instead point at the system's common-licenses copy).
-install -D -m 0644 LICENSES/LGPL-2.1.txt "$TOP/LICENSES/LGPL-2.1.txt"
+# The notices go where the .deb has them, share/doc/finsical, so an
+# install into a prefix keeps them out of its top level and About
+# finds them (logic.find_notice_dir). The LGPL decoder's license text
+# comes along, as the macOS/Android builds ship it (the .deb can
+# instead point at the system's common-licenses copy).
+install -D -m 0644 -t "$TOP/$DOC_DIR" THIRD_PARTY_NOTICES.md LICENSE
+install -D -m 0644 LICENSES/LGPL-2.1.txt "$TOP/$DOC_DIR/LICENSES/LGPL-2.1.txt"
 
 cat > "$TOP/README.txt" <<EOF
 Finsical $VERSION for Linux
@@ -132,6 +136,8 @@ Install system-wide:     sudo tar -xzf Finsical-$VERSION-linux.tar.gz \\
 Wayland note: run with GDK_BACKEND=wayland for a native Wayland window
 (the tank can't float above other windows there; see the README's
 Linux section on GitHub).
+
+License and third-party notices: $DOC_DIR/
 EOF
 
 find "$TOP" -type d -exec chmod 0755 {} +

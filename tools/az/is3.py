@@ -119,7 +119,8 @@ def read_member(d, m):
 # ends the stream. The three codes are fixed canonical Huffman codes,
 # sent with every bit inverted, most significant first; their code
 # lengths below are as deark's fmtutil-lzh.c (MIT) packs them, two to
-# a byte, high nibble first.
+# a byte, high nibble first. Those tables are Copyright (C) 2016-2026
+# Jason Summers, under the MIT license; see THIRD_PARTY_NOTICES.md.
 
 _LIT_LENGTHS = bytes.fromhex(
     "bcccccccc87cc7ccccccccccccdccccc4a8caca87789767876777787788cb79b"

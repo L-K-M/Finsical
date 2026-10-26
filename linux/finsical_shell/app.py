@@ -188,12 +188,13 @@ def main(argv: list[str], share_dir: str, layout: logic.Layout) -> int:
 
     from . import shell
 
+    notice_dir = logic.find_notice_dir(share_dir, layout)
     if not args.smoke_test:
-        return shell.run(shell.default_config(root, version))
-    return _smoke_test(root, version)
+        return shell.run(shell.default_config(root, version, notice_dir))
+    return _smoke_test(root, version, notice_dir)
 
 
-def _smoke_test(root: logic.WebRoot, version: str) -> int:
+def _smoke_test(root: logic.WebRoot, version: str, notice_dir: str) -> int:
     from . import shell, smoke
 
     # Never the user's profile: storage, frames and settings all live
@@ -204,6 +205,7 @@ def _smoke_test(root: logic.WebRoot, version: str) -> int:
         config = shell.ShellConfig(
             web_root=root,
             version=version,
+            notice_dir=notice_dir,
             data_dir=os.path.join(profile, "data"),
             cache_dir=os.path.join(profile, "cache"),
             config_dir=os.path.join(profile, "config"),

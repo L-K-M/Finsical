@@ -139,6 +139,42 @@ def read_version(share_dir: str) -> str:
     return version or DEVELOPMENT_VERSION
 
 
+# The .deb's name: its files live in share/<PACKAGE>, its notices in
+# share/doc/<PACKAGE>.
+PACKAGE = "finsical"
+NOTICES_FILE = "THIRD_PARTY_NOTICES.md"
+
+
+def find_notice_dir(share_dir: str, layout: Layout) -> str:
+    """The directory holding this copy's NOTICES_FILE, for About.
+
+    Installed, it is share/doc/finsical beside share/finsical: the
+    .deb's /usr, the tarball's prefix and the Flatpak's /app all ship
+    it there. From a checkout, it is the repository root.
+    """
+    if layout is Layout.INSTALLED:
+        return os.path.normpath(
+            os.path.join(share_dir, os.pardir, "doc", PACKAGE)
+        )
+    return os.path.normpath(os.path.join(share_dir, os.pardir))
+
+
+def license_note(notice_dir: str) -> str:
+    """About's license text. The Unlicense covers Finsical's own code
+    only; the bundled third-party code keeps the licenses
+    THIRD_PARTY_NOTICES.md lists."""
+    notices = os.path.join(notice_dir, NOTICES_FILE)
+    return (
+        "Finsical's own code is free and unencumbered software released "
+        "into the public domain (the Unlicense).\n\n"
+        "It includes third-party code that keeps its own license: the "
+        "MACE sound decoder, ported from FFmpeg and licensed under the "
+        "GNU Lesser General Public License, version 2.1 or later; the "
+        "fflate library (MIT); and code-length tables from deark (MIT). "
+        f"See {notices}."
+    )
+
+
 # ---------------------------------------------------------------------------
 # The finsical:// scheme
 

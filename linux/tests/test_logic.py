@@ -226,6 +226,46 @@ class TestFindWebRoot(TempDirTest):
         self.assertEqual(logic.read_version(self.tmp), "0.3.0")
 
 
+class TestNotices(unittest.TestCase):
+    def test_installed_layouts_use_share_doc(self):
+        # The .deb's /usr, the tarball unpacked into ~/.local and the
+        # Flatpak's /app: each ships the notices in share/doc/finsical.
+        for prefix in ("/usr", "/home/fish/.local", "/app"):
+            with self.subTest(prefix=prefix):
+                self.assertEqual(
+                    logic.find_notice_dir(
+                        os.path.join(prefix, "share", "finsical"),
+                        logic.Layout.INSTALLED,
+                    ),
+                    os.path.join(prefix, "share", "doc", "finsical"),
+                )
+
+    def test_source_tree_uses_the_repository_root(self):
+        notice_dir = logic.find_notice_dir(
+            str(LINUX_DIR), logic.Layout.SOURCE_TREE
+        )
+        self.assertEqual(notice_dir, str(LINUX_DIR.parent))
+        self.assertTrue(
+            os.path.isfile(os.path.join(notice_dir, logic.NOTICES_FILE))
+        )
+
+    def test_license_note_names_this_copys_notices(self):
+        note = logic.license_note("/app/share/doc/finsical")
+        self.assertIn("/app/share/doc/finsical/THIRD_PARTY_NOTICES.md", note)
+        self.assertNotIn("/usr/share/doc", note)
+        # The Unlicense covers Finsical's own code; every bundled
+        # component THIRD_PARTY_NOTICES.md lists keeps its own license.
+        for name in (
+            "own code",
+            "Unlicense",
+            "GNU Lesser General Public License",
+            "fflate",
+            "deark",
+        ):
+            with self.subTest(name=name):
+                self.assertIn(name, note)
+
+
 class TestStores(TempDirTest):
     def path(self, name=logic.WINDOWS_FILE):
         return os.path.join(self.tmp, "config", "finsical", name)

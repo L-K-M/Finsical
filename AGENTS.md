@@ -172,3 +172,17 @@ may waive review; report that waiver rather than claiming review passed.
 
 <!-- shared-rules:end -->
 
+## Licensing
+
+- Finsical's own code is Unlicense (`LICENSE`). Keep `package.json`,
+  `linux/copyright.in`, the AppStream metainfo, the About texts and the
+  README consistent with it.
+- Before adding a dependency, vendored file or bundled asset (fonts,
+  images, icons, data), confirm its license allows redistribution in
+  the apps. Never vendor third-party code without its license text.
+- Bundled third-party code needs an entry in `THIRD_PARTY_NOTICES.md`
+  (license text verbatim) and in `linux/copyright.in`; ported code also
+  gets a `/*!` legal comment so esbuild keeps it in the bundles.
+  `scripts/check-notices.mjs` checks both against the bundles in CI.
+  Keep the CI and release checks on the notices inside each artifact
+  passing.

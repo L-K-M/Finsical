@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The Linux tarball keeps its license and third-party notices in
+  `share/doc/finsical`, so installing it into `~/.local` or
+  `/usr/local` no longer puts them at the top of that folder. On
+  Linux, About names the notices file your copy ships (.deb, tarball
+  or Flatpak), and the notices now credit deark for the code tables
+  the InstallShield cabinet reader uses.
 - Import Add-ons lists the US AquaZone library from the Deluxe II disc:
   15 backdrops, 12 tanks, 14 plants, 10 accessories and 5 gravels,
   read from the InstallShield cabinet the disc keeps its Windows items
