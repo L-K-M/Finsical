@@ -554,11 +554,19 @@ options.
 - Apple, Macintosh and iMac are trademarks of Apple Inc. Finsical is not
   affiliated with Apple, 9003 or Mindscape.
 - The Mac OS 8 look comes from [Osmium UI](https://github.com/L-K-M/osmium-ui).
-- The [Unlicense](LICENSE) covers Finsical's own code only. It does not
-  cover AquaZone data, add-ons, or the case art. Ported third-party code
-  carries its own notices.
-- The exceptions in the code are the MACE sound decoder
-  (`core/data/mace.ts`, `tools/az/mace.py` and its tables), ported from
-  FFmpeg and licensed under the LGPL 2.1 or later, and the fflate
-  library compiled into the app's bundles (MIT); see
-  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## License
+
+Finsical's own code is released under the [Unlicense](LICENSE). It does not
+cover AquaZone data, add-ons, or the case art. Third-party code keeps its own
+license: the MACE sound decoder (`core/data/mace.ts`, `tools/az/mace.py` and
+its tables), ported from FFmpeg and licensed under the LGPL 2.1 or later; the
+PKWARE DCL code-length tables in `core/data/is3.ts` and `tools/az/is3.py`,
+from deark (MIT); and the fflate library (MIT). The app's JavaScript bundles
+include all three. Their notices are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), which ships in every build:
+
+- macOS: `Finsical.app/Contents/Resources`
+- Linux: `/usr/share/doc/finsical` (.deb), `share/doc/finsical` (tarball),
+  `/app/share/doc/finsical` (Flatpak)
+- Android: `licenses/` in the APK's assets
