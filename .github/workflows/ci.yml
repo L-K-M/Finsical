@@ -65,6 +65,13 @@ jobs:
       - run: linux/build-deb.sh --check
       - run: linux/build-tarball.sh
       - run: sudo apt-get install -y ./out/Finsical-*-linux.deb
+      # The installed package's notices; the names catch a stale copy.
+      - name: Check the package's notices
+        run: |
+          grep -q 'Arjun Barrett' /usr/share/doc/finsical/copyright
+          grep -q 'Jason Summers' /usr/share/doc/finsical/copyright
+          grep -q 'Laszlo Torok' /usr/share/doc/finsical/THIRD_PARTY_NOTICES.md
+          grep -q 'Jason Summers' /usr/share/doc/finsical/THIRD_PARTY_NOTICES.md
       # Loads the tank and every window from the installed package and
       # checks the bus relay end to end (see "Smoke test" in README.md).
       # Ubuntu's AppArmor user-namespace restriction is on here, so this
@@ -90,6 +97,7 @@ jobs:
           test -s tarball/Finsical-*-linux/share/doc/finsical/LICENSE
           test -s tarball/Finsical-*-linux/share/doc/finsical/LICENSES/LGPL-2.1.txt
           grep -q 'Laszlo Torok' tarball/Finsical-*-linux/share/doc/finsical/THIRD_PARTY_NOTICES.md
+          grep -q 'Jason Summers' tarball/Finsical-*-linux/share/doc/finsical/THIRD_PARTY_NOTICES.md
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: finsical-linux
@@ -134,9 +142,11 @@ jobs:
           test -s "$app/share/doc/finsical/LICENSE"
           test -s "$app/share/doc/finsical/LICENSES/LGPL-2.1.txt"
           grep -q 'Laszlo Torok' "$app/share/doc/finsical/THIRD_PARTY_NOTICES.md"
+          grep -q 'Jason Summers' "$app/share/doc/finsical/THIRD_PARTY_NOTICES.md"
           test -s "$app/share/licenses/dev.finsical.app/LICENSE"
           test -s "$app/share/licenses/dev.finsical.app/LGPL-2.1.txt"
           grep -q 'Laszlo Torok' "$app/share/licenses/dev.finsical.app/THIRD_PARTY_NOTICES.md"
+          grep -q 'Jason Summers' "$app/share/licenses/dev.finsical.app/THIRD_PARTY_NOTICES.md"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: finsical-flatpak
@@ -168,6 +178,14 @@ jobs:
         run: |
           unzip -p android/app/build/outputs/apk/release/Finsical-*-android-release-unsigned.apk \
             assets/core/data/mace.ts | cmp - core/data/mace.ts
+      # And the license texts and notices SyncWebAssets copies in.
+      - name: Check the APK ships the notices
+        run: |
+          apk="$(echo android/app/build/outputs/apk/release/Finsical-*-android-release-unsigned.apk)"
+          unzip -p "$apk" assets/licenses/LICENSE | grep -q 'unencumbered'
+          unzip -p "$apk" assets/licenses/LGPL-2.1.txt | grep -q 'LESSER GENERAL PUBLIC LICENSE'
+          unzip -p "$apk" assets/licenses/THIRD_PARTY_NOTICES.md | grep -q 'Laszlo Torok'
+          unzip -p "$apk" assets/licenses/THIRD_PARTY_NOTICES.md | grep -q 'Jason Summers'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: finsical-android-debug
@@ -204,6 +222,14 @@ jobs:
       # compiled copy inside the JavaScript. A byte compare, so a
       # stale or wrong copy fails too.
       - run: diff -u core/data/mace.ts /Applications/Finsical.app/Contents/Resources/core/data/mace.ts
+      # And the license texts and notices macos/Makefile copies in.
+      - name: Check the app ships the notices
+        run: |
+          resources=/Applications/Finsical.app/Contents/Resources
+          test -s "$resources/LICENSE"
+          test -s "$resources/LGPL-2.1.txt"
+          grep -q 'Laszlo Torok' "$resources/THIRD_PARTY_NOTICES.md"
+          grep -q 'Jason Summers' "$resources/THIRD_PARTY_NOTICES.md"
       # Launch the app: --smoke-test loads the tank page, checks that its
       # script ran and the case art went in, and exits 0 (1 broken page,
       # 2 load failed, 3 timed out after 30 s). The /private/tmp copy runs

@@ -68,6 +68,19 @@ jobs:
           mkdir -p release
           ditto -c -k --sequesterRsrc --keepParent macos/Finsical.app \
             "release/Finsical-$VERSION-macos-arm64.zip"
+      # The notices and the LGPL decoder's source inside what users
+      # download (see ci.yml).
+      - name: Check the archive's notices
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          zip="release/Finsical-$VERSION-macos-arm64.zip"
+          resources=Finsical.app/Contents/Resources
+          unzip -p "$zip" "$resources/LICENSE" | grep -q 'unencumbered'
+          unzip -p "$zip" "$resources/LGPL-2.1.txt" | grep -q 'LESSER GENERAL PUBLIC LICENSE'
+          unzip -p "$zip" "$resources/THIRD_PARTY_NOTICES.md" | grep -q 'Laszlo Torok'
+          unzip -p "$zip" "$resources/THIRD_PARTY_NOTICES.md" | grep -q 'Jason Summers'
+          unzip -p "$zip" "$resources/core/data/mace.ts" | cmp - core/data/mace.ts
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-macos
@@ -108,11 +121,16 @@ jobs:
         env:
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
+          deb="release/Finsical-$VERSION-linux.deb"
+          dpkg-deb --fsys-tarfile "$deb" | tar -xOf - ./usr/share/doc/finsical/copyright | grep -q 'Jason Summers'
+          dpkg-deb --fsys-tarfile "$deb" | tar -xOf - ./usr/share/doc/finsical/THIRD_PARTY_NOTICES.md | grep -q 'Laszlo Torok'
+          dpkg-deb --fsys-tarfile "$deb" | tar -xOf - ./usr/share/doc/finsical/THIRD_PARTY_NOTICES.md | grep -q 'Jason Summers'
           tarball="release/Finsical-$VERSION-linux.tar.gz"
           doc="Finsical-$VERSION-linux/share/doc/finsical"
           tar -xzOf "$tarball" "$doc/LICENSE" | grep -q 'unencumbered'
           tar -xzOf "$tarball" "$doc/LICENSES/LGPL-2.1.txt" | grep -q 'LESSER GENERAL PUBLIC LICENSE'
           tar -xzOf "$tarball" "$doc/THIRD_PARTY_NOTICES.md" | grep -q 'Laszlo Torok'
+          tar -xzOf "$tarball" "$doc/THIRD_PARTY_NOTICES.md" | grep -q 'Jason Summers'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-linux
@@ -154,9 +172,11 @@ jobs:
           test -s "$app/share/doc/finsical/LICENSE"
           test -s "$app/share/doc/finsical/LICENSES/LGPL-2.1.txt"
           grep -q 'Laszlo Torok' "$app/share/doc/finsical/THIRD_PARTY_NOTICES.md"
+          grep -q 'Jason Summers' "$app/share/doc/finsical/THIRD_PARTY_NOTICES.md"
           test -s "$app/share/licenses/dev.finsical.app/LICENSE"
           test -s "$app/share/licenses/dev.finsical.app/LGPL-2.1.txt"
           grep -q 'Laszlo Torok' "$app/share/licenses/dev.finsical.app/THIRD_PARTY_NOTICES.md"
+          grep -q 'Jason Summers' "$app/share/licenses/dev.finsical.app/THIRD_PARTY_NOTICES.md"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-flatpak
@@ -233,6 +253,18 @@ jobs:
             --out "$apk" \
             "android/app/build/outputs/apk/release/Finsical-$VERSION-android-release-unsigned.apk"
           "$apksigner" verify --verbose --print-certs "$apk"
+      # The notices and the LGPL decoder's source inside the signed APK
+      # (see ci.yml).
+      - name: Check the APK's notices
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          apk="release/Finsical-$VERSION-android.apk"
+          unzip -p "$apk" assets/licenses/LICENSE | grep -q 'unencumbered'
+          unzip -p "$apk" assets/licenses/LGPL-2.1.txt | grep -q 'LESSER GENERAL PUBLIC LICENSE'
+          unzip -p "$apk" assets/licenses/THIRD_PARTY_NOTICES.md | grep -q 'Laszlo Torok'
+          unzip -p "$apk" assets/licenses/THIRD_PARTY_NOTICES.md | grep -q 'Jason Summers'
+          unzip -p "$apk" assets/core/data/mace.ts | cmp - core/data/mace.ts
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-android
