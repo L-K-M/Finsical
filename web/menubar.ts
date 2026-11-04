@@ -117,6 +117,9 @@ export interface TankMenuActions {
   /** The Finder's Clean Up: the fish line up in a grid for a few
    * seconds. A no-op in an empty tank. */
   cleanUp(): void;
+  /** Tank > Arrange Decorations: drag plants and accessories along
+   * the floor until it is chosen again. */
+  toggleArrange(): void;
   toggleScold(): void;
   toggleHints(): void;
   toggleBoot(): void;
@@ -127,7 +130,7 @@ export interface TankMenuActions {
              lampOn: boolean; muted: boolean; paused: boolean;
              zen: boolean; scoldOn: boolean; hintsOn: boolean;
              bootOn: boolean;
-             names: boolean };
+             names: boolean; arrange: boolean };
 }
 
 /** True while a pull-down menu is open — the tank page's bare-key
@@ -281,6 +284,7 @@ function shortcutsContent(c: HTMLElement): void {
     ["Feed", "Click above the waterline"],
     ["Tap", "Click in the water"],
     ["Get Info", "Alt/Option-click a fish"],
+    ["Arrange", "Tank menu, then drag a plant"],
     ["Import", "Drop fish, scenery or sounds"],
   ];
   for (const [key, what] of rows) {
@@ -389,6 +393,8 @@ export function mountTankMenuBar(a: TankMenuActions): (() => void) | null {
           { title: s.zen ? "Leave Zen Mode" : "Enter Zen Mode",
             action: a.toggleZen },
           { title: "Clean Up", action: a.cleanUp },
+          { title: s.arrange ? "Stop Arranging" : "Arrange Decorations",
+            action: a.toggleArrange },
           MENU_SEPARATOR,
           { title: "Take a Picture", action: a.takePicture },
           { title: "Export Tank…", action: a.exportTank },

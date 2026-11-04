@@ -776,6 +776,16 @@ class TestStatePushes(unittest.TestCase):
             logic.update_status(s, {"crt": "on", "paused": "yes"}), s
         )
 
+    def test_update_status_arrange(self):
+        s = logic.update_status(logic.TankStatus(), {"arrange": True})
+        self.assertEqual(s, logic.TankStatus(arrange_on=True))
+        s = logic.update_status(s, {"arrange": False})
+        self.assertFalse(s.arrange_on)
+        # Absent or non-boolean values keep the flag.
+        s = logic.update_status(s, {"arrange": True})
+        self.assertEqual(logic.update_status(s, {}), s)
+        self.assertEqual(logic.update_status(s, {"arrange": "yes"}), s)
+
     def test_pause_label(self):
         self.assertEqual(logic.pause_label(False), "Pause Simulation")
         self.assertEqual(logic.pause_label(True), "Resume Simulation")
@@ -804,6 +814,16 @@ class TestScripts(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             logic.tank_call_script("alert")
+
+    def test_toggle_arrange_is_callable(self):
+        self.assertIn("toggleArrange", logic.TANK_FUNCTIONS)
+        self.assertEqual(
+            logic.tank_call_script("toggleArrange"),
+            "window.finsical?.toggleArrange"
+            " ? window.finsical.toggleArrange()"
+            " : (() => { throw new Error("
+            "'window.finsical.toggleArrange missing') })()",
+        )
 
     def test_scripts_have_balanced_brackets(self):
         scripts = [
@@ -1153,6 +1173,17 @@ class TestMenu(unittest.TestCase):
         # macOS Tank ▸ Take a Picture, right after Pause.
         actions = [e and e.action for e in logic.APP_MENU]
         self.assertEqual(actions[actions.index("pause") + 1], "picture")
+
+    def test_arrange_decorations_is_in_the_menus(self):
+        entries = {e.action: e for e in logic.APP_MENU if e is not None}
+        self.assertEqual(entries["arrange"].label, "Arrange Decorations")
+        # No accelerator: Ctrl+A in particular stays free for text fields.
+        self.assertEqual(entries["arrange"].accels, ())
+        # With the other tank view toggles, after Mute Sound.
+        actions = list(entries)
+        self.assertEqual(actions[actions.index("mute") + 1], "arrange")
+        tank = next(m for m in logic.MENU_BAR if m.title == "Tank")
+        self.assertEqual(list(tank.actions).count("arrange"), 1)
 
     def test_actions_are_unique(self):
         actions = [e.action for e in logic.APP_MENU if e is not None]

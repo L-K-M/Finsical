@@ -3,7 +3,8 @@ import { needsCleanPicture } from "./picture.js";
 
 describe("needsCleanPicture", () => {
   const plain = { paused: false, torchLit: false, bootActive: false,
-                  focusActive: false, laserActive: false };
+                  focusActive: false, laserActive: false,
+                  arrangeActive: false };
 
   it("copies an unadorned scene directly", () => {
     expect(needsCleanPicture(plain)).toBe(false);
@@ -11,7 +12,8 @@ describe("needsCleanPicture", () => {
 
   it("redraws for every screen-only overlay", () => {
     for (const overlay of ["paused", "torchLit", "bootActive",
-                           "focusActive", "laserActive"] as const)
+                           "focusActive", "laserActive",
+                           "arrangeActive"] as const)
       expect(needsCleanPicture({ ...plain, [overlay]: true })).toBe(true);
   });
 
@@ -20,6 +22,11 @@ describe("needsCleanPicture", () => {
     // the laser also counts here, a photo taken with the toy on never
     // repaints and the dot lands in the saved picture.
     expect(needsCleanPicture({ ...plain, laserActive: true }))
+      .toBe(true);
+  });
+
+  it("redraws while arranging, or the souvenir keeps the marquees", () => {
+    expect(needsCleanPicture({ ...plain, arrangeActive: true }))
       .toBe(true);
   });
 });

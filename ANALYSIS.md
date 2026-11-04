@@ -298,6 +298,8 @@ a prepared .azn tank to scenery. First ship manual placement for existing copies
 occlusion stays stable; a representative .azn reproduces its placements without
 discarding fish or equipment unexpectedly. Keep replacements reversible.
 
+Manual placement shipped: Tank > Arrange Decorations; .azn layout import remains.
+
 ### F-06 Add named foods and species preferences
 
 M. RT-16. Fd_H/Fd_I, particle art and PrF# already exist in original data;

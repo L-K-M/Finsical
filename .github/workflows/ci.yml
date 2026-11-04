@@ -37,6 +37,8 @@ jobs:
       # client state pushes, spectator persistence) in the same Chrome.
       - run: npm run verify:pr-integration
       - run: npm run verify:spectator
+      # Tank > Arrange Decorations: real drags, per-copy saves, restores.
+      - run: npm run verify:arrange
       # Mac PICT scenery from archive.org and drops, with archive.org
       # answered by synthesized pictures.
       - run: npm run verify:mac-scenery

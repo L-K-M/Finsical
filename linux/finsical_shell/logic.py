@@ -866,6 +866,7 @@ class TankStatus:
     lamp_on: bool = True
     muted: bool = False
     paused: bool = False
+    arrange_on: bool = False
 
 
 def update_status(status: TankStatus, state: dict) -> TankStatus:
@@ -884,6 +885,8 @@ def update_status(status: TankStatus, state: dict) -> TankStatus:
         status = replace(status, muted=sound.get("muted") is True)
     if isinstance(state.get("paused"), bool):
         status = replace(status, paused=state["paused"])
+    if isinstance(state.get("arrange"), bool):
+        status = replace(status, arrange_on=state["arrange"])
     return status
 
 
@@ -903,6 +906,7 @@ TANK_FUNCTIONS = frozenset(
         "toggleCrt",
         "toggleLights",
         "toggleMute",
+        "toggleArrange",
         "togglePause",
         "takePicture",
         "save",
@@ -1182,6 +1186,7 @@ APP_MENU: tuple[Optional[MenuEntry], ...] = (
     MenuEntry("crt", "CRT Effect", ("<Control>r",)),
     MenuEntry("lamp", "Lamp On", ("<Control>l",)),
     MenuEntry("mute", "Mute Sound", ("<Control><Alt>s",)),
+    MenuEntry("arrange", "Arrange Decorations"),
     MenuEntry("pause", pause_label(False), ("<Control>p",)),
     MenuEntry("picture", "Take a Picture"),
     None,
@@ -1231,6 +1236,7 @@ MENU_BAR: tuple[MenuBarMenu, ...] = (
             "crt",
             "lamp",
             "mute",
+            "arrange",
             "pause",
             "picture",
             None,

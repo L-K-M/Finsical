@@ -19,6 +19,7 @@ import { BACKDROP_MIN, decodeDroppedPack, isRefusedPicture } from "./drop.js";
 import { decorFrame, decorPhase, decorPhaseFrac, keyToZero }
   from "../core/data/decor.js";
 import { decorDepth, drawOrder } from "../core/depth.js";
+import type { Cover } from "../core/depth.js";
 import { bodySize, pickDrawableSheet }
   from "../core/data/swimsheet.js";
 import { fishScale } from "./artscale.js";
@@ -66,6 +67,9 @@ import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
 import type { PawVisit } from "./catpaw.js";
 import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
 import { plantAreaOf } from "./plants.js";
+import { clampCenter, decorLeft, pickDecor, savedPlace, widestGapCenter }
+  from "./arrange.js";
+import type { Footprint } from "./arrange.js";
 import { spotlightAlive } from "./spotlight.js";
 import { THERMO_H, THERMO_W, thermoCanvas, thermoTip }
   from "./thermometer.js";
@@ -475,13 +479,21 @@ if (!tankOwner) {
   });
 }
 
+/** `rec` as saved: a decor record carries where each of its copies
+ * stands, in tank order. A record with no copies in the tank (its pack
+ * hasn't loaded yet, or failed to) keeps the places it was saved with,
+ * so one offline launch can't forget the layout. */
+function withPlaces(rec: Importable): Importable {
+  const mine = decors.filter((d) => d.pack === rec.url);
+  return mine.length ? { ...rec, places: mine.map((d) => d.x) } : rec;
+}
 function tankSnapshot(): SavedTank {
   return {
     v: rosterComplete ? 2 : 1,
     tickCount: sim.tickCount, waterQuality: sim.waterQuality,
     // Bodies keep fouling the water until removed, including after a restart.
     fish: sim.fish.map(savedFish),
-    addons: installedAddons,
+    addons: installedAddons.map(withPlaces),
     scenery: sceneryChoice,
     aquarium: sim.aquarium.toJSON(),
     savedAt: lifeClock,
@@ -708,7 +720,7 @@ function syncFeedHover(): void {
   const p = tankPoint(lastClient.x, lastClient.y);
   // Paused drops the affordance too — the click below is gated the
   // same way, so the cursor mustn't promise a feed that won't land.
-  setFeedHover(p !== null && !paused &&
+  setFeedHover(p !== null && !paused && !arranging &&
                isFeedZone(p.x, p.y, waterline));
 }
 
@@ -728,6 +740,9 @@ function onTankDown(e: PointerEvent): void {
     if (f) openInfo(f); else closeInfo();
     return;
   }
+  // Arranging owns the press: it picks up a piece or does nothing, and
+  // runs paused too, since a piece's place is not sim time.
+  if (arranging) { grabDecor(e, p); return; }
   // A paused tank ignores knocks and feeding — the ripples, splashes
   // and pellets would freeze mid-animation and fire all at once on
   // resume. ⌥-click Get Info above still works: the card reads the
@@ -820,10 +835,11 @@ document.body.appendChild(fishTip);
 /** The fish to name under a hovered point — none while Get Info, a
  * menu, the add-on window, a document window or an alert is up, or
  * while the boot parade owns the canvas (the tip would float over
- * them). */
+ * them). Arranging owns the pointer the same way: no tips, no laser
+ * dot, while it moves decor. */
 const anyOverlayOpen = (): boolean =>
   !!(infoCard || importPanel.isOpen || menuOpen() || docOpen() ||
-     alertOpen() || bootActive(bootT0));
+     alertOpen() || bootActive(bootT0) || arranging);
 const fishToName = (p: { x: number; y: number }): Fish | null =>
   anyOverlayOpen() ? null : fishAtPoint(p);
 const fishTipLabel = (f: Fish): string =>
@@ -880,6 +896,7 @@ function onTankMove(e: PointerEvent): void {
   lastClient = { x: e.clientX, y: e.clientY };
   const p = tankPoint(e.clientX, e.clientY);
   seePointer(p);
+  if (arranging && !arrangeDrag) arrangeCursor(p);
   // The dot follows the primary pointer on touch too: dragging a
   // finger along the water is the toy's natural gesture.
   if (laserOn) {
@@ -934,6 +951,169 @@ for (const el of tankSurfaces) {
   el.addEventListener("pointermove", onTankMove);
   el.addEventListener("pointerleave", onTankLeave);
 }
+
+// ---- Arrange Decorations ------------------------------------------------
+// Tank > Arrange Decorations: while it is on, every plant and accessory
+// wears a dotted marquee and a press on one drags it sideways along the
+// floor; a press elsewhere does nothing, so arranging never knocks or
+// feeds. Depth stays as it was. Escape puts a piece in hand back, then
+// ends the mode. A session mode: it is not saved.
+let arranging = false;
+/** The piece in hand: the pointer holding it, where on the piece it
+ * was grabbed and where it stood, for Escape. Held by reference, not
+ * index: a Remove mid-drag shifts the indices. */
+let arrangeDrag: { d: Decor; pointerId: number; grabDx: number;
+                   startX: number } | null = null;
+/** Tank px around a press that still grab a piece: a one-pixel stem is
+ * hard to hit, and a fingertip covers more than a mouse pointer. */
+const GRAB_SLOP_MOUSE = 2;
+const GRAB_SLOP_TOUCH = 5;
+
+/** Turn arranging on or off; returns the new flag for the native
+ * menu's checkmark. A view-only tab can't (its moves would never
+ * save), nor can an empty floor: each refusal says why. */
+function setArrange(on: boolean): boolean {
+  if (on === arranging) return arranging;
+  if (on && !tankOwner) {
+    dropSay("This copy of the tank is view only.");
+    return false;
+  }
+  if (on && !decors.length) {
+    dropSay("There's nothing to arrange yet. Add plants or accessories" +
+            " with Import Add-ons.");
+    return false;
+  }
+  if (!on) endArrangeDrag(true);
+  arranging = on;
+  if (on) {
+    setFeedHover(false);
+    fishTip.style.display = "none";
+    const done = inNativeShell() ? "choose Arrange Decorations again"
+      : "choose Stop Arranging in the Tank menu";
+    // From the top: the hint must not cover the pieces it is about.
+    dropSay(`Drag a plant or accessory to move it. When you're done,` +
+            ` press Esc or ${done}.`, "top");
+  }
+  arrangeCursor(lastClient && tankPoint(lastClient.x, lastClient.y));
+  laserCursor(); // the dot stands down while arranging, and comes back
+  requestPaint();
+  postState();
+  return arranging;
+}
+
+/** The art `d` shows this tick: what a press should feel for. */
+const shownFrame = (d: Decor): HTMLCanvasElement =>
+  d.frames[decorFrame(sim.tickCount, d.frames.length, d.phase)]!;
+/** Each decor frame's opaque pixels, read once: a press tests the art,
+ * not its box, so a plant's clear corners don't hide the one behind. */
+const decorMasks = new WeakMap<HTMLCanvasElement, Uint8Array>();
+function solidAt(cv: HTMLCanvasElement, x: number, y: number): boolean {
+  let m = decorMasks.get(cv);
+  if (!m) {
+    const c = cv.getContext("2d");
+    if (!c) return true; // unreadable art: the box will do
+    const px = c.getImageData(0, 0, cv.width, cv.height).data;
+    m = new Uint8Array(cv.width * cv.height);
+    for (let i = 0; i < m.length; i++) m[i] = px[i * 4 + 3]! > 0 ? 1 : 0;
+    decorMasks.set(cv, m);
+  }
+  return m[y * cv.width + x] === 1;
+}
+/** The piece under tank point `p`, frontmost first, or -1. Sway is
+ * left out: it moves the art by a pixel or two, inside the slop. */
+function decorAt(p: { x: number; y: number }, slop: number): number {
+  const shown = decors.map(shownFrame);
+  const boxes = decors.map((d, i) => {
+    const f = shown[i]!;
+    return { x0: decorX(d, f.width), y0: TANK.height - DECOR_FLOOR - f.height,
+             w: f.width, h: f.height, depth: d.depth };
+  });
+  return pickDecor(boxes, p.x, p.y, slop,
+                   (i, x, y) => solidAt(shown[i]!, x, y));
+}
+/** The pointer over the glass while arranging: an open hand over a
+ * piece, a closed one while a piece is in hand, the arrow elsewhere.
+ * Off, the feed crosshair takes the cursor back (syncFeedHover). */
+function arrangeCursor(p: { x: number; y: number } | null): void {
+  const c = !arranging ? ""
+    : arrangeDrag ? "grabbing"
+    : p && decorAt(p, GRAB_SLOP_MOUSE) >= 0 ? "grab" : "";
+  canvas.style.cursor = crtEl.style.cursor = c;
+}
+
+function grabDecor(e: PointerEvent, p: { x: number; y: number }): void {
+  if (!e.isPrimary || arrangeDrag) return; // one piece, one pointer
+  const i = decorAt(p, e.pointerType === "touch" ? GRAB_SLOP_TOUCH
+                                                 : GRAB_SLOP_MOUSE);
+  if (i < 0) return;
+  const d = decors[i]!;
+  arrangeDrag = { d, pointerId: e.pointerId, grabDx: p.x - d.x,
+                  startX: d.x };
+  e.preventDefault();
+  arrangeCursor(p);
+  requestPaint(); // the marquee starts marching, even while paused
+}
+/** Move `decors[i]`'s cover to where the piece now stands. In place,
+ * not syncCover(): a fish hiding behind the piece keeps its cover,
+ * which the sim checks by identity, and moves along with it. */
+function moveCover(i: number): void {
+  const c = sim.cover[i];
+  if (!c) return;
+  const next = coverOf(decors[i]!);
+  c.x0 = next.x0;
+  c.x1 = next.x1;
+}
+function dragDecorTo(e: PointerEvent): void {
+  const g = arrangeDrag;
+  if (!g) return;
+  const i = decors.indexOf(g.d);
+  if (i < 0) { endArrangeDrag(false); return; } // removed mid-drag
+  // Over a letterbox bar or the CRT's black glass the piece holds
+  // where it last was.
+  const p = tankPoint(e.clientX, e.clientY);
+  if (!p) return;
+  g.d.x = clampCenter(p.x - g.grabDx, g.d.frames[0]!.width, TANK.width);
+  moveCover(i);
+  requestPaint();
+}
+/** Let go of the piece in hand: where it is (`commit`), saving the
+ * move, or back where it was picked up. */
+function endArrangeDrag(commit: boolean): void {
+  const g = arrangeDrag;
+  if (!g) return;
+  arrangeDrag = null;
+  const i = decors.indexOf(g.d);
+  if (i >= 0 && !commit) {
+    g.d.x = g.startX;
+    moveCover(i);
+  } else if (i >= 0 && g.d.x !== g.startX) {
+    saveTank();
+  }
+  arrangeCursor(lastClient && tankPoint(lastClient.x, lastClient.y));
+  requestPaint();
+}
+// The drag follows the pointer past the glass's edge, so it listens on
+// the window, keyed by pointer id (the menubar's window drag does the
+// same). A mouse release the page never saw, because the system took
+// the mouse, ends the drag where the piece stands.
+window.addEventListener("pointermove", (e) => {
+  if (arrangeDrag?.pointerId !== e.pointerId) return;
+  if (e.pointerType === "mouse" && !(e.buttons & 1)) {
+    endArrangeDrag(true);
+    return;
+  }
+  dragDecorTo(e);
+});
+window.addEventListener("pointerup", (e) => {
+  if (arrangeDrag?.pointerId !== e.pointerId) return;
+  dragDecorTo(e);
+  endArrangeDrag(true);
+});
+// The system took the gesture: the piece goes back.
+window.addEventListener("pointercancel", (e) => {
+  if (arrangeDrag?.pointerId === e.pointerId) endArrangeDrag(false);
+});
+window.addEventListener("blur", () => endArrangeDrag(true));
 
 // ---- fish Get-Info card -------------------------------------------------
 // A tiny Mac window that follows the ⌥-clicked fish — its name, hunger
@@ -1350,16 +1530,27 @@ function applySceneryChoice(): void {
   requestPaint();
 }
 // Decorations (plants/accessories) sit on the gravel at the fish's art
-// scale, each at a depth the fish sort among; the set is re-spaced
-// across the tank floor whenever one is added. Animated packs loop
-// their frames on the sim clock, each item from its own phase.
-const decors: { frames: HTMLCanvasElement[]; phase: number;
-                sway: number; pack: string; plant: boolean;
-                depth: number }[] = [];
+// scale, each at a depth the fish sort among and at its own centre x:
+// where the save left it, else the widest free stretch of floor, so
+// adding one never moves the others. Tank > Arrange Decorations drags
+// them sideways. Animated packs loop their frames on the sim clock,
+// each item from its own phase.
+interface Decor {
+  frames: HTMLCanvasElement[]; phase: number; sway: number;
+  pack: string; plant: boolean; depth: number;
+  /** Centre x on the floor, tank px, kept inside the glass. */
+  x: number;
+}
+const decors: Decor[] = [];
+/** Place a copy of `src`'s art. `places` is its record's saved
+ * positions on a restore (untrusted, read per copy), absent on a live
+ * add. */
 function addDecor(images: Iterable<IndexedImage>, src: string,
-                  plant: boolean): void {
+                  plant: boolean, places?: unknown): void {
   const frames = decorCanvases(images, TANK.height);
   if (!frames) return;
+  // Also the copy's index into its record's saved places: a restore
+  // replays the copies in the order the save wrote them.
   const copy = decors.filter((d) => d.pack === src).length;
   // phase is an integer frame index — useless for sway, where a whole
   // cycle of phase looks identical on every plant. sway keeps the
@@ -1368,37 +1559,41 @@ function addDecor(images: Iterable<IndexedImage>, src: string,
   // its own hash so depth doesn't follow the sway phase.
   const depth = decorDepth(frames[0]!.height, TANK.height,
                            decorPhaseFrac(`${src}#depth`, copy));
+  const w = frames[0]!.width;
+  const x = clampCenter(
+    savedPlace(places, copy, TANK.width) ??
+      widestGapCenter(decors.map(footprint), w, TANK.width),
+    w, TANK.width);
   decors.push({ frames, phase: decorPhase(src, copy, frames.length),
-                sway: decorPhaseFrac(src, copy), pack: src, plant, depth });
+                sway: decorPhaseFrac(src, copy), pack: src, plant, depth,
+                x });
   syncCover();
 }
-/** Where decor item `i` of `dn` draws a `w`-wide frame: centred on its
- * anchor, pulled inside the glass. */
-function decorX(i: number, dn: number, w: number): number {
-  return Math.min(Math.max(Math.round(decorAnchor(i, dn) - w / 2), 0),
-                  Math.max(0, TANK.width - w));
+const footprint = (d: Decor): Footprint =>
+  ({ x: d.x, w: d.frames[0]!.width });
+/** Where `d` draws a `w`-wide frame: centred on its x, pulled inside
+ * the glass. The renderer, the sim's cover and the press hit test all
+ * read it, so they can't drift apart. */
+const decorX = (d: Decor, w: number): number =>
+  decorLeft(d.x, w, TANK.width);
+/** `d`'s cover in the sim: its span, top and depth. */
+function coverOf(d: Decor): Cover {
+  const f = d.frames[0]!;
+  const x0 = decorX(d, f.width);
+  return { x0, x1: x0 + f.width,
+           top: TANK.height - DECOR_FLOOR - f.height, depth: d.depth };
 }
 /** Sync decor geometry and plant area; the Sim owns its chemistry units. */
 function syncCover(): void {
-  const dn = decors.length;
-  sim.cover = decors.map((d, i) => {
-    const f = d.frames[0]!;
-    const x0 = decorX(i, dn, f.width);
-    return { x0, x1: x0 + f.width,
-             top: TANK.height - DECOR_FLOOR - f.height, depth: d.depth };
-  });
+  sim.cover = decors.map(coverOf);
   sim.plantArea = plantAreaOf(decors.map((d) => {
     const f = d.frames[0]!;
     return { plant: d.plant, width: f.width, height: f.height };
   }));
 }
-/** The floor anchor a decor piece centers on — shared by the renderer
- * and the plant-bubble emitter so the two can't drift apart. */
-function decorAnchor(i: number, dn: number): number {
-  return TANK.width * (i + 0.5) / dn;
-}
 /** Pixels above the tank floor where decor sits — the y-axis half of
- * the shared anchor, for the same reason. */
+ * every piece's placement, shared by the renderer and the plant-bubble
+ * emitter so the two can't drift apart. */
 const DECOR_FLOOR = 6;
 /** One storage alert per drop event — a multi-file drop shouldn't
  * stack them, but a later failing drop deserves its own warning. */
@@ -1625,7 +1820,7 @@ function retryRestores(failed: Importable[], attempt = 0): void {
 }
 function handleImages(images: Iterable<IndexedImage>, src: string,
                       section: string, live: boolean,
-                      count = 1): void {
+                      count = 1, places?: unknown): void {
   // fish packs carry portraits too — only scenery sections touch the tank
   if (section === "gravel") pickGravel(images, src, live);
   else if (section === "plants" || section === "accessories") {
@@ -1637,7 +1832,7 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
     const n = clampDecorCopies(count);
     const room = live ? decorCopyRoom(decors, src) : n;
     for (let i = 0; i < Math.min(n, room); i++)
-      addDecor(imgs, src, section === "plants");
+      addDecor(imgs, src, section === "plants", places);
   }
   else if (section === "backgrounds" || section === "tanks")
     pickBackdrop(images, src, live);
@@ -1771,6 +1966,7 @@ function sendState(): void {
     boot,
     paused,
     names: namesOn,
+    arrange: arranging,
     // The native shell retunes the window's aspect to the machine's
     // viewBox outline; prefs needs just the id.
     machine: { id: machine.id, w: machine.vbW, h: machine.vbH,
@@ -2089,6 +2285,9 @@ function removeAddon(url: string,
   for (let i = decors.length - 1; i >= 0; i--)
     if (decors[i]!.pack === url) decors.splice(i, 1);
   syncCover();
+  // A piece in hand may just have left; with none left, so does the mode.
+  if (arrangeDrag && !decors.includes(arrangeDrag.d)) endArrangeDrag(false);
+  if (arranging && !decors.length) setArrange(false);
   gravelByPack.delete(url);
   backdropByPack.delete(url);
   // Fall back to the most recent remaining pack's art — Map order is
@@ -2900,6 +3099,7 @@ function takePicture(): void {
     bootActive: bootT0 !== null,
     focusActive: focusId !== null,
     laserActive: laser !== null,
+    arrangeActive: arranging,
   });
   if (clean) render(d, "picture");
   c.drawImage(canvas, 0, 0, out.width, out.height);
@@ -3027,6 +3227,7 @@ const finsicalBridge = {
   // Returns the new flag, so the native menu retitles at once.
   togglePause: () => setPaused(!paused),
   toggleNames: () => setNames(!namesOn),
+  toggleArrange: () => setArrange(!arranging),
   // Save now, on quit. Both native shells call this: the macOS shell
   // from applicationShouldTerminate (WKWebView teardown never fires
   // pagehide, so a quit would drop the tank's state since the last
@@ -3072,10 +3273,17 @@ window.addEventListener("keydown", (e) => {
   audio.unlock();
   if (bootT0 !== null) { skipBoot(); return; } // a key skips the boot
   const k = e.key.toLowerCase();
-  // One Escape closes one thing: the card claims it first, then Zen
-  // mode, and a key another window already handled leaves both alone.
+  // One Escape closes one thing: the card claims it first, then
+  // arranging (a piece in hand goes back before the mode ends), then
+  // Zen mode, and a key another window already handled leaves all alone.
   if (k === "escape" && infoCard && !e.defaultPrevented && !alertOpen()) {
     closeInfo();
+    e.preventDefault();
+    return;
+  }
+  if (k === "escape" && arranging && !e.defaultPrevented && !alertOpen()) {
+    if (arrangeDrag) endArrangeDrag(false);
+    else setArrange(false);
     e.preventDefault();
     return;
   }
@@ -3139,6 +3347,7 @@ mountTankMenuBar({
   toggleNames: () => { setNames(!namesOn); },
   toggleZen: () => setZen(!zen),
   cleanUp: () => { sim.cleanUp(); requestPaint(); },
+  toggleArrange: () => { setArrange(!arranging); },
   toggleScold: () => {
     scoldOn = !scoldOn;
     // Drop the in-flight tally too, so a spree can't span the toggle:
@@ -3158,7 +3367,7 @@ mountTankMenuBar({
   state: () => ({ autoFeed, crtUsable: crt?.usable ?? false, crtOn,
                   lampOn: lighting.lamp, muted: soundCfg.muted, paused,
                   zen, scoldOn, hintsOn, bootOn: bootEnabled,
-                  names: namesOn }),
+                  names: namesOn, arrange: arranging }),
 });
 // The bar may have mounted after the first layout — place the case
 // below it now rather than waiting for a resize.
@@ -3364,7 +3573,11 @@ dropMsg.setAttribute("role", "status");
 dropMsg.hidden = true;
 document.getElementById("screen")!.appendChild(dropMsg);
 let dropMsgTimer: ReturnType<typeof setTimeout> | undefined;
-function dropSay(text: string): void {
+/** Which edge of the glass the chip speaks from: the floor by default,
+ * the top while the floor is what the reader is about to work on. */
+type ChipEdge = "bottom" | "top";
+function dropSay(text: string, edge: ChipEdge = "bottom"): void {
+  dropMsg.classList.toggle("top", edge === "top");
   // A live region only announces a change — an identical repeat (two
   // bad drops in a row) needs a cleared frame between writes to speak.
   dropMsg.textContent = "";
@@ -3864,7 +4077,7 @@ function drawScenery(source: HTMLCanvasElement, paint: SurfacePaint,
                      waterMotion, floor, bounds);
 }
 
-/** Decor item `i`: spread evenly across the floor, bottom planted in
+/** Decor item `i`: at its own place on the floor, bottom planted in
  * the gravel. Art keeps its authored width (no 160 px cap), so a wide
  * piece is pulled inside the glass rather than hanging past it. */
 function paintDecor(target: CanvasRenderingContext2D, d: HTMLCanvasElement,
@@ -3894,9 +4107,10 @@ function paintDecor(target: CanvasRenderingContext2D, d: HTMLCanvasElement,
 }
 
 function drawDecor(i: number, floor: number): void {
-  const { frames, phase, sway: swayPh } = decors[i]!;
+  const d = decors[i]!;
+  const { frames, phase, sway: swayPh } = d;
   const source = frames[decorFrame(sim.tickCount, frames.length, phase)]!;
-  const x = decorX(i, decors.length, source.width);
+  const x = decorX(d, source.width);
   const y = TANK.height - DECOR_FLOOR - source.height;
   const margin = Math.ceil(SWAY_AMP);
   drawScenery(source, (target, image) => paintDecor(target, image, x, y, swayPh), floor,
@@ -3952,6 +4166,36 @@ function drawSmudges(): void {
     paintSmudges(c, prints.flatMap(smudgePrint));
   }
   ctx.drawImage(smudgeCv, 0, 0);
+}
+/** The Finder's selection marquee, black and white dashes round the
+ * box x0..x1, y0..y1 in whole tank px. `march` walks the ants on the
+ * sim clock, so a paused tank holds them still; reduced motion holds
+ * them too, like the water. */
+function marquee(x0: number, y0: number, x1: number, y1: number,
+                 march: boolean): void {
+  ctx.save();
+  ctx.setLineDash([2, 2]);
+  ctx.lineWidth = 1;
+  ctx.lineDashOffset = march && waterMotion === "animated"
+    ? -(sim.tickCount % 8) / 2 : 0;
+  ctx.strokeStyle = "rgba(0,0,0,.8)";
+  ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
+  ctx.lineDashOffset += 1;
+  ctx.strokeStyle = "rgba(255,255,255,.8)";
+  ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
+  ctx.restore();
+}
+/** Arrange Decorations' cue: a still marquee round every piece, kept
+ * inside the glass, and marching round the piece in hand. */
+function drawArrangeMarquees(): void {
+  for (const d of decors) {
+    const f = shownFrame(d);
+    const x0 = Math.max(0, decorX(d, f.width));
+    const y0 = Math.max(0, TANK.height - DECOR_FLOOR - f.height);
+    marquee(x0, y0, Math.min(TANK.width, x0 + f.width),
+            Math.min(TANK.height, TANK.height - DECOR_FLOOR),
+            arrangeDrag?.d === d);
+  }
 }
 /** Who a frame is for: the live screen, or a Take a Picture souvenir. */
 type RenderTarget = "screen" | "picture";
@@ -4010,18 +4254,7 @@ function render(now: Date, target: RenderTarget = "screen"): void {
     const y0 = Math.max(1, Math.round(focused.y - hh));
     const x1 = Math.min(TANK.width - 1, Math.round(focused.x + hw));
     const y1 = Math.min(TANK.height - 1, Math.round(focused.y + hh));
-    ctx.save();
-    ctx.setLineDash([2, 2]);
-    ctx.lineWidth = 1;
-    // The ants hold still under reduced motion, like the water.
-    ctx.lineDashOffset = waterMotion === "animated"
-      ? -(sim.tickCount % 8) / 2 : 0;
-    ctx.strokeStyle = "rgba(0,0,0,.8)";
-    ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
-    ctx.lineDashOffset += 1;
-    ctx.strokeStyle = "rgba(255,255,255,.8)";
-    ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1);
-    ctx.restore();
+    marquee(x0, y0, x1, y1, true);
   }
 
   // Ambient motion (swell, glint, shimmer) holds still under reduced
@@ -4091,6 +4324,10 @@ function render(now: Date, target: RenderTarget = "screen"): void {
     const pose = pawPose(pawVisit, sim.tickCount);
     if (pose) drawPaw(pose.x, pose.y);
   }
+
+  // Arranging marks what it can move: over the murk and night veil, so
+  // a piece stays findable in the dark. Screen only, like the spotlight.
+  if (arranging && target === "screen") drawArrangeMarquees();
 
   if (paused && target === "screen") {
     ctx.save();
@@ -4296,7 +4533,7 @@ function tickSim(): void {
       const d = decors[i]!;
       if (!d.plant || Math.random() >= PLANT_BUBBLE) continue;
       sim.spawnBubble(
-        decorAnchor(i, decors.length) + (Math.random() - 0.5) * 6,
+        d.x + (Math.random() - 0.5) * 6,
         TANK.height - DECOR_FLOOR - d.frames[0]!.height * 0.7);
     }
   if (effects.surface) tickSurface(surface);
