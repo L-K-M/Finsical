@@ -328,6 +328,10 @@ class FinsicalApp(Gtk.Application):
                 self._status.muted,
                 lambda: self._call_tank("toggleMute"),
             ),
+            "arrange": (
+                self._status.arrange_on,
+                lambda: self._call_tank("toggleArrange"),
+            ),
             "float-above": (
                 self._settings.get(WindowPref.FLOAT_ABOVE),
                 lambda: self._toggle_pref(WindowPref.FLOAT_ABOVE),
@@ -428,6 +432,7 @@ class FinsicalApp(Gtk.Application):
             ("crt", s.crt_on),
             ("lamp", s.lamp_on),
             ("mute", s.muted),
+            ("arrange", s.arrange_on),
         ):
             self._action(name).set_state(GLib.Variant.new_boolean(on))
         self._action("crt").set_enabled(s.crt_available)

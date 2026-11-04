@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Tank > Arrange Decorations** lets you drag plants and accessories
+  to where you want them along the floor. Each copy keeps its place
+  across launches and in exported tanks, and a new piece goes into the
+  widest free gap instead of re-spacing the others.
 - The Linux tarball keeps its license and third-party notices in
   `share/doc/finsical`, so installing it into `~/.local` or
   `/usr/local` no longer puts them at the top of that folder. On

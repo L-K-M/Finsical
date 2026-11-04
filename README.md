@@ -181,6 +181,7 @@ rest until it arrives or you choose **Not Now** or **Stop**.
 | Tap the glass | Click in the water; nearby fish startle |
 | See a fish's name | Point at it: a balloon names it and says what it is doing |
 | See every fish's name | Press N, or choose Fish Names from the Tank menu: each fish wears a name tag until you turn them off |
+| Arrange plants and accessories | Choose Arrange Decorations from the Tank menu: every plant and accessory shows a dotted outline and you drag one sideways along the floor. When you are done, press Escape or choose the command again (**Stop Arranging** in the browser). While arranging, a click in the tank neither knocks on the glass nor drops food |
 | Get Info on a fish | Option-click it (Alt-click on Linux, unless your window manager uses Alt-drag to move windows): a card follows it with its health, hunger and mood |
 | Name a fish | Click its name in the Get Info card and type, or select it in Tank Overview and choose **Rename…** (or press Return). An empty name gives it back its species name |
 | Move the window | In the app, drag the computer case around the tank, or the top edge of the window |
@@ -243,6 +244,7 @@ Menu commands in the app:
 | CRT Effect (checked while on) | Tank | Cmd-R |
 | Lamp On (checked while on) | Tank | Cmd-L |
 | Fish Names (checked while on) | Tank | |
+| Arrange Decorations (checked while on) | Tank | |
 | Mute Sound (checked while muted) | Tank | Option-Cmd-S |
 | Pause Simulation, Resume Simulation | Tank | Cmd-P |
 | Clean Up (browser build only; the fish line up in a grid for a few seconds) | Tank | |
@@ -336,7 +338,11 @@ brings in the 13 Mac gravels packed in `.sit` files in
 
 Installed archive.org add-ons come back at every launch. Remove fish and
 add-ons in Tank Overview, choose which installed gravel or background
-is on display with **Use**, or start over with **Empty Tank…**.
+is on display with **Use**, or start over with **Empty Tank…**. A new
+plant or accessory goes into the widest free stretch of floor, so
+pieces already in the tank stay put. Each copy remembers where you put
+it, across launches and in an exported tank; Tank > Arrange Decorations
+lets you drag pieces sideways along the floor.
 
 ## Sounds
 

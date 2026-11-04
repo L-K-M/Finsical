@@ -162,6 +162,12 @@ export interface Importable {
   /** Plants/accessories only: how many copies "Add Again" put in the
    * tank. Absent means one — and every other section ignores it. */
   copies?: number;
+  /** Plants/accessories only: each copy's centre x on the tank floor,
+   * in tank pixels, in the order the copies go into the tank. Written
+   * with every save from where the copies stand; read back per copy
+   * through savedPlace() (web/arrange.ts), since storage is untrusted.
+   * A copy with no usable entry goes into the widest free gap. */
+  places?: number[];
 }
 
 /** "Add Again" is unbounded in-session; the persisted count caps so a
@@ -732,10 +738,12 @@ export function recordAddon(list: Importable[], it: Importable,
   const rec = list.find((a) => a.url === it.url);
   if (!rec) {
     if (mode === "refresh") return false;
-    // A bus-sent item could carry a copies field — a fresh record
-    // always starts at one; re-installs grow it below.
+    // A bus-sent item could carry copies or places — a fresh record
+    // always starts at one copy, placed by the tank; re-installs grow
+    // it below.
     const clean = { ...it };
     delete clean.copies;
+    delete clean.places;
     list.push(soundNames.length
       ? { ...clean, sounds: [...new Set(soundNames)] } : clean);
     return true;
@@ -970,9 +978,13 @@ export interface ImportHandlers {
            entry?: string, parts?: number): void;
   /** `live` as for onSheets: a restore must not change the choice of
    * scenery on display. `count` is the persisted decor copy count —
-   * 1 on a live install, `copies` on restore. */
+   * 1 on a live install, `copies` on restore. `places` is the record's
+   * saved decor positions on restore (untrusted, read per copy) and
+   * absent on a live install, which places by free floor. A restored
+   * copy with no usable place (a save from before places were kept)
+   * keeps the old even spread instead (spreadCenter, web/arrange.ts). */
   onImages(images: Iterable<IndexedImage>, src: string, section: string,
-           live: boolean, count?: number): void;
+           live: boolean, count?: number, places?: unknown): void;
   /** Sound records from a sound-bearing add-on — audio files and
    * 'snd ' resource forks alike arrive pre-flattened to {name, wav}.
    * `live` marks user installs vs restores (a restore must not play). */
@@ -1886,7 +1898,8 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
                    r.care, r.entry, parts);
       if (r.images.size)
         h.onImages(r.images.values(), it.url, it.section, live,
-                   live ? 1 : decorCopies(it));
+                   live ? 1 : decorCopies(it),
+                   live ? undefined : it.places);
       if (r.sounds.length) {
         const recs = qualifySoundItemName(r.sounds, it.inner);
         // The handler may rename colliding records in place — read the

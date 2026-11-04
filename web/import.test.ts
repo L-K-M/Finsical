@@ -370,6 +370,23 @@ describe("recordAddon", () => {
                         section: "plants", copies: 99 }, [], "install");
     expect(list[0]!.copies).toBeUndefined();
   });
+  it("strips caller-supplied places on first install", () => {
+    // The tank places a new copy by free floor, not by a bus message.
+    const list: Importable[] = [];
+    recordAddon(list, { url: "a.plt", inner: "a.plt", section: "plants",
+                        places: [1, 2, 3] }, [], "install");
+    expect(list[0]!.places).toBeUndefined();
+  });
+  it("keeps saved places through Add Again and a restore", () => {
+    const plant: Importable = { url: "a.plt", inner: "a.plt",
+                                section: "plants" };
+    const list: Importable[] = [{ ...plant, copies: 2, places: [40, 200] }];
+    recordAddon(list, { ...plant, places: [9] }, [], "install");
+    expect(list[0]!.copies).toBe(3);
+    expect(list[0]!.places).toEqual([40, 200]);
+    recordAddon(list, plant, [], "refresh");
+    expect(list[0]!.places).toEqual([40, 200]);
+  });
   it("caps the copy count and clamps corrupt values", () => {
     const plant = (url: string): Importable =>
       ({ url, inner: url, section: "plants" });
