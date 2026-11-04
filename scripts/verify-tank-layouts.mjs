@@ -108,7 +108,23 @@ const JPN = "https://archive.org/download/aquazone-jpn-set/" +
   "AQUAZONE%20(JPN)%20SET.zip/";
 const TANK_URL = JPN + encodeURIComponent(
   "AQUAZONE (JPN) SET/AQUAZONE ITEM/水槽/Test Tank.azn");
-const ARCHIVE = new Map([[TANK_URL, TANK_FILE]]);
+/** A crafted tank: 2 px wide, so it maps at 160x, with a reed claiming
+ * to be 65535 px wide next to a normal one. Its sizes are untrusted:
+ * the install must still finish, with every piece drawn at a bounded
+ * size, and the preview must still compose. */
+const HOSTILE_FILE = buildPack([
+  { type: "AQUA", id: 400, payload: aqua(2, 480) },
+  { type: "BAPC", id: 4011, payload: bmp(640, 480, () => 1) },
+  { type: "PlTI", id: 200, name: "Reed", payload: plti(1) },
+  { type: "PLPC", id: 200, payload: art(40, 200, 3) },
+  { type: "PlPI", id: 9001,
+    payload: plpi("Reed", { h: 1, w: 65535, x: 0, top: 479, depth: 100 }) },
+  { type: "PlPI", id: 9002,
+    payload: plpi("Reed", { h: 2, w: 1, x: 1, top: 478, depth: 300 }) },
+]);
+const HOSTILE_URL = JPN + encodeURIComponent(
+  "AQUAZONE (JPN) SET/AQUAZONE ITEM/水槽/Hostile.azn");
+const ARCHIVE = new Map([[TANK_URL, TANK_FILE], [HOSTILE_URL, HOSTILE_FILE]]);
 const item = { section: "tanks", inner: "Test Tank", url: TANK_URL };
 
 // ---- the tank page, instrumented --------------------------------------
@@ -332,6 +348,28 @@ try {
     assert.deepEqual(await pieces(), []);
   });
 
+  await test("a tank with absurd sizes installs whole, at bounded sizes",
+    async () => {
+      const hostile = { section: "tanks", inner: "Hostile", url: HOSTILE_URL };
+      await evalJs(`__probe.onBusMessage({ op: 'install',
+        item: ${JSON.stringify(hostile)}, again: false })`);
+      await waitFor(`!!__probe.record(${JSON.stringify(HOSTILE_URL)})`);
+      const ps = await pieces(HOSTILE_URL);
+      assert.equal(ps.length, 2);
+      for (const p of ps) {
+        assert.ok(p.w <= 320 && p.h <= 192, `piece drawn ${p.w} x ${p.h}`);
+      }
+      const size = await evalJs(`(async () => {
+        const pv = __probe.previewOf(
+          await __probe.importAddon(${JSON.stringify(HOSTILE_URL)}));
+        return pv && [pv.width, pv.height];
+      })()`);
+      assert.deepEqual(size, [2, 480]);
+      await evalJs(`__probe.onBusMessage({ op: 'removeAddon',
+        url: ${JSON.stringify(HOSTILE_URL)}, boot: __probe.boot })`);
+      await waitFor(`!__probe.record(${JSON.stringify(HOSTILE_URL)})`);
+    });
+
   await test("a tank dropped from the Finder does the same and comes back",
     async () => {
       const local = "local:Test Tank.azn";
@@ -352,7 +390,7 @@ try {
 
   assert.deepEqual(errors, [], "page errors");
   assert.deepEqual(failures, [], failures.join("\n"));
-  assert.equal(passed.length, 7, "Missing checks");
+  assert.equal(passed.length, 8, "Missing checks");
   console.log(`${passed.length} tank layout scenarios passed`);
 } finally {
   await chrome?.close();

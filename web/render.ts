@@ -182,8 +182,12 @@ export function swimCanvas(sheet: SpriteSheet, f: number,
 export function previewOf(rs: PackResult[]): HTMLCanvasElement | null {
   const layout = rs.find((r) => r.layout?.items.length)?.layout;
   if (layout) {
-    const pv = tankPreview(layout, rs.flatMap((r) => [...r.images.values()]));
-    if (pv) return pv;
+    // A layout that won't compose falls back to the backdrop below.
+    try {
+      const pv = tankPreview(layout,
+                             rs.flatMap((r) => [...r.images.values()]));
+      if (pv) return pv;
+    } catch (e) { console.warn("tank preview failed:", e); }
   }
   const sheets = rs.flatMap((r) => [...r.sheets.values()]);
   const swim = pickSwimSheet(sheets);
@@ -237,6 +241,9 @@ function tankPreview(layout: TankLayout,
   // Array.prototype.sort is stable: equal depths keep the file's order.
   const order = [...layout.items].sort((a, b) => a.depth - b.depth);
   for (const it of order) {
+    // Every known piece fits inside its tank; one that doesn't is a
+    // bad file's, and drawing it would mean art of any size.
+    if (it.w > w || it.h > h) continue;
     const art = sizedDecorCanvases(it.frames.slice(0, 1), it.w, it.h)?.[0];
     if (art) c.drawImage(art, it.x, it.top);
   }
@@ -246,14 +253,17 @@ function tankPreview(layout: TankLayout,
 /** A tank file's piece at the size it is placed at: each frame keyed
  * by its white (whiteKey), or as decor art is when it draws none, and
  * resized to w x h with the box filter, so a plant the file stretches
- * stays stretched. Null without a drawable frame. */
+ * stays stretched. Each frame is its own BMP with its own palette, so
+ * each finds its own white; the first frame's key stands in for one
+ * without. Null without a drawable frame. */
 export function sizedDecorCanvases(frames: readonly IndexedImage[],
                                    w: number, h: number):
     HTMLCanvasElement[] | null {
   const first = frames[0];
   if (!first?.w || !first.h) return null; // zero-area art
   const key = whiteKey(first) ?? pickDecorArt([first])?.key ?? 0;
-  return frames.map((f) => rgbaCanvas(resizeSprite(keyToZero(f, key), w, h)));
+  return frames.map((f) =>
+    rgbaCanvas(resizeSprite(keyToZero(f, whiteKey(f) ?? key), w, h)));
 }
 
 /** Decor art is drawn at the fish's ART_SCALE so a small plant stays

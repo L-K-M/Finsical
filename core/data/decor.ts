@@ -178,10 +178,12 @@ export function decorPhase(src: string, copy: number, n: number): number {
  * hole the water shows through, has corners of three different
  * indices that no corner or border rule can name. */
 export function whiteKey(img: IndexedImage): number | null {
-  for (let i = 0; i < img.palette.length; i++) {
+  // One pass over the pixels, whatever the palette holds.
+  const used = new Uint8Array(256);
+  for (const v of img.idx) used[v] = 1;
+  for (let i = 0; i < img.palette.length && i < 256; i++) {
     const [r, g, b] = img.palette[i]!;
-    if (r === 255 && g === 255 && b === 255 && img.idx.includes(i))
-      return i;
+    if (r === 255 && g === 255 && b === 255 && used[i]) return i;
   }
   return null;
 }

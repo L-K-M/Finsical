@@ -31,13 +31,17 @@
  */
 import type { IndexedImage } from "./azpack.js";
 import { decodeBmp } from "./bmp.js";
-import { u16 } from "./bytes.js";
+import { u16, u32 } from "./bytes.js";
 import { MAX_DECOR_FRAMES } from "./decor.js";
 import { isPack } from "./fsh.js";
 import { packResources, type PackResource } from "./rsrc.js";
 
 export const TANK_DEPTH_MAX = 400;   // stored depths run 0 (back) to 400 (front)
 export const TANK_ITEMS_MAX = 64;    // bound on items read from one file (untrusted input)
+/** Bound on the art one file decodes, in pixels: the busiest known
+ * tank (アクアテラリウム) decodes about 2.1 million. A frame that would
+ * pass it is never decoded, and its item keeps the frames before it. */
+export const TANK_ART_PIXELS_MAX = 16 << 20;
 
 export type TankItemKind = "plant" | "accessory";
 
@@ -80,6 +84,10 @@ function pascalString(p: Uint8Array): string {
   return s;
 }
 
+/** A little-endian signed 32-bit read: BMP heights are negative for
+ * top-down art. */
+const i32 = (d: Uint8Array, o: number): number => u32(d, o) | 0;
+
 /** The tank in an .azn, or null when the data is not a tank file. */
 export function tankLayout(d: Uint8Array): TankLayout | null {
   if (!isPack(d)) return null;
@@ -109,17 +117,22 @@ export function tankLayout(d: Uint8Array): TankLayout | null {
   // usual case: several plants of one species) hold the same
   // IndexedImage objects.
   const decoded = new Map<string, IndexedImage | null>();
+  let pixels = 0;
   const frameImage = (type: string, id: number): IndexedImage | null => {
     const k = `${type}/${id}`;
     if (decoded.has(k)) return decoded.get(k) ?? null;
     let img: IndexedImage | null = null;
     const r = byId.get(k);
-    if (r) {
+    // The size its header claims, read before decoding allocates it.
+    const claimed = r && r.payload.length >= 26
+      ? Math.abs(i32(r.payload, 18) * i32(r.payload, 22)) : 0;
+    if (r && pixels + claimed <= TANK_ART_PIXELS_MAX) {
       try {
         img = decodeBmp(r.payload);
       } catch {
         img = null; // decodeBmp throws on hostile headers
       }
+      if (img) pixels += img.w * img.h;
     }
     decoded.set(k, img);
     return img;

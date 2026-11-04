@@ -148,6 +148,8 @@ export const COLLECTIONS: Collection[] = [
 ];
 
 const PACK_EXT = /\.(fsh|grv|plt|acc|azn|rez)$/i;
+/** A tank document: the only pack whose layout is read. */
+const TANK_FILE = /\.azn$/i;
 /** Loose collection entries: packs plus bare images (background BMPs). */
 const DIRECT_EXT = /\.(fsh|grv|plt|acc|azn|rez|bmp)$/i;
 
@@ -859,7 +861,8 @@ export async function importAddon(url: string): Promise<PackResult[]> {
     // sound records — dropped loose audio already persisted via
     // handleSounds/sndsMerge at drop time.
     return [{ entry: url, sheets: fshToSheets(d), images: packImages(d),
-              sounds: [], care: packSpeciesCare(d), layout: tankLayout(d) }];
+              sounds: [], care: packSpeciesCare(d),
+              layout: TANK_FILE.test(url) ? tankLayout(d) : null }];
   }
   const blobs = await fetchInnerBlobs(url);
   const out: PackResult[] = [];
@@ -874,7 +877,7 @@ export async function importAddon(url: string): Promise<PackResult[]> {
       const sounds = sheets.size || images.size ? [] : bankSounds(b.data);
       out.push({ entry: b.name, sheets, images, sounds,
                  care: sheets.size ? packSpeciesCare(b.data) : null,
-                 layout: tankLayout(b.data) });
+                 layout: TANK_FILE.test(b.name) ? tankLayout(b.data) : null });
     } else if (isBmp(b.data)) {
       const img = decodeBmp(b.data);
       if (img) out.push({ entry: b.name, sheets: new Map(), sounds: [],

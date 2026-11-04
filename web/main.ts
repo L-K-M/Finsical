@@ -1625,7 +1625,12 @@ function handleLayout(layout: TankLayout, src: string, live: boolean,
   if (!(fit.s > 0)) return;
   for (const item of layout.items) {
     const p = placeItem(item, fit, TANK);
-    const frames = sizedDecorCanvases(item.frames, p.w, p.h);
+    let frames: HTMLCanvasElement[] | null = null;
+    // One piece that won't draw skips itself, never the rest: a throw
+    // here would leave the tank half laid out under an install that
+    // reports failure.
+    try { frames = sizedDecorCanvases(item.frames, p.w, p.h); }
+    catch (e) { console.warn(`${src}: skipping a piece that won't draw:`, e); }
     if (!frames) continue;
     addDecorArt(frames, src, item.kind === "plant", item.depth,
                 { places: live ? undefined : places, fallback: p.cx });
@@ -3678,6 +3683,9 @@ window.addEventListener("drop", (e) => {
   // an await sees nothing.
   const droppedFiles = Array.from(e.dataTransfer?.files ?? []);
   void (async () => {
+    // Empty Tank while the files are read wins over them, as it does
+    // over an install still downloading (downloadAddon).
+    const epoch = tankEpoch;
     const files = new Map<string, File>();
     for (const ent of entries) await walkEntry(ent, "", files);
     // Items that expose no filesystem entry (webkitGetAsEntry missing
@@ -3862,6 +3870,10 @@ window.addEventListener("drop", (e) => {
               "add-ons to make room.",
             buttons: [{ title: "OK", default: true, cancel: true }] });
         }
+      }
+      if (epoch !== tankEpoch) {
+        console.warn(`drop: ${name}: the tank was emptied while it was read`);
+        continue;
       }
       const section = p.sheets.size ? "fish" : p.section;
       if (stored) replaceOtherKind(url, section);

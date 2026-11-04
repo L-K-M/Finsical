@@ -50,6 +50,22 @@ describe("placeItem", () => {
     expect(p.cx).toBeCloseTo(160);
   });
 
+  it("keeps a piece no wider than the tank, whatever the file says", () => {
+    // A crafted file: a 2 px wide tank maps at 160x, and a piece 65535
+    // px wide would be drawn about ten million pixels wide.
+    const tiny = tankFit({ width: 2, height: 480 }, TANK);
+    const p = placeItem({ x: 0, w: 65535, h: 1 }, tiny, TANK);
+    expect(p.w).toBeLessThanOrEqual(TANK.width);
+    expect(p.h).toBeLessThanOrEqual(TANK.height - LAYOUT_HEADROOM);
+  });
+
+  it("leaves the widest real piece, a full-width bank, as it is", () => {
+    // The terrarium tank's bank: 800 px of an 800 x 600 tank.
+    const terra = tankFit({ width: 800, height: 600 }, TANK);
+    expect(placeItem({ x: 0, w: 800, h: 209 }, terra, TANK))
+      .toEqual({ cx: 160, w: 320, h: 84 });
+  });
+
   it("never sizes a piece below one pixel", () => {
     expect(placeItem({ x: 0, w: 1, h: 1 }, fit, TANK))
       .toMatchObject({ w: 1, h: 1 });

@@ -43,16 +43,18 @@ export function tankFit(file: { width: number; height: number },
 
 /** Where a piece the file draws at `item` (left x, width, height in
  * file px) goes: its centre through the backdrop's mapping, its size
- * scaled alike, and shrunk evenly when it would not fit under the
- * headroom. */
+ * scaled alike, and shrunk evenly when it would be taller than the
+ * headroom allows or wider than the tank. Both bounds hold for any
+ * file: its sizes are untrusted, and every piece's art is drawn once
+ * at this size. No known tank has a piece wider than the tank. */
 export function placeItem(item: { x: number; w: number; h: number },
                           fit: TankFit,
                           tank: { width: number; height: number }):
     Placement {
   let w = item.w * fit.s, h = item.h * fit.s;
-  const room = tank.height - LAYOUT_HEADROOM;
-  if (h > room && h > 0) {
-    const k = room / h;
+  const k = Math.min(1, (tank.height - LAYOUT_HEADROOM) / h,
+                     tank.width / w);
+  if (k < 1) {
     w *= k;
     h *= k;
   }

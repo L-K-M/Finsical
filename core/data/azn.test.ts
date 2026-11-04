@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TANK_ITEMS_MAX, tankLayout } from "./azn.js";
+import { TANK_ART_PIXELS_MAX, TANK_ITEMS_MAX, tankLayout } from "./azn.js";
 import { buildPack, type Res } from "./rsrc.fixture.js";
 
 const PAL: [number, number, number][] =
@@ -208,5 +208,42 @@ describe("tankLayout", () => {
     expect(tankLayout(buildPack([
       { type: "AQUA", id: 1, payload: aqua(0, 400) },
     ]))).toBeNull();
+  });
+});
+
+describe("tankLayout art budget", () => {
+  /** A small BMP whose header claims w x h: the budget reads the
+   * claim before anything decodes. */
+  function claiming(w: number, h: number): number[] {
+    const p = bmp(4, 4, 2);
+    const v = new DataView(Uint8Array.from(p).buffer);
+    v.setInt32(18, w, true);
+    v.setInt32(22, h, true);
+    return [...new Uint8Array(v.buffer)];
+  }
+
+  it("skips art past the budget and keeps the rest of the tank", () => {
+    const huge = Math.ceil(Math.sqrt(TANK_ART_PIXELS_MAX)) + 1;
+    const d = buildPack([
+      { type: "AQUA", id: 400, payload: aqua(480, 640) },
+      { type: "AccI", id: 200, payload: acci(10, 400, 100, 1) },
+      { type: "ACPC", id: 200, payload: claiming(huge, huge) },
+      { type: "AccI", id: 300, payload: acci(50, 470, 200, 1) },
+      { type: "ACPC", id: 300, payload: bmp(10, 10, 3) },
+    ]);
+    const items = tankLayout(d)!.items;
+    expect(items.map((it) => it.x)).toEqual([50]);
+  });
+
+  it("counts a top-down frame's negative height by its size", () => {
+    const huge = Math.ceil(Math.sqrt(TANK_ART_PIXELS_MAX)) + 1;
+    const d = buildPack([
+      { type: "AQUA", id: 400, payload: aqua(480, 640) },
+      { type: "AccI", id: 200, payload: acci(10, 400, 100, 1) },
+      { type: "ACPC", id: 200, payload: claiming(huge, -huge) },
+    ]);
+    // A count, not the items: a failing diff of a 16-megapixel frame
+    // would swamp the report.
+    expect(tankLayout(d)!.items.length).toBe(0);
   });
 });
