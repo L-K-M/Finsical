@@ -1069,11 +1069,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate,
         // excluded (they ride their parent's level).
         NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification,
-            object: nil, queue: .main) { note in
+            object: nil, queue: .main) { [weak self] note in
             // The observer closure is @Sendable; hop to the main actor
             // to touch AppKit windows. Carry the notified window across
             // — re-reading keyWindow inside the task can miss it or hit
-            // a window that became key since.
+            // a window that became key since. Both closures hold self
+            // weakly: Swift 6.4 rejects a weak capture in the task
+            // under an implicit strong one here (ImplicitStrongCapture).
             guard let w = note.object as? NSWindow else { return }
             Task { @MainActor [weak self] in
                 guard let self, w !== self.window, w.sheetParent == nil,
