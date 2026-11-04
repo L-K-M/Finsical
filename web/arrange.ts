@@ -40,6 +40,15 @@ export function decorLeft(x: number, w: number, tankW: number): number {
                   Math.max(0, tankW - w));
 }
 
+/** Copy i of n in the even spread every piece had before pieces kept
+ * their own places: n equal stretches of floor, one centre each, with
+ * a `w`-wide piece kept inside the glass. A save from then has no
+ * places, so its pieces come back exactly where they stood. */
+export function spreadCenter(i: number, n: number, w: number,
+                             tankW: number): number {
+  return clampCenter(tankW * (i + 0.5) / n, w, tankW);
+}
+
 /** The centre of the widest stretch of floor no piece covers, for a
  * new `w`-wide piece: the middle of an empty tank, then the middle of
  * whatever gap is largest. Ties go to the leftmost gap. Where no gap

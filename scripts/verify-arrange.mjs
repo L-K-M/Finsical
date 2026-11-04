@@ -29,6 +29,7 @@ const probe = `
 window.__probe = {
   handleImages, decors, installedAddons, tankSnapshot, setArrange, sim,
   ripples, tankToClient, pictureRect, SAVE_KEY, render, setPaused,
+  removeAddon, showAlert,
   get arranging() { return arranging; },
   get holding() { return arrangeDrag !== null; },
   get cursor() { return canvas.style.cursor; },
@@ -101,6 +102,7 @@ const art = `((w, h) => {
 })`;
 const PLANT = "https://example.invalid/verify/Reed.plt";
 const ROCK = "https://example.invalid/verify/Rock.acc";
+const OLD = "https://example.invalid/verify/Old.plt";
 
 const temp = mkdtempSync(join(tmpdir(), "finsical-arrange-"));
 const errors = [], failures = [], passed = [];
@@ -204,6 +206,23 @@ try {
       "/nothing to arrange/.test(document.getElementById('dropmsg').textContent)");
   });
 
+  await test("a save from before positions keeps its even layout",
+    async () => {
+      // Eight 40 px copies tiled the 320 px floor edge to edge.
+      await evalJs(`(() => {
+        const p = __probe;
+        p.installedAddons.push({ section: 'plants', inner: 'Old',
+          url: ${JSON.stringify(OLD)}, copies: 8 });
+        p.handleImages(${art}(80, 60), ${JSON.stringify(OLD)}, 'plants',
+                       false, 8, undefined);
+      })()`);
+      assert.deepEqual(await evalJs("__probe.decors.map(d => d.frames[0].width)"),
+                       Array(8).fill(40));
+      assert.deepEqual(await xs(), [20, 60, 100, 140, 180, 220, 260, 300]);
+      await evalJs(`__probe.removeAddon(${JSON.stringify(OLD)})`);
+      assert.equal(await evalJs("__probe.decors.length"), 0);
+    });
+
   await test("a restore puts each copy where the save left it", async () => {
     await evalJs(`(() => {
       const p = __probe;
@@ -298,6 +317,26 @@ try {
     assert.equal(await evalJs("__probe.ripples.length"), ripples);
   });
 
+  await test("an alert opening mid-drag puts the piece back", async () => {
+    const before = await xs();
+    const saved = await savedPlaces(PLANT);
+    const s = await scale();
+    const from = await decorClient(1);
+    await drag(from, { x: from.x + 30 * s, y: from.y }, false);
+    assert.notDeepEqual(await xs(), before);
+    await evalJs(`window.__alert = __probe.showAlert({ icon: 'note',
+      text: 'mid-drag', buttons: [{ title: 'OK' }] })`);
+    try {
+      await mouse("mouseMoved", { x: from.x + 40 * s, y: from.y }, 1);
+      await mouse("mouseReleased", { x: from.x + 40 * s, y: from.y });
+      assert.equal(await evalJs("__probe.holding"), false);
+      assert.deepEqual(await xs(), before);
+      assert.deepEqual(await savedPlaces(PLANT), saved);
+    } finally {
+      await evalJs("window.__alert.close(); delete window.__alert");
+    }
+  });
+
   await test("Escape puts a piece in hand back, then ends arranging",
     async () => {
       const before = await xs();
@@ -375,7 +414,7 @@ try {
 
   assert.deepEqual(errors, [], "page errors");
   assert.deepEqual(failures, [], failures.join("\n"));
-  assert.equal(passed.length, 11, "Missing checks");
+  assert.equal(passed.length, 13, "Missing checks");
   console.log(`${passed.length} live arrange scenarios passed`);
 } finally {
   await chrome?.close();

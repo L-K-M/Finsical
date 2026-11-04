@@ -67,8 +67,8 @@ import { PAW_ART, PAW_FIRST, PAW_FIRST_RANGE, PAW_FUR, PAW_GAP,
 import type { PawVisit } from "./catpaw.js";
 import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
 import { plantAreaOf } from "./plants.js";
-import { clampCenter, decorLeft, pickDecor, savedPlace, widestGapCenter }
-  from "./arrange.js";
+import { clampCenter, decorLeft, pickDecor, savedPlace, spreadCenter,
+         widestGapCenter } from "./arrange.js";
 import type { Footprint } from "./arrange.js";
 import { spotlightAlive } from "./spotlight.js";
 import { THERMO_H, THERMO_W, thermoCanvas, thermoTip }
@@ -1042,6 +1042,9 @@ function arrangeCursor(p: { x: number; y: number } | null): void {
 }
 
 function grabDecor(e: PointerEvent, p: { x: number; y: number }): void {
+  // The pointer holding a piece presses again: its release went
+  // missing, so the piece stays where it was last seen.
+  if (arrangeDrag?.pointerId === e.pointerId) endArrangeDrag(true);
   if (!e.isPrimary || arrangeDrag) return; // one piece, one pointer
   const i = decorAt(p, e.pointerType === "touch" ? GRAB_SLOP_TOUCH
                                                  : GRAB_SLOP_MOUSE);
@@ -1086,19 +1089,23 @@ function endArrangeDrag(commit: boolean): void {
   if (i >= 0 && !commit) {
     g.d.x = g.startX;
     moveCover(i);
-  } else if (i >= 0 && g.d.x !== g.startX) {
-    saveTank();
+  } else if (i >= 0) {
+    g.d.placed = true;
+    if (g.d.x !== g.startX) saveTank();
   }
   arrangeCursor(lastClient && tankPoint(lastClient.x, lastClient.y));
   requestPaint();
 }
 // The drag follows the pointer past the glass's edge, so it listens on
 // the window, keyed by pointer id (the menubar's window drag does the
-// same). A mouse release the page never saw, because the system took
-// the mouse, ends the drag where the piece stands.
+// same). A mouse or pen release the page never saw, because the system
+// took the pointer, ends the drag where the piece stands. An alert that
+// opens mid-drag owns the pointer: the piece goes back rather than
+// landing, and saving, where the scrim hides it.
 window.addEventListener("pointermove", (e) => {
   if (arrangeDrag?.pointerId !== e.pointerId) return;
-  if (e.pointerType === "mouse" && !(e.buttons & 1)) {
+  if (alertOpen()) { endArrangeDrag(false); return; }
+  if (e.pointerType !== "touch" && !(e.buttons & 1)) {
     endArrangeDrag(true);
     return;
   }
@@ -1106,6 +1113,7 @@ window.addEventListener("pointermove", (e) => {
 });
 window.addEventListener("pointerup", (e) => {
   if (arrangeDrag?.pointerId !== e.pointerId) return;
+  if (alertOpen()) { endArrangeDrag(false); return; }
   dragDecorTo(e);
   endArrangeDrag(true);
 });
@@ -1540,13 +1548,19 @@ interface Decor {
   pack: string; plant: boolean; depth: number;
   /** Centre x on the floor, tank px, kept inside the glass. */
   x: number;
+  /** Whether x is the piece's own: saved, picked on a live add, or
+   * dragged. A restored copy its save has no place for (a save from
+   * before places, or a bad entry) keeps the old even spread until
+   * then, so an existing tank looks as it did. */
+  placed: boolean;
 }
 const decors: Decor[] = [];
-/** Place a copy of `src`'s art. `places` is its record's saved
- * positions on a restore (untrusted, read per copy), absent on a live
- * add. */
+/** Place a copy of `src`'s art. `restore` carries its record's saved
+ * positions (untrusted, read per copy) when a launch puts it back;
+ * without it, the copy is a live add and takes the widest free gap. */
 function addDecor(images: Iterable<IndexedImage>, src: string,
-                  plant: boolean, places?: unknown): void {
+                  plant: boolean,
+                  restore?: { places: unknown }): void {
   const frames = decorCanvases(images, TANK.height);
   if (!frames) return;
   // Also the copy's index into its record's saved places: a restore
@@ -1560,13 +1574,21 @@ function addDecor(images: Iterable<IndexedImage>, src: string,
   const depth = decorDepth(frames[0]!.height, TANK.height,
                            decorPhaseFrac(`${src}#depth`, copy));
   const w = frames[0]!.width;
+  const saved = restore && savedPlace(restore.places, copy, TANK.width);
+  const placed = !restore || saved !== null;
   const x = clampCenter(
-    savedPlace(places, copy, TANK.width) ??
-      widestGapCenter(decors.map(footprint), w, TANK.width),
+    saved ?? widestGapCenter(decors.map(footprint), w, TANK.width),
     w, TANK.width);
   decors.push({ frames, phase: decorPhase(src, copy, frames.length),
                 sway: decorPhaseFrac(src, copy), pack: src, plant, depth,
-                x });
+                x, placed });
+  // The old layout re-spaced every piece on each add; unplaced pieces
+  // still do, so a whole tank from an old save ends up as it was.
+  if (!placed)
+    decors.forEach((d, i) => {
+      if (!d.placed)
+        d.x = spreadCenter(i, decors.length, d.frames[0]!.width, TANK.width);
+    });
   syncCover();
 }
 const footprint = (d: Decor): Footprint =>
@@ -1832,7 +1854,8 @@ function handleImages(images: Iterable<IndexedImage>, src: string,
     const n = clampDecorCopies(count);
     const room = live ? decorCopyRoom(decors, src) : n;
     for (let i = 0; i < Math.min(n, room); i++)
-      addDecor(imgs, src, section === "plants", places);
+      addDecor(imgs, src, section === "plants",
+               live ? undefined : { places });
   }
   else if (section === "backgrounds" || section === "tanks")
     pickBackdrop(images, src, live);

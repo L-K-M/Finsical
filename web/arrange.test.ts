@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { clampCenter, decorLeft, pickDecor, savedPlace, widestGapCenter }
-  from "./arrange.js";
+import { clampCenter, decorLeft, pickDecor, savedPlace, spreadCenter,
+         widestGapCenter } from "./arrange.js";
 import type { DecorBox } from "./arrange.js";
 
 const W = 320;
@@ -27,6 +27,22 @@ describe("decorLeft", () => {
 
   it("hangs an over-wide piece off the right edge from x = 0", () => {
     expect(decorLeft(160, 400, W)).toBe(0);
+  });
+});
+
+describe("spreadCenter", () => {
+  it("tiles a floor the old way", () => {
+    // Eight 40 px pieces fill the 320 px floor edge to edge.
+    const xs = Array.from({ length: 8 }, (_, i) => spreadCenter(i, 8, 40, W));
+    expect(xs).toEqual([20, 60, 100, 140, 180, 220, 260, 300]);
+    expect(xs.map((x) => decorLeft(x, 40, W)))
+      .toEqual([0, 40, 80, 120, 160, 200, 240, 280]);
+  });
+
+  it("keeps a wide piece inside the glass, as the old clamp did", () => {
+    // The old layout drew the piece at max(round(anchor - w/2), 0).
+    expect(decorLeft(spreadCenter(0, 4, 100, W), 100, W)).toBe(0);
+    expect(decorLeft(spreadCenter(3, 4, 100, W), 100, W)).toBe(220);
   });
 });
 
