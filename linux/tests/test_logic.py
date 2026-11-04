@@ -1179,9 +1179,9 @@ class TestMenu(unittest.TestCase):
         self.assertEqual(entries["arrange"].label, "Arrange Decorations")
         # No accelerator: Ctrl+A in particular stays free for text fields.
         self.assertEqual(entries["arrange"].accels, ())
-        # With the other tank view toggles, after Mute Sound.
+        # Before Mute Sound, as in the Mac app's Tank menu.
         actions = list(entries)
-        self.assertEqual(actions[actions.index("mute") + 1], "arrange")
+        self.assertEqual(actions[actions.index("arrange") + 1], "mute")
         tank = next(m for m in logic.MENU_BAR if m.title == "Tank")
         self.assertEqual(list(tank.actions).count("arrange"), 1)
 

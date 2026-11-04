@@ -79,6 +79,11 @@ describe("widestGapCenter", () => {
     expect(widestGapCenter([{ x: 155, w: 310 }], 60, W)).toBe(290);
   });
 
+  it("centres a new piece wider than the whole tank", () => {
+    expect(widestGapCenter([{ x: 20, w: 40 }], 400, W)).toBe(160);
+    expect(widestGapCenter([], 400, W)).toBe(160);
+  });
+
   it("spreads a run of new pieces instead of stacking them", () => {
     const placed: { x: number; w: number }[] = [];
     for (let i = 0; i < 4; i++)

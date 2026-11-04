@@ -86,8 +86,10 @@ export function savedPlace(places: unknown, k: number,
 }
 
 /** The piece a press at tank point (px, py) picks up: the frontmost
- * whose art is solid within `slop` pixels of the point, or -1. Ties in
- * depth go to the later piece, which draws on top. `solid(i, x, y)`
+ * whose art is solid anywhere in the square `slop` pixels out from the
+ * point on each axis (a square, so a stem at a box corner still
+ * grabs), or -1. Ties in depth go to the later piece, which draws on
+ * top. `solid(i, x, y)`
  * answers for piece i's own art coordinates and is only asked inside
  * the piece's box. */
 export function pickDecor(boxes: readonly DecorBox[], px: number, py: number,

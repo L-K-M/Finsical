@@ -980,7 +980,9 @@ export interface ImportHandlers {
    * scenery on display. `count` is the persisted decor copy count —
    * 1 on a live install, `copies` on restore. `places` is the record's
    * saved decor positions on restore (untrusted, read per copy) and
-   * absent on a live install, which places by free floor. */
+   * absent on a live install, which places by free floor. A restored
+   * copy with no usable place (a save from before places were kept)
+   * keeps the old even spread instead (spreadCenter, web/arrange.ts). */
   onImages(images: Iterable<IndexedImage>, src: string, section: string,
            live: boolean, count?: number, places?: unknown): void;
   /** Sound records from a sound-bearing add-on — audio files and
