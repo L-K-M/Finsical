@@ -39,6 +39,8 @@ jobs:
       - run: npm run verify:spectator
       # Tank > Arrange Decorations: real drags, per-copy saves, restores.
       - run: npm run verify:arrange
+      # .azn tanks from archive.org and drops: layout, preview, restore.
+      - run: npm run verify:tank-layouts
       # Mac PICT scenery from archive.org and drops, with archive.org
       # answered by synthesized pictures.
       - run: npm run verify:mac-scenery

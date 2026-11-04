@@ -171,6 +171,21 @@ export function decorPhase(src: string, copy: number, n: number): number {
   return Math.floor(decorPhaseFrac(src, copy) * n);
 }
 
+/** The palette index of pure white that `img` draws with, or null.
+ * Tank files (.azn) key their pieces by white wherever the palette
+ * puts it: white is the frame key of 197 of the 202 pieces the known
+ * tank files hold, and the goldfish bowl's glass, a room with a white
+ * hole the water shows through, has corners of three different
+ * indices that no corner or border rule can name. */
+export function whiteKey(img: IndexedImage): number | null {
+  for (let i = 0; i < img.palette.length; i++) {
+    const [r, g, b] = img.palette[i]!;
+    if (r === 255 && g === 255 && b === 255 && img.idx.includes(i))
+      return i;
+  }
+  return null;
+}
+
 /**
  * The same art with palette index `key` moved to index 0 (entries and
  * pixels swapped), so code built on the sprite convention (index 0 is

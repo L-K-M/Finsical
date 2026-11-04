@@ -298,7 +298,9 @@ a prepared .azn tank to scenery. First ship manual placement for existing copies
 occlusion stays stable; a representative .azn reproduces its placements without
 discarding fish or equipment unexpectedly. Keep replacements reversible.
 
-Manual placement shipped: Tank > Arrange Decorations; .azn layout import remains.
+Manual placement shipped: Tank > Arrange Decorations. .azn layout import shipped:
+a tank brings its PlPI plants and AccI accessories at their file positions,
+alongside the decor already in the tank, and they leave with the tank.
 
 ### F-06 Add named foods and species preferences
 

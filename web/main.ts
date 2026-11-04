@@ -48,7 +48,8 @@ import { isLocalPack, LOCAL_PREFIX, localPacks, packDelete, packPut, sndsGet,
          sndsMerge, sndsRemove } from "./store.js";
 import { coverCrop, decorCanvases, gravelKey, imageCanvas,
          isBackdropImage, isGravelImage,
-         previewOf, soundIcon, swimCanvas } from "./render.js";
+         previewOf, sizedDecorCanvases, soundIcon, swimCanvas }
+  from "./render.js";
 import { placeholderFrames } from "./placeholder.js";
 import { corpseSprite } from "./corpse.js";
 import { needsCleanPicture } from "./picture.js";
@@ -69,6 +70,8 @@ import { SNAIL_H, snailCanvas, snailPose, snailSpawn } from "./snail.js";
 import { plantAreaOf } from "./plants.js";
 import { clampCenter, decorLeft, pickDecor, savedPlace, spreadCenter,
          widestGapCenter } from "./arrange.js";
+import { placeItem, tankFit } from "./tanklayout.js";
+import type { TankLayout } from "../core/data/azn.js";
 import type { Footprint } from "./arrange.js";
 import { spotlightAlive } from "./spotlight.js";
 import { THERMO_H, THERMO_W, thermoCanvas, thermoTip }
@@ -1563,6 +1566,23 @@ function addDecor(images: Iterable<IndexedImage>, src: string,
                   restore?: { places: unknown }): void {
   const frames = decorCanvases(images, TANK.height);
   if (!frames) return;
+  addDecorArt(frames, src, plant, null,
+              restore ? { places: restore.places, fallback: "spread" }
+                      : { fallback: "gap" });
+}
+/** Where a new piece goes. A saved place wins (`places`, a record's
+ * untrusted positions, read per copy); without one, `fallback`: the
+ * centre x its tank file gives it, the widest free gap (a live add),
+ * or the old even spread (a restore from before places were kept). */
+interface DecorSpot {
+  places?: unknown;
+  fallback: number | "gap" | "spread";
+}
+/** Put a piece of `src`'s with ready art in the tank. `depth` is its
+ * tank file's, or null to seed one by the art's height. */
+function addDecorArt(frames: HTMLCanvasElement[], src: string,
+                     plant: boolean, depth: number | null,
+                     spot: DecorSpot): void {
   // Also the copy's index into its record's saved places: a restore
   // replays the copies in the order the save wrote them.
   const copy = decors.filter((d) => d.pack === src).length;
@@ -1571,13 +1591,15 @@ function addDecor(images: Iterable<IndexedImage>, src: string,
   // fraction so each copy drifts on its own rhythm.
   // Standalone packs carry no depth: seed one by the art's height, on
   // its own hash so depth doesn't follow the sway phase.
-  const depth = decorDepth(frames[0]!.height, TANK.height,
-                           decorPhaseFrac(`${src}#depth`, copy));
+  depth ??= decorDepth(frames[0]!.height, TANK.height,
+                       decorPhaseFrac(`${src}#depth`, copy));
   const w = frames[0]!.width;
-  const saved = restore && savedPlace(restore.places, copy, TANK.width);
-  const placed = !restore || saved !== null;
+  const saved = savedPlace(spot.places, copy, TANK.width);
+  const { fallback } = spot;
+  const placed = saved !== null || fallback !== "spread";
   const x = clampCenter(
-    saved ?? widestGapCenter(decors.map(footprint), w, TANK.width),
+    saved ?? (typeof fallback === "number" ? fallback
+      : widestGapCenter(decors.map(footprint), w, TANK.width)),
     w, TANK.width);
   decors.push({ frames, phase: decorPhase(src, copy, frames.length),
                 sway: decorPhaseFrac(src, copy), pack: src, plant, depth,
@@ -1590,6 +1612,24 @@ function addDecor(images: Iterable<IndexedImage>, src: string,
         d.x = spreadCenter(i, decors.length, d.frames[0]!.width, TANK.width);
     });
   syncCover();
+}
+/** A tank file's plants and accessories, where it lays them out, as
+ * pieces of the tank add-on `src`: they arrange, save and leave with
+ * it like any decor. Once per tank: Add Again or a second drop keeps
+ * the pieces already in, wherever they were moved to. A restore's
+ * saved places win over the file's for pieces the user moved. */
+function handleLayout(layout: TankLayout, src: string, live: boolean,
+                      places?: unknown): void {
+  if (decors.some((d) => d.pack === src)) return;
+  const fit = tankFit(layout, TANK);
+  if (!(fit.s > 0)) return;
+  for (const item of layout.items) {
+    const p = placeItem(item, fit, TANK);
+    const frames = sizedDecorCanvases(item.frames, p.w, p.h);
+    if (!frames) continue;
+    addDecorArt(frames, src, item.kind === "plant", item.depth,
+                { places: live ? undefined : places, fallback: p.cx });
+  }
 }
 const footprint = (d: Decor): Footprint =>
   ({ x: d.x, w: d.frames[0]!.width });
@@ -1907,6 +1947,7 @@ async function handleSounds(
 const importPanel = mountImportPanel({
   onSheets: handleSheets,
   onImages: handleImages,
+  onLayout: handleLayout,
   onSounds: (recs, live) => {
     void handleSounds(recs, live)
       .catch((e) => console.warn("sound import failed:", e));
@@ -2550,6 +2591,8 @@ async function downloadAddon(it: Importable): Promise<void> {
                    r.care, r.entry, parts);
     if (r.images.size)
       handleImages(r.images.values(), it.url, it.section, true);
+    if (it.section === "tanks" && r.layout?.items.length)
+      handleLayout(r.layout, it.url, true);
   }
   // One batch across resources: dedupes names globally, plays the
   // feedback once, and a decode failure can't fail the install. The
@@ -3831,6 +3874,7 @@ window.addEventListener("drop", (e) => {
         handleSheets(p.sheets, p.name, url, "fish", true, p.care, url);
       if (p.images.size)
         handleImages(p.images.values(), url, p.section, true);
+      if (p.layout) handleLayout(p.layout, url, true);
       // Only when the bytes persisted — a dangling record would throw
       // "stored pack missing" on every launch. A pack with fish records
       // as fish (a .REZ's scenery then stays session-only).

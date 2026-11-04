@@ -5,8 +5,12 @@ import type { SpriteSheet, IndexedImage } from "../core/data/azpack.js";
 import type { Palette } from "osmium-ui";
 import { ICON_PALETTE, SOUND_ICON } from "./icons.js";
 import type { PackResult } from "./import.js";
-import { keyToZero, pickDecorFrames } from "../core/data/decor.js";
-import { ART_SCALE, shrinkSprite } from "./artscale.js";
+import { keyToZero, pickDecorArt, pickDecorFrames, whiteKey }
+  from "../core/data/decor.js";
+import { ART_SCALE, resizeSprite, shrinkSprite } from "./artscale.js";
+import type { Rgba } from "./artscale.js";
+import type { TankLayout } from "../core/data/azn.js";
+import { TANK_SIZE } from "../core/tuning.js";
 
 // Canvas rasterizers shared by the tank page and the panel window.
 
@@ -86,13 +90,16 @@ export function imageCanvas(img: IndexedImage,
   return cv;
 }
 
-/** A sprite frame shrunk with shrinkSprite onto a canvas. */
-function shrunkCanvas(img: IndexedImage, s: number): HTMLCanvasElement {
-  const { w, h, data } = shrinkSprite(img, s);
+/** Box-filtered sprite pixels onto a canvas. */
+function rgbaCanvas({ w, h, data }: Rgba): HTMLCanvasElement {
   const cv = document.createElement("canvas");
   cv.width = w; cv.height = h;
   cv.getContext("2d")!.putImageData(new ImageData(data, w, h), 0, 0);
   return cv;
+}
+/** A sprite frame shrunk with shrinkSprite onto a canvas. */
+function shrunkCanvas(img: IndexedImage, s: number): HTMLCanvasElement {
+  return rgbaCanvas(shrinkSprite(img, s));
 }
 
 /** One swim frame, oriented and shrunk to `scale`, built once per
@@ -169,9 +176,15 @@ export function swimCanvas(sheet: SpriteSheet, f: number,
   return cv;
 }
 
-/** Best preview tile for a fetched add-on: the fish the tank would
- * draw, in its right-facing profile, else the largest scenery image. */
+/** Best preview tile for a fetched add-on: a tank file as its author
+ * laid it out, the fish the tank would draw, in its right-facing
+ * profile, else the largest scenery image. */
 export function previewOf(rs: PackResult[]): HTMLCanvasElement | null {
+  const layout = rs.find((r) => r.layout?.items.length)?.layout;
+  if (layout) {
+    const pv = tankPreview(layout, rs.flatMap((r) => [...r.images.values()]));
+    if (pv) return pv;
+  }
   const sheets = rs.flatMap((r) => [...r.sheets.values()]);
   const swim = pickSwimSheet(sheets);
   // The rest by size, in case the swim sheet has no drawable frame.
@@ -187,6 +200,60 @@ export function previewOf(rs: PackResult[]): HTMLCanvasElement | null {
   if (!imgs[0]) return null;
   try { return imageCanvas(imgs[0], true); }
   catch (e) { console.warn("preview render failed:", e); return null; }
+}
+
+/** The biggest a tank file's preview gets, per side: every known file
+ * is at most 1920 px wide, and the size comes from untrusted bytes. */
+const TANK_PREVIEW_MAX = 2048;
+
+/** A tank file as its author saw it, in the file's own pixels: the
+ * backdrop, the gravel strip on the floor, then each plant and
+ * accessory back to front at its own size. Its art is picked as
+ * pickBackdrop picks it, so the preview shows what Add to Tank puts
+ * up. Null when the file's size is out of bounds. */
+function tankPreview(layout: TankLayout,
+                     images: IndexedImage[]): HTMLCanvasElement | null {
+  const { width: w, height: h } = layout;
+  if (!(w > 0 && h > 0 && w <= TANK_PREVIEW_MAX && h <= TANK_PREVIEW_MAX))
+    return null;
+  let backdrop: IndexedImage | null = null;
+  let gravel: IndexedImage | null = null;
+  for (const img of images) {
+    if (isGravelImage(img, TANK_SIZE.width)) {
+      if (!gravel || img.w > gravel.w) gravel = img;
+    } else if (isBackdropImage(img, TANK_SIZE) &&
+               (!backdrop || img.w * img.h > backdrop.w * backdrop.h)) {
+      backdrop = img;
+    }
+  }
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  const c = cv.getContext("2d")!;
+  c.imageSmoothingEnabled = false;
+  if (backdrop) c.drawImage(imageCanvas(backdrop, true), 0, 0, w, h);
+  if (gravel)
+    c.drawImage(imageCanvas(keyToZero(gravel, gravelKey(gravel)), false),
+                0, h - gravel.h);
+  // Array.prototype.sort is stable: equal depths keep the file's order.
+  const order = [...layout.items].sort((a, b) => a.depth - b.depth);
+  for (const it of order) {
+    const art = sizedDecorCanvases(it.frames.slice(0, 1), it.w, it.h)?.[0];
+    if (art) c.drawImage(art, it.x, it.top);
+  }
+  return cv;
+}
+
+/** A tank file's piece at the size it is placed at: each frame keyed
+ * by its white (whiteKey), or as decor art is when it draws none, and
+ * resized to w x h with the box filter, so a plant the file stretches
+ * stays stretched. Null without a drawable frame. */
+export function sizedDecorCanvases(frames: readonly IndexedImage[],
+                                   w: number, h: number):
+    HTMLCanvasElement[] | null {
+  const first = frames[0];
+  if (!first?.w || !first.h) return null; // zero-area art
+  const key = whiteKey(first) ?? pickDecorArt([first])?.key ?? 0;
+  return frames.map((f) => rgbaCanvas(resizeSprite(keyToZero(f, key), w, h)));
 }
 
 /** Decor art is drawn at the fish's ART_SCALE so a small plant stays

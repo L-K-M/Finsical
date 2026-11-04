@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { borderKey, cornerKey, DECOR_TICKS_PER_FRAME, decorFrame,
          decorPhase, hasDecorFrames, keyToZero, MAX_DECOR_FRAMES,
-         pickDecorArt, pickDecorFrames } from "./decor.js";
+         pickDecorArt, pickDecorFrames, whiteKey } from "./decor.js";
 import type { IndexedImage } from "./azpack.js";
 
 const PAL: [number, number, number][] = Array.from({ length: 256 },
@@ -112,6 +112,32 @@ describe("pickDecorFrames", () => {
     expect(pickDecorFrames([only]))
       .toEqual({ frames: [only], key: 0 });
     expect(pickDecorFrames([])).toBeNull();
+  });
+});
+
+describe("whiteKey", () => {
+  it("names the pure white the art draws with", () => {
+    // PAL is greyscale: index 255 is pure white.
+    expect(whiteKey(framed(10, 10, 255, 3))).toBe(255);
+  });
+
+  it("is null when the art never draws white", () => {
+    expect(whiteKey(framed(10, 10, 0, 3))).toBeNull();
+  });
+
+  it("takes the white entry the pixels use", () => {
+    const pal = PAL.slice();
+    pal[7] = [255, 255, 255];
+    expect(whiteKey({ ...framed(10, 10, 7, 3), palette: pal })).toBe(7);
+  });
+
+  it("finds a white hole whose corners differ", () => {
+    // The goldfish bowl's glass: corners 0, 5, 218 and 218 around a
+    // white interior; no corner or border rule names a key.
+    const img = framed(20, 20, 140, 255);
+    img.idx[0] = 0; img.idx[19] = 5; img.idx[380] = 218; img.idx[399] = 218;
+    expect(cornerKey(img)).toBeNull();
+    expect(whiteKey(img)).toBe(255);
   });
 });
 

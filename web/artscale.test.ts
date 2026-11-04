@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ART_SCALE, fishScale, shrinkSprite } from "./artscale.js";
+import { ART_SCALE, fishScale, resizeSprite, shrinkSprite } from "./artscale.js";
 import type { IndexedImage } from "../core/data/azpack.js";
 
 const PAL: [number, number, number][] = [[0, 0, 0], [200, 0, 0], [0, 0, 100]];
@@ -56,6 +56,65 @@ describe("shrinkSprite", () => {
     const o = shrinkSprite(img(["1"]), 0.1);
     expect([o.w, o.h]).toEqual([1, 1]);
     expect(px(o, 0, 0)).toEqual([200, 0, 0, 255]);
+  });
+});
+
+describe("resizeSprite", () => {
+  it("shrinks axes independently to the exact size", () => {
+    // 4 x 2 into 2 x 2: only the width shrinks; each column keeps its
+    // own half of every row.
+    const o = resizeSprite(img(["1122", "2211"]), 2, 2);
+    expect([o.w, o.h]).toEqual([2, 2]);
+    expect(px(o, 0, 0)).toEqual([200, 0, 0, 255]);
+    expect(px(o, 1, 0)).toEqual([0, 0, 100, 255]);
+    expect(px(o, 0, 1)).toEqual([0, 0, 100, 255]);
+    expect(px(o, 1, 1)).toEqual([200, 0, 0, 255]);
+  });
+
+  it("enlarges, filling each source pixel's block", () => {
+    // 2 x 2 into 4 x 4: every source pixel owns a 2 x 2 block of
+    // outputs, and the transparent key stays transparent.
+    const o = resizeSprite(img(["10", "12"]), 4, 4);
+    expect([o.w, o.h]).toEqual([4, 4]);
+    expect(px(o, 0, 0)).toEqual([200, 0, 0, 255]);
+    expect(px(o, 1, 1)).toEqual([200, 0, 0, 255]);
+    expect(px(o, 2, 0)).toEqual([0, 0, 0, 0]);
+    expect(px(o, 3, 1)).toEqual([0, 0, 0, 0]);
+    expect(px(o, 0, 2)).toEqual([200, 0, 0, 255]);
+    expect(px(o, 1, 3)).toEqual([200, 0, 0, 255]);
+    expect(px(o, 2, 2)).toEqual([0, 0, 100, 255]);
+    expect(px(o, 3, 3)).toEqual([0, 0, 100, 255]);
+  });
+
+  it("stretches one axis while shrinking the other", () => {
+    // 2 x 2 into 4 x 1: the width doubles onto one row as the two
+    // source rows collapse into it.
+    const o = resizeSprite(img(["10", "12"]), 4, 1);
+    expect([o.w, o.h]).toEqual([4, 1]);
+    expect(px(o, 0, 0)).toEqual([200, 0, 0, 255]);
+    expect(px(o, 1, 0)).toEqual([200, 0, 0, 255]);
+    // The transparent top-right cell covers only half of these
+    // outputs, so the blue underneath them passes the threshold.
+    expect(px(o, 2, 0)).toEqual([0, 0, 100, 255]);
+    expect(px(o, 3, 0)).toEqual([0, 0, 100, 255]);
+  });
+
+  it("clamps zero or negative sizes to one pixel", () => {
+    const o = resizeSprite(img(["12"]), 0, -3);
+    expect([o.w, o.h]).toEqual([1, 1]);
+    expect(px(o, 0, 0)).toEqual([100, 0, 50, 255]);
+  });
+
+  it("matches shrinkSprite at the rounded size", () => {
+    const art = img(["1102", "1012", "0221", "2001"]);
+    for (const s of [0.1, 0.29, 0.5, 0.75, 1]) {
+      const shrunk = shrinkSprite(art, s);
+      expect([shrunk.w, shrunk.h])
+        .toEqual([Math.max(1, Math.round(art.w * s)),
+          Math.max(1, Math.round(art.h * s))]);
+      expect(shrunk.data)
+        .toEqual(resizeSprite(art, shrunk.w, shrunk.h).data);
+    }
   });
 });
 

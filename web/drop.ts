@@ -16,6 +16,8 @@ import { openFork } from "../core/data/resfork.js";
 import { TANK_SIZE } from "../core/tuning.js";
 import { isGravelImage } from "./render.js";
 import { packSpeciesCare } from "../core/data/species.js";
+import { tankLayout } from "../core/data/azn.js";
+import type { TankLayout } from "../core/data/azn.js";
 import type { SpeciesCare } from "../core/data/species.js";
 import type { IndexedImage, SpriteSheet } from "../core/data/azpack.js";
 import type { PackSection } from "./import.js";
@@ -34,6 +36,9 @@ export interface DroppedPack {
   /** Scenery art. Empty for fish packs: their catalog portraits must
    * not take the tank's backdrop. */
   images: Map<string, IndexedImage>;
+  /** A tank file's plants and accessories, placed as it lays them out;
+   * absent for every other drop. */
+  layout?: TankLayout;
 }
 
 /** The smallest picture the tank shows as its backdrop: half the
@@ -92,8 +97,10 @@ export function decodeDroppedPack(name: string, data: Uint8Array):
     const images = section === "fish"
       ? new Map<string, IndexedImage>() : packImages(data);
     if (!sheets.size && !images.size) return null;
+    const layout = section === "tanks" ? tankLayout(data) : null;
     return { name: stem, section, sheets, images,
-             care: sheets.size ? packSpeciesCare(data) : null };
+             care: sheets.size ? packSpeciesCare(data) : null,
+             ...(layout?.items.length ? { layout } : {}) };
   } catch (e) {
     console.warn(`drop: skipping undecodable pack ${name}:`, e);
     return null;
