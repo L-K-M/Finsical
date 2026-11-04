@@ -5,7 +5,7 @@ import type { SpriteSheet, IndexedImage } from "../core/data/azpack.js";
 import type { Palette } from "osmium-ui";
 import { ICON_PALETTE, SOUND_ICON } from "./icons.js";
 import type { PackResult } from "./import.js";
-import { keyToZero, pickDecorArt, pickDecorFrames, whiteKey }
+import { keyToZero, pickDecorFrames, tankArtKey }
   from "../core/data/decor.js";
 import { ART_SCALE, resizeSprite, shrinkSprite } from "./artscale.js";
 import type { Rgba } from "./artscale.js";
@@ -251,19 +251,17 @@ function tankPreview(layout: TankLayout,
 }
 
 /** A tank file's piece at the size it is placed at: each frame keyed
- * by its white (whiteKey), or as decor art is when it draws none, and
- * resized to w x h with the box filter, so a plant the file stretches
- * stays stretched. Each frame is its own BMP with its own palette, so
- * each finds its own white; the first frame's key stands in for one
- * without. Null without a drawable frame. */
+ * by tankArtKey and resized to w x h with the box filter, so a plant
+ * the file stretches stays stretched. Each frame is its own BMP with
+ * its own palette, so each finds its own key. Null without a drawable
+ * frame. */
 export function sizedDecorCanvases(frames: readonly IndexedImage[],
                                    w: number, h: number):
     HTMLCanvasElement[] | null {
   const first = frames[0];
   if (!first?.w || !first.h) return null; // zero-area art
-  const key = whiteKey(first) ?? pickDecorArt([first])?.key ?? 0;
   return frames.map((f) =>
-    rgbaCanvas(resizeSprite(keyToZero(f, whiteKey(f) ?? key), w, h)));
+    rgbaCanvas(resizeSprite(keyToZero(f, tankArtKey(f)), w, h)));
 }
 
 /** Decor art is drawn at the fish's ART_SCALE so a small plant stays

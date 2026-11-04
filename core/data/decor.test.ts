@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { borderKey, cornerKey, DECOR_TICKS_PER_FRAME, decorFrame,
          decorPhase, hasDecorFrames, keyToZero, MAX_DECOR_FRAMES,
-         pickDecorArt, pickDecorFrames, whiteKey } from "./decor.js";
+         pickDecorArt, pickDecorFrames, tankArtKey, whiteKey }
+  from "./decor.js";
 import type { IndexedImage } from "./azpack.js";
 
 const PAL: [number, number, number][] = Array.from({ length: 256 },
@@ -138,6 +139,30 @@ describe("whiteKey", () => {
     img.idx[0] = 0; img.idx[19] = 5; img.idx[380] = 218; img.idx[399] = 218;
     expect(cornerKey(img)).toBeNull();
     expect(whiteKey(img)).toBe(255);
+  });
+});
+
+describe("tankArtKey", () => {
+  it("keeps white details on art keyed by agreeing corners", () => {
+    // Keyed on black (index 0 at every corner), with a white flower.
+    const img = framed(10, 10, 0, 3);
+    img.idx[55] = 255;
+    expect(whiteKey(img)).toBe(255);
+    expect(tankArtKey(img)).toBe(0);
+  });
+
+  it("keys the goldfish bowl's white hole", () => {
+    const img = framed(20, 20, 140, 255);
+    img.idx[0] = 0; img.idx[19] = 5; img.idx[380] = 218; img.idx[399] = 218;
+    expect(tankArtKey(img)).toBe(255);
+  });
+
+  it("falls back to the border majority, then to 0", () => {
+    // Corners differ and no white: the border's majority index.
+    const img = framed(10, 10, 9, 3);
+    img.idx[0] = 1;
+    expect(tankArtKey(img)).toBe(9);
+    expect(tankArtKey(thumbnail())).toBe(0);
   });
 });
 
