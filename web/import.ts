@@ -32,6 +32,8 @@ import type { IndexedImage } from "../core/data/azpack.js";
 import type { Bus, BusMsg } from "./bus.js";
 import { isBackdropImage, isGravelImage, soundIcon } from "./render.js";
 import { hasDecorFrames } from "../core/data/decor.js";
+import { tankLayout } from "../core/data/azn.js";
+import type { TankLayout } from "../core/data/azn.js";
 import { bindDialogKeys, mountList, mountPopup, mountWindow, pushButton,
          setButtonTitle } from "osmium-ui";
 
@@ -146,6 +148,8 @@ export const COLLECTIONS: Collection[] = [
 ];
 
 const PACK_EXT = /\.(fsh|grv|plt|acc|azn|rez)$/i;
+/** A tank document: the only pack whose layout is read. */
+const TANK_FILE = /\.azn$/i;
 /** Loose collection entries: packs plus bare images (background BMPs). */
 const DIRECT_EXT = /\.(fsh|grv|plt|acc|azn|rez|bmp)$/i;
 
@@ -162,11 +166,13 @@ export interface Importable {
   /** Plants/accessories only: how many copies "Add Again" put in the
    * tank. Absent means one — and every other section ignores it. */
   copies?: number;
-  /** Plants/accessories only: each copy's centre x on the tank floor,
-   * in tank pixels, in the order the copies go into the tank. Written
-   * with every save from where the copies stand; read back per copy
+  /** Plants, accessories and tanks: the centre x on the tank floor of
+   * each piece the add-on put in, in tank pixels, in the order the
+   * pieces go into the tank (a tank's in its file's order). Written
+   * with every save from where the pieces stand; read back per piece
    * through savedPlace() (web/arrange.ts), since storage is untrusted.
-   * A copy with no usable entry goes into the widest free gap. */
+   * A piece with no usable entry goes where its tank file put it, or
+   * for a plant or accessory pack, into the old even spread. */
   places?: number[];
 }
 
@@ -667,6 +673,9 @@ export interface PackResult {
   sounds: { name: string; wav: Uint8Array }[];
   /** The species' care needs (FsTI), for fish packs that carry them. */
   care?: SpeciesCare | null;
+  /** A tank file's plants and accessories where it places them; null
+   * or absent for every other pack. */
+  layout?: TankLayout | null;
 }
 
 /** Catalog sections, plus "" for a listed pack not yet stamped. */
@@ -852,7 +861,8 @@ export async function importAddon(url: string): Promise<PackResult[]> {
     // sound records — dropped loose audio already persisted via
     // handleSounds/sndsMerge at drop time.
     return [{ entry: url, sheets: fshToSheets(d), images: packImages(d),
-              sounds: [], care: packSpeciesCare(d) }];
+              sounds: [], care: packSpeciesCare(d),
+              layout: TANK_FILE.test(url) ? tankLayout(d) : null }];
   }
   const blobs = await fetchInnerBlobs(url);
   const out: PackResult[] = [];
@@ -866,7 +876,8 @@ export async function importAddon(url: string): Promise<PackResult[]> {
       // art brings no sounds: one kind of content per add-on.
       const sounds = sheets.size || images.size ? [] : bankSounds(b.data);
       out.push({ entry: b.name, sheets, images, sounds,
-                 care: sheets.size ? packSpeciesCare(b.data) : null });
+                 care: sheets.size ? packSpeciesCare(b.data) : null,
+                 layout: TANK_FILE.test(b.name) ? tankLayout(b.data) : null });
     } else if (isBmp(b.data)) {
       const img = decodeBmp(b.data);
       if (img) out.push({ entry: b.name, sheets: new Map(), sounds: [],
@@ -985,6 +996,12 @@ export interface ImportHandlers {
    * keeps the old even spread instead (spreadCenter, web/arrange.ts). */
   onImages(images: Iterable<IndexedImage>, src: string, section: string,
            live: boolean, count?: number, places?: unknown): void;
+  /** A tank add-on's plants and accessories, placed as its file lays
+   * them out; after onImages for the same pack. `live` and `places` as
+   * for onImages: a restore passes the record's saved positions, which
+   * win over the file's for any piece the user has moved. */
+  onLayout?(layout: TankLayout, src: string, live: boolean,
+            places?: unknown): void;
   /** Sound records from a sound-bearing add-on — audio files and
    * 'snd ' resource forks alike arrive pre-flattened to {name, wav}.
    * `live` marks user installs vs restores (a restore must not play). */
@@ -1900,6 +1917,9 @@ export function mountImportPanel(h: ImportHandlers, opts?: PanelOptions):
         h.onImages(r.images.values(), it.url, it.section, live,
                    live ? 1 : decorCopies(it),
                    live ? undefined : it.places);
+      if (it.section === "tanks" && r.layout?.items.length)
+        h.onLayout?.(r.layout, it.url, live,
+                     live ? undefined : it.places);
       if (r.sounds.length) {
         const recs = qualifySoundItemName(r.sounds, it.inner);
         // The handler may rename colliding records in place — read the

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A tank from **Import Add-ons** (or a `.azn` file dropped on the tank)
+  now brings its plants and accessories, each where the tank's author
+  placed it, next to the decor you already have. They arrange and save
+  like any decor and leave with the tank in Tank Overview, and the
+  Tanks preview shows the whole layout. Tanks you installed before
+  bring theirs the next time Finsical opens.
 - **Tank > Arrange Decorations** lets you drag plants and accessories
   to where you want them along the floor. Each copy keeps its place
   across launches and in exported tanks, and a new piece goes into the

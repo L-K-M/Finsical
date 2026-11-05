@@ -24,7 +24,9 @@ export function buildPack(
     const len = bytes.length;
     bytes.length += 4;
     put32(len, r.payload.length);
-    bytes.push(...r.payload);
+    // A loop, not push(...payload): a backdrop-sized payload has more
+    // elements than a call takes arguments.
+    for (const b of r.payload) bytes.push(b);
   }
   const m = bytes.length;
   put32(4, m);
